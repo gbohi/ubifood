@@ -5,7 +5,7 @@
 
 class AppConfig {
   // URL de base du serveur Django (sans slash final)
-  static const serverUrl = 'http://51.20.12.161';
+  static const serverUrl = 'http://13.60.66.147';
 
   // Base URL pour les appels API DRF
   static const apiBaseUrl = '$serverUrl/api/api';
