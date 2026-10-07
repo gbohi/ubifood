@@ -146,6 +146,12 @@ class DroitsParRoleTests(BaseAPITestCase):
         url_autre = f'{API}/users/{self.employe2.id}/changer-mot-de-passe/'
         self.assertEqual(client.patch(url_autre, {'password': 'Nouveau#2026'}).status_code, 403)
 
+    def test_liste_complete_des_agents_pour_gestionnaire(self):
+        self.assertEqual(self.client_pour(self.employe).get(f'{API}/allnopagin/users/').status_code, 403)
+        r = self.client_pour(self.gestionnaire).get(f'{API}/allnopagin/users/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data), User.objects.count())
+
     def test_pagination_page_size(self):
         for i in range(15):
             Agence.objects.create(nom_agence=f'A{i}')
@@ -173,6 +179,8 @@ class CommandeTests(BaseAPITestCase):
         r = client.post(f'{API}/commandes/', {'menu_id': menu.id, 'plat_id': self.plat1.id})
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['user_agence'], 'Siège')
+        self.assertEqual(r.data['user_id'], self.employe.id)
+        self.assertEqual(r.data['user_nom'], 'EMP1 Test')
         r = client.post(f'{API}/commandes/', {'menu_id': menu.id, 'plat_id': self.plat2.id})
         self.assertEqual(r.status_code, 400)
 

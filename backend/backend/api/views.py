@@ -587,10 +587,14 @@ class UserViewSet(BaseViewSet):
 
 
 class AllUserNopginListAPIView(ListAPIView):
-    queryset           = User.objects.select_related('statut').prefetch_related('groups').order_by('nom', 'prenom')
+    """Tous les agents (facturation, gestion des commandes) : gestionnaires et admins."""
     serializer_class   = UserSerializer
     permission_classes = [IsGestionnaireRole]
     pagination_class   = None
+
+    def get_queryset(self):
+        # Prefetch des historiques : évite plusieurs requêtes SQL par agent
+        return UserViewSet._prefetch(User.objects.all()).order_by('nom', 'prenom')
 
 
 class GroupViewSet(viewsets.ModelViewSet):

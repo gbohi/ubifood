@@ -11,8 +11,8 @@ import re
 
 
 def nom_complet(user):
-    """« Prénom Nom » de l'agent (champs nom/prenom du modèle User), sinon son identifiant."""
-    nom = f"{user.prenom or ''} {user.nom or ''}".strip()
+    """« Nom Prénom » de l'agent (champs nom/prenom du modèle User), sinon son identifiant."""
+    nom = f"{user.nom or ''} {user.prenom or ''}".strip()
     if not nom:
         nom = f"{user.first_name} {user.last_name}".strip()
     return nom or user.username
@@ -628,6 +628,10 @@ class CommandeSerializer(serializers.ModelSerializer):
     menu_detail = MenuSerializer(source='menu', read_only=True)
     user_nom    = serializers.SerializerMethodField()
     user_agence = serializers.SerializerMethodField()
+    # Identifiants de l'agent : permettent au web de relier une commande à
+    # son agent sans passer par le nom affiché (homonymes).
+    user_id       = serializers.ReadOnlyField(source='user.id')
+    user_username = serializers.ReadOnlyField(source='user.username')
 
     menu_id = serializers.PrimaryKeyRelatedField(
         queryset=Menu.objects.all(), source='menu', write_only=True
@@ -641,6 +645,7 @@ class CommandeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'statut', 'date_commande', 'date_annulation',
             'plat_detail', 'menu_detail', 'user_nom', 'user_agence',
+            'user_id', 'user_username',
             'menu_id', 'plat_id',
         ]
         read_only_fields = ['date_commande', 'date_annulation', 'statut']
