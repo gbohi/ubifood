@@ -1,0 +1,50 @@
+# ============================================================
+# Image de base Python (slim = version légère)
+# ============================================================
+FROM python:3.11-slim
+
+# ============================================================
+# Installer les dépendances système nécessaires pour
+# psycopg2-binary (connecteur PostgreSQL)
+# ============================================================
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Définir le répertoire de travail dans le container
+# Tout ce qui suit se passe dans /app
+# ============================================================
+WORKDIR /app
+
+# ============================================================
+# Copier requirements.txt depuis la racine du projet
+# On copie AVANT le code pour profiter du cache Docker :
+# si requirements.txt n'a pas changé, pip ne réinstalle rien
+# ============================================================
+COPY requirements.txt .
+
+# ============================================================
+# Installer les dépendances Python
+# --no-cache-dir = ne pas stocker le cache pip (image plus légère)
+# ============================================================
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ============================================================
+# Copier uniquement le dossier backend/ dans /app
+# (là où se trouvent manage.py, core/, api/, etc.)
+# ============================================================
+COPY backend/ .
+
+# ============================================================
+# Exposer le port 8000 (port Gunicorn)
+# ============================================================
+EXPOSE 8000
+
+# ============================================================
+# Commande de démarrage en production
+# core.wsgi → dossier core/ contient wsgi.py
+# --workers 3 → 3 processus parallèles pour gérer les requêtes
+# ============================================================
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "core.wsgi:application"]

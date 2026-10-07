@@ -1,0 +1,44 @@
+# ============================================================
+# .gitignore — à placer à la racine du projet Django
+# ============================================================
+
+# Fichier d'environnement — NE JAMAIS commiter
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Environnement virtuel
+venv/
+env/
+.venv/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets & Firebase
+backend/firebase-service-account.json
+*.json
