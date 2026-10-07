@@ -50,7 +50,8 @@ class _MenuScreenState extends State<MenuScreen> {
       final agenceNom = auth.user?.derniereAgence;
 
       // Charger les menus d'abord
-      await context.read<MenuProvider>().loadMenus();
+      await context.read<MenuProvider>().loadMenus(
+          agenceId: context.read<AuthProvider>().user?.derniereAgenceId);
       context.read<CommandeProvider>().loadMesCommandes();
 
       // ✅ Pré-sélectionner l'agence du user APRÈS le chargement
@@ -723,7 +724,7 @@ class _BoutonCommander extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14)),
               ),
               onPressed: () =>
-                  _confirmerAnnulation(context, cmdProv, commandeCeMenu!.id),
+                  _confirmerAnnulation(context, cmdProv, commandeCeMenu.id),
             ),
           ),
         ],
@@ -747,7 +748,7 @@ class _BoutonCommander extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Annulez "${commandeCeMenu!.platDetail?.nom ?? 'votre commande'}" '
+          'Annulez "${commandeCeMenu.platDetail?.nom ?? 'votre commande'}" '
           'pour choisir ce plat',
           style: TextStyle(fontSize: 11, color: secColor),
           textAlign: TextAlign.center,
@@ -757,7 +758,7 @@ class _BoutonCommander extends StatelessWidget {
 
     if (autreAgenceCeJour) {
       final agenceCmde =
-          commandeCeJour!.menuDetail?.agenceNom ?? 'une autre agence';
+          commandeCeJour.menuDetail?.agenceNom ?? 'une autre agence';
       final platCmde = commandeCeJour.platDetail?.nom ?? 'un plat';
       return Column(children: [
         _StatutBouton(

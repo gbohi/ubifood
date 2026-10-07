@@ -1,6 +1,7 @@
 // lib/features/auth/forgot_password_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/widgets/common_widgets.dart';
@@ -192,12 +193,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     }
   }
 
+  /// Message renvoyé par le serveur (code incorrect, code expiré, trop de
+  /// tentatives…). Avant, e.toString() ne contenait pas le corps de la
+  /// réponse : seul le message par défaut s'affichait.
   String _parseError(dynamic e, Map<String, String> messages) {
-    final msg = e.toString().toLowerCase();
-    for (final entry in messages.entries) {
-      if (entry.key != 'default' && msg.contains(entry.key)) return entry.value;
+    if (e is DioException) {
+      if (e.response?.statusCode == 429) {
+        return 'Trop de tentatives. Réessayez dans une heure.';
+      }
+      if (e.response == null) return 'Impossible de contacter le serveur.';
     }
-    return messages['default'] ?? 'Erreur inattendue.';
+    return messageErreurApi(e) ?? messages['default'] ?? 'Erreur inattendue.';
   }
 
   @override

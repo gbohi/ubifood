@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 9+ bloque le HTTP non chiffré par défaut.
+  Exception TEMPORAIRE limitée au serveur actuel (51.20.12.161), le temps
+  d'installer HTTPS sur l'API. Une fois l'API en HTTPS :
+    1. mettre l'URL https:// dans lib/core/config.dart
+    2. supprimer le bloc domain-config ci-dessous
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">51.20.12.161</domain>
+    </domain-config>
+</network-security-config>

@@ -1,8 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Sans cette permission, l'APK release ne peut joindre aucun serveur
+         (seul le manifeste debug la déclarait). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Scan du QR code / badge au retrait -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Notifications push (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <application
         android:label="ubifood"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"

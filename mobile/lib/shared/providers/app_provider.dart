@@ -1,8 +1,9 @@
 // lib/shared/providers/app_provider.dart
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/api/api_client.dart';
 import '../models/models.dart';
 import '../../core/services/cantine_service.dart';
 import '../../core/services/notification_service.dart'; // ✅ AJOUTÉ
@@ -63,8 +64,39 @@ class AuthProvider extends ChangeNotifier {
   String? get error => _error;
   bool get isLoggedIn => _user != null;
 
-  bool get isGestionnaire =>
-      (_user?.groups ?? []).any((g) => [3, 4].contains(g));
+  /// Basé sur le NOM des rôles renvoyé par l'API (avant : IDs de groupe
+  /// 3 et 4 codés en dur, faux dès que la base est recréée).
+  bool get isGestionnaire => _user?.isGestionnaire ?? false;
+
+  AuthProvider() {
+    // Refresh token refusé par le serveur → retour à l'écran de connexion
+    apiClient.onSessionExpiree = () {
+      if (_user != null) {
+        _user = null;
+        notifyListeners();
+      }
+    };
+  }
+
+  /// Au démarrage : si un jeton est stocké, recharge le profil.
+  /// Avant, l'utilisateur retombait toujours sur l'écran de connexion
+  /// au redémarrage de l'app malgré un jeton valide.
+  Future<bool> restoreSession() async {
+    if (!await authService.isLoggedIn()) return false;
+    try {
+      _user = await authService.me();
+      notifyListeners();
+      return true;
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 401 || code == 403) {
+        await authService.logout();
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<bool> login(String username, String password) async {
     _loading = true;
@@ -97,13 +129,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   String _parseError(dynamic e) {
-    if (e.toString().contains('401') ||
-        e.toString().contains('No active account')) {
-      return 'Identifiants incorrects';
-    }
-    if (e.toString().contains('SocketException') ||
-        e.toString().contains('connect')) {
-      return 'Impossible de contacter le serveur';
+    if (e is DioException) {
+      final code = e.response?.statusCode;
+      if (code == 401) return 'Identifiants incorrects';
+      if (code == 429) {
+        return 'Trop de tentatives. Réessayez dans quelques minutes.';
+      }
+      if (e.response == null) return 'Impossible de contacter le serveur';
     }
     return 'Une erreur est survenue';
   }
@@ -126,6 +158,8 @@ class MenuProvider extends ChangeNotifier {
 
   Menu? get menuDuJour => _menus.where((m) => m.isToday).firstOrNull;
 
+  /// [agenceId] : agence de l'agent connecté → seuls les menus de son agence
+  /// sont chargés (avant : tous les menus de toutes les agences, tronqués à 10).
   Future<void> loadMenus({int? agenceId}) async {
     _loading = true;
     _error = null;
@@ -239,7 +273,7 @@ class CommandeProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = 'Impossible d\'annuler la commande';
+      _error = messageErreurApi(e) ?? 'Impossible d\'annuler la commande';
       _state = CommandeState.error;
       notifyListeners();
       return false;
@@ -253,13 +287,17 @@ class CommandeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Le message utile est dans le corps de la réponse (e.toString() d'une
+  /// DioException ne le contient pas : ces cas n'étaient jamais reconnus).
   String _parseCommandeError(dynamic e) {
-    final msg = e.toString();
-    if (msg.contains('déjà une commande'))
+    final msg = messageErreurApi(e) ?? '';
+    if (msg.contains('déjà une commande')) {
       return 'Vous avez déjà commandé pour ce jour';
-    if (msg.contains('48h'))
+    }
+    if (msg.contains('48h')) {
       return 'Délai de commande dépassé (48h avant le menu)';
-    return 'Erreur lors de la commande';
+    }
+    return msg.isNotEmpty ? msg : 'Erreur lors de la commande';
   }
 }
 
@@ -320,9 +358,10 @@ class RetraitProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = e.toString().contains('déjà')
+      final msg = messageErreurApi(e) ?? '';
+      _error = msg.contains('déjà')
           ? 'Retrait déjà enregistré'
-          : 'Erreur de retrait';
+          : (msg.isNotEmpty ? msg : 'Erreur de retrait');
       _loading = false;
       notifyListeners();
       return false;

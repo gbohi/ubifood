@@ -1,7 +1,6 @@
 // lib/core/services/cantine_service.dart
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import '../api/api_client.dart';
 import '../config.dart';
 import '../../shared/models/models.dart';
@@ -20,11 +19,28 @@ class AuthService {
       tokenRes.data['access'],
       tokenRes.data['refresh'],
     );
+    return me();
+  }
+
+  /// Profil de l'utilisateur connecté (sert aussi à restaurer la session).
+  Future<AuthUser> me() async {
     final meRes = await apiClient.get('/users/me/');
     return AuthUser.fromJson(meRes.data);
   }
 
-  Future<void> logout() => apiClient.logout();
+  /// Révoque le refresh token côté serveur puis efface les jetons locaux.
+  Future<void> logout() async {
+    try {
+      final refresh = await apiClient.getRefreshToken();
+      if (refresh != null) {
+        await apiClient.post('/users/logout/', data: {'refresh': refresh});
+      }
+    } catch (_) {
+      // Hors ligne ou session déjà expirée : la déconnexion locale suffit.
+    }
+    await apiClient.logout();
+  }
+
   Future<bool> isLoggedIn() => apiClient.hasToken();
 }
 

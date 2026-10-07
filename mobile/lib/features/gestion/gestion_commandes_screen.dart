@@ -26,13 +26,6 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
   DateTime? _dateFin;
   String? _statutFiltre;
 
-  static const _statuts = [
-    {'val': null, 'label': 'Toutes'},
-    {'val': 'en_attente', 'label': 'En attente'},
-    {'val': 'retiree', 'label': 'Retirées'},
-    {'val': 'annulee', 'label': 'Annulées'},
-  ];
-
   void charger() => _charger();
 
   @override
@@ -96,7 +89,7 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
       });
     } catch (e) {
       setState(() {
-        _erreur = 'Erreur: ${e.toString()}';
+        _erreur = messageErreurApi(e) ?? 'Erreur de chargement des commandes';
         _loading = false;
       });
     }
@@ -109,9 +102,6 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,

@@ -20,6 +20,9 @@ class AuthUser {
   final String nom;
   final String prenom;
   final List<int> groups;
+
+  /// Noms des rôles renvoyés par l'API : super_admin, admin, gestionnaire, employe
+  final List<String> roles;
   final bool isActive;
   final String? dernierService;
   final String? derniereAgence;
@@ -35,6 +38,7 @@ class AuthUser {
     required this.nom,
     required this.prenom,
     required this.groups,
+    this.roles = const [],
     required this.isActive,
     this.dernierService,
     this.derniereAgence,
@@ -46,6 +50,11 @@ class AuthUser {
 
   String get fullName => '$nom $prenom'.trim();
 
+  bool get isAdmin => roles.contains('super_admin') || roles.contains('admin');
+
+  /// Gestionnaire de cantine (les administrateurs ont aussi ces droits)
+  bool get isGestionnaire => isAdmin || roles.contains('gestionnaire');
+
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
         id: json['id'],
         username: json['username'] ?? '',
@@ -53,6 +62,7 @@ class AuthUser {
         nom: json['nom'] ?? '',
         prenom: json['prenom'] ?? '',
         groups: List<int>.from(json['groups'] ?? []),
+        roles: List<String>.from(json['roles'] ?? []),
         isActive: json['is_active'] ?? true,
         dernierService: json['dernier_service']?['service_libelle'],
         derniereAgence: json['derniere_agence']?['agence_nom'],

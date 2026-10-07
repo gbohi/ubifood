@@ -42,7 +42,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MenuProvider>().loadMenus();
+      context.read<MenuProvider>().loadMenus(
+          agenceId: context.read<AuthProvider>().user?.derniereAgenceId);
       context.read<CommandeProvider>().loadMesCommandes();
     });
   }
@@ -71,7 +72,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         notificationPredicate: (notification) => notification.depth == 0,
         onRefresh: () async {
           await Future.wait([
-            context.read<MenuProvider>().loadMenus(),
+            context.read<MenuProvider>().loadMenus(
+                agenceId: context.read<AuthProvider>().user?.derniereAgenceId),
             context.read<CommandeProvider>().loadMesCommandes(),
           ]);
         },

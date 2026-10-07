@@ -233,7 +233,9 @@ class NotificationService {
     try {
       final token = await _fcm.getToken();
       if (token != null) {
-        await apiClient.delete('/device-tokens/supprimer/?token=$token');
+        // Passé en paramètre (encodé) et non concaténé dans l'URL
+        await apiClient
+            .delete('/device-tokens/supprimer/', params: {'token': token});
       }
       await _fcm.deleteToken();
       debugPrint('✅ Token FCM supprimé');

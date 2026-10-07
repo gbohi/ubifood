@@ -1,6 +1,5 @@
 // lib/features/facturation/facturation_screen.dart
 
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -50,7 +49,6 @@ class _FacturationScreenState extends State<FacturationScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final canPop = Navigator.of(context).canPop();
     return Scaffold(
       appBar: AppBar(

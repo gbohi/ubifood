@@ -44,8 +44,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       appBar: AppBar(title: const Text('Modifier le mot de passe')),
       body: SingleChildScrollView(
@@ -291,18 +289,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       await Future.delayed(const Duration(milliseconds: 1500));
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      final msg = e.toString();
+      // Message exact du serveur (« Mot de passe actuel incorrect. »,
+      // règle de complexité non respectée…). Avant, toute erreur 400
+      // affichait « Mot de passe actuel incorrect ».
       setState(() {
         _loading = false;
-        _erreur = msg.contains('old_password') ||
-                msg.contains('incorrect') ||
-                msg.contains('400')
-            ? 'Mot de passe actuel incorrect'
-            : msg.contains('complexit') ||
-                    msg.contains('majuscule') ||
-                    msg.contains('chiffre')
-                ? 'Le nouveau mot de passe ne respecte pas les critères de sécurité'
-                : 'Erreur lors de la modification. Réessayez.';
+        _erreur =
+            messageErreurApi(e) ?? 'Erreur lors de la modification. Réessayez.';
       });
     }
   }

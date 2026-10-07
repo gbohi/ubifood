@@ -14,7 +14,6 @@ import 'features/main_shell.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/notifications/notification_screen.dart';
-import 'core/services/cantine_service.dart';
 
 // ✅ NavigatorKey global — permet de naviguer sans contexte
 // et évite de recréer l'app quand on tape sur une notification
@@ -108,9 +107,13 @@ class _AuthGateState extends State<_AuthGate> {
     };
   }
 
+  bool _pollingActif = false;
+
   Future<void> _checkAuth() async {
+    // restoreSession() recharge le profil si un jeton est stocké :
+    // l'utilisateur reste connecté entre deux lancements de l'app.
     final results = await Future.wait([
-      authService.isLoggedIn(),
+      context.read<AuthProvider>().restoreSession(),
       onboardingDejaVu(),
       Future.delayed(const Duration(milliseconds: 2600)),
     ]);
@@ -121,6 +124,7 @@ class _AuthGateState extends State<_AuthGate> {
       await notificationService.registerTokenAfterLogin();
     }
 
+    if (!mounted) return;
     setState(() {
       _checking = false;
       _showOnboarding = !onbDone && !hasToken;
@@ -139,9 +143,14 @@ class _AuthGateState extends State<_AuthGate> {
 
     return Consumer<AuthProvider>(
       builder: (_, auth, __) {
-        if (auth.isLoggedIn) {
+        // Démarre / arrête le rafraîchissement des notifications une seule
+        // fois par changement d'état de connexion (avant : à chaque rebuild).
+        if (auth.isLoggedIn != _pollingActif) {
+          _pollingActif = auth.isLoggedIn;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            context.read<NotificationProvider>().startPolling();
+            if (!mounted) return;
+            final notifs = context.read<NotificationProvider>();
+            auth.isLoggedIn ? notifs.startPolling() : notifs.stopPolling();
           });
         }
         return auth.isLoggedIn ? const MainShell() : const LoginScreen();
