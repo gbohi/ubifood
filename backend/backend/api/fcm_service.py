@@ -1,7 +1,5 @@
 # ============================================================
-# lib/core/services/fcm_service.py  (nouveau fichier Django)
-# Chemin suggéré : votre_app/fcm_service.py
-#
+# api/fcm_service.py
 # Service d'envoi de notifications FCM via firebase-admin
 # ============================================================
 
@@ -103,13 +101,15 @@ def envoyer_notification_user(user, titre: str, message: str,
             f"{response.failure_count} échec(s)"
         )
 
-        # 4. Supprimer les tokens invalides (expired/unregistered)
+        # 4. Supprimer les tokens invalides (appli désinstallée, token expiré)
         if response.failure_count > 0:
             tokens_invalides = [
                 tokens[i]
                 for i, resp in enumerate(response.responses)
-                if not resp.success and resp.exception and
-                   'Registration token is not valid' in str(resp.exception)
+                if not resp.success and (
+                    isinstance(resp.exception, messaging.UnregisteredError) or
+                    'Registration token is not valid' in str(resp.exception)
+                )
             ]
             if tokens_invalides:
                 DeviceToken.objects.filter(token__in=tokens_invalides).delete()

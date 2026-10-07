@@ -31,7 +31,9 @@ class Migration(migrations.Migration):
                 max_length=20,
             ),
         ),
-        migrations.AddField(
+        # date_annulation existe déjà depuis 0003 : AlterField (et non AddField)
+        # pour que les migrations passent sur une base neuve.
+        migrations.AlterField(
             model_name='commande',
             name='date_annulation',
             field=models.DateTimeField(blank=True, null=True),
@@ -77,11 +79,11 @@ class Migration(migrations.Migration):
             name='retrait',
             options={'ordering': ['-date_retrait']},
         ),
-        migrations.AddField(
+        # badge_matricule existe déjà depuis 0003 : AlterField (et non AddField).
+        migrations.AlterField(
             model_name='retrait',
             name='badge_matricule',
-            field=models.CharField(default='', max_length=100),
-            preserve_default=False,
+            field=models.CharField(max_length=100),
         ),
         migrations.AddField(
             model_name='retrait',

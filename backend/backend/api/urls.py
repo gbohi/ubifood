@@ -1,8 +1,14 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import BesoinCreateView
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import *
+
+
+class ThrottledTokenObtainPairView(TokenObtainPairView):
+    """Connexion JWT avec limitation de débit (anti force brute)."""
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
@@ -34,12 +40,13 @@ router.register(r'typeequipes', TypeEquipeViewSet)
 
 # Entretien vehicule
 router.register(r'typevehicules', TypeVehiculeViewSet)
-router.register(r'vehicules', VehiculeViewSet),
+router.register(r'vehicules', VehiculeViewSet)
 router.register(r'entretienvehicules', EntretienVehiculeViewSet)
 
 # Simulation salaire
-router.register(r'simulation', SimulationViewSet),
+router.register(r'simulation', SimulationViewSet)
 router.register(r'simulation2', Simulation2ViewSet, basename='simulation2')
+router.register(r'simulationsalaires', SimulationSalaireCrudViewSet, basename='simulationsalaire-crud')
 
 #Plan comptable
 router.register(r'categoriecomptables', CategorieComptableViewSet)
@@ -53,13 +60,13 @@ router.register(r'postes', PosteViewSet)
 
 router.register(r'user-postes',            UserPosteViewSet)
 router.register(r'user-categoriesalaries', UserCategoriesalarieViewSet)
-router.register(r'user-allergies',         UserAllergieViewSet)
+router.register(r'user-allergies',         UserAllergieViewSet, basename='userallergie')
 
 urlpatterns = [
     path('api/', include(router.urls)),
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/', ThrottledTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-     # 👇 API non authentifiées, sans pagination
+    # Listes sans pagination (utilisateur connecté requis)
     path('api/public/typebesoins/', PublicTypeBesoinListAPIView.as_view(), name='public-typebesoin-list'),
     path('api/public/priorites/', PublicPrioriteListAPIView.as_view(), name='public-priorite-list'),
     path('besoins/creer/', BesoinCreateView.as_view(), name='besoin-creer'),
@@ -90,6 +97,9 @@ urlpatterns = [
     path('api/allnopagin/users/', AllUserNopginListAPIView.as_view(), name='allnopagin-user-list'),
     path('api/dashboard-cantine/', DashboardCantineView.as_view(), name='dashboard-cantine'),
     path('api/allnopagin/plats/', AllPlatNopginListAPIView.as_view(), name='allnopagin-plat-list'),
+    path('api/allnopagin/prestataires/', AllPrestataireNopginListAPIView.as_view(), name='allnopagin-prestataire-list'),
+    path('api/allnopagin/entretienvehicules/', AllEntretienVehiculeNopginListAPIView.as_view(), name='allnopagin-entretienvehicule-list'),
+    path('api/allnopagin/simulationsalaires/', AllSimulationSalaireNopginListAPIView.as_view(), name='allnopagin-simulationsalaire-list'),
     path('api/device-tokens/', DeviceTokenView.as_view(), name='device-token'),
     path('api/device-tokens/supprimer/', DeviceTokenView.as_view(), name='device-token-delete'),
     path('api/notifications/mes-notifications/', NotificationListView.as_view(), name='mes-notifications'),

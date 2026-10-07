@@ -140,7 +140,8 @@ class Plat(BaseModel):
 
 class PlatImage(BaseModel):
     plat = models.ForeignKey(Plat, on_delete=models.CASCADE, related_name="images")
-    image = models.FileField(upload_to='images_plats/', validators=[FileExtensionValidator(['jpg', 'jpeg', 'png','pdf'])])
+    # Une photo de plat ne peut pas être un PDF (le mobile et le web l'affichent comme image)
+    image = models.FileField(upload_to='images_plats/', validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'webp'])])
     is_principale = models.BooleanField(default=False)
 
 class Menu(BaseModel):

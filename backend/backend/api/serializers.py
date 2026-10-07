@@ -1,7 +1,6 @@
 from collections import defaultdict
 from rest_framework import serializers
 from datetime import datetime, time, timedelta
-from django.db.models import Max
 from django.db import IntegrityError
 from django.contrib.auth.models import Group
 from .models import *
@@ -9,6 +8,29 @@ from django.db.models import Q
 from django.utils import timezone
 from django.core.exceptions import ValidationError as DjangoValidationError
 import re
+
+
+def nom_complet(user):
+    """« Prénom Nom » de l'agent (champs nom/prenom du modèle User), sinon son identifiant."""
+    nom = f"{user.prenom or ''} {user.nom or ''}".strip()
+    if not nom:
+        nom = f"{user.first_name} {user.last_name}".strip()
+    return nom or user.username
+
+
+def agence_actuelle(user, a_date=None):
+    """
+    Agence de l'agent : ligne UserAgence active à la date donnée (aujourd'hui
+    par défaut), sinon la plus récente. Utilise le prefetch si présent.
+    """
+    a_date = a_date or timezone.now()
+    lignes = list(user.useragence_set.all())
+    if not lignes:
+        return None
+    actives = [l for l in lignes
+               if l.date_debut <= a_date and (l.date_fin is None or l.date_fin >= a_date)]
+    ligne = max(actives or lignes, key=lambda l: l.date_debut)
+    return ligne.agence
 
 
 # ============================================================
@@ -144,7 +166,9 @@ class CategoriesalarieSerializer(serializers.ModelSerializer):
 
 class PosteSerializer(serializers.ModelSerializer):
     fonction_libelle = serializers.ReadOnlyField(source='fonction.libelle')
-    service_libelle  = serializers.ReadOnlyField(source='service.nom_service')
+    # Le champ du modèle Service est libelle_service (nom_service n'existe pas :
+    # DRF ignorait silencieusement ce champ, jamais renvoyé au client).
+    service_libelle  = serializers.ReadOnlyField(source='service.libelle_service')
 
     class Meta:
         model  = Poste
@@ -159,6 +183,9 @@ class UserAllergieSerializer(serializers.ModelSerializer):
     class Meta:
         model  = UserAllergie
         fields = '__all__'
+        # Renseigné par la vue (l'utilisateur connecté pour un employé)
+        extra_kwargs = {'user': {'required': False}}
+        read_only_fields = ['user_created', 'user_updated']
 
 
 class UserServiceSerializer(serializers.ModelSerializer):
@@ -216,6 +243,10 @@ class UserSerializer(serializers.ModelSerializer):
     password2 = serializers.CharField(write_only=True, required=False)
     statut_libelle = serializers.ReadOnlyField(source='statut.libelle_statut')
 
+    # Noms des rôles (super_admin, admin, gestionnaire, employe) :
+    # les clients s'appuient dessus plutôt que sur des IDs de groupe.
+    roles = serializers.SerializerMethodField()
+
     # ✅ groups : tableau d'IDs
     groups = serializers.PrimaryKeyRelatedField(
         many=True,
@@ -244,8 +275,8 @@ class UserSerializer(serializers.ModelSerializer):
             'nom', 'prenom', 'contact', 'poste_telephone',
             'first_name', 'last_name',
             'statut', 'statut_libelle',
-            'last_login', 'last_logout', 'is_active',
-            'groups',
+            'last_login', 'last_logout', 'is_active', 'is_superuser',
+            'groups', 'roles',
             # Listes complètes
             'user_services', 'user_agences', 'user_postes',
             'user_categoriesalaries', 'user_allergies',
@@ -253,7 +284,21 @@ class UserSerializer(serializers.ModelSerializer):
             'dernier_service', 'derniere_agence',
             'dernier_poste', 'derniere_categoriesalarie',
         ]
-        read_only_fields = ['last_login', 'last_logout']
+        read_only_fields = ['last_login', 'last_logout', 'is_superuser']
+
+    def get_roles(self, obj):
+        return sorted(g.name for g in obj.groups.all())
+
+    def validate_groups(self, groups):
+        """Seul un super_admin peut attribuer le rôle super_admin."""
+        from .permissions import ROLE_SUPER_ADMIN, is_super_admin
+        request = self.context.get('request')
+        if any(g.name == ROLE_SUPER_ADMIN for g in groups):
+            if not (request and is_super_admin(request.user)):
+                raise serializers.ValidationError(
+                    "Seul un super administrateur peut attribuer le rôle super_admin."
+                )
+        return groups
 
     # ── Utilitaire interne ──────────────────────────────────────
     @staticmethod
@@ -417,6 +462,9 @@ class BesoinSerializer(serializers.ModelSerializer):
     class Meta:
         model = Besoin
         fields = '__all__'
+        # user : imposé par la vue (l'utilisateur connecté sauf pour un admin)
+        extra_kwargs = {'user': {'required': False}}
+        read_only_fields = ['reference', 'user_created', 'user_updated']
 
 
 class BesoinWithDocumentsSerializer(serializers.ModelSerializer):
@@ -432,6 +480,7 @@ class BesoinWithDocumentsSerializer(serializers.ModelSerializer):
             'typebesoin', 'date_debut', 'date_fin',
             'etat', 'priorite', 'user'
         ]
+        extra_kwargs = {'user': {'required': False}}
 
     def create(self, validated_data):
         # ✅ La référence est générée par Besoin.save() : UBS-{annee}-{pk:06d}
@@ -597,43 +646,33 @@ class CommandeSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_commande', 'date_annulation', 'statut']
 
     def get_user_nom(self, obj):
-        return f"{obj.user.first_name} {obj.user.last_name}".strip() or obj.user.username
+        return nom_complet(obj.user)
 
     def get_user_agence(self, obj):
-        try:
-            return obj.user.profile.agence.nom_agence
-        except Exception:
-            return None
+        # Avant : obj.user.profile.agence → le modèle profile n'existe pas,
+        # la valeur était toujours null.
+        agence = agence_actuelle(obj.user)
+        return agence.nom_agence if agence else None
 
     def validate(self, attrs):
+        """
+        Règles métier (la règle « une commande par jour » est vérifiée dans
+        la vue, sous verrou, pour éviter les doublons concurrents).
+        """
         menu = attrs.get('menu') or (self.instance.menu if self.instance else None)
         plat = attrs.get('plat') or (self.instance.plat if self.instance else None)
 
         if menu and plat:
-            plat_ids = menu.menu_plats.values_list('plat_id', flat=True)
-            if plat.id not in plat_ids:
+            if not menu.menu_plats.filter(plat_id=plat.id).exists():
                 raise serializers.ValidationError(
                     "Ce plat n'appartient pas au menu sélectionné."
                 )
 
-        if menu:
-            request = self.context.get('request')
-            user = request.user if request else None
-
-            if user:
-                commande_existante = Commande.objects.filter(
-                    user=user,
-                    menu__date_menu=menu.date_menu,
-                    statut='en_attente',
+        if menu and self.instance is None:
+            if timezone.now() > _get_deadline(menu.date_menu):
+                raise serializers.ValidationError(
+                    "Impossible de commander : le délai de 48h avant le menu est dépassé."
                 )
-                if self.instance:
-                    commande_existante = commande_existante.exclude(id=self.instance.id)
-
-                if commande_existante.exists():
-                    raise serializers.ValidationError(
-                        f"Vous avez déjà une commande pour le {menu.date_menu}. "
-                        "Une seule commande est autorisée par jour."
-                    )
 
         return attrs
 
@@ -659,6 +698,8 @@ class CommandeAnnulationSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         instance.statut          = 'annulee'
         instance.date_annulation = timezone.now()
+        if validated_data.get('user_updated'):
+            instance.user_updated = validated_data['user_updated']
         instance.save()
         return instance
 
@@ -688,7 +729,7 @@ class RetraitSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_retrait']
 
     def get_user_nom(self, obj):
-        return f"{obj.user.first_name} {obj.user.last_name}".strip() or obj.user.username
+        return nom_complet(obj.user)
 
     def validate(self, attrs):
         user = attrs.get('user')
@@ -704,10 +745,18 @@ class RetraitSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        retrait = super().create(validated_data)
-        Commande.objects.filter(
-            user=retrait.user, menu=retrait.menu, statut='en_attente'
-        ).update(statut='retiree')
+        from django.db import transaction
+        try:
+            with transaction.atomic():
+                retrait = super().create(validated_data)
+                Commande.objects.filter(
+                    user=retrait.user, menu=retrait.menu, statut='en_attente'
+                ).update(statut='retiree', updated_at=timezone.now())
+        except IntegrityError:
+            # Deux validations simultanées du même agent
+            raise serializers.ValidationError(
+                "Un retrait a déjà été enregistré pour cet agent et ce menu."
+            )
         return retrait
 
 
