@@ -20,6 +20,17 @@ else:
     raise SystemExit("PostgreSQL injoignable")
 PY
 
+# Clé Firebase : sans elle, les notifications sont enregistrées en base
+# (visibles dans l'app) mais aucune notification push n'est envoyée.
+KEY="${FIREBASE_SERVICE_ACCOUNT_KEY:-/app/secrets/firebase-service-account.json}"
+if [ ! -f "$KEY" ]; then
+    echo "⚠️  Clé Firebase introuvable ($KEY) : notifications push désactivées."
+elif [ ! -r "$KEY" ]; then
+    echo "⚠️  Clé Firebase illisible par l'utilisateur du conteneur ($KEY) : chmod 644 sur le serveur."
+else
+    echo "✅ Clé Firebase trouvée : notifications push actives."
+fi
+
 python manage.py migrate --noinput
 python manage.py createcachetable
 python manage.py collectstatic --noinput

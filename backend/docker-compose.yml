@@ -36,8 +36,11 @@ services:
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media
-      # Clé de service Firebase (non versionnée), en lecture seule
-      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+      # Dossier des secrets (non versionné) contenant la clé Firebase :
+      #   backend/secrets/firebase-service-account.json
+      # On monte un DOSSIER et non le fichier : si le fichier manquait,
+      # Docker créerait à sa place un dossier vide portant son nom.
+      - ./secrets:/app/secrets:ro
 
   nginx:
     image: nginx:1.27-alpine

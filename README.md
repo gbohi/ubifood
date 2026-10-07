@@ -76,7 +76,9 @@ Tests : `python manage.py test api`
 ```bash
 cd backend
 cp .env.example .env               # renseigner les valeurs
-cp /chemin/firebase-service-account.json .   # clé Firebase (non versionnée)
+mkdir -p secrets
+cp /chemin/firebase-service-account.json secrets/   # clé Firebase (non versionnée)
+chmod 644 secrets/firebase-service-account.json     # lisible par le conteneur
 docker compose up -d --build
 docker compose exec backend python manage.py createsuperuser   # 1re fois
 ```
