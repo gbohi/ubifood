@@ -1,0 +1,786 @@
+<!-- dashboard-cantine.component.html -->
+<app-breadcrumbs title="Dashboard Cantine" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+
+<!-- ══════════════════════════════════════════════════════════
+     FILTRES
+══════════════════════════════════════════════════════════ -->
+<div class="row mb-3">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body py-3">
+
+        <div class="row g-3 align-items-end">
+
+          <!-- Date debut -->
+          <div class="col-xl-2 col-md-4">
+            <label class="form-label fw-semibold small text-uppercase text-muted">Date debut</label>
+            <input type="date" class="form-control" [(ngModel)]="dateDebut" />
+          </div>
+
+          <!-- Date fin -->
+          <div class="col-xl-2 col-md-4">
+            <label class="form-label fw-semibold small text-uppercase text-muted">Date fin</label>
+            <input type="date" class="form-control" [(ngModel)]="dateFin" />
+          </div>
+
+          <!-- Agences — ng-select multiple -->
+          <div class="col-xl-2 col-md-4">
+            <label class="form-label fw-semibold small text-uppercase text-muted">Agences</label>
+            <ng-select
+              [items]="agences"
+              bindLabel="nom_agence"
+              bindValue="id"
+              [multiple]="true"
+              placeholder="Toutes les agences"
+              [(ngModel)]="selectedAgences"
+              [ngModelOptions]="{standalone: true}"
+              [closeOnSelect]="false">
+            </ng-select>
+          </div>
+
+          <!-- Equipes — ng-select multiple -->
+          <div class="col-xl-2 col-md-4">
+            <label class="form-label fw-semibold small text-uppercase text-muted">Equipes</label>
+            <ng-select
+              [items]="typeequipes"
+              bindLabel="libelle"
+              bindValue="id"
+              [multiple]="true"
+              placeholder="Toutes les equipes"
+              [(ngModel)]="selectedTypeEquipes"
+              [ngModelOptions]="{standalone: true}"
+              [closeOnSelect]="false">
+            </ng-select>
+          </div>
+
+          <!-- Statuts — ng-select multiple -->
+          <div class="col-xl-2 col-md-4">
+            <label class="form-label fw-semibold small text-uppercase text-muted">Statuts</label>
+            <ng-select
+              [items]="statutOptions"
+              bindLabel="label"
+              bindValue="value"
+              [multiple]="true"
+              placeholder="Tous les statuts"
+              [(ngModel)]="selectedStatuts"
+              [ngModelOptions]="{standalone: true}"
+              [closeOnSelect]="false">
+            </ng-select>
+          </div>
+
+          <!-- Boutons actions -->
+          <div class="col-xl-2 col-md-8">
+            <div class="d-flex flex-column gap-2">
+              <button class="btn btn-primary w-100" (click)="filtrer()">
+                <i class="ri-search-line me-1"></i> Appliquer
+              </button>
+              <button
+                class="btn btn-outline-secondary w-100"
+                (click)="resetFiltres()"
+                title="Reinitialiser — mois courant">
+                <i class="ph-arrow-counter-clockwise me-1"></i> Reinitialiser
+              </button>
+              <div class="d-flex gap-2">
+                <button class="btn btn-outline-success flex-grow-1" (click)="exporterExcel()" title="Excel">
+                  <i class="bi bi-file-earmark-excel"></i>
+                </button>
+                <button class="btn btn-outline-danger flex-grow-1" (click)="exporterPDF()" title="PDF">
+                  <i class="bi bi-file-earmark-pdf"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Résumé filtres actifs -->
+        <div *ngIf="hasFiltresActifs" class="mt-3 pt-2 border-top">
+          <small class="text-muted">
+            <i class="ph-funnel me-1 text-primary"></i>
+            <strong>Filtres actifs :</strong> {{ getFiltresActifs() }}
+          </small>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     LOADER
+══════════════════════════════════════════════════════════ -->
+<div *ngIf="isLoading$ | async" class="text-center py-5">
+  <div class="spinner-border" role="status" style="color:#092440; width:3rem; height:3rem;">
+    <span class="visually-hidden">Chargement...</span>
+  </div>
+  <p class="mt-3 text-muted">Chargement des donnees...</p>
+</div>
+
+<ng-container *ngIf="!(isLoading$ | async)">
+
+<!-- ══════════════════════════════════════════════════════════
+     KPIs
+══════════════════════════════════════════════════════════ -->
+<ng-container *ngIf="kpis$ | async as kpis">
+<div class="row g-3 mb-4">
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #092440 !important;">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="text-muted small fw-semibold text-uppercase">Total</span>
+          <div style="background:rgba(9,36,64,0.08); width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+            <i class="ph-shopping-cart-simple" style="color:#092440; font-size:1.1rem;"></i>
+          </div>
+        </div>
+        <h3 class="fw-bold mb-0" style="color:#092440;">{{ formatNombre(kpis.total_commandes) }}</h3>
+        <small class="text-muted">commandes</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #ffc107 !important;">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="text-muted small fw-semibold text-uppercase">En attente</span>
+          <div style="background:rgba(255,193,7,0.1); width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+            <i class="ph-shopping-bag" style="color:#092440; font-size:1.1rem;"></i>
+          </div>
+        </div>
+        <h3 class="fw-bold mb-0 text-warning">{{ formatNombre(kpis.total_en_attente) }}</h3>
+        <small class="text-muted">a retirer</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #51d78e !important;">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="text-muted small fw-semibold text-uppercase">Retirees</span>
+          <div style="background:rgba(81,215,142,0.1); width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+            <i class="ph-check-circle" style="color:#51d78e; font-size:1.1rem;"></i>
+          </div>
+        </div>
+        <h3 class="fw-bold mb-0 text-success">{{ formatNombre(kpis.total_retirees) }}</h3>
+        <small class="text-muted">livrees</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #ff4d4f !important;">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="text-muted small fw-semibold text-uppercase">Annulees</span>
+          <div style="background:rgba(255,77,79,0.1); width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+            <i class="ph-x-circle" style="color:#ff4d4f; font-size:1.1rem;"></i>
+          </div>
+        </div>
+        <h3 class="fw-bold mb-0 text-danger">{{ formatNombre(kpis.total_annulees) }}</h3>
+        <small class="text-muted">annulees</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #51d78e !important;">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="text-muted small fw-semibold text-uppercase">Taux retrait</span>
+          <div style="background:rgba(81,215,142,0.1); width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+            <i class="ph-chart-pie-slice" style="color:#51d78e; font-size:1.1rem;"></i>
+          </div>
+        </div>
+        <h3 class="fw-bold mb-0" style="color:#51d78e;">{{ formatNombre(kpis.taux_retrait) }}%</h3>
+        <div class="progress mt-2" style="height:4px;">
+          <div class="progress-bar bg-success" [style.width]="(kpis.taux_retrait || 0) + '%'"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #17a2b8 !important;">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="text-muted small fw-semibold text-uppercase">Menus</span>
+          <div style="background:rgba(23,162,184,0.1); width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+            <i class="ph-fork-knife" style="color:#17a2b8; font-size:1.1rem;"></i>
+          </div>
+        </div>
+        <h3 class="fw-bold mb-0 text-info">{{ formatNombre(kpis.total_menus) }}</h3>
+        <small class="text-muted">menus crees</small>
+      </div>
+    </div>
+  </div>
+
+</div>
+</ng-container>
+
+<!-- ══════════════════════════════════════════════════════════
+     CHARTS ROW 1 : Par mois + Top plats
+══════════════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+
+  <div class="col-xl-8">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent border-0 pb-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-chart-bar me-2 text-success"></i>Commandes par mois
+        </h6>
+        <small class="text-muted">Repartition par statut</small>
+      </div>
+      <div class="card-body pt-2">
+        <apx-chart *ngIf="chartCommandesMois"
+          [series]="chartCommandesMois.series"
+          [chart]="chartCommandesMois.chart"
+          [colors]="chartCommandesMois.colors"
+          [plotOptions]="chartCommandesMois.plotOptions"
+          [dataLabels]="chartCommandesMois.dataLabels"
+          [xaxis]="chartCommandesMois.xaxis"
+          [yaxis]="chartCommandesMois.yaxis"
+          [legend]="chartCommandesMois.legend"
+          [grid]="chartCommandesMois.grid"
+          [tooltip]="chartCommandesMois.tooltip"
+          dir="ltr">
+        </apx-chart>
+        <div *ngIf="!chartCommandesMois" class="text-center py-4 text-muted">
+          <i class="ph-chart-bar fs-1"></i><p class="mt-2">Aucune donnee</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent border-0 pb-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-trophy me-2 text-warning"></i>Top 7 plats
+        </h6>
+        <small class="text-muted">Par volume de commandes</small>
+      </div>
+      <div class="card-body pt-2">
+        <apx-chart *ngIf="chartTopPlats"
+          [series]="chartTopPlats.series"
+          [chart]="chartTopPlats.chart"
+          [colors]="chartTopPlats.colors"
+          [plotOptions]="chartTopPlats.plotOptions"
+          [dataLabels]="chartTopPlats.dataLabels"
+          [xaxis]="chartTopPlats.xaxis"
+          [grid]="chartTopPlats.grid"
+          dir="ltr">
+        </apx-chart>
+        <div *ngIf="!chartTopPlats" class="text-center py-4 text-muted">
+          <i class="ph-fork-knife fs-1"></i><p class="mt-2">Aucune donnee</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     CHARTS ROW 2 : Par agence + Donut + Evolution
+══════════════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+
+  <div class="col-xl-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent border-0 pb-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-buildings me-2 text-primary"></i>Par agence
+        </h6>
+        <small class="text-muted">En attente / Retirees / Annulees</small>
+      </div>
+      <div class="card-body pt-2">
+        <apx-chart *ngIf="chartParAgence"
+          [series]="chartParAgence.series"
+          [chart]="chartParAgence.chart"
+          [colors]="chartParAgence.colors"
+          [plotOptions]="chartParAgence.plotOptions"
+          [dataLabels]="chartParAgence.dataLabels"
+          [xaxis]="chartParAgence.xaxis"
+          [legend]="chartParAgence.legend"
+          [grid]="chartParAgence.grid"
+          dir="ltr">
+        </apx-chart>
+        <div *ngIf="!chartParAgence" class="text-center py-4 text-muted">
+          <i class="ph-buildings fs-1"></i><p class="mt-2">Aucune donnee</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent border-0 pb-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-pie-chart me-2 text-info"></i>Par type de plat
+        </h6>
+      </div>
+      <div class="card-body pt-2">
+        <apx-chart *ngIf="chartTypePlat"
+          [series]="chartTypePlat.series"
+          [chart]="chartTypePlat.chart"
+          [labels]="chartTypePlat.labels"
+          [colors]="chartTypePlat.colors"
+          [legend]="chartTypePlat.legend"
+          [dataLabels]="chartTypePlat.dataLabels"
+          [plotOptions]="chartTypePlat.plotOptions"
+          dir="ltr">
+        </apx-chart>
+        <div *ngIf="!chartTypePlat" class="text-center py-4 text-muted">
+          <i class="ph-pie-chart fs-1"></i><p class="mt-2">Aucune donnee</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent border-0 pb-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-trend-up me-2 text-success"></i>Evolution recente
+        </h6>
+        <small class="text-muted">4 dernieres semaines</small>
+      </div>
+      <div class="card-body pt-3">
+        <ng-container *ngIf="evolutionHebdo$ | async as evo">
+          <apx-chart *ngIf="chartEvolution"
+            [series]="chartEvolution.series"
+            [chart]="chartEvolution.chart"
+            [colors]="chartEvolution.colors"
+            [fill]="chartEvolution.fill"
+            [stroke]="chartEvolution.stroke"
+            [xaxis]="chartEvolution.xaxis"
+            [tooltip]="chartEvolution.tooltip"
+            dir="ltr">
+          </apx-chart>
+          <div class="mt-3">
+            <div
+              *ngFor="let s of evo"
+              class="d-flex justify-content-between align-items-center py-1 border-bottom">
+              <span class="small text-muted">{{ s.label }}</span>
+              <span class="fw-bold" style="color:#092440;">{{ formatNombre(s.total) }}</span>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     TABLEAU MENSUEL + MENUS RECENTS
+══════════════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+
+  <div class="col-xl-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-calendar-dots me-2"></i>Detail mensuel
+        </h6>
+      </div>
+      <div class="card-body p-0">
+        <ng-container *ngIf="parMois$ | async as parMois">
+          <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+              <thead style="background:#51d78e; color:white;">
+                <tr>
+                  <th class="px-3 py-2">Mois</th>
+                  <th class="text-center">Total</th>
+                  <th class="text-center">En attente</th>
+                  <th class="text-center">Retirees</th>
+                  <th class="text-center">Annulees</th>
+                  <th class="text-center pe-3">Taux retrait</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of parMoisArray(parMois)"
+                    [class.table-light]="row.data.total === 0">
+                  <td class="px-3 fw-semibold">{{ row.label }}</td>
+                  <td class="text-center">
+                    <span class="badge rounded-pill" style="background:#092440;">
+                      {{ row.data.total }}
+                    </span>
+                  </td>
+                  <td class="text-center">
+                    <span class="badge rounded-pill bg-warning-subtle text-warning">
+                      {{ row.data.en_attente }}
+                    </span>
+                  </td>
+                  <td class="text-center">
+                    <span class="badge rounded-pill bg-success-subtle text-success">
+                      {{ row.data.retiree }}
+                    </span>
+                  </td>
+                  <td class="text-center">
+                    <span class="badge rounded-pill bg-danger-subtle text-danger">
+                      {{ row.data.annulee }}
+                    </span>
+                  </td>
+                  <td class="pe-3">
+                    <div class="d-flex align-items-center gap-2">
+                      <div class="progress flex-grow-1" style="height:6px;">
+                        <div class="progress-bar bg-success"
+                             [style.width]="(tauxRetrait(row.data) || 0) + '%'">
+                        </div>
+                      </div>
+                      <small class="text-muted text-nowrap">{{ tauxRetrait(row.data) }}%</small>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot style="background:#f8f9fa;">
+                <tr class="fw-bold">
+                  <td class="px-3">Total</td>
+                  <td class="text-center" style="color:#092440;">
+                    {{ formatNombre(sumParMois(parMois, 'total')) }}
+                  </td>
+                  <td class="text-center text-warning">
+                    {{ formatNombre(sumParMois(parMois, 'en_attente')) }}
+                  </td>
+                  <td class="text-center text-success">
+                    {{ formatNombre(sumParMois(parMois, 'retiree')) }}
+                  </td>
+                  <td class="text-center text-danger">
+                    {{ formatNombre(sumParMois(parMois, 'annulee')) }}
+                  </td>
+                  <td class="pe-3"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent border-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-clock-clockwise me-2 text-info"></i>5 derniers menus
+        </h6>
+      </div>
+      <div class="card-body p-0">
+        <ng-container *ngIf="menusRecents$ | async as menus">
+          <div *ngIf="!menus.length" class="text-center py-4 text-muted">
+            <i class="ph-fork-knife" style="font-size:2.5rem;"></i>
+            <p class="mt-2 small">Aucun menu dans cette periode</p>
+          </div>
+          <ul class="list-group list-group-flush">
+            <li
+              *ngFor="let m of menus"
+              class="list-group-item border-0 border-bottom py-3 px-3">
+              <div class="d-flex align-items-start justify-content-between">
+                <div>
+                  <div class="fw-semibold" style="color:#092440; font-size:.9rem;">
+                    {{ formatDate(m.date_menu) }}
+                  </div>
+                  <div class="text-muted" style="font-size:.8rem;">
+                    <i class="ph-buildings me-1"></i>{{ str(m.agence) }}
+                    &nbsp;&middot;&nbsp;
+                    <i class="ph-users me-1"></i>{{ str(m.typeequipe) }}
+                  </div>
+                </div>
+                <span class="badge rounded-pill"
+                      style="background:rgba(9,36,64,0.08); color:#092440; font-size:.8rem;">
+                  {{ formatNombre(m.nb_commandes) }} cmd
+                </span>
+              </div>
+            </li>
+          </ul>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     TOP PLATS TABLEAU
+══════════════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-star me-2 text-warning"></i>Classement des plats
+        </h6>
+        <small class="text-muted">Top 10 plats les plus commandes</small>
+      </div>
+      <div class="card-body p-0">
+        <ng-container *ngIf="topPlats$ | async as topPlats">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+              <thead style="background:#f8f9fa;">
+                <tr>
+                  <th class="px-3 py-2" style="width:50px;">#</th>
+                  <th>Plat</th>
+                  <th>Type</th>
+                  <th style="width:200px;">Volume</th>
+                  <th class="text-end pe-4">Commandes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let plat of topPlats; let i = index">
+                  <td class="px-3">
+                    <span *ngIf="i === 0">🥇</span>
+                    <span *ngIf="i === 1">🥈</span>
+                    <span *ngIf="i === 2">🥉</span>
+                    <span *ngIf="i > 2" class="text-muted fw-semibold">{{ i + 1 }}</span>
+                  </td>
+                  <td class="fw-semibold" style="color:#092440;">{{ str(plat.nom) }}</td>
+                  <td>
+                    <span class="badge rounded-pill bg-info-subtle text-info">{{ str(plat.type_plat) }}</span>
+                  </td>
+                  <td>
+                    <div class="progress" style="height:8px; border-radius:4px;">
+                      <div class="progress-bar"
+                           style="background:linear-gradient(90deg,#092440,#51d78e);"
+                           [style.width]="(plat.nombre / maxNombre(topPlats) * 100) + '%'">
+                      </div>
+                    </div>
+                  </td>
+                  <td class="text-end pe-4 fw-bold" style="color:#092440;">
+                    {{ formatNombre(plat.nombre) }}
+                  </td>
+                </tr>
+                <tr *ngIf="!topPlats.length">
+                  <td colspan="5" class="text-center py-4 text-muted">
+                    <i class="ph-fork-knife" style="font-size:2rem; display:block; margin-bottom:8px;"></i>
+                    Aucune donnee disponible
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+</div>
+
+</ng-container>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     EVOLUTION DES COMMANDES PAR STATUT PAR DATE MENU
+══════════════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-0 d-flex align-items-center justify-content-between">
+        <div>
+          <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+            <i class="ph-chart-line me-2 text-primary"></i>Evolution des commandes par date menu
+          </h6>
+          <small class="text-muted">En attente / Retirees / Annulees — par jour de menu</small>
+        </div>
+        <div class="d-flex gap-2">
+          <span class="badge" style="background:rgba(255,193,7,0.15); color:#ffc107;">
+            <i class="ph-circle-fill me-1" style="font-size:.5rem;"></i>En attente
+          </span>
+          <span class="badge" style="background:rgba(81,215,142,0.15); color:#51d78e;">
+            <i class="ph-circle-fill me-1" style="font-size:.5rem;"></i>Retirees
+          </span>
+          <span class="badge" style="background:rgba(255,77,79,0.15); color:#ff4d4f;">
+            <i class="ph-circle-fill me-1" style="font-size:.5rem;"></i>Annulees
+          </span>
+        </div>
+      </div>
+      <div class="card-body pt-2">
+        <ng-container *ngIf="evolutionParDate$ | async as evoDate">
+          <apx-chart *ngIf="chartEvolutionParDate && evoDate.length"
+            [series]="chartEvolutionParDate.series"
+            [chart]="chartEvolutionParDate.chart"
+            [colors]="chartEvolutionParDate.colors"
+            [stroke]="chartEvolutionParDate.stroke"
+            [markers]="chartEvolutionParDate.markers"
+            [xaxis]="chartEvolutionParDate.xaxis"
+            [yaxis]="chartEvolutionParDate.yaxis"
+            [legend]="chartEvolutionParDate.legend"
+            [grid]="chartEvolutionParDate.grid"
+            [tooltip]="chartEvolutionParDate.tooltip"
+            [fill]="chartEvolutionParDate.fill"
+            dir="ltr">
+          </apx-chart>
+          <div *ngIf="!evoDate.length" class="text-center py-5 text-muted">
+            <i class="ph-chart-line" style="font-size:3rem; display:block; margin-bottom:12px;"></i>
+            <p class="mb-0">Aucune donnee sur la periode selectionnee</p>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     FACTURATION PRESTATAIRE
+══════════════════════════════════════════════════════════ -->
+<ng-container *ngIf="factFournisseur$ | async as ff">
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-0 d-flex align-items-center gap-2">
+        <div style="width:6px; height:24px; background:#092440; border-radius:3px;"></div>
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          Facturation Prestataire
+        </h6>
+        <span class="badge ms-auto fs-6 px-3 py-2" style="background:#092440;">
+          {{ formatMontant(ff.total_montant) }}
+        </span>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          <!-- KPI prestataire -->
+          <div class="col-xl-3 col-md-6">
+            <div class="rounded-3 p-3 h-100 d-flex flex-column justify-content-between"
+                 style="background:rgba(9,36,64,0.04); border:1px solid rgba(9,36,64,0.1);">
+              <span class="text-muted small fw-semibold text-uppercase">Total facture prestataire</span>
+              <div>
+                <h4 class="fw-bold mt-2 mb-1" style="color:#092440;">{{ formatMontant(ff.total_montant) }}</h4>
+                <small class="text-muted">sur commandes retirees</small>
+              </div>
+              <!-- Tableau par prestataire -->
+              <div class="mt-3">
+                <div *ngFor="let p of ff.par_prestataire"
+                     class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                  <span class="small fw-semibold">{{ str(p.prestataire) }}</span>
+                  <div class="text-end">
+                    <div class="fw-bold" style="color:#092440; font-size:.85rem;">{{ formatMontant(p.montant) }}</div>
+                    <div class="text-muted" style="font-size:.75rem;">{{ formatNombre(p.nb_commandes) }} cmd</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chart par mois -->
+          <div class="col-xl-5 col-md-6">
+            <p class="small fw-semibold text-muted text-uppercase mb-2">Montants par mois</p>
+            <apx-chart *ngIf="chartFactPrestMois"
+              [series]="chartFactPrestMois.series"
+              [chart]="chartFactPrestMois.chart"
+              [colors]="chartFactPrestMois.colors"
+              [plotOptions]="chartFactPrestMois.plotOptions"
+              [dataLabels]="chartFactPrestMois.dataLabels"
+              [xaxis]="chartFactPrestMois.xaxis"
+              [yaxis]="chartFactPrestMois.yaxis"
+              [grid]="chartFactPrestMois.grid"
+              [tooltip]="chartFactPrestMois.tooltip"
+              dir="ltr">
+            </apx-chart>
+          </div>
+
+          <!-- Chart par agence -->
+          <div class="col-xl-4 col-md-12">
+            <p class="small fw-semibold text-muted text-uppercase mb-2">Par agence</p>
+            <apx-chart *ngIf="chartFactPrestAgence"
+              [series]="chartFactPrestAgence.series"
+              [chart]="chartFactPrestAgence.chart"
+              [colors]="chartFactPrestAgence.colors"
+              [plotOptions]="chartFactPrestAgence.plotOptions"
+              [dataLabels]="chartFactPrestAgence.dataLabels"
+              [xaxis]="chartFactPrestAgence.xaxis"
+              [grid]="chartFactPrestAgence.grid"
+              [tooltip]="chartFactPrestAgence.tooltip"
+              dir="ltr">
+            </apx-chart>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</ng-container>
+
+<!-- ══════════════════════════════════════════════════════════
+     FACTURATION EMPLOYÉ
+══════════════════════════════════════════════════════════ -->
+<ng-container *ngIf="factEmploye$ | async as fe">
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-0 d-flex align-items-center gap-2">
+        <div style="width:6px; height:24px; background:#51d78e; border-radius:3px;"></div>
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          Facturation Employe
+        </h6>
+        <span class="badge ms-auto fs-6 px-3 py-2" style="background:#51d78e; color:#092440;">
+          {{ formatMontant(fe.total_montant) }}
+        </span>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          <!-- KPI employé + tableau par catégorie -->
+          <div class="col-xl-3 col-md-6">
+            <div class="rounded-3 p-3 h-100 d-flex flex-column justify-content-between"
+                 style="background:rgba(81,215,142,0.06); border:1px solid rgba(81,215,142,0.2);">
+              <span class="text-muted small fw-semibold text-uppercase">Total facture employe</span>
+              <div>
+                <h4 class="fw-bold mt-2 mb-1" style="color:#51d78e;">{{ formatMontant(fe.total_montant) }}</h4>
+                <small class="text-muted">part employee sur commandes retirees</small>
+              </div>
+              <!-- Tableau par catégorie -->
+              <div class="mt-3">
+                <div *ngFor="let c of fe.par_categorie"
+                     class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                  <span class="small fw-semibold">{{ str(c.categorie) }}</span>
+                  <div class="text-end">
+                    <div class="fw-bold" style="color:#51d78e; font-size:.85rem;">{{ formatMontant(c.montant) }}</div>
+                    <div class="text-muted" style="font-size:.75rem;">{{ formatNombre(c.nb_commandes) }} cmd</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chart par mois -->
+          <div class="col-xl-5 col-md-6">
+            <p class="small fw-semibold text-muted text-uppercase mb-2">Montants par mois</p>
+            <apx-chart *ngIf="chartFactEmpMois"
+              [series]="chartFactEmpMois.series"
+              [chart]="chartFactEmpMois.chart"
+              [colors]="chartFactEmpMois.colors"
+              [plotOptions]="chartFactEmpMois.plotOptions"
+              [dataLabels]="chartFactEmpMois.dataLabels"
+              [xaxis]="chartFactEmpMois.xaxis"
+              [yaxis]="chartFactEmpMois.yaxis"
+              [grid]="chartFactEmpMois.grid"
+              [tooltip]="chartFactEmpMois.tooltip"
+              dir="ltr">
+            </apx-chart>
+          </div>
+
+          <!-- Chart par agence -->
+          <div class="col-xl-4 col-md-12">
+            <p class="small fw-semibold text-muted text-uppercase mb-2">Par agence</p>
+            <apx-chart *ngIf="chartFactEmpAgence"
+              [series]="chartFactEmpAgence.series"
+              [chart]="chartFactEmpAgence.chart"
+              [colors]="chartFactEmpAgence.colors"
+              [plotOptions]="chartFactEmpAgence.plotOptions"
+              [dataLabels]="chartFactEmpAgence.dataLabels"
+              [xaxis]="chartFactEmpAgence.xaxis"
+              [grid]="chartFactEmpAgence.grid"
+              [tooltip]="chartFactEmpAgence.tooltip"
+              dir="ltr">
+            </apx-chart>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</ng-container>
+

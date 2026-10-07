@@ -1,0 +1,238 @@
+<app-breadcrumbs title="Etat des entretiens Véhicules" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+
+<div id="DashboardEntretien">
+  <div class="row">
+  <div class="col-lg-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="row gy-3">
+          <div class="col-xl-4">
+            <label for="vehicule" class="form-label">Véhicule</label>
+            <select class="form-control" [(ngModel)]="selectedVehiculeId" name="vehicule">
+              <option value="" selected>Tous les véhicules</option>
+              <option *ngFor="let data of vehicules" [value]="data.immatriculation">{{ data.immatriculation }}</option>
+            </select>
+          </div>
+
+          <div class="col-xl-4 col-md-4">
+            <label for="agence" class="form-label">Agence</label>
+            <select class="form-control" [(ngModel)]="selectedAgenceId" name="agence">
+              <option value="" selected>Toutes les agences</option>
+              <option *ngFor="let data of agences" [value]="data.id">{{ data.nom_agence }}</option>
+            </select>
+          </div>
+
+          <div class="col-xl-2 col-md-4">
+            <label for="annee" class="form-label">Année</label>
+            <input type="number" class="form-control" [(ngModel)]="annee" name="annee">
+          </div>
+
+          <!--<div class="col-xl-2 col-md-4">
+            <label for="mois" class="form-label">Mois</label>
+            <select class="form-control" [(ngModel)]="selectedMois" name="mois">
+              <option value="" selected>Tous les mois</option>
+              <option *ngFor="let mois of getLibellesMois(); let i = index" [value]="i + 1">{{ mois }}</option>
+            </select>
+          </div>-->
+
+          <div class="col-xl-2 col-md-4">
+            <label class="form-label">Recherche</label>
+            <div class="d-flex flex-wrap gap-2">
+              <button type="button" class="btn btn-subtle-info" (click)="filtrer()"><i class="ri-search-line search-icon"></i></button>
+              <button type="button" class="btn btn-subtle-danger" (click)="resetFiltres()"><i class="ph-arrow-counter-clockwise-thin align-middle me-1"></i></button>
+            </div>
+          </div>
+
+        </div><!--end row-->
+      </div>
+    </div>
+  </div>
+</div>
+
+
+    <div class="row">
+  <div class="col-lg-12">
+    <div class="card">
+      <div class="card-header d-flex align-items-center">
+        <div class="flex-grow-1">
+          <h5 class="card-title mb-0">
+            Tableau des entretiens véhicules ({{ annee }})
+          </h5>
+        </div>
+        <div class="flex-shrink-0">
+          <div class="d-flex justify-content-end gap-2 my-2">
+            <button class="btn btn-outline-success" (click)="exporterExcel()">
+              <i class="bi bi-file-earmark-excel"></i> Exporter Excel
+            </button>
+            <button class="btn btn-outline-danger" (click)="exportPdf()">
+              <i class="bi bi-file-earmark-pdf"></i> Exporter PDF
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <ng-container *ngIf="entretienvehicules.length">
+          <div *ngFor="let agence of entretienvehicules" class="mb-4">
+            <h6 class="fw-bold text-primary">Agence : {{ agence.agence }}</h6>
+
+            <div class="table-responsive">
+              <table class="table table-bordered table-sm">
+                <thead>
+                  <tr>
+                    <th>Immatriculation</th>
+                    <th *ngFor="let mois of getLibellesMois()">{{ mois }}</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let vehicule of agence.vehicules">
+                    <td>{{ vehicule.immatriculation }}</td>
+                    <td *ngFor="let m of getLibellesMois(); let i = index">
+                      {{ vehicule.mois[i + 1] || 0 }}
+                    </td>
+                    <td>{{ vehicule.total }}</td>
+                  </tr>
+
+                  <!-- ✅ Ligne de total agence -->
+                  <tr class="table-secondary fw-semibold">
+                    <td>Total agence</td>
+                    <td *ngFor="let m of getLibellesMois(); let i = index">
+                      {{ agence.total_agence_mois[i + 1] || 0 }}
+                    </td>
+                    <td>{{ agence.total_agence_global }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+
+      <!-- ✅ Résumé global -->
+      <div class="card-footer border-top">
+  <h6 class="fw-bold mb-3">Totaux globaux de l'année {{ annee }}</h6>
+
+  <div class="table-responsive">
+    <table class="table table-bordered table-sm">
+      <thead class="table-light">
+        <tr>
+          <th>Mois</th>
+          <th *ngFor="let mois of getLibellesMois()">{{ mois }}</th>
+          <th>Total Annuel</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Montant (FCFA)</td>
+          <td *ngFor="let m of getLibellesMois(); let i = index">
+            {{ (totalGlobalMois$ | async)?.[i + 1] || 0 }}
+          </td>
+          <td>{{ totalGlobal$ | async }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+      <div class="card-body">
+        <div class="noresult" style="display: none;">
+          <div class="text-center py-4">
+            <div class="avatar-md mx-auto mb-4">
+              <div class="avatar-title bg-light text-primary rounded-circle fs-4xl">
+                <i class="bi bi-search"></i>
+              </div>
+            </div>
+            <h5 class="mt-2">Sorry! No Result Found</h5>
+            <p class="text-muted mb-0">Nous n'avons trouvé aucun entretien correspondant.</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="elmLoader" *ngIf="isLoading">
+        <div class="spinner-border text-primary avatar-sm" role="status">
+          <span class="visually-hidden">Chargement...</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+ 
+
+</div>
+
+
+<div class="row">
+    <div class="col-xl-6">
+        <div class="card">
+            <div class="card-header  mb-3">
+                <h4 class="card-title mb-0">graphique annuelle des entretiens de véhicule {{ annee }}</h4>
+            </div><!-- end card header -->
+            <div class="card-body  mb-5">
+                <apx-chart [series]="simplePieChart.series" [chart]="simplePieChart.chart"
+                    [labels]="simplePieChart.labels" [legend]="simplePieChart.legend"
+                    [dataLabels]="simplePieChart.dataLabels" [responsive]="simplePieChart.responsive"
+                    [colors]="simplePieChart.colors" dir="ltr"></apx-chart>
+            </div><!-- end card-body -->
+        </div><!-- end card -->
+    </div>
+    <!-- end col -->
+    <div class="col-xl-6">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title mb-0">Barre annuelle des entretiens de véhicules {{ annee }}</h4>
+            </div><!-- end card header -->
+
+            <div class="card-body">
+                <apx-chart [series]="distributedColumnChart.series" 
+                    [chart]="distributedColumnChart.chart"
+                    [dataLabels]="distributedColumnChart.dataLabels" 
+                    [plotOptions]="distributedColumnChart.plotOptions"
+                    [yaxis]="distributedColumnChart.yaxis" 
+                    [xaxis]="distributedColumnChart.xaxis"
+                    [legend]="distributedColumnChart.legend" 
+                    [colors]="distributedColumnChart.colors"
+                    [grid]="distributedColumnChart.grid" dir="ltr"></apx-chart>
+            </div><!-- end card-body -->
+        </div><!-- end card -->
+    </div>
+   
+    <!-- end col -->
+</div>
+<!-- end row -->
+
+
+
+<div class="row">
+    <div class="col-xl-12">
+    <div class="card">
+        <div class="card-header">
+            <h4 class="card-title mb-0">Dépenses par mois et par agence {{ annee }}</h4>
+        </div><!-- end card header -->
+
+        <div class="card-body">
+            <apx-chart 
+                [series]="basicChart.series"
+                [chart]="basicChart.chart"
+                [dataLabels]="basicChart.dataLabels"
+                [plotOptions]="basicChart.plotOptions"
+                [yaxis]="basicChart.yaxis"
+                [legend]="basicChart.legend"
+                [fill]="basicChart.fill"
+                [xaxis]="basicChart.xaxis"
+                [colors]="basicChart.colors"
+                [grid]="basicChart.grid"
+                dir="ltr">
+            </apx-chart>
+        </div><!-- end card-body -->
+    </div><!-- end card -->
+</div>
+
+    <!-- end col -->
+
+    <!-- end col -->
+</div>
+<!-- end row -->

@@ -1,0 +1,179 @@
+<app-breadcrumbs title="Simulation salariale" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+
+<div id="DashboardEntretien">
+  <div class="row">
+  <div class="col-lg-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="row gy-3">
+            <form [formGroup]="filtreForm" (ngSubmit)="appliquerFiltres()" class="row g-3 align-items-end mb-4">
+            <div class="col-xl-3">
+                <label for="annee_debut" class="form-label">Année debut</label>
+                <select class="form-control" formControlName="annee_debut">
+                <option value="" selected>Toutes les années</option>
+                <option *ngFor="let anneesim of anneesimulations" [value]="anneesim">{{ anneesim }}</option>
+                <!--<option *ngFor="let data of vehicules" [value]="data.immatriculation">{{ data.immatriculation }}</option>-->
+                </select>
+            </div>
+
+            <div class="col-xl-3">
+                <label for="vehicule" class="form-label">Année fin</label>
+                <select class="form-control" formControlName="annee_fin">
+                <option value="" selected>Toutes les années</option>
+                <option *ngFor="let anneesim of anneesimulations" [value]="anneesim">{{ anneesim }}</option>
+                <!--<option *ngFor="let data of vehicules" [value]="data.immatriculation">{{ data.immatriculation }}</option>-->
+                </select>
+            </div>
+
+            <div class="col-xl-2 col-md-4">
+                <label for="salaire_min" class="form-label">Salaire Brut Min</label>
+                <input type="number" class="form-control" formControlName="salaire_min">
+            </div>
+
+            <div class="col-xl-2 col-md-4">
+                <label for="salaire_max" class="form-label">Salaire Brut Max</label>
+                <input type="number" class="form-control" formControlName="salaire_max">
+            </div>
+
+            <div class="col-xl-2 col-md-4">
+                <label class="form-label">Recherche</label>
+                <div class="d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-subtle-info"><i class="ri-search-line search-icon"></i></button>
+                <button type="button" class="btn btn-subtle-danger" (click)="resetFiltres()"><i class="ph-arrow-counter-clockwise-thin align-middle me-1"></i></button>
+                </div>
+            </div>
+            </form>
+        </div><!--end row-->
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="row">
+  <div class="col-lg-12">
+    <div class="card">
+      <div class="card-header d-flex align-items-center">
+        <div class="flex-grow-1">
+          <h5 class="card-title mb-0">
+            Tableau des simulations de salaires
+          </h5>
+        </div>
+        <div class="flex-shrink-0">
+          <div class="d-flex justify-content-end gap-2 my-2">
+            <button class="btn btn-outline-success" (click)="exporterExcel()">
+              <i class="bi bi-file-earmark-excel"></i> Exporter Excel
+            </button>
+            <button class="btn btn-outline-danger" (click)="exportPdf()">
+              <i class="bi bi-file-earmark-pdf"></i> Exporter PDF
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+  <div class="card-header">
+    <!--<h5 class="card-title mb-0">Liste des simulations de salaire</h5>-->
+  </div>
+  <div class="card-body">
+
+    <div id="elmLoader" *ngIf="isLoading">
+        <div class="spinner-border text-primary avatar-sm" role="status">
+          <span class="visually-hidden">Chargement...</span>
+        </div>
+      </div>
+
+    <div class="table-responsive" *ngIf="simulations.length">
+  <table class="table table-bordered table-hover">
+    <thead class="table-light">
+      <tr>
+        <th>Matricule</th>
+        <th>Cat.</th>
+        <th>Date de naissance</th>
+        <th>Salaire de base</th>
+        <th>Sursalaire</th>
+        <th>Salaire brut 2025</th>
+        <ng-container *ngFor="let annee of anneesimulations">
+          <th colspan="5" class="text-center">Année {{ annee }}</th>
+        </ng-container>
+      </tr>
+      <tr>
+        <th colspan="6"></th>
+        <ng-container *ngFor="let annee of anneesimulations">
+          <th>Âge</th>
+          <th>Salaire</th>
+          <th>Taux AUG</th>
+          <th>Augmentation</th>
+          <th>Cotisation</th>
+        </ng-container>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let sim of simulations">
+        <td>{{ sim.matricule }}</td>
+        <td>{{ sim.categorie }}</td>
+        <td>{{ sim.date_naissance | date:'dd/MM/yyyy' }}</td>
+        <td>{{ sim.salaire_base | number:'1.0-0' }}</td>
+        <td>{{ sim.sursalaire === 0 ? '-' : (sim.sursalaire | number:'1.0-0') }}</td>
+        <td>{{ sim.salaire_brut_2025 | number:'1.0-0' }}</td>
+        <ng-container *ngFor="let annee of anneesimulations">
+          <ng-container *ngIf="historiqueParAnnee(sim, annee) as h">
+            <td>{{ h.age }}</td>
+            <td>{{ h.salaire | number:'1.0-0' }}</td>
+            <td>{{ h.taux_augmentation }}%</td>
+            <td>{{ h.augmentation | number:'1.0-0' }}</td>
+            <td>{{ h.cotisation | number:'1.0-0' }}</td>
+          </ng-container>
+          <ng-container *ngIf="!historiqueParAnnee(sim, annee)">
+            <td colspan="5" class="text-center text-muted">-</td>
+          </ng-container>
+        </ng-container>
+      </tr>
+      <tr *ngIf="totalParAnnee$ | async as totauxParAnnee">
+  <td colspan="6" class="fw-bold text-end">Total par année</td>
+  <ng-container *ngFor="let annee of anneesimulations">
+    <td class="fw-bold text-end">-</td> <!-- Âge : pas de total -->
+    <td class="fw-bold text-end">{{ totauxParAnnee[annee].salaire | number:'1.0-0' }}</td>
+    <td class="fw-bold text-end">-</td> <!-- Taux : pas de total -->
+    <td class="fw-bold text-end">{{ totauxParAnnee[annee].augmentation | number:'1.0-0' }}</td>
+    <td class="fw-bold text-end">{{ totauxParAnnee[annee].cotisation | number:'1.0-0' }}</td>
+  </ng-container>
+</tr>
+
+    </tbody>
+  </table>
+</div>
+
+    <div *ngIf="simulations?.length === 0 " class="text-center text-muted mt-4">
+      <p>Aucune simulation enregistrée.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header">Total Global</div>
+  <div class="card-body">
+    <table class="table table-bordered text-end">
+      <thead class="table-success text-center">
+        <tr>
+          <th>Nombre</th>
+          <th>Salaire</th>
+          <th>Augmentation</th>
+          <th>Cotisation</th>
+        </tr>
+      </thead>
+      <tbody *ngIf="totalGlobal$ | async as total">
+        <tr>
+        <td class="fw-bold text-center">{{ countSimulations$ | async }}</td>
+        <td class="fw-bold text-end">{{ total.salaire | number:'1.0-0' }}</td>
+        <td class="fw-bold text-end">{{ total.augmentation | number:'1.0-0' }}</td>
+        <td class="fw-bold text-end">{{ total.cotisation | number:'1.0-0' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+</div>
+<!-- end row -->

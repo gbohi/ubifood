@@ -1,0 +1,588 @@
+
+<!-- Start Breadcrumbs -->
+<app-breadcrumbs title="Vue de liste" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<!-- End Breadcrumbs -->
+
+<!-- ── Statistiques ─────────────────────────────────────── -->
+<div class="row">
+  <div class="col-xl-7">
+    <div class="card">
+      <div class="card-body">
+        <div class="row g-4">
+          @for (data of statistiques?.par_etat; track data.etat) {
+            <div class="col-lg-3 col-sm-6 border-end-sm">
+              <div>
+                <div class="d-flex align-items-center gap-2 mb-4">
+                  <div class="avatar-xs flex-shrink-0">
+                    <div
+                      class="avatar-title bg-body-secondary rounded-circle"
+                      [ngClass]="[
+                        getEtatStyle(data.etat).borderClass,
+                        getEtatStyle(data.etat).textClass
+                      ]"
+                    >
+                      <i class="bi" [ngClass]="getEtatStyle(data.etat).icon"></i>
+                    </div>
+                  </div>
+                  <div class="flex-grow-1">
+                    <p class="text-muted mb-0">{{ data.etat }}</p>
+                  </div>
+                </div>
+                <h3 class="mb-0">
+                  <span class="counter-value" [countUp]="data.nombre"></span>
+                </h3>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-5">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex mb-4 pb-1">
+          <div class="flex-grow-1">
+            <h6 class="card-title">
+              Total Non clôturés
+              <i class="bi bi-exclamation-circle align-baseline ms-1 fs-sm" tooltip="Total non clôturé"></i>
+            </h6>
+            <p class="text-muted mb-0">
+              <b>{{ statistiques?.total_non_cloture }}</b> Besoins non clôturés
+            </p>
+          </div>
+          <div class="flex-shrink-0">
+            <a routerLink="#" class="link-effect">
+              Voir la liste<i class="bi bi-arrow-right align-baseline ms-1"></i>
+            </a>
+          </div>
+        </div>
+        <div tooltip="Besoins non clôturés">
+          <progressbar [value]="getPourcentageNonCloture()" [striped]="true" [animate]="true"></progressbar>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Liste des besoins ────────────────────────────────── -->
+<div class="row">
+  <div class="col-lg-12">
+    <div class="card" id="besoinList">
+      <div class="card-header">
+        <div class="row align-items-center gy-3">
+          <div class="col-lg-3 me-auto">
+            <h6 class="card-title mb-0">Liste des besoins</h6>
+          </div>
+          <div class="col-xl-2 col-md-3">
+            <div class="search-box">
+              <input
+                type="text"
+                class="form-control search"
+                placeholder="Rechercher par titre ou ID..."
+                [(ngModel)]="term"
+                (keyup)="filterdata()"
+              />
+              <i class="ri-search-line search-icon"></i>
+            </div>
+          </div>
+          <div class="col-md-auto col-6 text-end">
+            <div class="d-flex flex-wrap align-items-start gap-2">
+              <button
+                class="btn btn-subtle-danger"
+                [class.d-none]="checkedValGet.length === 0"
+                (click)="deleteRecordModal?.show()"
+              >
+                <i class="ri-delete-bin-2-line"></i> Supprimer ({{ checkedValGet.length }})
+              </button>
+              <button class="btn btn-primary" (click)="addBesoin?.show()">
+                <i class="bi bi-plus-circle align-baseline me-1"></i> Ajouter un besoin
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-centered align-middle table-custom-effect table-nowrap mb-0">
+            <thead class="text-muted table-light">
+              <tr>
+                <th>
+                  <div class="form-check">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="checkAll"
+                      [(ngModel)]="masterSelected"
+                      (change)="checkUncheckAll($event)"
+                    />
+                    <label class="form-check-label" for="checkAll"></label>
+                  </div>
+                </th>
+                <th (click)="onSort('id')"          class="sort cursor-pointer">N°</th>
+                <th (click)="onSort('reference')"   class="sort cursor-pointer">Référence</th>
+                <th (click)="onSort('created_at')"  class="sort cursor-pointer">Date création</th>
+                <th (click)="onSort('titre')"        class="sort cursor-pointer">Titre</th>
+                <!-- ✅ priorite_libelle vient directement du sérialiseur Django -->
+                <th (click)="onSort('priorite_libelle')" class="sort cursor-pointer">Priorité</th>
+                <th (click)="onSort('etat_libelle')"     class="sort cursor-pointer">État</th>
+                <th (click)="onSort('user_username')"    class="sort cursor-pointer">Demandeur</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody class="list form-check-all" id="invoice-list-data">
+              @for (data of besoins; track data.id; let idx = $index) {
+                <tr id="l_{{ data.id }}">
+                  <td>
+                    <div class="form-check">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="checkAll"
+                        [value]="data.id"
+                        [(ngModel)]="data.state"
+                        (change)="onCheckboxChange($event)"
+                      />
+                      <label class="form-check-label"></label>
+                    </div>
+                  </td>
+                  <td class="besoin_id">
+                    <a href="javascript:void(0);" class="fw-medium link-primary">{{ idx + 1 }}</a>
+                  </td>
+                  <td>{{ data.reference }}</td>
+                  <td>{{ data.created_at | date: 'dd/MM/yyyy HH:mm' }}</td>
+                  <td>{{ data.titre }}</td>
+                  <!-- ✅ Champs plats retournés par BesoinSerializer -->
+                  <td>{{ data.priorite_libelle }}</td>
+                  <td>
+                    <span class="badge" [ngClass]="getBadgeClass(data.etat_libelle)">
+                      {{ data.etat_libelle }}
+                    </span>
+                  </td>
+                  <td>{{ data.user_username }} {{ data.user_nom }}</td>
+                  <td>
+                    <ul class="d-flex gap-2 list-unstyled mb-0">
+                      <li>
+                        <a href="javascript:void(0);" (click)="viewDetails(data.id)"
+                          class="btn btn-subtle-primary btn-icon btn-sm">
+                          <i class="ph-eye"></i>
+                        </a>
+                      </li>
+                      <li>
+                        <a href="javascript:void(0);" (click)="editList($index)"
+                          class="btn btn-subtle-secondary btn-icon btn-sm">
+                          <i class="ph-pencil"></i>
+                        </a>
+                      </li>
+                      <li>
+                        <a href="javascript:void(0);" (click)="removeItem(data.id)"
+                          class="btn btn-subtle-danger btn-icon btn-sm">
+                          <i class="ph-trash"></i>
+                        </a>
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+              }
+
+              <tr *ngIf="besoins?.length === 0 && !term && !isLoading">
+                <td colspan="9" class="text-center py-4">
+                  <i class="ph-file-x fs-1 text-primary"></i>
+                  <h5 class="mt-2">Aucun besoin disponible</h5>
+                  <p class="text-muted mb-0">Veuillez ajouter un besoin pour commencer.</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div id="elmLoader" *ngIf="isLoading" class="text-center py-3">
+            <div class="spinner-border text-primary avatar-sm" role="status">
+              <span class="visually-hidden">Chargement...</span>
+            </div>
+          </div>
+
+          <div class="noresult" style="display: none;">
+            <div class="text-center py-4">
+              <i class="ph-magnifying-glass fs-1 text-primary"></i>
+              <h5 class="mt-2">Aucun résultat trouvé</h5>
+              <p class="text-muted mb-0">Aucun besoin ne correspond à votre recherche.</p>
+            </div>
+          </div>
+        </div>
+
+        <div [ngClass]="besoins.length === 0 ? 'd-none' : ''" class="row mt-3 align-items-center">
+          <div class="col-sm">
+            <div class="text-muted text-center text-sm-start">
+              Affichage de
+              <span class="fw-semibold">{{ besoins.length || 0 }}</span>
+              sur
+              <span class="fw-semibold">{{ totalItems || 0 }}</span>
+              résultats
+            </div>
+          </div>
+          <div class="col-sm-auto mt-3 mt-sm-0">
+            <pagination
+              class="pagination-wrap justify-content-center hstack gap-2"
+              [totalItems]="totalItems"
+              [itemsPerPage]="10"
+              [(ngModel)]="currentPage"
+              (pageChanged)="pageChanged($event)"
+            ></pagination>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal Ajouter / Modifier ─────────────────────────── -->
+<div bsModal #addBesoin="bs-modal" class="modal fade" id="addBesoin"
+  [config]="{ backdrop: 'static', keyboard: false, ignoreBackdropClick: true }">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Ajouter un besoin</h5>
+        <button type="button" class="btn-close" (click)="closeAddModal()"></button>
+      </div>
+
+      <form (ngSubmit)="saveProperty()" [formGroup]="besoinForm" novalidate autocomplete="off">
+        <div class="modal-body">
+          <input type="hidden" formControlName="id" />
+
+          <div class="mb-3">
+            <label class="form-label">Titre <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" formControlName="titre" placeholder="Titre du besoin" />
+            <div *ngIf="besoinForm.get('titre')?.invalid && besoinForm.get('titre')?.touched" class="text-danger mt-1">
+              <small>Le titre est requis</small>
+            </div>
+          </div>
+
+         <div class="mb-3">
+            <label class="form-label">Demandeur <span class="text-danger">*</span></label>
+            <select class="form-select" formControlName="user">
+              <option value="">-- Sélectionner --</option>
+              @for (u of users; track u.id) {
+                <option [value]="u.id">{{ u.username }} — {{ u.nom }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Pièces jointes (PDF, images, Word...)</label>
+
+            <!--
+              autoProcessQueue: false → fichiers stockés dans rawFiles[]
+              Envoyés via FormData sous la clé documents[]
+              Django : request.FILES.getlist('documents[]')
+            -->
+            <dropzone
+              class="dropzone"
+              [config]="dropzoneConfig"
+              [message]="'Déposer vos fichiers ici ou cliquer pour sélectionner (PDF, images, DOCX)'"
+              (addedFile)="onFileAdded($event)"
+              (success)="onUploadSuccess($event)"
+            ></dropzone>
+
+            <!-- ✅ Nouveaux fichiers sélectionnés (avant envoi) -->
+            @if (uploadedFiles.length > 0) {
+              <div class="mt-2">
+                <small class="text-muted">Nouveaux fichiers à ajouter :</small>
+                <ul class="list-unstyled mb-0 mt-1">
+                  @for (file of uploadedFiles; track $index) {
+                    <li class="mt-1">
+                      <div class="border rounded p-2 d-flex align-items-center gap-2 bg-light">
+                        <span>{{ file.type?.startsWith('image/') ? '🖼️' : '📄' }}</span>
+                        <div class="flex-grow-1">
+                          <span class="fw-medium">{{ file.name }}</span>
+                          <small class="text-muted ms-2">{{ (file.size / 1024).toFixed(1) }} Ko</small>
+                        </div>
+                        <button type="button" (click)="removeFile(file)" class="btn btn-sm btn-outline-danger">
+                          <i class="bi bi-x"></i>
+                        </button>
+                      </div>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
+
+            <!-- ✅ Documents existants (en mode modification) -->
+            @if (existingDocuments.length > 0) {
+              <div class="mt-3">
+                <small class="text-muted fw-medium">Documents existants :</small>
+                <ul class="list-unstyled mb-0 mt-1">
+                  @for (doc of existingDocuments; track doc.id) {
+                    <li class="mt-1">
+                      <div class="border rounded p-2 d-flex align-items-center gap-2">
+                        <span>{{ isImage(doc.document) ? '🖼️' : '📄' }}</span>
+                        <div class="flex-grow-1">
+                          <a [href]="getFullUrl(doc.document)" target="_blank" class="text-decoration-none">
+                            {{ getFileName(doc.document) }}
+                          </a>
+                        </div>
+                        <!-- Marquer pour suppression — sera supprimé à la sauvegarde -->
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-outline-danger"
+                          (click)="markDocumentForDeletion(doc.id)"
+                          title="Supprimer ce document"
+                        >
+                          <i class="bi bi-trash"></i>
+                        </button>
+                      </div>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
+
+            <!-- ✅ Documents marqués pour suppression (avec possibilité d'annuler) -->
+            @if (docsToDelete.length > 0) {
+              <div class="mt-2 alert alert-warning py-2">
+                <small>
+                  <i class="bi bi-exclamation-triangle me-1"></i>
+                  {{ docsToDelete.length }} document(s) seront supprimés à la sauvegarde.
+                </small>
+              </div>
+            }
+          </div>
+
+
+
+          <div class="row">
+            <div class="col-lg-6">
+              <div class="mb-3">
+                <label class="form-label">Type de besoin <span class="text-danger">*</span></label>
+                <select class="form-select" formControlName="typebesoin">
+                  <option value="">-- Sélectionner --</option>
+                  @for (t of typebesoins; track t.id) {
+                    <option [value]="t.id">{{ t.libelle }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="mb-3">
+                <label class="form-label">Priorité <span class="text-danger">*</span></label>
+                <select class="form-select" formControlName="priorite">
+                  <option value="">-- Sélectionner --</option>
+                  @for (p of priorites; track p.id) {
+                    <option [value]="p.id">{{ p.libelle }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="mb-3">
+                <label class="form-label">État <span class="text-danger">*</span></label>
+                <select class="form-select" formControlName="etat">
+                  <option value="">-- Sélectionner --</option>
+                  @for (e of etatlistes; track e.id) {
+                    <option [value]="e.id">{{ e.libelle_etat }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="mb-3">
+                <label class="form-label">Date début <span class="text-danger">*</span></label>
+                <input type="datetime-local" class="form-control" formControlName="date_debut" />
+                <div *ngIf="besoinForm.get('date_debut')?.invalid && besoinForm.get('date_debut')?.touched" class="text-danger mt-1">
+                  <small>La date de début est requise</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="mb-3">
+                <label class="form-label">Date fin <span class="text-danger">*</span></label>
+                <input type="datetime-local" class="form-control" formControlName="date_fin" />
+                <div *ngIf="besoinForm.get('date_fin')?.invalid && besoinForm.get('date_fin')?.touched" class="text-danger mt-1">
+                  <small>La date de fin est requise</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-12">
+              <div class="mb-3">
+                <label class="form-label">Description <span class="text-danger">*</span></label>
+                <textarea class="form-control" rows="3" formControlName="description"
+                  placeholder="Décrivez le besoin..."></textarea>
+              </div>
+            </div>
+            <div class="col-lg-12">
+              <div class="mb-3">
+                <label class="form-label">Commentaire</label>
+                <textarea class="form-control" rows="2" formControlName="commentaire"
+                  placeholder="Commentaire optionnel..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <div class="hstack gap-2 justify-content-end">
+            <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()">
+              <i class="bi bi-x-lg me-1"></i> Fermer
+            </button>
+            <button type="submit" class="btn btn-primary" id="add-btn" [disabled]="besoinForm.invalid">
+              Ajouter
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal Suppression ─────────────────────────────────── -->
+<div bsModal #deleteRecordModal="bs-modal" id="deleteRecordModal" class="modal fade zoomIn"
+  [config]="{ backdrop: 'static', keyboard: false, ignoreBackdropClick: true }" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="btn-close" (click)="deleteRecordModal?.hide()"></button>
+      </div>
+      <div class="modal-body p-md-5">
+        <div class="text-center">
+          <div class="text-danger">
+            <i class="bi bi-trash display-5"></i>
+          </div>
+          <div class="mt-4">
+            <h4 class="mb-2">Êtes-vous sûr ?</h4>
+            <p class="text-muted fs-md mx-3 mb-0">
+              Voulez-vous vraiment supprimer
+              {{ checkedValGet && checkedValGet.length > 1 ? 'ces besoins' : 'ce besoin' }} ?
+            </p>
+          </div>
+        </div>
+        <div class="d-flex gap-2 justify-content-center mt-4 pt-2 mb-2">
+          <button type="button" class="btn w-sm btn-light" (click)="deleteRecordModal?.hide()">Annuler</button>
+          <button type="button" class="btn w-sm btn-danger" (click)="confirmDelete(deleteID)">
+            Oui, supprimer
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal Détails ─────────────────────────────────────── -->
+<div bsModal #viewBesoin="bs-modal" class="modal fade" id="viewBesoin"
+  [config]="{ backdrop: 'static', keyboard: false, ignoreBackdropClick: true }">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Détails du besoin</h5>
+        <button type="button" class="btn-close" (click)="closeViewModal()"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-medium">Référence :</label>
+            <p class="mb-0">{{ selectedBesoin?.reference }}</p>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-medium">Date création :</label>
+            <p class="mb-0">{{ selectedBesoin?.created_at | date: 'dd/MM/yyyy HH:mm:ss' }}</p>
+          </div>
+          <div class="col-md-12 mb-3">
+            <label class="form-label fw-medium">Titre :</label>
+            <p class="mb-0">{{ selectedBesoin?.titre }}</p>
+          </div>
+          <div class="col-md-12 mb-3">
+            <label class="form-label fw-medium">Description :</label>
+            <p class="mb-0">{{ selectedBesoin?.description }}</p>
+          </div>
+          <!-- ✅ Champs plats du BesoinSerializer -->
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-medium">Type :</label>
+            <p class="mb-0">{{ selectedBesoin?.typebesoin_libelle }}</p>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-medium">Priorité :</label>
+            <p class="mb-0">{{ selectedBesoin?.priorite_libelle }}</p>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-medium">Date début :</label>
+            <p class="mb-0">{{ selectedBesoin?.date_debut | date: 'dd/MM/yyyy' }}</p>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-medium">Date fin :</label>
+            <p class="mb-0">{{ selectedBesoin?.date_fin | date: 'dd/MM/yyyy' }}</p>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-medium">État :</label>
+            <p class="mb-0">
+              <span class="badge" [ngClass]="getBadgeClass(selectedBesoin?.etat_libelle)">
+                {{ selectedBesoin?.etat_libelle }}
+              </span>
+            </p>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-medium">Demandeur :</label>
+            <p class="mb-0">{{ selectedBesoin?.user_username }} {{ selectedBesoin?.user_nom }}</p>
+          </div>
+        </div>
+
+        <!-- Documents attachés avec suppression -->
+        <div *ngIf="selectedBesoin?.documents && selectedBesoin?.documents.length > 0" class="mt-3">
+          <p class="fw-medium mb-2">Documents attachés :</p>
+          <div class="row">
+            <div *ngFor="let doc of selectedBesoin?.documents" class="col-md-4 mb-3">
+              <div class="border rounded p-2">
+                <ng-container *ngIf="isImage(doc.document); else fileLink">
+                  <a [href]="getFullUrl(doc.document)" target="_blank">
+                    <img
+                      [src]="getFullUrl(doc.document)"
+                      class="img-fluid img-thumbnail d-block mb-2"
+                      alt="Document image"
+                      style="max-height: 150px; object-fit: cover; width: 100%;"
+                    />
+                  </a>
+                </ng-container>
+                <ng-template #fileLink>
+                  <a [href]="getFullUrl(doc.document)" target="_blank" class="d-block mb-2">
+                    📄 {{ getFileName(doc.document) }}
+                  </a>
+                </ng-template>
+                <!-- ✅ Bouton suppression document depuis modal détails -->
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-danger w-100"
+                  (click)="deleteDocumentFromDetail(selectedBesoin.id, doc.id)"
+                >
+                  <i class="bi bi-trash me-1"></i> Supprimer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- ✅ Zone d'ajout de nouveaux documents depuis modal détails -->
+        <div class="mt-3">
+          <p class="fw-medium mb-2">Ajouter des documents :</p>
+          <dropzone
+            class="dropzone"
+            [config]="dropzoneConfigDetail"
+            [message]="'Déposer des fichiers ici ou cliquer pour sélectionner'"
+            (addedFile)="onDetailFileAdded($event)"
+          ></dropzone>
+          @if (detailRawFiles.length > 0) {
+            <div class="mt-2 d-flex gap-2 align-items-center">
+              <small class="text-muted">{{ detailRawFiles.length }} fichier(s) sélectionné(s)</small>
+              <button type="button" class="btn btn-sm btn-primary" (click)="uploadDocumentsToDetail()">
+                <i class="bi bi-upload me-1"></i> Envoyer
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="detailRawFiles = []">
+                Annuler
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" (click)="closeViewModal()">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>

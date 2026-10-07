@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 844" width="390" height="844">
+  <defs>
+    <!-- Fond principal -->
+    <linearGradient id="bgMain" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#061728"/>
+      <stop offset="45%" style="stop-color:#092440"/>
+      <stop offset="100%" style="stop-color:#0d3360"/>
+    </linearGradient>
+    <!-- Cercle lumineux -->
+    <radialGradient id="glowGreen" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#5BD988;stop-opacity:0.18"/>
+      <stop offset="100%" style="stop-color:#5BD988;stop-opacity:0"/>
+    </radialGradient>
+    <radialGradient id="glowBlue" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#1a5a8a;stop-opacity:0.25"/>
+      <stop offset="100%" style="stop-color:#1a5a8a;stop-opacity:0"/>
+    </radialGradient>
+    <!-- Gradient pour l'icône -->
+    <linearGradient id="iconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#5BD988"/>
+      <stop offset="100%" style="stop-color:#3ec970"/>
+    </linearGradient>
+    <!-- Gradient anneau -->
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#5BD988;stop-opacity:0.8"/>
+      <stop offset="50%" style="stop-color:#5BD988;stop-opacity:0.2"/>
+      <stop offset="100%" style="stop-color:#5BD988;stop-opacity:0.8"/>
+    </linearGradient>
+    <linearGradient id="logoTextGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#c8f5e0"/>
+    </linearGradient>
+    <!-- Clip pour les cercles -->
+    <clipPath id="screenClip">
+      <rect width="390" height="844" rx="0"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#screenClip)">
+    <!-- ── FOND ──────────────────────────────────────────────── -->
+    <rect width="390" height="844" fill="url(#bgMain)"/>
+
+    <!-- ── HALOS LUMINEUX ─────────────────────────────────────── -->
+    <ellipse cx="195" cy="380" rx="280" ry="280" fill="url(#glowGreen)"/>
+    <ellipse cx="320" cy="120" rx="200" ry="200" fill="url(#glowBlue)"/>
+    <ellipse cx="60" cy="700" rx="160" ry="160" fill="url(#glowGreen)" opacity="0.6"/>
+
+    <!-- ── GRILLE DE POINTS DÉCORATIFS ─────────────────────────── -->
+    <g fill="#5BD988" opacity="0.07">
+      <circle cx="30" cy="80" r="2.5"/><circle cx="60" cy="80" r="2.5"/>
+      <circle cx="90" cy="80" r="2.5"/><circle cx="120" cy="80" r="2.5"/>
+      <circle cx="30" cy="110" r="2.5"/><circle cx="60" cy="110" r="2.5"/>
+      <circle cx="90" cy="110" r="2.5"/><circle cx="120" cy="110" r="2.5"/>
+      <circle cx="30" cy="140" r="2.5"/><circle cx="60" cy="140" r="2.5"/>
+      <circle cx="270" cy="700" r="2.5"/><circle cx="300" cy="700" r="2.5"/>
+      <circle cx="330" cy="700" r="2.5"/><circle cx="360" cy="700" r="2.5"/>
+      <circle cx="270" cy="730" r="2.5"/><circle cx="300" cy="730" r="2.5"/>
+      <circle cx="330" cy="730" r="2.5"/><circle cx="360" cy="730" r="2.5"/>
+      <circle cx="270" cy="760" r="2.5"/><circle cx="300" cy="760" r="2.5"/>
+    </g>
+
+    <!-- ── ANNEAUX CONCENTRIQUES ─────────────────────────────── -->
+    <circle cx="195" cy="380" r="155" fill="none"
+      stroke="url(#ringGrad)" stroke-width="0.8" opacity="0.4"/>
+    <circle cx="195" cy="380" r="185" fill="none"
+      stroke="#5BD988" stroke-width="0.4" opacity="0.2"/>
+    <circle cx="195" cy="380" r="215" fill="none"
+      stroke="#5BD988" stroke-width="0.3" opacity="0.12"/>
+
+    <!-- ── LIGNES DIAGONALES DÉCORATIVES ─────────────────────── -->
+    <line x1="0" y1="200" x2="130" y2="330" stroke="#5BD988"
+      stroke-width="0.5" opacity="0.12"/>
+    <line x1="390" y1="500" x2="260" y2="630" stroke="#5BD988"
+      stroke-width="0.5" opacity="0.1"/>
+
+    <!-- ── HEXAGONE FOND ───────────────────────────────────────── -->
+    <polygon points="195,220 250,252 250,316 195,348 140,316 140,252"
+      fill="none" stroke="#5BD988" stroke-width="0.6" opacity="0.15"/>
+    <polygon points="195,200 265,240 265,320 195,360 125,320 125,240"
+      fill="none" stroke="#5BD988" stroke-width="0.4" opacity="0.08"/>
+
+    <!-- ── ICÔNE PRINCIPALE ────────────────────────────────────── -->
+    <!-- Fond de l'icône avec blur simulé par cercles concentriques -->
+    <circle cx="195" cy="284" r="72" fill="#5BD988" opacity="0.08"/>
+    <circle cx="195" cy="284" r="62" fill="#5BD988" opacity="0.06"/>
+
+    <!-- Carré arrondi principal -->
+    <rect x="143" y="232" width="104" height="104" rx="28"
+      fill="url(#iconGrad)" opacity="0.95"/>
+
+    <!-- Reflet sur l'icône -->
+    <rect x="143" y="232" width="104" height="34" rx="28"
+      fill="#ffffff" opacity="0.08"/>
+    <rect x="143" y="250" width="104" height="16"
+      fill="#ffffff" opacity="0.04"/>
+
+    <!-- Fourchette stylisée -->
+    <g transform="translate(195,284)" fill="white">
+      <!-- Dents fourchette -->
+      <rect x="-18" y="-24" width="3" height="15" rx="1.5" opacity="0.95"/>
+      <rect x="-13" y="-24" width="3" height="15" rx="1.5" opacity="0.95"/>
+      <rect x="-8"  y="-24" width="3" height="15" rx="1.5" opacity="0.95"/>
+      <!-- Corps fourchette -->
+      <path d="M-18,-9 Q-13,-4 -8,-9 L-8,24 Q-13,27 -18,24 Z" opacity="0.9"/>
+      <!-- Couteau -->
+      <rect x="6" y="-24" width="3.5" height="48" rx="1.75" opacity="0.9"/>
+      <path d="M6,-24 Q16,-14 9.5,-6 L6,-6 Z" opacity="0.85"/>
+    </g>
+
+    <!-- Petit accent vert en bas de l'icône -->
+    <circle cx="231" cy="316" r="8" fill="#092440"/>
+    <circle cx="231" cy="316" r="6" fill="#5BD988"/>
+
+    <!-- ── LOGO TEXTE ───────────────────────────────────────────── -->
+    <text x="195" y="390"
+      font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+      font-size="42" font-weight="800"
+      fill="url(#logoTextGrad)"
+      text-anchor="middle"
+      letter-spacing="-1.5">UbiFood</text>
+
+    <!-- Soulignement accent -->
+    <rect x="120" y="400" width="150" height="2.5" rx="1.25" fill="#5BD988" opacity="0.7"/>
+
+    <!-- ── TAGLINE ──────────────────────────────────────────────── -->
+    <text x="195" y="436"
+      font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+      font-size="14" font-weight="400"
+      fill="#ffffff" opacity="0.5"
+      text-anchor="middle"
+      letter-spacing="3">CANTINE INTELLIGENTE</text>
+
+    <!-- ── INDICATEURS DE CHARGEMENT ─────────────────────────── -->
+    <!-- Barre de progression stylisée -->
+    <rect x="130" y="720" width="130" height="3" rx="1.5"
+      fill="#ffffff" opacity="0.08"/>
+    <rect x="130" y="720" width="90" height="3" rx="1.5"
+      fill="#5BD988" opacity="0.7"/>
+    <!-- Points de progression -->
+    <circle cx="155" cy="750" r="3.5" fill="#5BD988" opacity="0.9"/>
+    <circle cx="178" cy="750" r="3.5" fill="#5BD988" opacity="0.5"/>
+    <circle cx="201" cy="750" r="3.5" fill="#5BD988" opacity="0.3"/>
+    <circle cx="224" cy="750" r="3.5" fill="#5BD988" opacity="0.15"/>
+
+    <!-- ── LOGO UBIPHARM EN BAS ────────────────────────────────── -->
+    <text x="195" y="800"
+      font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+      font-size="11" font-weight="400"
+      fill="#ffffff" opacity="0.3"
+      text-anchor="middle"
+      letter-spacing="2">UBIPHARM</text>
+    <text x="195" y="818"
+      font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+      font-size="10" font-weight="300"
+      fill="#ffffff" opacity="0.2"
+      text-anchor="middle"
+      letter-spacing="1">Grossiste pharmaceutique</text>
+
+    <!-- ── PARTICULES FLOTTANTES ──────────────────────────────── -->
+    <circle cx="52"  cy="420" r="2" fill="#5BD988" opacity="0.35"/>
+    <circle cx="338" cy="300" r="2.5" fill="#5BD988" opacity="0.25"/>
+    <circle cx="75"  cy="580" r="1.5" fill="#5BD988" opacity="0.3"/>
+    <circle cx="315" cy="470" r="2" fill="#5BD988" opacity="0.2"/>
+    <circle cx="340" cy="600" r="1.5" fill="#5BD988" opacity="0.3"/>
+    <circle cx="48"  cy="300" r="3" fill="#5BD988" opacity="0.15"/>
+    <circle cx="360" cy="380" r="2" fill="#5BD988" opacity="0.2"/>
+    <circle cx="28"  cy="500" r="1.5" fill="#5BD988" opacity="0.25"/>
+  </g>
+</svg>

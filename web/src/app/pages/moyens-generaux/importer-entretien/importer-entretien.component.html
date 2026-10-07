@@ -1,0 +1,52 @@
+<app-breadcrumbs title="Importer entretien véhicule" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+
+<div class="row">
+  <div class="col-lg-12">
+    <div class="card" id="platList">
+      <div class="card-header">
+        <div class="row align-items-center gy-3">
+          <div class="col-lg-12 me-auto mb-3">
+            <h6 class="card-title mb-0">Veuillez sélectionner un fichier Excel (.xlsx) svp</h6>
+            <input type="file" (change)="onFileChange($event)" accept=".xlsx" />
+          </div>
+          <div class="col-lg-12 me-auto">
+            <h6 class="card-title mb-1">Détails des entretiens de véhicules</h6>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="table-responsive">
+          <table *ngIf="entretientvehiculesData.length" class="table table-striped">
+            <thead>
+              <tr>
+                <th *ngFor="let header of headers">{{ header }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of entretientvehiculesData">
+                <td *ngFor="let header of headers">{{ row[header] }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="noresult" *ngIf="!entretientvehiculesData.length">
+          <div class="text-center py-4">
+            <i class="ph-magnifying-glass fs-1 text-primary"></i>
+            <h5 class="mt-2">Aucun résultat trouvé</h5>
+            <p class="text-muted mb-0">Nous n'avons trouvé aucun entretien de véhicule.</p>
+          </div>
+        </div>
+
+        <button class="btn btn-secondary mt-3"
+                (click)="envoyerDonnees()"
+                [disabled]="!file || isLoading">
+          <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+          <i class="bi bi-filetype-txt align-baseline me-1" *ngIf="!isLoading"></i>
+          {{ isLoading ? 'Import en cours...' : 'Importer les données' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

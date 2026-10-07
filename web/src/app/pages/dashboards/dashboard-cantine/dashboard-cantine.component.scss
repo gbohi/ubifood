@@ -1,0 +1,135 @@
+// dashboard-cantine.component.scss
+
+:host {
+  --cantine-primary:   #092440;
+  --cantine-green:     #51d78e;
+  --cantine-green-rgb: 81, 215, 142;
+}
+
+// ── KPI Cards ──────────────────────────────────────────────────
+.card {
+  border-radius: 12px;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+
+  &:hover {
+    box-shadow: 0 8px 24px rgba(9, 36, 64, 0.12) !important;
+    transform: translateY(-2px);
+  }
+}
+
+// ── Progress bars ──────────────────────────────────────────────
+.progress {
+  border-radius: 8px;
+  background: rgba(9, 36, 64, 0.07);
+}
+
+.progress-bar {
+  border-radius: 8px;
+  transition: width 0.8s ease;
+}
+
+// ── Tables ─────────────────────────────────────────────────────
+.table {
+  > thead > tr > th {
+    font-weight: 600;
+    font-size: .8rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    border-bottom: none;
+  }
+
+  > tbody > tr:last-child > td {
+    border-bottom: none;
+  }
+
+  &.table-hover > tbody > tr:hover {
+    background: rgba(81, 215, 142, 0.06);
+  }
+}
+
+// ── Badges ─────────────────────────────────────────────────────
+.badge {
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+// ── Card headers ───────────────────────────────────────────────
+.card-header {
+  padding-bottom: .5rem;
+
+  h6 {
+    font-size: .9rem;
+    letter-spacing: .01em;
+  }
+
+  small {
+    font-size: .75rem;
+  }
+}
+
+// ── Loader ─────────────────────────────────────────────────────
+.spinner-border {
+  width: 3rem;
+  height: 3rem;
+  color: var(--cantine-primary) !important;
+}
+
+// ── List group ─────────────────────────────────────────────────
+.list-group-item {
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(81, 215, 142, 0.06);
+  }
+}
+
+// ── Filtres bar ────────────────────────────────────────────────
+.form-control,
+.form-select {
+  border-radius: 8px;
+  border-color: #e2e8f0;
+  font-size: .875rem;
+
+  &:focus {
+    border-color: var(--cantine-green);
+    box-shadow: 0 0 0 3px rgba(var(--cantine-green-rgb), 0.15);
+  }
+}
+
+.btn-primary {
+  background: var(--cantine-primary);
+  border-color: var(--cantine-primary);
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: .02em;
+
+  &:hover {
+    background: lighten(#092440, 8%);
+    border-color: lighten(#092440, 8%);
+  }
+}
+
+.btn-outline-secondary { border-radius: 8px; }
+.btn-outline-success   { border-radius: 8px; }
+.btn-outline-danger    { border-radius: 8px; }
+
+// ── Footer tableau ─────────────────────────────────────────────
+tfoot > tr > td {
+  font-size: .875rem;
+}
+
+// ── Animations d'entrée ────────────────────────────────────────
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0);     }
+}
+
+.row > [class*='col'] {
+  animation: fadeInUp 0.4s ease both;
+}
+
+@for $i from 1 through 12 {
+  .row > [class*='col']:nth-child(#{$i}) {
+    animation-delay: #{($i - 1) * 0.05}s;
+  }
+}

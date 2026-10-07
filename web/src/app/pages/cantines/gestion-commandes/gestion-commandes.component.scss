@@ -1,0 +1,19 @@
+/* Cible le conteneur interne de ng-select */
+::ng-deep .custom-ng-select-sm .ng-select-container {
+    min-height: 31px !important; /* Hauteur standard Bootstrap SM */
+    height: auto !important;
+    font-size: 0.8125rem; /* Taille de police standard SM */
+    border-radius: 0.25rem; /* Arrondi standard Bootstrap */
+}
+
+/* Ajuste la taille des "tags" (badges) en mode multiple */
+::ng-deep .custom-ng-select-sm .ng-value-container .ng-value {
+    margin-bottom: 1px !important;
+    margin-top: 1px !important;
+    padding: 0 5px !important;
+}
+
+/* Centre le placeholder et le texte */
+::ng-deep .custom-ng-select-sm .ng-placeholder {
+    top: 5px !important;
+}

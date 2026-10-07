@@ -1,0 +1,113 @@
+<!-- src/app/account/auth/login/login.component.html -->
+<section class="auth-page-wrapper py-5 position-relative d-flex align-items-center justify-content-center min-vh-100">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-4">
+                <div class="card mb-0">
+                    <div class="row g-0 align-items-center">
+                        <div class="col-xxl-6 mx-auto">
+                            <div class="card mb-0 border-0 shadow-none">
+                                <div class="card-body p-sm-1 m-lg-4">
+
+                                    <div class="text-center mt-2">
+                                        <img src="assets/images/logo_ubipharmci.png" alt="Logo ubifood" width="200">
+                                        <h5 class="fs-3xl mt-2">Se connecter</h5>
+                                        <p class="text-muted">Connectez-vous à votre compte pour commencer à utiliser Ubifood</p>
+                                    </div>
+
+                                    <div class="p-2 mt-3">
+
+                                        <!--
+                                            Plus de (ngSubmit) sur le form.
+                                            Le bouton est type="button" avec (click)="onSubmit()"
+                                            → aucun submit natif HTML possible → pas de rechargement.
+                                        -->
+                                        <form [formGroup]="loginForm" novalidate>
+
+                                            <!-- Message d'erreur identifiants incorrects -->
+                                            @if (errorMessage) {
+                                                <div class="alert alert-danger d-flex align-items-center gap-2 py-2 mb-3" role="alert">
+                                                    <i class="ri-error-warning-fill fs-lg flex-shrink-0"></i>
+                                                    <span>{{ errorMessage }}</span>
+                                                </div>
+                                            }
+
+                                            <!-- Matricule -->
+                                            <div class="mb-3">
+                                                <label for="username" class="form-label">
+                                                    Matricule <span class="text-danger">*</span>
+                                                </label>
+                                                <input type="text"
+                                                       class="form-control"
+                                                       formControlName="username"
+                                                       id="username"
+                                                       [ngClass]="{ 'is-invalid': submitted && f['username'].errors }"
+                                                       placeholder="Votre matricule">
+                                                @if (submitted && f['username'].errors) {
+                                                    <div class="invalid-feedback">Le matricule est requis</div>
+                                                }
+                                            </div>
+
+                                            <!-- Mot de passe -->
+                                            <div class="mb-3">
+                                                <div class="float-end">
+                                                    <a routerLink="/auth/pass-reset" class="text-muted">Mot de passe oublié ?</a>
+                                                </div>
+                                                <label class="form-label" for="password-input">
+                                                    Mot de passe <span class="text-danger">*</span>
+                                                </label>
+                                                <div class="position-relative auth-pass-inputgroup mb-3">
+                                                    <input [type]="fieldTextType ? 'text' : 'password'"
+                                                           formControlName="password"
+                                                           class="form-control pe-5 password-input"
+                                                           [ngClass]="{ 'is-invalid': submitted && f['password'].errors }"
+                                                           id="password-input"
+                                                           placeholder="Votre mot de passe">
+
+                                                    <button class="btn btn-link position-absolute end-0 top-0 text-decoration-none text-muted password-addon"
+                                                            type="button"
+                                                            (click)="toggleFieldTextType()">
+                                                        <i class="align-middle"
+                                                           [ngClass]="fieldTextType ? 'ri-eye-off-fill' : 'ri-eye-fill'">
+                                                        </i>
+                                                    </button>
+
+                                                    @if (submitted && f['password'].errors) {
+                                                        <div class="invalid-feedback">Le mot de passe est requis</div>
+                                                    }
+                                                </div>
+                                            </div>
+
+                                            <!-- Se souvenir de moi -->
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="auth-remember-check">
+                                                <label class="form-check-label" for="auth-remember-check">Se souvenir de moi</label>
+                                            </div>
+
+                                            <!-- Bouton connexion -->
+                                            <div class="mt-4">
+                                                <button class="btn btn-primary w-100"
+                                                        type="button"
+                                                        (click)="onSubmit()"
+                                                        [disabled]="isLoading">
+                                                    @if (isLoading) {
+                                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                                        Connexion en cours...
+                                                    } @else {
+                                                        Se connecter
+                                                    }
+                                                </button>
+                                            </div>
+
+                                        </form>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

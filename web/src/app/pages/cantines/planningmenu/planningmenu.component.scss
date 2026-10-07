@@ -1,0 +1,37 @@
+// src/app/pages/cantine/planning-menus/planning-menus.component.scss
+
+.table-planning {
+  font-size: 0.875rem;
+  border-collapse: collapse;
+
+  thead tr.table-header-planning th {
+    background-color: #2962ff;
+    color: #fff;
+    font-weight: 600;
+    padding: 10px 14px;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+  }
+
+  .col-date {
+    width: 120px;
+    min-width: 110px;
+    font-size: 0.85rem;
+  }
+
+  .plats-cell {
+    padding: 8px 14px;
+    min-width: 180px;
+    vertical-align: top;
+  }
+
+  .plat-item {
+    padding: 2px 0;
+    color: #344054;
+    line-height: 1.5;
+  }
+
+  tbody tr:hover td {
+    background-color: #f0f4ff;
+  }
+}

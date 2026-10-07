@@ -1,0 +1,85 @@
+{
+  "MENUITEMS": {
+    "MENU": {
+      "TEXT": "MENU"
+    },
+    "DASHBOARD": {
+      "TEXT": "Dashboards",
+      "LIST": {
+        "DASHBOARDENTRETIENVEHICULE": "Entretien véhicule",
+        "DASHBOARDCANTINE": "Cantine"
+      }
+    },
+    "PARAMETRES": {
+      "TEXT": "Paramètres",
+      "LIST": {
+        "AGENCE": "Agence",
+        "ETAT": "Etat",
+        "PRIORITE": "Priorité",
+        "SERVICE": "Service",
+        "STATUT": "Statut",
+        "TYPEBESOIN": "Type de besoin",
+        "DEPARTEMENT": "Département",
+        "ROLE": "Rôle",
+        "USER": "User",
+        "TYPEPLAT": "Type de plat",
+        "TYPEEQUIPE": "Type équipe",
+        "TYPEVEHICULE": "Type de véhicule",
+        "FONCTION": "Fonction",
+        "POSTE": "Poste",
+        "CATEGORIESALARIE": "Catégorie salarié",
+        "PRESTATAIRE": "Prestataire"
+      }
+    },
+    "BESOINS": {
+      "TEXT": "Besoins",
+      "LIST": {
+        "LISTE": "Liste"
+      }
+    },
+    "CANTINES": {
+      "TEXT": "Cantine",
+      "LIST": {
+        "PLAT": "Liste des plats",
+        "MENU":"Menu",
+        "PLANNINGMENU":"Planning menu",
+        "COMMANDE":"Liste des Commandes",
+        "MESCOMMANDES":"Mes Commandes",
+        "GESTIONCOMMANDE":"Gestion des Commandes",
+        "RETRAITCOMMANDE":"Retrait commande",
+        "FACTURATIONCOMMANDE":"Facturation commande",
+        "FACTURATIONPRESTATAIRE":"Facturation prestataire"
+      }
+    },
+    "COMPTABILITE": {
+      "TEXT": "Comptabilité",
+      "LIST": {
+        "GENERATIONBANCAIRE": "Génération de ABP128"
+      }
+    },
+    "MOYENSGENERAUX": {
+      "TEXT": "Moyens Généraux",
+      "LIST": {
+        "IMPORTERENTRTIEN": "Importer entretien",
+        "LISTENTRETIEN": "Liste entretiens",
+        "LISTVEHICULE": "Liste véhicule"
+      }
+    },
+    "RESSOURCESHUMAINES": {
+      "TEXT": "Ressources humaines",
+      "LIST": {
+        "IMPORTERSALAIRE": "Importer salaire",
+        "LISTSALAIRE": "Liste salaire"
+      }
+    },
+    "GESTIONCOMPTES": {
+      "TEXT": "Gestion comptes",
+      "LIST": {
+        "LISTCOMPTE": "Liste compte",
+        "LISTCATEGORIECOMPTE": "Liste catégories",
+        "LISTPOSTECOMPTE": "Liste poste",
+        "LISTCLASSECOMPTE": "Liste classe"
+      }
+    }
+  }
+}

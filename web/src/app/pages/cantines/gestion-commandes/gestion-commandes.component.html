@@ -1,0 +1,279 @@
+<!-- src/app/pages/cantine/gestion-commandes/gestion-commandes.component.html -->
+<app-breadcrumbs [breadCrumbItems]="breadCrumbItems"></app-breadcrumbs>
+
+<div class="row">
+  <div class="col-12">
+
+    @if (error) {
+      <div class="alert alert-danger alert-dismissible fade show">
+        <i class="ph-warning me-2"></i>{{ error }}
+        <button type="button" class="btn-close" (click)="dismissAlert()"></button>
+      </div>
+    }
+    @if (successMessage) {
+      <div class="alert alert-success alert-dismissible fade show">
+        <i class="ph-check-circle me-2"></i>{{ successMessage }}
+        <button type="button" class="btn-close" (click)="dismissAlert()"></button>
+      </div>
+    }
+
+    <!-- ══ FILTRES ══════════════════════════════════════════════ -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+          <h6 class="mb-0"><i class="ph-funnel me-2"></i>Filtres</h6>
+          <button class="btn btn-sm"
+                  [class.btn-outline-primary]="!showSearchPanel"
+                  [class.btn-primary]="showSearchPanel"
+                  (click)="toggleSearchPanel()">
+            <i class="ph-identification-card me-1"></i>Filtres RH
+            @if (hasActiveRhFilter()) {
+              <span class="badge bg-danger ms-1" style="font-size:.6rem;">●</span>
+            }
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <form [formGroup]="filterForm">
+
+          <!-- Ligne 1 : Filtres cantine -->
+          <div class="row g-3 align-items-end">
+            <div class="col-md-2">
+              <label class="form-label">Date début</label>
+              <input type="date" class="form-control form-control-sm" formControlName="date_debut">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Date fin</label>
+              <input type="date" class="form-control form-control-sm" formControlName="date_fin">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Agence</label>
+              <select class="form-select form-select-sm" formControlName="agence">
+                <option value="">Toutes</option>
+                @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Équipe</label>
+              <select class="form-select form-select-sm" formControlName="typeequipe">
+                <option value="">Toutes</option>
+                @for (t of typeEquipes; track t.id) { <option [value]="t.id">{{ t.libelle }}</option> }
+              </select>
+            </div>
+            <!-- ✅ Statuts — ng-select multiple avec tags -->
+            <div class="col-md-2">
+              <label class="form-label">Statut(s)</label>
+              <ng-select
+                class="form-select-sm custom-ng-select"
+                [items]="TOUS_STATUTS"
+                bindLabel="label"
+                bindValue="value"
+                [multiple]="true"
+                placeholder="Tous les statuts"
+                [(ngModel)]="statutsSelectionnes"
+                [ngModelOptions]="{standalone: true}"
+                [closeOnSelect]="false">
+              </ng-select>
+            </div>
+
+            <div class="col-md-2 d-flex gap-2 align-items-end">
+              <button class="btn btn-primary btn-sm flex-fill" type="button"
+                      [disabled]="isLoading" (click)="rechercher()">
+                @if (isLoading) { <span class="spinner-border spinner-border-sm me-1" role="status"></span> }
+                @else { <i class="ph-magnifying-glass me-1"></i> }
+                Rechercher
+              </button>
+              <button class="btn btn-subtle-secondary btn-sm" type="button"
+                      (click)="resetFilters()" title="Réinitialiser">
+                <i class="ph-arrows-clockwise"></i>
+              </button>
+            </div>
+
+          </div><!-- fin row g-3 -->
+
+          <!-- Ligne 2 : Filtres RH (sans allergie) -->
+          @if (showSearchPanel) {
+            <hr class="my-3">
+            <p class="text-muted small fw-medium mb-2 text-uppercase">
+              <i class="ph-identification-card me-1"></i>Affectations RH de l'agent (dernière ligne)
+            </p>
+            <div class="row g-2">
+              <div class="col-md-4">
+                <label class="form-label small mb-1">Service</label>
+                <select class="form-select form-select-sm" formControlName="service">
+                  <option value="">Tous</option>
+                  @for (s of services; track s.id) { <option [value]="s.id">{{ s.libelle_service }}</option> }
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small mb-1">Poste</label>
+                <select class="form-select form-select-sm" formControlName="poste">
+                  <option value="">Tous</option>
+                  @for (p of postes; track p.id) { <option [value]="p.id">{{ p.libelle }}</option> }
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small mb-1">Catégorie salarié</label>
+                <select class="form-select form-select-sm" formControlName="categoriesalarie">
+                  <option value="">Toutes</option>
+                  @for (c of categoriesalaries; track c.id) { <option [value]="c.id">{{ c.libelle }}</option> }
+                </select>
+              </div>
+            </div>
+          }
+
+        </form>
+      </div>
+    </div>
+
+    <!-- ══ TABLEAU ══════════════════════════════════════════════ -->
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <h5 class="mb-0"><i class="ph-list-checks me-2"></i>Résultats</h5>
+          @if (commandesFiltrees.length > 0) {
+            <span class="badge bg-primary">{{ commandesFiltrees.length }} commande(s)</span>
+          }
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          @if (commandes.length > 0) {
+            <div class="search-box">
+              <input type="text" class="form-control form-control-sm search"
+                     placeholder="Username ou nom de l'agent..."
+                     [(ngModel)]="searchAgent" style="min-width: 220px;">
+              <i class="ri-search-line search-icon"></i>
+            </div>
+          }
+          @if (commandesFiltrees.length > 0) {
+            <button class="btn btn-subtle-success btn-sm" (click)="exportExcel()">
+              <i class="ph-microsoft-excel-logo me-1"></i>Excel
+            </button>
+            <button class="btn btn-subtle-danger btn-sm" (click)="exportPdf()">
+              <i class="ph-file-pdf me-1"></i>PDF
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="card-body p-0">
+
+        @if (isLoading) {
+          <div class="text-center py-5">
+            <div class="spinner-border text-primary avatar-sm" role="status"></div>
+            <p class="text-muted mt-2 mb-0">Chargement des commandes...</p>
+          </div>
+        }
+
+        @if (!isLoading && !hasSearched) {
+          <div class="text-center py-5">
+            <i class="ph-magnifying-glass fs-1 text-muted"></i>
+            <h5 class="mt-3 text-muted">Lancez une recherche</h5>
+            <p class="text-muted mb-0">Sélectionnez une période et cliquez sur "Rechercher".</p>
+          </div>
+        }
+
+        @if (!isLoading && hasSearched && commandesFiltrees.length === 0) {
+          <div class="text-center py-5">
+            <i class="ph-receipt fs-1 text-muted"></i>
+            <h5 class="mt-3 text-muted">Aucune commande trouvée</h5>
+            <p class="text-muted mb-0">Modifiez les filtres et relancez la recherche.</p>
+          </div>
+        }
+
+        @if (!isLoading && commandesFiltrees.length > 0) {
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mt-2 mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:50px;">N°</th>
+                  <th>Date menu</th>
+                  <th>Agence</th>
+                  <th>Équipe</th>
+                  <!-- ✅ Username + Nom & Prénom -->
+                  <th>Username</th>
+                  <th>Nom & Prénom</th>
+                  <th>Plat</th>
+                  <!-- Données RH dernière ligne (sans allergie) -->
+                  <th>Service</th>
+                  <th>Poste</th>
+                  <th>Catégorie</th>
+                  <th class="text-center">Statut</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of commandesFiltrees; track c.id; let idx = $index) {
+                  <tr>
+                    <td><a href="javascript:void(0);" class="fw-medium link-primary">{{ idx + 1 }}</a></td>
+
+                    <td>
+                      <span class="badge bg-light text-dark border">
+                        <i class="ph-calendar-blank me-1"></i>{{ getDateMenu(c) }}
+                      </span>
+                    </td>
+
+                    <td>{{ getAgenceNom(c) }}</td>
+
+                    <td>
+                      <span class="badge bg-info-subtle text-info">{{ getEquipeLibelle(c) }}</span>
+                    </td>
+
+                    <!-- ✅ Username -->
+                    <td>
+                      <span class="fw-medium text-primary">{{ getUsernameFromCommande(c) }}</span>
+                    </td>
+
+                    <!-- ✅ Nom & Prénom -->
+                    <td class="fw-semibold">{{ getNomPrenomFromCommande(c) }}</td>
+
+                    <td>{{ getPlatNom(c) }}</td>
+
+                    <!-- RH dernière ligne -->
+                    <td>
+                      @if (getDernierService(c); as svc) {
+                        <span class="badge bg-primary-subtle text-primary">
+                          {{ getServiceLibelle(svc.service) }}
+                        </span>
+                      } @else { <span class="text-muted small">—</span> }
+                    </td>
+                    <td>
+                      @if (getDernierPoste(c); as pst) {
+                        <span class="badge bg-warning-subtle text-warning">
+                          {{ getPosteLibelle(pst.poste) }}
+                        </span>
+                      } @else { <span class="text-muted small">—</span> }
+                    </td>
+                    <td>
+                      @if (getDerniereCategorie(c); as cat) {
+                        <span class="badge bg-secondary-subtle text-secondary">
+                          {{ getCategorieLibelle(cat.categoriesalarie) }}
+                        </span>
+                      } @else { <span class="text-muted small">—</span> }
+                    </td>
+
+                    <td class="text-center">
+                      <span class="badge" [ngClass]="statutCss(c.statut)">
+                        {{ statutLabel(c.statut) }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <div class="px-3 py-2 border-top text-muted small">
+            Affichage de <span class="fw-semibold">{{ commandesFiltrees.length }}</span>
+            sur <span class="fw-semibold">{{ commandes.length }}</span> commande(s)
+            @if (hasActiveRhFilter()) {
+              <span class="ms-2 badge bg-warning-subtle text-warning">
+                <i class="ph-funnel me-1"></i>Filtres RH actifs
+              </span>
+            }
+          </div>
+        }
+
+      </div>
+    </div>
+
+  </div>
+</div>

@@ -1,0 +1,62 @@
+<section class="auth-page-wrapper py-5 position-relative d-flex align-items-center justify-content-center min-vh-100">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-5">
+                <div class="card mb-0">
+                    <div class="row g-0 align-items-center">
+                        <!--end col-->
+                        <div class="col-xxl-6 mx-auto">
+                            <div class="card mb-0 border-0 shadow-none mb-0">
+                                <div class="card-body p-sm-3 m-lg-4">
+                                    <div class="text-center">
+                                        <img src="assets/images/logo-dark.png" alt="" height="50">
+                                        <!--<h5 class="fs-3xl">Welcome Back</h5>-->
+                                        <p class="text-muted mt-4">Connectez vous à UbiWhatsapp</p>
+                                    </div>
+                                    <div class="p-2 mt-3">
+                                        <form action="index.html">
+                                            <div class="mb-3">
+                                                <label for="username" class="form-label">Nom d'utilisateur <span class="text-danger">*</span></label>
+                                                <div class="position-relative">
+                                                    <input type="text" class="form-control password-input" id="username" placeholder="Entrez votre nom utilisateur" required />
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <div class="float-end">
+                                                    <a routerLink="/auth/pass-reset" class="text-muted">Mot de passe oublié?</a>
+                                                </div>
+                                                <label class="form-label" for="password-input">Mot de passe <span class="text-danger">*</span></label>
+                                                <div class="position-relative auth-pass-inputgroup mb-3">
+                                                    <input [type]="fieldTextType ? 'text' : 'password'" class="form-control pe-5 password-input" placeholder="Entrez votre mot de passe" id="password-input" required />
+                                                    <button class="btn btn-link position-absolute end-0 top-0 text-decoration-none text-muted password-addon" type="button" id="password-addon"><i class="ri-eye-fill align-middle" [ngClass]="{'mdi-eye-off-outline': !fieldTextType, 'mdi-eye-outline': fieldTextType
+                                                    }" (click)="toggleFieldTextType()"></i></button>
+                                                </div>
+                                            </div>
+
+                                            <div class="mt-4">
+                                                <button class="btn btn-primary w-100" type="submit">Se connecter</button>
+                                            </div>         
+
+                                        </form>
+
+                                        <div class="mt-4 text-center">
+                                            <p class="mb-0">{{year}} © UBIPHARM CI. Tous droits réservés</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- end card body -->
+                            </div>
+                            <!-- end card -->
+                        </div>
+                        <!--end col-->
+                    </div>
+                    <!--end row-->
+                </div>
+            </div>
+            <!--end col-->
+        </div>
+        <!--end row-->
+    </div>
+    <!--end container-->
+</section>

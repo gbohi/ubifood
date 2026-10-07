@@ -1,0 +1,110 @@
+# ============================================================
+# .gitignore — Racine du projet Ubifood (Backend, Web, Mobile)
+# ============================================================
+
+# ------------------------------------------------------------
+# 1. FICHIERS D'ENVIRONNEMENT & SECRETS (GLOBAL)
+# ------------------------------------------------------------
+.env
+*.env
+backend/backend/firebase-service-account.json
+**/firebase-service-account.json
+*.json
+!package.json
+!web/package.json
+!mobile/package.json
+
+# ------------------------------------------------------------
+# 2. BACKEND (Django & Python)
+# ------------------------------------------------------------
+backend/__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Environnements virtuels
+backend/venv/
+backend/env/
+backend/.venv/
+**/venv/
+**/env/
+**/.venv/
+
+# Django
+backend/*.log
+backend/local_settings.py
+backend/db.sqlite3
+backend/db.sqlite3-journal
+backend/media/
+
+# Distribution Python
+backend/dist/
+backend/build/
+*.egg-info/
+
+# ------------------------------------------------------------
+# 3. WEB (Angular / Node)
+# ------------------------------------------------------------
+web/node_modules/
+**/node_modules/
+web/dist/
+web/tmp/
+web/out-tsc/
+web/bazel-out/
+web/.angular/cache/
+web/.sass-cache/
+web/coverage/
+web/typings/
+web/connect.lock
+web/libpeerconnection.log
+web/testem.log
+npm-debug.log*
+yarn-error.log*
+
+# ------------------------------------------------------------
+# 4. MOBILE (Flutter / Dart / Android / iOS)
+# ------------------------------------------------------------
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.pub-cache/
+mobile/.pub/
+mobile/build/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+app.*.symbols
+app.*.map.json
+mobile/android/app/debug/
+mobile/android/app/profile/
+mobile/android/app/release/
+migrate_working_dir/
+*.class
+
+# ------------------------------------------------------------
+# 5. IDE, ÉDITEURS & SYSTÈME D'EXPLOITATION
+# ------------------------------------------------------------
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/
+.idea/
+*.iml
+*.ipr
+*.iws
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.atom/
+.buildlog/
+.svn/

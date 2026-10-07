@@ -1,0 +1,469 @@
+<!-- Start Breadcrumbs -->
+<app-breadcrumbs title="Vue de liste" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<!-- End Breadcrumbs -->
+
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card" id="platList">
+            <div class="card-header">
+                <div class="row align-items-center gy-3">
+                    <div class="col-lg-3 me-auto">
+                        <h6 class="card-title mb-0">Liste des plats</h6>
+                    </div>
+                    <div class="col-xl-2 col-md-3">
+                        <div class="search-box">
+                            <input type="text" class="form-control search"
+                                   placeholder="Rechercher par libellé ou ID..."
+                                   [(ngModel)]="term"
+                                   (keyup)="filterdata()">
+                            <i class="ri-search-line search-icon"></i>
+                        </div>
+                    </div>
+                    <div class="col-md-auto col-6 text-end">
+                        <div class="d-flex flex-wrap align-items-start gap-2">
+                            <button class="btn btn-subtle-danger"
+                                    [class.d-none]="checkedValGet.length === 0"
+                                    id="remove-actions"
+                                    (click)="deleteRecordModal?.show()">
+                                <i class="ri-delete-bin-2-line"></i> Supprimer ({{checkedValGet.length}})
+                            </button>
+                            <button class="btn btn-secondary" (click)="addPlat?.show()">
+                                <i class="bi bi-person-plus align-baseline me-1"></i> Ajouter un plat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-centered align-middle table-custom-effect table-nowrap mb-0">
+                        <thead class="text-muted table-light">
+                            <tr>
+                                <th>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="option"
+                                               id="checkAll"
+                                               [(ngModel)]="masterSelected"
+                                               (change)="checkUncheckAll($event)">
+                                        <label class="form-check-label" for="checkAll"></label>
+                                    </div>
+                                </th>
+                                <th scope="col" class="sort cursor-pointer" (click)="onSort('id')">N°</th>
+                                <th scope="col" class="sort cursor-pointer" (click)="onSort('nom')">Nom</th>
+                                <!-- CORRIGÉ : colonne triée sur type_plat_libelle (champ réel du modèle) -->
+                                <th scope="col" class="sort cursor-pointer" (click)="onSort('type_plat_libelle')">Type</th>
+                                <!-- CORRIGÉ : colonne triée sur agence_nom (champ réel du modèle) -->
+                                <th scope="col" class="sort cursor-pointer" (click)="onSort('agence_nom')">Proposé par</th>
+                                <th scope="col" class="sort cursor-pointer" (click)="onSort('created_at')">Date création</th>
+                                <th scope="col">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="list form-check-all" id="invoice-list-data">
+
+                            @for (data of plats; track data.id; let idx = $index) {
+                            <tr id="l_{{data.id}}">
+                                <td>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="checkAll"
+                                               value="{{data.id}}"
+                                               [(ngModel)]="data.state"
+                                               (change)="onCheckboxChange($event)" />
+                                        <label class="form-check-label"></label>
+                                    </div>
+                                </td>
+                                <td class="plat_id">
+                                    <a href="javascript:void(0);" class="fw-medium link-primary">{{ idx + 1 }}</a>
+                                </td>
+                                <td class="nom">{{data.nom}}</td>
+                                <!--
+                                    CORRIGÉ : data.type_plat_detail.libelle → data.type_plat_libelle
+                                    AVANT : accès à un objet imbriqué _detail qui n'existe plus
+                                            depuis la correction des serializers Django (ReadOnlyField)
+                                    APRÈS : champ plat directement sur l'objet
+                                -->
+                                <td class="type_plat">{{data.type_plat_libelle}}</td>
+                                <!--
+                                    CORRIGÉ : data.agence_detail.nom_agence → data.agence_nom
+                                -->
+                                <td class="agence">{{data.agence_nom}}</td>
+                                <td class="created_at">{{ data.created_at | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+                                <td>
+                                    <ul class="d-flex gap-2 list-unstyled mb-0">
+                                        <li>
+                                            <a href="javascript:void(0);"
+                                               (click)="viewDetails(data.id)"
+                                               class="btn btn-subtle-primary btn-icon btn-sm">
+                                                <i class="ph-eye"></i>
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <!--
+                                                CORRIGÉ : editList($index) → editList(data.id)
+                                                AVANT : on passait l'index du tableau local, qui change
+                                                        après un tri ou une recherche → mauvais plat édité.
+                                                APRÈS : on passe l'ID stable du plat.
+                                            -->
+                                            <a href="javascript:void(0);"
+                                               (click)="editList(data.id)"
+                                               class="btn btn-subtle-secondary btn-icon btn-sm edit-item-btn">
+                                                <i class="ph-pencil"></i>
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a href="javascript:void(0);"
+                                               (click)="removeItem(data.id)"
+                                               class="btn btn-subtle-danger btn-icon btn-sm remove-item-btn">
+                                                <i class="ph-trash"></i>
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            }
+
+                            <!-- Message si liste vide (sans recherche active) -->
+                            <tr *ngIf="plats?.length === 0 && !term && !isLoading">
+                                <td colspan="7" class="text-center py-4">
+                                    <!-- CORRIGÉ : colspan 4 → 7 (nombre réel de colonnes) -->
+                                    <i class="ph-file-x fs-1 text-primary"></i>
+                                    <h5 class="mt-2">Aucun plat disponible</h5>
+                                    <p class="text-muted mb-0">Veuillez ajouter un plat pour commencer.</p>
+                                </td>
+                            </tr>
+
+                        </tbody>
+                    </table>
+
+                    <!-- Spinner de chargement -->
+                    <div id="elmLoader" *ngIf="isLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary avatar-sm" role="status">
+                            <span class="visually-hidden">Chargement...</span>
+                        </div>
+                    </div>
+
+                    <!-- Aucun résultat de recherche -->
+                    <div class="noresult" style="display: none;">
+                        <div class="text-center py-4">
+                            <i class="ph-magnifying-glass fs-1 text-primary"></i>
+                            <h5 class="mt-2">Aucun résultat trouvé</h5>
+                            <p class="text-muted mb-0">Nous n'avons trouvé aucun plat correspondant à votre recherche.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pagination -->
+                <div [ngClass]="(plats.length === 0) ? 'd-none' : ''"
+                     class="row mt-3 align-items-center"
+                     id="pagination-element">
+                    <div class="col-sm">
+                        <div class="text-muted text-center text-sm-start">
+                            Affichage de <span class="fw-semibold">{{plats.length || 0}}</span>
+                            sur <span class="fw-semibold">{{totalItems || 0}}</span> résultats
+                        </div>
+                    </div>
+                    <div class="col-sm-auto mt-3 mt-sm-0">
+                        <pagination
+                            class="pagination-wrap justify-content-center hstack gap-2"
+                            [totalItems]="totalItems"
+                            [itemsPerPage]="10"
+                            [(ngModel)]="currentPage"
+                            (pageChanged)="pageChanged($event)">
+                        </pagination>
+                    </div>
+                </div>
+
+            </div><!-- end card-body -->
+        </div>
+    </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     Modal Ajouter / Modifier
+══════════════════════════════════════════════════════════ -->
+<div bsModal #addPlat="bs-modal" class="modal fade" id="addPlat"
+     [config]="{backdrop: 'static', keyboard: false, ignoreBackdropClick: true}">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addPlatModalLabel">Ajouter un plat</h5>
+                <button type="button" class="btn-close" (click)="closeAddModal()"></button>
+            </div>
+
+            <form (ngSubmit)="saveProperty()" [formGroup]="platForm" novalidate autocomplete="off">
+                <div class="modal-body">
+                    <input type="hidden" formControlName="id">
+
+                    <!-- Nom -->
+                    <div class="mb-3">
+                        <label for="nom-input" class="form-label">
+                            Nom du plat <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control"
+                               formControlName="nom"
+                               id="nom-input"
+                               placeholder="Nom du plat">
+                        <div *ngIf="platForm.get('nom')?.invalid && platForm.get('nom')?.touched"
+                             class="text-danger mt-1">
+                            <small *ngIf="platForm.get('nom')?.errors?.['required']">Le nom est requis</small>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Type de plat -->
+                        <div class="col-lg-6">
+                            <div class="mb-3">
+                                <label for="type-plat-input" class="form-label">
+                                    Type de plat <span class="text-danger">*</span>
+                                </label>
+                                <select class="form-select" id="type-plat-input" formControlName="type_plat">
+                                    <option value="">-- Sélectionner --</option>
+                                    @for (tp of typeplats; track tp.id) {
+                                        <option [value]="tp.id">{{tp.libelle}}</option>
+                                    }
+                                </select>
+                                <div *ngIf="platForm.get('type_plat')?.invalid && platForm.get('type_plat')?.touched"
+                                     class="text-danger mt-1">
+                                    <small>Le type de plat est requis</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Agence -->
+                        <div class="col-lg-6">
+                            <div class="mb-3">
+                                <label for="agence-input" class="form-label">
+                                    Proposé par <span class="text-danger">*</span>
+                                </label>
+                                <select class="form-select" id="agence-input" formControlName="agence">
+                                    <option value="">-- Sélectionner --</option>
+                                    @for (ag of agences; track ag.id) {
+                                        <option [value]="ag.id">{{ag.nom_agence}}</option>
+                                    }
+                                </select>
+                                <div *ngIf="platForm.get('agence')?.invalid && platForm.get('agence')?.touched"
+                                     class="text-danger mt-1">
+                                    <small>L'agence est requise</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Description -->
+                        <div class="col-lg-12">
+                            <div class="mb-3">
+                                <label for="description-input" class="form-label">Description</label>
+                                <textarea class="form-control" id="description-input" rows="3"
+                                          formControlName="description"
+                                          placeholder="Description du plat"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Images existantes (mode édition) -->
+                    <div class="mb-3" *ngIf="imagesExistantes.length > 0">
+                        <label class="form-label fw-medium">Images existantes</label>
+                        <p class="text-muted small mb-2">Cocher une image pour la supprimer lors de la sauvegarde.</p>
+                        <div class="row">
+                            <div *ngFor="let img of imagesExistantes" class="col-md-4 mb-3">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" [value]="img.id"
+                                           (change)="onImageDeleteCheckboxChange(img.id, $event)">
+                                    <label class="form-check-label">
+                                        <img [src]="getFullUrl(img.url)" class="img-fluid rounded"
+                                             style="max-height: 100px; object-fit: cover;">
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dropzone nouvelles images -->
+                    <div class="mb-3">
+                        <label class="form-label">Ajouter des images</label>
+                        <dropzone class="dropzone"
+                                  [config]="dropzoneConfig"
+                                  [message]="'Déposez des fichiers ici ou cliquez pour télécharger.'"
+                                  (success)="onUploadSuccess($event)">
+                        </dropzone>
+
+                        <!-- Prévisualisation des nouvelles images -->
+                        @if (uploadedFiles.length > 0) {
+                        <ul class="list-unstyled mb-0 mt-2" id="dropzone-preview">
+                            @for (file of uploadedFiles; track $index) {
+                            <li class="mt-2">
+                                <div class="border rounded">
+                                    <div class="d-flex flex-wrap gap-2 p-2">
+                                        <div class="flex-shrink-0 me-3">
+                                            <div class="avatar-sm bg-light rounded p-2">
+                                                @if (file.dataURL) {
+                                                    <img class="img-fluid rounded d-block" [src]="file.dataURL" alt="Aperçu" />
+                                                } @else {
+                                                    <img class="img-fluid rounded d-block" [src]="file" alt="Aperçu" />
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="flex-grow-1 pt-1">
+                                            @if (file.name) { <h5 class="fs-md mb-1">{{ file.name }}</h5> }
+                                            @if (file.size) { <p class="fs-sm text-muted mb-0">{{ file.size }}</p> }
+                                        </div>
+                                        <div class="flex-shrink-0 ms-3">
+                                            <button type="button" (click)="removeFile(file)" class="btn btn-sm btn-danger">
+                                                Supprimer
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            }
+                        </ul>
+                        }
+                    </div>
+
+                </div><!-- end modal-body -->
+
+                <div class="modal-footer">
+                    <div class="hstack gap-2 justify-content-end">
+                        <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()">
+                            <i class="bi bi-x-lg align-baseline me-1"></i> Fermer
+                        </button>
+                        <button type="submit" class="btn btn-primary" id="add-btn"
+                                [disabled]="platForm.invalid || isLoading">
+                            @if (isLoading) {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            }
+                            Ajouter
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     Modal Confirmation de suppression
+══════════════════════════════════════════════════════════ -->
+<div bsModal #deleteRecordModal="bs-modal" id="deleteRecordModal"
+     class="modal fade zoomIn"
+     [config]="{backdrop: 'static', keyboard: false, ignoreBackdropClick: true}"
+     tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="btn-close" (click)="closeDeleteModal()"></button>
+            </div>
+            <div class="modal-body p-md-5">
+                <div class="text-center">
+                    <div class="text-danger">
+                        <i class="bi bi-trash display-5"></i>
+                    </div>
+                    <div class="mt-4">
+                        <h4 class="mb-2">Êtes-vous sûr ?</h4>
+                        <p class="text-muted fs-md mx-3 mb-0">
+                            Voulez-vous vraiment supprimer
+                            {{ (checkedValGet && checkedValGet.length > 1) ? 'ces plats' : 'ce plat' }} ?
+                        </p>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 justify-content-center mt-4 pt-2 mb-2">
+                    <button type="button" class="btn w-sm btn-light btn-hover"
+                            (click)="closeDeleteModal()">
+                        Annuler
+                    </button>
+                    <button type="button" class="btn w-sm btn-danger btn-hover"
+                            id="delete-record"
+                            (click)="confirmDelete(deleteID)">
+                        Oui, supprimer
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     Modal Détails du plat
+══════════════════════════════════════════════════════════ -->
+<div bsModal #viewPlat="bs-modal" class="modal fade" id="viewPlat"
+     [config]="{backdrop: 'static', keyboard: false, ignoreBackdropClick: true}">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Détails du plat</h5>
+                <button type="button" class="btn-close" (click)="closeViewModal()"></button>
+            </div>
+            <div class="modal-body">
+
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Nom :</label>
+                    <span class="ms-2">{{selectedPlat?.nom}}</span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Description :</label>
+                    <span class="ms-2">{{selectedPlat?.description}}</span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Type :</label>
+                    <!--
+                        CORRIGÉ : selectedPlat?.type_plat_detail.libelle → selectedPlat?.type_plat_libelle
+                        L'accès à .type_plat_detail.libelle causait une erreur "Cannot read properties
+                        of undefined" si type_plat_detail était null ou absent.
+                    -->
+                    <span class="ms-2">{{selectedPlat?.type_plat_libelle}}</span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Proposé par :</label>
+                    <!--
+                        CORRIGÉ : selectedPlat?.agence_detail.nom_agence → selectedPlat?.agence_nom
+                    -->
+                    <span class="ms-2">{{selectedPlat?.agence_nom}}</span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Date création :</label>
+                    <span class="ms-2">{{ selectedPlat?.created_at | date: 'dd/MM/yyyy HH:mm:ss' }}</span>
+                </div>
+
+                <!-- Images du plat -->
+                <div class="mb-3" *ngIf="selectedPlat?.images && selectedPlat!.images!.length > 0">
+                    <label class="form-label fw-medium">Images :</label>
+                    <div class="row mt-2">
+                        <div *ngFor="let doc of selectedPlat?.images" class="col-md-4 mb-3">
+
+                            <ng-container *ngIf="isImage(doc.url); else fileLink">
+                                <a [href]="getFullUrl(doc.url)" target="_blank">
+                                    <img [src]="getFullUrl(doc.url)"
+                                         class="img-fluid img-thumbnail"
+                                         alt="Image du plat"
+                                         style="max-height: 200px; object-fit: cover;">
+                                </a>
+                            </ng-container>
+
+                            <ng-template #fileLink>
+                                <a [href]="getFullUrl(doc.url)" target="_blank">
+                                    <!--
+                                        CORRIGÉ : getFileName(doc.image) → getFileName(doc.url)
+                                        doc.image n'existe pas dans PlatImage — le champ s'appelle doc.url
+                                    -->
+                                    📄 {{ getFileName(doc.url) }}
+                                </a>
+                            </ng-template>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" (click)="closeViewModal()">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>

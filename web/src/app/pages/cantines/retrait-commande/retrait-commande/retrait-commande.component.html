@@ -1,0 +1,322 @@
+<!-- src/app/pages/cantine/retrait-commande/retrait-commande.component.html -->
+<app-breadcrumbs [breadCrumbItems]="breadCrumbItems"></app-breadcrumbs>
+
+<div class="row">
+  <div class="col-12">
+
+    <!-- ── Alertes ──────────────────────────────────────────── -->
+    @if (error) {
+      <div class="alert alert-danger alert-dismissible fade show">
+        <i class="ph-warning me-2"></i>{{ error }}
+        <button type="button" class="btn-close" (click)="dismissAlert()"></button>
+      </div>
+    }
+    @if (successMessage) {
+      <div class="alert alert-success alert-dismissible fade show">
+        <i class="ph-check-circle me-2"></i>{{ successMessage }}
+        <button type="button" class="btn-close" (click)="dismissAlert()"></button>
+      </div>
+    }
+
+    <div class="row g-3">
+
+      <!-- ════════════════════════════════════════════════════
+           COLONNE GAUCHE — Sélection menu
+      ════════════════════════════════════════════════════ -->
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header">
+            <h6 class="mb-0"><i class="ph-calendar-blank me-2"></i>Sélection du menu</h6>
+          </div>
+          <div class="card-body">
+            <form [formGroup]="filterForm">
+
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Date début</label>
+                <input type="date" class="form-control form-control-sm" formControlName="date_debut">
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Date fin</label>
+                <input type="date" class="form-control form-control-sm" formControlName="date_fin">
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Agence</label>
+                <select class="form-select form-select-sm" formControlName="agence">
+                  <option value="">Toutes</option>
+                  @for (a of agences; track a.id) {
+                    <option [value]="a.id">{{ a.nom_agence }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label form-label-sm">Équipe</label>
+                <select class="form-select form-select-sm" formControlName="typeequipe">
+                  <option value="">Toutes</option>
+                  @for (t of typeEquipes; track t.id) {
+                    <option [value]="t.id">{{ t.libelle }}</option>
+                  }
+                </select>
+              </div>
+
+            </form>
+
+            @if (menusFiltres.length === 0) {
+              <div class="text-center py-3 text-muted small">
+                <i class="ph-calendar-x fs-3"></i>
+                <p class="mb-0 mt-1">Aucun menu trouvé</p>
+              </div>
+            }
+
+            <div class="list-group list-group-flush">
+              @for (m of menusFiltres; track m.id) {
+                <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-start py-2"
+                        [class.active]="selectedMenuId === m.id"
+                        type="button"
+                        (click)="selectionnerMenu(m.id)">
+                  <div>
+                    <div class="fw-semibold small">{{ formatDate(m.date_menu) }}</div>
+                    <small [class.text-white-50]="selectedMenuId === m.id"
+                           [class.text-muted]="selectedMenuId !== m.id">
+                      {{ m.agence_nom }}
+                    </small>
+                  </div>
+                  <span class="badge"
+                        [class.bg-white]="selectedMenuId === m.id"
+                        [class.text-primary]="selectedMenuId === m.id"
+                        [class.bg-info-subtle]="selectedMenuId !== m.id"
+                        [class.text-info]="selectedMenuId !== m.id">
+                    {{ m.typeequipe_libelle }}
+                  </span>
+                </button>
+              }
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════
+           COLONNE DROITE — Scan / Saisie badge + résultat
+      ════════════════════════════════════════════════════ -->
+      <div class="col-lg-8">
+
+        <!-- ── Zone badge ──────────────────────────────────── -->
+        <div class="card mb-3">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <h6 class="mb-0">
+              <i class="ph-scan me-2"></i>Identification agent
+            </h6>
+            @if (selectedMenuId) {
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary">
+                  <i class="ph-calendar-blank me-1"></i>
+                  {{ formatDate(getMenuSelectionne()?.date_menu) }}
+                </span>
+                <span class="badge bg-light text-dark border">
+                  {{ getMenuSelectionne()?.agence_nom }}
+                </span>
+                <span class="badge bg-info-subtle text-info">
+                  {{ getMenuSelectionne()?.typeequipe_libelle }}
+                </span>
+              </div>
+            }
+          </div>
+          <div class="card-body">
+
+            @if (!selectedMenuId) {
+              <div class="text-center py-4 text-muted">
+                <i class="ph-arrow-left fs-2"></i>
+                <p class="mb-0 mt-2">Sélectionnez un menu pour commencer</p>
+              </div>
+            }
+
+            @if (selectedMenuId) {
+              <div class="row g-3 align-items-end">
+
+                <div class="col-md-8">
+                  <label class="form-label fw-semibold">
+                    <i class="ph-identification-badge me-1"></i>
+                    Badge / Matricule (saisie ou scan)
+                  </label>
+                  <div class="input-group">
+                    <input #badgeField
+                           type="text"
+                           class="form-control"
+                           placeholder="Scannez ou saisissez le badge..."
+                           [(ngModel)]="badgeInput"
+                           (keyup)="onBadgeKeyup($event)"
+                           [disabled]="isSearching"
+                           autocomplete="off"
+                           autofocus>
+                    @if (badgeInput) {
+                      <button class="btn btn-outline-secondary"
+                              type="button"
+                              (click)="resetRecherche()"
+                              title="Effacer">
+                        <i class="ph-x"></i>
+                      </button>
+                    }
+                  </div>
+                  <small class="text-muted">
+                    <i class="ph-info me-1"></i>
+                    Le scanner USB déclenche automatiquement la recherche.
+                    Pour la saisie manuelle, appuyez sur <kbd>Entrée</kbd>.
+                  </small>
+                </div>
+
+                <div class="col-md-4">
+                  <button class="btn btn-primary w-100"
+                          type="button"
+                          [disabled]="!badgeInput.trim() || isSearching"
+                          (click)="lancerRecherche()">
+                    @if (isSearching) {
+                      <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                      Recherche...
+                    } @else {
+                      <i class="ph-magnifying-glass me-1"></i>Rechercher
+                    }
+                  </button>
+                </div>
+
+              </div>
+
+              @if (badgeError) {
+                <div class="alert alert-warning mt-3 mb-0 py-2">
+                  <i class="ph-warning me-2"></i>{{ badgeError }}
+                </div>
+              }
+            }
+
+          </div>
+        </div>
+
+        <!-- ── Résultat recherche ───────────────────────────── -->
+        @if (resultatBadge) {
+
+          <div class="card">
+            <div class="card-header d-flex align-items-center justify-content-between">
+
+              <div class="d-flex align-items-center gap-3">
+                <div class="avatar-sm rounded-circle bg-primary d-flex align-items-center justify-content-center">
+                  <i class="ph-user text-white fs-5"></i>
+                </div>
+                <div>
+                  <h6 class="mb-0 fw-bold">{{ resultatBadge.user_nom }}</h6>
+                  <small class="text-muted">Badge : <code>{{ resultatBadge.badge }}</code></small>
+                </div>
+              </div>
+
+              <!-- Statut retrait global -->
+              @if (resultatBadge.a_retire) {
+                <span class="badge bg-success fs-6 px-3 py-2">
+                  <i class="ph-check-circle me-1"></i>Déjà retiré
+                </span>
+              } @else {
+                <span class="badge bg-warning-subtle text-warning fs-6 px-3 py-2">
+                  <i class="ph-clock me-1"></i>{{ nbPlatsADistribuer }} plat(s) à distribuer
+                </span>
+              }
+
+            </div>
+
+            <div class="card-body">
+
+              <!-- Aucune commande active -->
+              @if (commandesAffichees.length === 0 && !resultatBadge.a_retire) {
+                <div class="text-center py-4 text-muted">
+                  <i class="ph-receipt fs-2"></i>
+                  <p class="mb-0 mt-2">
+                    Aucune commande active pour cet agent sur ce menu.
+                  </p>
+                  <small class="text-muted">
+                    L'agent a peut-être annulé toutes ses commandes.
+                  </small>
+                </div>
+              }
+
+              <!-- Message déjà retiré -->
+              @if (resultatBadge.a_retire) {
+                <div class="alert alert-success py-2 mb-3">
+                  <i class="ph-check-circle me-2"></i>
+                  Cet agent a déjà retiré son repas pour ce menu.
+                </div>
+              }
+
+              <!-- ── Liste des commandes (en_attente + retiree uniquement) ── -->
+              @if (commandesAffichees.length > 0) {
+                <h6 class="text-muted mb-3 small text-uppercase">
+                  @if (resultatBadge.a_retire) {
+                    Plat(s) distribué(s) — {{ commandesAffichees.length }}
+                  } @else {
+                    Plat(s) à distribuer — {{ nbPlatsADistribuer }}
+                  }
+                </h6>
+                <div class="row g-3 mb-4">
+                  @for (c of commandesAffichees; track c.id) {
+                    <div class="col-md-6">
+                      <div class="d-flex align-items-center gap-3 p-3 border rounded"
+                           [class.border-warning]="c.statut === 'en_attente'"
+                           [class.border-success]="c.statut === 'retiree'"
+                           [class.bg-success-subtle]="c.statut === 'retiree'">
+                        <img [src]="getImageUrl(c)"
+                             class="rounded"
+                             style="width:56px; height:56px; object-fit:cover;"
+                             [alt]="getPlatNom(c)">
+                        <div class="flex-fill">
+                          <div class="fw-semibold">{{ getPlatNom(c) }}</div>
+                          <small class="text-muted">{{ c.plat_detail?.type_plat_libelle }}</small>
+                        </div>
+                        <span class="badge" [ngClass]="statutCss(c.statut)">
+                          {{ statutLabel(c.statut) }}
+                        </span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Bouton confirmer retrait -->
+              @if (!resultatBadge.a_retire && commandesEnAttente.length > 0) {
+                <div class="d-flex justify-content-end gap-2">
+                  <button class="btn btn-outline-secondary"
+                          type="button"
+                          (click)="resetRecherche()">
+                    <i class="ph-x me-1"></i>Annuler
+                  </button>
+                  <button class="btn btn-success btn-lg"
+                          type="button"
+                          [disabled]="isSubmitting"
+                          (click)="confirmerRetrait()">
+                    @if (isSubmitting) {
+                      <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    }
+                    <i class="ph-check-circle me-2"></i>
+                    Confirmer le retrait ({{ nbPlatsADistribuer }} plat(s))
+                  </button>
+                </div>
+              }
+
+              <!-- Bouton nouvel agent -->
+              @if (resultatBadge.a_retire || commandesEnAttente.length === 0) {
+                <div class="d-flex justify-content-end">
+                  <button class="btn btn-primary"
+                          type="button"
+                          (click)="resetRecherche()">
+                    <i class="ph-arrow-clockwise me-1"></i>Agent suivant
+                  </button>
+                </div>
+              }
+
+            </div>
+          </div>
+
+        }
+
+      </div>
+    </div>
+
+  </div>
+</div>

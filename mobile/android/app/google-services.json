@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "518841892567",
+    "project_id": "ubifood-1605e",
+    "storage_bucket": "ubifood-1605e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:518841892567:android:ac9e459775f989a4967a92",
+        "android_client_info": {
+          "package_name": "com.example.ubifood"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDanvY5hb2kCzFWm32ZUhIPECEyuzO80Tc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
