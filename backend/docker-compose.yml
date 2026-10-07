@@ -1,5 +1,6 @@
 # ============================================================
-# Stack de production Ubifood : PostgreSQL + Django/Gunicorn + Nginx
+# Stack de production Ubifood :
+#   PostgreSQL + Django/Gunicorn + Nginx (site Angular + reverse proxy)
 #
 # Démarrage (depuis le dossier backend/) :
 #   cp .env.example .env        # puis renseigner les valeurs
@@ -43,7 +44,8 @@ services:
       - ./secrets:/app/secrets:ro
 
   nginx:
-    image: nginx:1.27-alpine
+    # Image Nginx contenant le site Angular compilé (web/Dockerfile)
+    build: ../web
     restart: unless-stopped
     ports:
       - "80:80"

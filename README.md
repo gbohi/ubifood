@@ -89,6 +89,29 @@ les fichiers statiques à chaque démarrage.
 > Le fichier `.env` se trouve désormais dans `backend/` (à côté de
 > `docker-compose.yml`) et non plus dans `backend/backend/`.
 
+### Déploiement automatisé sur AWS EC2
+
+`deploy/aws/deploy.py` crée et configure tout le serveur depuis votre poste,
+sans SSH : rôle IAM, groupe de sécurité (ports 80/443), IP élastique,
+instance Ubuntu 24.04 (disque chiffré), secrets générés dans SSM Parameter
+Store, Docker, PostgreSQL, Django, site Angular, compte `admin`,
+sauvegarde quotidienne de la base.
+
+1. Créer un utilisateur IAM avec la politique
+   `deploy/aws/iam-politique-deploiement.json` et une clé d'accès.
+2. ```bash
+   pip install boto3
+   export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_DEFAULT_REGION=eu-north-1
+   export UBIFOOD_ALLMYSMS_LOGIN=... UBIFOOD_ALLMYSMS_API_KEY=...   # optionnel
+   python deploy/aws/deploy.py create --firebase-key /chemin/firebase-service-account.json
+   ```
+3. Mises à jour du code : `python deploy/aws/deploy.py update`
+
+Le mot de passe du compte `admin` est dans AWS Console → Systems Manager →
+Parameter Store → `/ubifood/ADMIN_PASSWORD`. Console du serveur : EC2 →
+instance « ubifood » → Se connecter → Session Manager. Sauvegardes :
+`/opt/ubifood-backups/` sur le serveur.
+
 ### HTTPS (fortement recommandé)
 
 Tant que l'API est en HTTP, mots de passe et jetons circulent en clair.

@@ -1,0 +1,66 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Identite",
+      "Effect": "Allow",
+      "Action": "sts:GetCallerIdentity",
+      "Resource": "*"
+    },
+    {
+      "Sid": "EC2",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:Describe*",
+        "ec2:RunInstances",
+        "ec2:StartInstances",
+        "ec2:CreateTags",
+        "ec2:CreateSecurityGroup",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AllocateAddress",
+        "ec2:AssociateAddress"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RoleInstance",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:CreateRole",
+        "iam:TagRole",
+        "iam:AttachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:PassRole",
+        "iam:CreateInstanceProfile",
+        "iam:TagInstanceProfile",
+        "iam:GetInstanceProfile",
+        "iam:AddRoleToInstanceProfile"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:role/ubifood",
+        "arn:aws:iam::*:instance-profile/ubifood"
+      ]
+    },
+    {
+      "Sid": "SecretsUbifood",
+      "Effect": "Allow",
+      "Action": ["ssm:PutParameter", "ssm:GetParameter"],
+      "Resource": [
+        "arn:aws:ssm:*:*:parameter/ubifood/*",
+        "arn:aws:ssm:*:*:parameter/aws/service/canonical/*"
+      ]
+    },
+    {
+      "Sid": "CommandesSSM",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:SendCommand",
+        "ssm:GetCommandInvocation",
+        "ssm:DescribeInstanceInformation",
+        "ssm:DescribeParameters"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

@@ -2,9 +2,10 @@
 export const environment = {
   production: true,
 
-  // URL du serveur Django (sans /api/api ni slash final).
-  // Passer en https:// dès que le certificat est installé sur le serveur.
-  apiUrl: 'http://51.20.12.161',
+  // Vide = même serveur que le site : en production, Nginx sert le site
+  // Angular ET l'API (/api/...). Le site fonctionne donc quelle que soit
+  // l'adresse du serveur (IP, nom de domaine, HTTP ou HTTPS).
+  apiUrl: '',
 
   // ✅ Configuration Firebase — copier depuis Firebase Console
   // Project Settings → General → Your apps → Web app → firebaseConfig

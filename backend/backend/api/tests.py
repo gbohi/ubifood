@@ -30,7 +30,7 @@ class BaseAPITestCase(TestCase):
     def setUpTestData(cls):
         cls.statut = Statut.objects.create(libelle_statut='Actif')
         cls.groupes = {
-            nom: Group.objects.create(name=nom)
+            nom: Group.objects.get_or_create(name=nom)[0]
             for nom in ('super_admin', 'admin', 'gestionnaire', 'employe')
         }
         cls.super_admin  = cls.creer_user('sadmin', 'super_admin')
