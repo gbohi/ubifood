@@ -1,50 +1,61 @@
 # ============================================================
-# Image de base Python (slim = version légère)
+# Stack de production Ubifood : PostgreSQL + Django/Gunicorn + Nginx
+#
+# Démarrage (depuis le dossier backend/) :
+#   cp .env.example .env        # puis renseigner les valeurs
+#   docker compose up -d --build
 # ============================================================
-FROM python:3.11-slim
 
-# ============================================================
-# Installer les dépendances système nécessaires pour
-# psycopg2-binary (connecteur PostgreSQL)
-# ============================================================
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME}
+      POSTGRES_USER:     ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Pas de port publié : PostgreSQL n'est joignable que par le backend.
 
-# ============================================================
-# Définir le répertoire de travail dans le container
-# Tout ce qui suit se passe dans /app
-# ============================================================
-WORKDIR /app
+  backend:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+      # Clé de service Firebase (non versionnée), en lecture seule
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
 
-# ============================================================
-# Copier requirements.txt depuis la racine du projet
-# On copie AVANT le code pour profiter du cache Docker :
-# si requirements.txt n'a pas changé, pip ne réinstalle rien
-# ============================================================
-COPY requirements.txt .
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_files:/app/staticfiles:ro
+      - media_files:/app/media:ro
+      # Certificats Let's Encrypt (voir README, section HTTPS)
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./nginx/certbot:/var/www/certbot:ro
 
-# ============================================================
-# Installer les dépendances Python
-# --no-cache-dir = ne pas stocker le cache pip (image plus légère)
-# ============================================================
-RUN pip install --no-cache-dir -r requirements.txt
-
-# ============================================================
-# Copier uniquement le dossier backend/ dans /app
-# (là où se trouvent manage.py, core/, api/, etc.)
-# ============================================================
-COPY backend/ .
-
-# ============================================================
-# Exposer le port 8000 (port Gunicorn)
-# ============================================================
-EXPOSE 8000
-
-# ============================================================
-# Commande de démarrage en production
-# core.wsgi → dossier core/ contient wsgi.py
-# --workers 3 → 3 processus parallèles pour gérer les requêtes
-# ============================================================
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "core.wsgi:application"]
+volumes:
+  postgres_data:
+  static_files:
+  media_files:

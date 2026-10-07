@@ -1,20 +1,28 @@
-# Image de base Python
+# ============================================================
+# Image du backend Django (servi par Gunicorn derrière Nginx)
+# Contexte de build : le dossier backend/
+# ============================================================
 FROM python:3.11-slim
 
-# Définir le répertoire de travail dans le container
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-# Copier les dépendances d'abord (optimisation cache Docker)
+# Dépendances Python d'abord (cache Docker)
 COPY requirements.txt .
-
-# Installer les dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copier tout le code source
-COPY . .
+# Code Django (manage.py, core/, api/) — .env et médias exclus par .dockerignore
+COPY backend/ .
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh \
+    && useradd --create-home --uid 1000 django \
+    && mkdir -p /app/media /app/staticfiles \
+    && chown -R django:django /app
 
-# Exposer le port 8000 (port Django/Gunicorn)
+USER django
 EXPOSE 8000
 
-# Commande de démarrage avec Gunicorn (serveur de production)
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "core.wsgi:application"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["gunicorn", "core.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "--access-logfile", "-"]
