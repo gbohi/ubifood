@@ -1,5 +1,7 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
+import { RoleGuard } from 'src/app/core/guards/role.guard';
+import { ADMINS, GESTIONNAIRES } from 'src/app/core/helpers/roles';
 
 import { AgenceComponent } from './agence/agence.component';
 import { EtatComponent } from './etat/etat.component';
@@ -22,63 +24,93 @@ import { PosteComponent } from './poste/poste.component';
 const routes: Routes = [
   {
     path: 'agence',
-    component: AgenceComponent
+    component: AgenceComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   },
   {
     path: 'etat',
-    component: EtatComponent
+    component: EtatComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   }, 
   {
     path: 'priorite',
-    component: PrioriteComponent
+    component: PrioriteComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   },
   {
     path: 'statut',
-    component: StatutComponent
+    component: StatutComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   }, 
   {
     path: 'typebesoin',
-    component: TypebesoinComponent
+    component: TypebesoinComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   },
   {
     path: 'departement',
-    component: DepartementComponent
+    component: DepartementComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   },
   {
     path: 'role',
-    component: RoleComponent
+    component: RoleComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   },
   {
     path: 'user',
-    component: UserComponent
+    component: UserComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   },
   {
     path: 'typeplat',
-    component: TypeplatComponent
+    component: TypeplatComponent,
+    canActivate: [RoleGuard],
+    data: { roles: GESTIONNAIRES }
   },
   {
     path: 'type-vehicule',
-    component: TypeVehiculeComponent
+    component: TypeVehiculeComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   },
   {
     path: 'type-equipe',
-    component: TypeequipeComponent
+    component: TypeequipeComponent,
+    canActivate: [RoleGuard],
+    data: { roles: GESTIONNAIRES }
   },
   {
     path: 'fonction',
-    component: FonctionComponent
+    component: FonctionComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   },
   {
     path: 'categorie-salarie',
-    component: CategoriesalarieComponent
+    component: CategoriesalarieComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   },
   {
     path: 'prestataire',
-    component: PrestataireComponent
+    component: PrestataireComponent,
+    canActivate: [RoleGuard],
+    data: { roles: GESTIONNAIRES }
   },
   {
     path: 'poste',
-    component: PosteComponent
+    component: PosteComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   }
 ];
 

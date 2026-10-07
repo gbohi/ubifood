@@ -1,4 +1,5 @@
 import { MenuItem } from "./menu.model";
+import { ADMINS, GESTIONNAIRES } from "../../core/helpers/roles";
 
 export const MENU: MenuItem[] = [
     {
@@ -22,6 +23,7 @@ export const MENU: MenuItem[] = [
                 id: 191,
                 label: 'MENUITEMS.DASHBOARD.LIST.DASHBOARDCANTINE',
                 link: '/',
+                roles: GESTIONNAIRES,
                 parentId: 2
             },
         ]
@@ -392,24 +394,28 @@ export const MENU: MenuItem[] = [
                 id: 211,
                 label: 'MENUITEMS.CANTINES.LIST.PLAT',
                 link: '/cantines/liste-plats',
+                roles: GESTIONNAIRES,
                 parentId: 210
             },
             {
                 id: 212,
                 label: 'MENUITEMS.CANTINES.LIST.MENU',
                 link: '/cantines/liste-menus',
+                roles: GESTIONNAIRES,
                 parentId: 210
             },
             {
                 id: 213,
                 label: 'MENUITEMS.CANTINES.LIST.COMMANDE',
                 link: '/cantines/liste-commandes',
+                roles: GESTIONNAIRES,
                 parentId: 210
             },
             {
                 id: 214,
                 label: 'MENUITEMS.CANTINES.LIST.PLANNINGMENU',
                 link: '/cantines/planning-menus',
+                roles: GESTIONNAIRES,
                 parentId: 210
             },
             {
@@ -422,24 +428,28 @@ export const MENU: MenuItem[] = [
                 id: 216,
                 label: 'MENUITEMS.CANTINES.LIST.GESTIONCOMMANDE',
                 link: '/cantines/gestion-commandes',
+                roles: GESTIONNAIRES,
                 parentId: 210
             },
             {
                 id: 217,
                 label: 'MENUITEMS.CANTINES.LIST.RETRAITCOMMANDE',
                 link: '/cantines/retrait-commande',
+                roles: GESTIONNAIRES,
                 parentId: 210
             },
             {
                 id: 218,
                 label: 'MENUITEMS.CANTINES.LIST.FACTURATIONCOMMANDE',
                 link: '/cantines/facturation-commande',
+                roles: GESTIONNAIRES,
                 parentId: 210
             },
             {
                 id: 219,
                 label: 'MENUITEMS.CANTINES.LIST.FACTURATIONPRESTATAIRE',
                 link: '/cantines/facturation-prestataire',
+                roles: GESTIONNAIRES,
                 parentId: 210
             }
         ]
@@ -1262,90 +1272,105 @@ export const MENU: MenuItem[] = [
                 id: 176,
                 label: 'MENUITEMS.PARAMETRES.LIST.AGENCE',
                 link: '/parametres/agence',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 177,
                 label: 'MENUITEMS.PARAMETRES.LIST.ETAT',
                 link: '/parametres/etat',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 178,
                 label: 'MENUITEMS.PARAMETRES.LIST.PRIORITE',
                 link: '/parametres/priorite',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 179,
                 label: 'MENUITEMS.PARAMETRES.LIST.DEPARTEMENT',
                 link: '/parametres/departement',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 180,
                 label: 'MENUITEMS.PARAMETRES.LIST.STATUT',
                 link: '/parametres/statut',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 181,
                 label: 'MENUITEMS.PARAMETRES.LIST.TYPEBESOIN',
                 link: '/parametres/typebesoin',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 182,
                 label: 'MENUITEMS.PARAMETRES.LIST.ROLE',
                 link: '/parametres/role',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 183,
                 label: 'MENUITEMS.PARAMETRES.LIST.USER',
                 link: '/parametres/user',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 184,
                 label: 'MENUITEMS.PARAMETRES.LIST.TYPEPLAT',
                 link: '/parametres/typeplat',
+                roles: GESTIONNAIRES,
                 parentId: 175
             },
             {
                 id: 185,
                 label: 'MENUITEMS.PARAMETRES.LIST.TYPEVEHICULE',
                 link: '/parametres/type-vehicule',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 186,
                 label: 'MENUITEMS.PARAMETRES.LIST.TYPEEQUIPE',
                 link: '/parametres/type-equipe',
+                roles: GESTIONNAIRES,
                 parentId: 175
             },
             {
                 id: 187,
                 label: 'MENUITEMS.PARAMETRES.LIST.FONCTION',
                 link: '/parametres/fonction',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 188,
                 label: 'MENUITEMS.PARAMETRES.LIST.CATEGORIESALARIE',
                 link: '/parametres/categorie-salarie',
+                roles: ADMINS,
                 parentId: 175
             },
             {
                 id: 189,
                 label: 'MENUITEMS.PARAMETRES.LIST.PRESTATAIRE',
                 link: '/parametres/prestataire',
+                roles: GESTIONNAIRES,
                 parentId: 175
             },
             {
                 id: 190,
                 label: 'MENUITEMS.PARAMETRES.LIST.POSTE',
                 link: '/parametres/poste',
+                roles: ADMINS,
                 parentId: 175
             }
         ]

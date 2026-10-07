@@ -1,28 +1,46 @@
 // src/app/core/helpers/error.interceptor.ts
 import { Injectable } from '@angular/core';
-import { HttpRequest, HttpHandler, HttpEvent, HttpInterceptor } from '@angular/common/http';
+import { HttpRequest, HttpHandler, HttpEvent, HttpInterceptor, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
 /**
+ * Extrait un message lisible d'une réponse d'erreur Django REST Framework.
+ *
+ * DRF renvoie selon les cas : {"detail": "..."}, {"error": "..." | [...]},
+ * {"non_field_errors": ["..."]}, {"champ": ["..."]} ou ["..."].
+ * Avant, seuls message / detail étaient lus : les erreurs de validation
+ * (400) s'affichaient « Bad Request ».
+ */
+export function messageErreurApi(err: HttpErrorResponse | any): string {
+  const premier = (v: any): string | null => {
+    if (v == null) return null;
+    if (typeof v === 'string') return v;
+    if (Array.isArray(v)) return v.length ? premier(v[0]) : null;
+    if (typeof v === 'object') {
+      for (const cle of ['detail', 'error', 'message', 'non_field_errors']) {
+        const m = premier(v[cle]);
+        if (m) return m;
+      }
+      for (const [champ, valeur] of Object.entries(v)) {
+        const m = premier(valeur);
+        if (m) return `${champ} : ${m}`;
+      }
+    }
+    return null;
+  };
+
+  if (err?.status === 0) return 'Impossible de contacter le serveur.';
+  if (err?.status === 429) return 'Trop de tentatives. Réessayez dans quelques minutes.';
+  return premier(err?.error) || err?.statusText || 'Une erreur est survenue';
+}
+
+/**
  * ErrorInterceptor — gestion globale des erreurs HTTP
  *
- * AVANT — deux problèmes graves :
- *
- * 1. 🔴 location.reload() sur tout 401
- *    Rechargement complet de la page sur chaque 401, y compris lors
- *    d'un échec de connexion avec mauvais identifiants → le message
- *    d'erreur s'affichait puis disparaissait immédiatement.
- *
- * 2. 🔴 Conflit avec AuthInterceptor
- *    AuthInterceptor gère déjà les 401 proprement (refresh token puis
- *    déconnexion si nécessaire). ErrorInterceptor ne doit pas interférer
- *    avec cette logique en déconnectant ou rechargeant en parallèle.
- *
- * APRÈS :
- *    ErrorInterceptor ne gère plus les 401 du tout.
- *    Il laisse AuthInterceptor s'en occuper et se contente de
- *    formater le message d'erreur pour les autres codes HTTP.
+ * - 401 : laissé tel quel, géré par AuthInterceptor (refresh puis déconnexion).
+ * - Autres codes : l'erreur est transformée en message texte lisible,
+ *   que les effects NgRx stockent et que les pages affichent.
  */
 @Injectable()
 export class ErrorInterceptor implements HttpInterceptor {
@@ -30,25 +48,13 @@ export class ErrorInterceptor implements HttpInterceptor {
   intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
     return next.handle(request).pipe(
       catchError(err => {
-        // 401 : géré exclusivement par AuthInterceptor (refresh + logout)
-        // On laisse passer l'erreur sans interférer
         if (err.status === 401) {
           return throwError(() => err);
         }
-
-        // 403 : accès refusé (droits insuffisants, pas un problème de token)
         if (err.status === 403) {
-          console.warn('Accès refusé :', request.url);
-          return throwError(() => err);
+          return throwError(() => messageErreurApi(err) || 'Accès refusé.');
         }
-
-        // Autres erreurs : extraire le message lisible
-        const error = err?.error?.message
-          || err?.error?.detail
-          || err?.statusText
-          || 'Une erreur est survenue';
-
-        return throwError(() => error);
+        return throwError(() => messageErreurApi(err));
       })
     );
   }

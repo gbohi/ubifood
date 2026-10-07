@@ -1,5 +1,7 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
+import { RoleGuard } from 'src/app/core/guards/role.guard';
+import { GESTIONNAIRES } from 'src/app/core/helpers/roles';
 
 // Component
 // Component
@@ -15,15 +17,15 @@ import { FacturationPrestataireComponent } from './facturation-prestataire/factu
 
 
 const routes: Routes = [
-  { path: 'liste-plats', component: ListePlatsComponent },
-  { path: 'liste-menus', component: ListeMenusComponent },
-  { path: 'liste-commandes', component: ListeCommandesComponent },
-  { path: 'planning-menus', component: PlanningMenuComponent },
+  { path: 'liste-plats', component: ListePlatsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  { path: 'liste-menus', component: ListeMenusComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  { path: 'liste-commandes', component: ListeCommandesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  { path: 'planning-menus', component: PlanningMenuComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'mes-commandes', component: MesCommandesComponent },
-  { path: 'gestion-commandes', component: GestionCommandesComponent },
-  { path: 'retrait-commande', component: RetraitCommandeComponent },
-  { path: 'facturation-commande', component: FacturationCommandeComponent },
-  { path: 'facturation-prestataire', component: FacturationPrestataireComponent }
+  { path: 'gestion-commandes', component: GestionCommandesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  { path: 'retrait-commande', component: RetraitCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  { path: 'facturation-commande', component: FacturationCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  { path: 'facturation-prestataire', component: FacturationPrestataireComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } }
 ];
 
 @NgModule({

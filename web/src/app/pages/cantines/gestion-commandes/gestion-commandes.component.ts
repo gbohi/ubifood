@@ -30,8 +30,8 @@ import {
 } from 'src/app/store/Commande/commande-selector';
 import { CommandeModel } from 'src/app/store/Commande/commande.model';
 
-import { selectuserData } from 'src/app/store/User/user-selector';
-import { fetchuserData } from 'src/app/store/User/user.action';
+import { selectAlluserWithoutPagination } from 'src/app/store/User/user-selector';
+import { fetchuserNoPaginateData } from 'src/app/store/User/user.action';
 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -58,6 +58,7 @@ export class GestionCommandesComponent implements OnInit, OnDestroy {
 
   // ✅ Map indexée par username ET par nom complet
   usersMap: Map<string, any> = new Map();
+  usersById: Map<number, any> = new Map();
 
   isLoading    = false;
   isSubmitting = false;
@@ -127,12 +128,15 @@ export class GestionCommandesComponent implements OnInit, OnDestroy {
       .subscribe(d => this.categoriesalaries = d ?? []);
 
     // ── Users : indexés par username ET par nom complet ───────
-    this.store.dispatch(fetchuserData({ page: 1 }));
-    this.store.select(selectuserData)
+    // Tous les agents (avant : seulement la 1re page de 10 utilisateurs)
+    this.store.dispatch(fetchuserNoPaginateData());
+    this.store.select(selectAlluserWithoutPagination)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(users => {
         this.usersMap = new Map();
+        this.usersById = new Map();
         (users ?? []).forEach(u => {
+          if (u.id != null) this.usersById.set(Number(u.id), u);
           // ✅ Index principal : username (= badge)
           if (u.username) this.usersMap.set(u.username, u);
           // Index secondaire : nom complet (fallback)
@@ -179,8 +183,10 @@ export class GestionCommandesComponent implements OnInit, OnDestroy {
   // ══════════════════════════════════════════════════════════
 
   private _getUserFromCommande(c: CommandeModel): any | null {
-    if (!c.user_nom) return null;
-    return this.usersMap.get(c.user_nom) ?? null;
+    if (c.user_id != null && this.usersById.has(c.user_id)) {
+      return this.usersById.get(c.user_id);
+    }
+    return (c.user_nom ? this.usersMap.get(c.user_nom) : null) ?? null;
   }
 
   /** Username de l'agent (= badge) */

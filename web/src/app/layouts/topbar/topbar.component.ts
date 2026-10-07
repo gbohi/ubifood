@@ -5,7 +5,7 @@ import { LanguageService } from 'src/app/core/services/language.service';
 import { CookieService } from 'ngx-cookie-service';
 import { AuthenticationService } from 'src/app/core/services/auth.service';
 import { Router } from '@angular/router';
-import { cartList } from 'src/app/pages/ecommerce/cart/data';
+
 import { ModalDirective } from 'ngx-bootstrap/modal';
 import { notification } from './data';
 import { RootReducerState } from 'src/app/store';
@@ -65,7 +65,8 @@ export class TopbarComponent {
   ngOnInit(): void {
     this.element = document.documentElement;
     this.userData = this.TokenStorageService.getUser();
-    this.cartData = cartList
+    // Panier de démonstration du template supprimé (bloc HTML déjà commenté)
+    this.cartData = [];
     this.cartData.map((x: any) => {
       x['total'] = (x['qty'] * x['price']).toFixed(2)
       this.subtotal += parseFloat(x['total'])

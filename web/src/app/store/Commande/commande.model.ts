@@ -15,6 +15,8 @@ export interface CommandeModel {
   menu_detail?: MenulistModel;
   user_nom: string;
   user_agence: string | null;
+  user_id?: number;
+  user_username?: string;
 }
 
 export interface CommandeListModel {

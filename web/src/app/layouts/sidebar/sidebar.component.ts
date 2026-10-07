@@ -2,6 +2,8 @@ import { Component, ElementRef, EventEmitter, HostListener, Output, ViewChild } 
 
 import { MenuItem } from './menu.model';
 import { MENU } from './menu';
+import { filtrerMenu } from '../../core/helpers/roles';
+import { TokenStorageService } from '../../core/services/token-storage.service';
 import { Router, NavigationEnd } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 
@@ -18,13 +20,13 @@ export class SidebarComponent {
   @Output() mobileMenuButtonClicked = new EventEmitter();
   lastroute: any;
 
-  constructor(private router: Router, public translate: TranslateService) {
+  constructor(private router: Router, public translate: TranslateService, private tokenStorage: TokenStorageService) {
     translate.setDefaultLang('en');
   }
 
   ngOnInit(): void {
     // Menu Items
-    this.menuItems = MENU;
+    this.menuItems = filtrerMenu(MENU, this.tokenStorage.getUser());
 
     this.router.events.subscribe((event) => {
       if (document.documentElement.getAttribute('data-layout') == 'vertical' || document.documentElement.getAttribute('data-layout') == 'horizontal') {

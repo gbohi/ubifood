@@ -117,6 +117,21 @@ export class AuthenticationService {
   }
 
   /**
+   * Révoque le refresh token côté serveur (POST /users/logout/) et enregistre
+   * l'heure de déconnexion. Ne lève jamais d'erreur : la déconnexion locale
+   * doit toujours pouvoir se faire.
+   */
+  revoquerSession(): Observable<unknown> {
+    const refresh = this.tokenStorage.getRefreshToken();
+    if (!refresh || !this.tokenStorage.getAccessToken()) {
+      return of(null);
+    }
+    return this.http.post(`${this.apiUrl}/users/logout/`, { refresh }).pipe(
+      catchError(() => of(null))
+    );
+  }
+
+  /**
    * Déconnexion : nettoie uniquement le state local.
    * L'action logout et la navigation sont gérées dans les effects.
    */

@@ -2,7 +2,10 @@ import { Component, ElementRef, EventEmitter, Output, ViewChild } from '@angular
 import { MenuItem } from './menu.model';
 import { NavigationEnd, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
-import { MENU } from './menu';
+// Même menu que la barre latérale verticale (avant : menu de démonstration du template)
+import { MENU } from '../sidebar/menu';
+import { filtrerMenu } from '../../core/helpers/roles';
+import { TokenStorageService } from '../../core/services/token-storage.service';
 
 @Component({
   selector: 'app-two-column-sidebar',
@@ -16,14 +19,14 @@ export class TwoColumnSidebarComponent {
   @ViewChild('sideMenu') sideMenu!: ElementRef;
   @Output() mobileMenuButtonClicked = new EventEmitter();
 
-  constructor(private router: Router, public translate: TranslateService) {
+  constructor(private router: Router, public translate: TranslateService, private tokenStorage: TokenStorageService) {
     translate.setDefaultLang('en');
   }
 
   ngOnInit(): void {
    
     // Menu Items
-    this.menuItems = MENU;
+    this.menuItems = filtrerMenu(MENU, this.tokenStorage.getUser());
     this.router.events.subscribe((event) => {
       if (event instanceof NavigationEnd) {
         this.initActiveMenu();

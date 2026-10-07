@@ -61,6 +61,8 @@ export class AuthenticationEffects {
   logout$ = createEffect(() =>
     this.actions$.pipe(
       ofType(logout),
+      // Révoque d'abord le refresh token côté serveur, puis nettoie localement
+      exhaustMap(() => this.authService.revoquerSession()),
       tap(() => {
         this.authService.logout();
         /**

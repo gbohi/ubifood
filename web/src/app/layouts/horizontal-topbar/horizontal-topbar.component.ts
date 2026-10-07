@@ -2,7 +2,10 @@ import { Component, ElementRef, EventEmitter, HostListener, Output, Renderer2, V
 import { MenuItem } from './menu.model';
 import { TranslateService } from '@ngx-translate/core';
 import { Router } from '@angular/router';
-import { MENU } from './menu';
+// Même menu que la barre latérale verticale (avant : menu de démonstration du template)
+import { MENU } from '../sidebar/menu';
+import { filtrerMenu } from '../../core/helpers/roles';
+import { TokenStorageService } from '../../core/services/token-storage.service';
 
 @Component({
   selector: 'app-horizontal-topbar',
@@ -19,16 +22,16 @@ export class HorizontalTopbarComponent {
   @ViewChild('sideMenu') sideMenu!: ElementRef;
   @Output() mobileMenuButtonClicked = new EventEmitter();
 
-  constructor(private router: Router, public translate: TranslateService, private renderer: Renderer2, private elementRef: ElementRef) {
+  constructor(private router: Router, public translate: TranslateService, private renderer: Renderer2, private elementRef: ElementRef, private tokenStorage: TokenStorageService) {
     translate.setDefaultLang('en');
   }
 
   ngOnInit(): void {
     // Menu Items
-    this.menuItems = MENU;
-    this.AllmenuItems = MENU;
+    this.menuItems = filtrerMenu(MENU, this.tokenStorage.getUser());
+    this.AllmenuItems = filtrerMenu(MENU, this.tokenStorage.getUser());
     // Initialize the navData and menuItems
-    this.navData = MENU;
+    this.navData = filtrerMenu(MENU, this.tokenStorage.getUser());
     this.menuItems = this.navData;
     setTimeout(() => {
       this.updateMenu();
@@ -52,7 +55,7 @@ export class HorizontalTopbarComponent {
         this.updateMenu();
       }, 1000);
     } else {
-      this.menuItems = MENU;
+      this.menuItems = filtrerMenu(MENU, this.tokenStorage.getUser());
     }
     setTimeout(() => {
       this.menuPosSetOnClicknHover();

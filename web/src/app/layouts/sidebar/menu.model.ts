@@ -9,4 +9,6 @@ export interface MenuItem {
     parentId?: number;
     isLayout?: boolean;
     isOpen?: boolean;
+    /** Rôles autorisés à voir l'entrée (aucun = tout utilisateur connecté) */
+    roles?: string[];
 }

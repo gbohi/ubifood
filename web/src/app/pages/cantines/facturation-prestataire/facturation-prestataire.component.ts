@@ -37,8 +37,8 @@ import {
 } from 'src/app/store/Commande/commande-selector';
 import { CommandeModel } from 'src/app/store/Commande/commande.model';
 
-import { selectuserData } from 'src/app/store/User/user-selector';
-import { fetchuserData } from 'src/app/store/User/user.action';
+import { selectAlluserWithoutPagination } from 'src/app/store/User/user-selector';
+import { fetchuserNoPaginateData } from 'src/app/store/User/user.action';
 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -88,6 +88,8 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
   platPrestataires: any[] = []; // PlatPrestataire avec montants
 
   usersMap: Map<string, any> = new Map();
+
+  usersById: Map<number, any> = new Map();
 
   isLoading    = false;
   isLoadingRef = false;
@@ -151,12 +153,15 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
     this._chargerPrestataires();
 
     // ── Users ─────────────────────────────────────────────────
-    this.store.dispatch(fetchuserData({ page: 1 }));
-    this.store.select(selectuserData)
+    // Tous les agents (avant : seulement la 1re page de 10 utilisateurs)
+    this.store.dispatch(fetchuserNoPaginateData());
+    this.store.select(selectAlluserWithoutPagination)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(users => {
         this.usersMap = new Map();
+        this.usersById = new Map();
         (users ?? []).forEach(u => {
+          if (u.id != null) this.usersById.set(Number(u.id), u);
           if (u.username) this.usersMap.set(u.username, u);
           const nomComplet = `${u.first_name || ''} ${u.last_name || ''}`.trim();
           if (nomComplet) this.usersMap.set(nomComplet, u);
@@ -254,8 +259,11 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
   // HELPERS USER
   // ══════════════════════════════════════════════════════════
 
-  private _getUserFromNom(nom: string): any | null {
-    return this.usersMap.get(nom) ?? null;
+  private _getUserFromCommande(c: CommandeModel): any | null {
+    if (c.user_id != null && this.usersById.has(c.user_id)) {
+      return this.usersById.get(c.user_id);
+    }
+    return (c.user_nom ? this.usersMap.get(c.user_nom) : null) ?? null;
   }
 
   private _getUsername(user: any, fallback: string): string {
@@ -290,9 +298,11 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
     const grouped: Map<string, { commandes: CommandeModel[]; user: any | null }> = new Map();
 
     cmdFiltrees.forEach(c => {
-      const key = c.user_nom ?? 'Inconnu';
+      // Regroupement par identifiant d'agent (avant : par nom affiché,
+      // ce qui fusionnait les homonymes)
+      const key = c.user_id != null ? `#${c.user_id}` : (c.user_nom ?? 'Inconnu');
       if (!grouped.has(key)) {
-        grouped.set(key, { commandes: [], user: this._getUserFromNom(key) });
+        grouped.set(key, { commandes: [], user: this._getUserFromCommande(c) });
       }
       grouped.get(key)!.commandes.push(c);
     });
@@ -351,7 +361,7 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
 
       this.lignesFacturation.push({
         userId:       user?.id ?? null,
-        username:     this._getUsername(user, userNomKey),
+        username:     this._getUsername(user, cmds[0]?.user_username ?? cmds[0]?.user_nom ?? userNomKey),
         nomPrenom:    this._getNomPrenom(user),
         agenceMenu:   cmds[0]?.menu_detail?.agence_nom          ?? '—',
         agenceAgent:  derniereAgc ? (derniereAgc.agence_nom     || '—') : '—',

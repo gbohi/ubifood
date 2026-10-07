@@ -32,24 +32,12 @@ import { BsDatepickerModule } from 'ngx-bootstrap/datepicker';
 import { LeafletModule } from '@asymmetrik/ngx-leaflet';
 
 // component
-import { AnalyticsComponent } from './analytics/analytics.component';
-import { CrmComponent } from './crm/crm.component';
-import { IndexComponent } from './index/index.component';
-import { LearningComponent } from './learning/learning.component';
-import { RealEstateComponent } from './real-estate/real-estate.component';
-
-//UBICI
 import { DashboardentretienvehiculeComponent } from './dashboardentretienvehicule/dashboardentretienvehicule.component';
 import { DashboardCantineComponent } from './dashboard-cantine/dashboard-cantine.component';
 import { NgSelectModule } from '@ng-select/ng-select';
 
 @NgModule({
   declarations: [
-    AnalyticsComponent,
-    CrmComponent,
-    IndexComponent,
-    LearningComponent,
-    RealEstateComponent,
     DashboardentretienvehiculeComponent,
     DashboardCantineComponent
   ],

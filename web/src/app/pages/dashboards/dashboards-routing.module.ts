@@ -1,14 +1,8 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 
-// Component
-import { AnalyticsComponent } from './analytics/analytics.component';
-import { CrmComponent } from './crm/crm.component';
-import { IndexComponent } from './index/index.component';
-import { LearningComponent } from './learning/learning.component';
-import { RealEstateComponent } from './real-estate/real-estate.component';
-
-//UBICI
+import { RoleGuard } from 'src/app/core/guards/role.guard';
+import { ADMINS, GESTIONNAIRES } from 'src/app/core/helpers/roles';
 import { DashboardentretienvehiculeComponent } from './dashboardentretienvehicule/dashboardentretienvehicule.component';
 import { DashboardCantineComponent } from './dashboard-cantine/dashboard-cantine.component';
 
@@ -16,16 +10,21 @@ import { DashboardCantineComponent } from './dashboard-cantine/dashboard-cantine
 const routes: Routes = [
   {
     path: "",
-    //component: IndexComponent
-    component: DashboardCantineComponent
+    component: DashboardCantineComponent,
+    canActivate: [RoleGuard],
+    data: { roles: GESTIONNAIRES }
   },
   {
     path: "dashboardentretienvehicule",
-    component: DashboardentretienvehiculeComponent
+    component: DashboardentretienvehiculeComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
   },
   {
     path: "dashboardCantine",
-    component: DashboardCantineComponent
+    component: DashboardCantineComponent,
+    canActivate: [RoleGuard],
+    data: { roles: GESTIONNAIRES }
   },
 ];
 

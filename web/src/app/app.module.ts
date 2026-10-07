@@ -20,9 +20,8 @@ import { environment } from 'src/environments/environment';
 import { rootReducer } from './store';
 
 // ── Interceptors ────────────────────────────────────────────────
-import { fakebackendInterceptor } from './core/helpers/fake-backend';
 import { ErrorInterceptor } from './core/helpers/error.interceptor';
-import { JwtInterceptor } from './core/helpers/jwt.interceptor';
+// (JwtInterceptor du template supprimé : il ne faisait plus rien)
 /**
  * CORRIGÉ : AuthInterceptor était absent des providers
  * → aucun token JWT n'était injecté sur les requêtes vers /api/api/...
@@ -30,29 +29,8 @@ import { JwtInterceptor } from './core/helpers/jwt.interceptor';
  */
 import { AuthInterceptor } from './core/helpers/auth.interceptor';
 
-// ── Firebase ────────────────────────────────────────────────────
-import { initFirebaseBackend } from './authUtils';
-
-// ── Effects — Template Themeforest ──────────────────────────────
-import { AnalyticsEffects } from './store/Analytics/analytics.effects';
-import { CRMEffects } from './store/CRM/crm.effects';
-import { ECoEffects } from './store/Ecommerce/ecommerce.effects';
-import { LearningEffects } from './store/Learning/learning.effects';
-import { RealEffects } from './store/RealEstate/realEstate.effects';
-import { AppRealestateEffects } from './store/App-realestate/apprealestate.effects';
-import { AgentEffects } from './store/Agent/agent.effects';
-import { AgenciesEffects } from './store/Agency/agency.effects';
-import { TicketEffects } from './store/Tickets/ticket.effects';
-import { ChatEffects } from './store/chat/chat.effects';
-import { ProductEffects } from './store/Product/product.effect';
-import { InvoiceEffects } from './store/Invoices/invoices.effects';
+// ── Effects ─────────────────────────────────────────────────────
 import { AuthenticationEffects } from './store/Authentication/authentication.effects';
-import { SellerEffects } from './store/Seller/seller.effects';
-import { OrdersEffects } from './store/Orders/order.effects';
-import { InstructorEffects } from './store/Learning-instructor/instructor.effects';
-import { CustomerEffects } from './store/Customer/customer.effects';
-import { studentsEffects } from './store/students/student.effcts';
-import { CourcesEffects } from './store/Learning-cources/cources.effect';
 
 // ── Effects — Ubici ─────────────────────────────────────────────
 import { PrioriteEffects } from './store/Priorite/priorite.effects';
@@ -96,12 +74,6 @@ export function createTranslateLoader(http: HttpClient): any {
   return new TranslateHttpLoader(http, 'assets/i18n/', '.json');
 }
 
-if (environment.defaultauth === 'firebase') {
-  initFirebaseBackend(environment.firebaseConfig);
-} else {
-  fakebackendInterceptor;
-}
-
 @NgModule({
   declarations: [
     AppComponent,
@@ -123,28 +95,7 @@ if (environment.defaultauth === 'firebase') {
       logOnly: environment.production,
     }),
     EffectsModule.forRoot([
-      // Template Themeforest
-      AnalyticsEffects,
-      CRMEffects,
-      ECoEffects,
-      LearningEffects,
-      RealEffects,
-      AppRealestateEffects,
-      AgentEffects,
-      AgenciesEffects,
-      TicketEffects,
-      ChatEffects,
-      ProductEffects,
-      InvoiceEffects,
       AuthenticationEffects,
-      SellerEffects,
-      OrdersEffects,
-      // CORRIGÉ : InstructorEffects était en double → un seul
-      InstructorEffects,
-      CustomerEffects,
-      studentsEffects,
-      CourcesEffects,
-      // Ubici
       PrioriteEffects,
       EtatEffects,
       StatutEffects,
@@ -197,16 +148,14 @@ if (environment.defaultauth === 'firebase') {
      * ORDRE DES INTERCEPTEURS — critique, s'exécutent dans cet ordre
      * sur la requête sortante, en ordre inverse sur la réponse.
      *
-     * 1. JwtInterceptor        → pass-through (vidé, ne fait plus rien)
-     * 2. AuthInterceptor       → injecte le token Django JWT  ← AJOUTÉ
-     * 3. ErrorInterceptor      → gère les erreurs HTTP (401, etc.)
-     * 4. fakebackendInterceptor → intercepte /app/... et /users/...
-     *                             TODO : retirer en production
+     * 1. AuthInterceptor       → injecte le token Django JWT, refresh sur 401
+     * 2. ErrorInterceptor      → extrait un message lisible des erreurs DRF
+     *
+     * L'intercepteur « fake backend » du template (faux utilisateurs
+     * admin/123456 en localStorage) a été retiré.
      */
-    { provide: HTTP_INTERCEPTORS, useClass: JwtInterceptor, multi: true },
     { provide: HTTP_INTERCEPTORS, useClass: AuthInterceptor, multi: true },
     { provide: HTTP_INTERCEPTORS, useClass: ErrorInterceptor, multi: true },
-    { provide: HTTP_INTERCEPTORS, useClass: fakebackendInterceptor, multi: true },
     provideHttpClient(withInterceptorsFromDi()),
   ]
 })
