@@ -50,6 +50,7 @@ import { fetchuserNoPaginateData } from 'src/app/store/User/user.action';
 
 import { StatistiqueGlobale } from 'src/app/store/Besoin/besoin.model';
 import { BesoinService } from 'src/app/core/services/besoin/besoin.service';
+import { environment } from 'src/environments/environment';
 
 @Component({
   selector: 'app-list-besoin',
@@ -91,7 +92,9 @@ export class ListBesoinComponent {
   direction: any = 'asc';
 
   // ── URL de base pour les fichiers ──────────────────────────
-  baseUrl = 'http://localhost:8000';
+  // URL du serveur pour les documents (/media/...) : lue depuis environment.ts
+  // (avant : 'http://localhost:8000' codé en dur → liens cassés en production)
+  baseUrl = environment.apiUrl;
 
   // ── Gestion documents en mode modification ─────────────────
   editingBesoinId: number | null = null;        // ID du besoin en cours de modification
