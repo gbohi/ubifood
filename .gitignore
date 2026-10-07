@@ -1,0 +1,54 @@
+# ============================================================
+# .gitignore — Ubifood (backend Django, web Angular, mobile Flutter)
+# ============================================================
+
+# ── Secrets & environnement ─────────────────────────────────
+.env
+.env.*
+!.env.example
+**/firebase-service-account*.json
+
+# ── Python / Django ─────────────────────────────────────────
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+*.log
+db.sqlite3
+db.sqlite3-journal
+backend/backend/media/
+backend/backend/staticfiles/
+
+# ── Angular / Node ──────────────────────────────────────────
+node_modules/
+web/dist/
+web/.angular/
+web/out-tsc/
+web/coverage/
+npm-debug.log*
+yarn-error.log*
+
+# ── Flutter / Dart ──────────────────────────────────────────
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/build/
+mobile/android/app/debug/
+mobile/android/app/profile/
+mobile/android/app/release/
+mobile/android/key.properties
+*.jks
+*.keystore
+**/ios/Flutter/.last_build_id
+app.*.symbols
+app.*.map.json
+
+# ── IDE / OS ────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.iml
+*.swp
+.DS_Store
+Thumbs.db
