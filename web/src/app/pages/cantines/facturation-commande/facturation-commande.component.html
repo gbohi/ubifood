@@ -45,22 +45,6 @@
                 @for (t of typeEquipes; track t.id) { <option [value]="t.id">{{ t.libelle }}</option> }
               </select>
             </div>
-            <!-- ✅ Statuts — ng-select multiple avec tags -->
-            <div class="col-md-2">
-              <label class="form-label">Statut(s)</label>
-              <ng-select
-                [items]="TOUS_STATUTS"
-                bindLabel="label"
-                bindValue="value"
-                [multiple]="true"
-                placeholder="Tous les statuts"
-                [(ngModel)]="statutsSelectionnes"
-                [ngModelOptions]="{standalone: true}"
-                [closeOnSelect]="false"
-                (change)="onStatutChange()">
-              </ng-select>
-            </div>
-
             <div class="col-md-2 d-flex gap-2 align-items-end">
               <button class="btn btn-primary btn-sm flex-fill" type="button"
                       [disabled]="isLoadingAll" (click)="rechercher()">
@@ -79,8 +63,9 @@
 
         <div class="alert alert-info py-2 mt-3 mb-0 small">
           <i class="ph-info me-1"></i>
-          <strong>Montant unitaire</strong> = prix défini dans PlatCategoriesalarie pour la catégorie salarié de l'agent (dernière ligne active).
-          <strong>Total</strong> = montant × nombre de commandes sur la période.
+          <strong>Règle de facturation</strong> (calculée par le serveur) :
+          {{ regle || 'repas commandés et non annulés, au tarif de la catégorie salarié en vigueur à la date du menu' }}.
+          Les mois <strong>clôturés</strong> ont des montants figés ; les autres sont <strong>provisoires</strong>.
         </div>
       </div>
     </div>
@@ -163,9 +148,7 @@
                   <th class="text-center" title="Retirées">
                     <span class="badge bg-success-subtle text-success">Ret.</span>
                   </th>
-                  <th class="text-center" title="Annulées">
-                    <span class="badge bg-secondary-subtle text-secondary">Ann.</span>
-                  </th>
+                  <th class="text-center" title="Clôturée = montant figé ; Provisoire = mois non clôturé">État</th>
                   <th class="text-end">Total (FCFA)</th>
                 </tr>
               </thead>
@@ -207,8 +190,11 @@
                       } @else { <span class="text-muted small">—</span> }
                     </td>
                     <td class="text-end">
-                      @if (l.montant > 0) {
+                      @if (l.montant > 0 && l.repasSansTarif === 0) {
                         <span class="fw-medium">{{ formatMontant(l.montant) }}</span>
+                      } @else if (l.montant > 0) {
+                        <span class="fw-medium">{{ formatMontant(l.montant) }}</span>
+                        <span class="text-danger small d-block">{{ l.repasSansTarif }} repas sans tarif</span>
                       } @else {
                         <span class="text-danger small">
                           <i class="ph-warning me-1"></i>Non défini
@@ -227,8 +213,11 @@
                       @else { <span class="text-muted small">0</span> }
                     </td>
                     <td class="text-center">
-                      @if (l.statuts.annulee > 0) { <span class="badge bg-secondary-subtle text-secondary">{{ l.statuts.annulee }}</span> }
-                      @else { <span class="text-muted small">0</span> }
+                      <span class="badge"
+                            [class.bg-success-subtle]="l.etat === 'cloturee'" [class.text-success]="l.etat === 'cloturee'"
+                            [class.bg-warning-subtle]="l.etat !== 'cloturee'" [class.text-warning]="l.etat !== 'cloturee'">
+                        {{ libelleEtat(l.etat) }}
+                      </span>
                     </td>
                     <td class="text-end">
                       @if (l.total > 0) {
@@ -293,13 +282,80 @@
             @if (hasAgentsSansMontant) {
               <div class="alert alert-warning py-2 mt-3 mb-0 small">
                 <i class="ph-warning me-1"></i>
-                Certains agents n'ont pas de montant défini dans PlatCategoriesalarie
-                pour leur catégorie salarié. Le total peut être incomplet.
+                {{ repasSansTarif }} repas n'ont pas de tarif (agent sans catégorie salarié à la
+                date du menu, ou catégorie sans tarif). Le total est incomplet et le mois ne
+                pourra pas être clôturé tant que ce n'est pas corrigé.
               </div>
             }
           </div>
         }
 
+      </div>
+    </div>
+
+    <!-- ══ CLÔTURES MENSUELLES ══════════════════════════════════ -->
+    <div class="card mt-3">
+      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0"><i class="ph-lock-key me-2"></i>Clôtures mensuelles</h5>
+        @if (estAdmin) {
+          <div class="d-flex gap-2 align-items-center">
+            <input type="month" class="form-control form-control-sm" style="width: 170px"
+                   [(ngModel)]="moisACloturer" [ngModelOptions]="{standalone: true}">
+            <button class="btn btn-danger btn-sm" type="button" [disabled]="isCloturing || !moisACloturer"
+                    (click)="cloturer()">
+              @if (isCloturing) { <span class="spinner-border spinner-border-sm me-1" role="status"></span> }
+              @else { <i class="ph-lock me-1"></i> }
+              Clôturer le mois
+            </button>
+          </div>
+        }
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          La clôture fige la facture de chaque agent pour le mois : les changements ultérieurs
+          de tarif ou de catégorie ne la modifient plus. Seul un mois terminé peut être clôturé,
+          et une seule fois.
+        </p>
+
+        @if (clotureMessage) {
+          <div class="alert alert-success py-2 small"><i class="ph-check-circle me-1"></i>{{ clotureMessage }}</div>
+        }
+        @if (clotureErreur) {
+          <div class="alert alert-danger py-2 small mb-3">
+            <i class="ph-warning me-1"></i>{{ clotureErreur }}
+          </div>
+        }
+
+        @if (clotures.length === 0) {
+          <div class="text-muted small">Aucun mois clôturé pour l'instant.</div>
+        } @else {
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Mois</th>
+                  <th class="text-center">Factures</th>
+                  <th class="text-center">Repas</th>
+                  <th class="text-end">Montant (FCFA)</th>
+                  <th>Clôturé le</th>
+                  <th>Par</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of clotures; track c.id) {
+                  <tr>
+                    <td class="fw-medium text-capitalize">{{ libelleMois(c.annee, c.mois) }}</td>
+                    <td class="text-center">{{ c.nb_factures }}</td>
+                    <td class="text-center">{{ c.nb_repas }}</td>
+                    <td class="text-end fw-semibold">{{ formatMontant(+c.montant_total) }}</td>
+                    <td>{{ c.cloturee_le | date:'dd/MM/yyyy HH:mm' }}</td>
+                    <td>{{ c.cloturee_par_nom || '—' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
       </div>
     </div>
 

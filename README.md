@@ -53,6 +53,24 @@ masquent en plus les écrans non autorisés.
 
 ---
 
+## Facturation des repas
+
+Calculée uniquement par le serveur (`backend/backend/api/facturation.py`) ;
+le web, le mobile et le tableau de bord affichent ce résultat.
+
+- **Règle :** chaque repas commandé et non annulé (en attente ou retiré) est
+  facturé au tarif de la catégorie salarié de l'agent, catégorie et tarif
+  étant ceux en vigueur **à la date du menu**.
+- **Clôture mensuelle** (administrateurs, page web « Facturation commandes ») :
+  fige la facture de chaque agent. Les changements de tarif ou de catégorie
+  faits ensuite ne modifient plus ce mois. Un mois ne peut être clôturé
+  qu'une fois terminé, une seule fois, et seulement si tous les repas ont un
+  tarif (sinon la liste des repas à corriger est affichée).
+- Après clôture, les commandes du mois ne sont plus modifiables et un agent
+  facturé ne peut plus être supprimé (le désactiver à la place).
+
+---
+
 ## Backend (Django)
 
 ### Développement local
