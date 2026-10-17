@@ -11,15 +11,16 @@ import { ModalDirective } from 'ngx-bootstrap/modal';
 import { Actions, ofType } from '@ngrx/effects';
 import { Store } from '@ngrx/store';
 import { PageChangedEvent } from 'ngx-bootstrap/pagination';
-import { Subject } from 'rxjs';
-import { filter, take, takeUntil } from 'rxjs/operators';
+import { Observable, Subject, concat, of } from 'rxjs';
+import { catchError, map, switchMap, takeUntil, toArray } from 'rxjs/operators';
 
 import {
-  adduserData, adduserDataSuccess, updateuserData,
   deleteuserData, deletemultipleuserData, fetchuserData,
   activerUser, desactiverUser,
   activerMultipleUsers, desactiverMultipleUsers,
-  changerMotDePasse, changerMotDePasseSuccess,
+  deleteuserFailure, deletemultipleuserFailure,
+  activerUserFailure, desactiverUserFailure,
+  activerMultipleUsersFailure, desactiverMultipleUsersFailure,
 } from 'src/app/store/User/user.action';
 import {
   selectuserData, selectTotalItems, selectLoading, selectCurrentPage,
@@ -36,17 +37,7 @@ import { fetchposteNoPaginateData } from 'src/app/store/Poste/poste.action';
 import { selectAllCategoriesalarieWithoutPagination } from 'src/app/store/Categoriesalarie/categoriesalarie-selector';
 import { fetchcategoriesalarieNoPaginateData } from 'src/app/store/Categoriesalarie/categoriesalarie.action';
 
-import * as UserServiceActions from 'src/app/store/UserService/user-service.action';
-import * as UserAgenceActions from 'src/app/store/UserAgence/user-agence.action';
-import * as UserPosteActions from 'src/app/store/UserPoste/user-poste.action';
-import * as UserCategoriesalarieActions from 'src/app/store/UserCategoriesalarie/user-categoriesalarie.action';
-import * as UserAllergieActions from 'src/app/store/UserAllergie/user-allergie.action';
 
-import { selectUserServiceItems, selectUserServiceIsLoading, selectUserServiceIsSubmitting } from 'src/app/store/UserService/user-service-selector';
-import { selectUserAgenceItems, selectUserAgenceIsLoading, selectUserAgenceIsSubmitting } from 'src/app/store/UserAgence/user-agence-selector';
-import { selectUserPosteItems, selectUserPosteIsLoading, selectUserPosteIsSubmitting } from 'src/app/store/UserPoste/user-poste-selector';
-import { selectUserCategoriesalarieItems, selectUserCategoriesalarieIsLoading, selectUserCategoriesalarieIsSubmitting } from 'src/app/store/UserCategoriesalarie/user-categoriesalarie-selector';
-import { selectUserAllergieItems, selectUserAllergieIsLoading, selectUserAllergieIsSubmitting } from 'src/app/store/UserAllergie/user-allergie-selector';
 
 import { UserServiceModel } from 'src/app/store/UserService/user-service.model';
 import { UserAgenceModel } from 'src/app/store/UserAgence/user-agence.model';
@@ -55,6 +46,13 @@ import { UserCategoriesalarieModel } from 'src/app/store/UserCategoriesalarie/us
 import { UserAllergieModel } from 'src/app/store/UserAllergie/user-allergie.model';
 
 import { RoleService } from 'src/app/core/services/role/role.service';
+import { UserService } from 'src/app/core/services/user/user.service';
+import { UserServiceService } from 'src/app/core/services/user-service/user-service.service';
+import { UserAgenceService } from 'src/app/core/services/user-agence/user-agence.service';
+import { UserPosteService } from 'src/app/core/services/user-poste/user-poste.service';
+import { UserCategoriesalarieService } from 'src/app/core/services/user-categoriesalarie/user-categoriesalarie.service';
+import { UserAllergieService } from 'src/app/core/services/user-allergie/user-allergie.service';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -133,11 +131,10 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
   categorieLignes: UserCategoriesalarieModel[] = [];
   allergieLignes:  UserAllergieModel[]          = [];
 
-  private serviceSnapshot:   UserServiceModel[]          = [];
-  private agenceSnapshot:    UserAgenceModel[]           = [];
-  private posteSnapshot:     UserPosteModel[]            = [];
-  private categorieSnapshot: UserCategoriesalarieModel[] = [];
-  private allergieSnapshot:  UserAllergieModel[]          = [];
+  /** Enregistrement en cours (fiche + historique) : bouton désactivé */
+  isSaving = false;
+  /** Id de l'utilisateur connecté (le changement de SON mot de passe exige l'ancien) */
+  connectedUserId: number | null = null;
 
   private destroy$ = new Subject<void>();
   private lastActiveElement: HTMLElement | null = null;
@@ -154,6 +151,13 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
     private store: Store,
     private actions$: Actions,
     private roleService: RoleService,
+    private userService: UserService,
+    private userServiceService: UserServiceService,
+    private userAgenceService: UserAgenceService,
+    private userPosteService: UserPosteService,
+    private userCategoriesalarieService: UserCategoriesalarieService,
+    private userAllergieService: UserAllergieService,
+    private tokenStorage: TokenStorageService,
   ) {}
 
   ngOnInit(): void {
@@ -161,7 +165,7 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
     this.userForm = this.fb.group({
       id:              [''],
       username:        ['', [Validators.required]],
-      email:           ['', [Validators.required, Validators.email]],
+      email:           ['', [Validators.email]],
       nom:             ['', [Validators.required]],
       prenom:          ['', [Validators.required]],
       contact:         [''],
@@ -174,6 +178,7 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
     }, { validators: passwordMatchValidator });
 
     this.mdpForm = this.fb.group({
+      old_password: [''],
       password:  ['', [Validators.required, passwordStrengthValidator]],
       password2: ['', [Validators.required]],
     }, { validators: passwordMatchValidator });
@@ -222,36 +227,16 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.roleService.getAllRolesNoPaginate().pipe(takeUntil(this.destroy$)).subscribe(data => this.groupes = data ?? []);
 
-    this.store.select(selectUserServiceIsLoading).pipe(takeUntil(this.destroy$)).subscribe(v => this.isServicesLoading = v);
-    this.store.select(selectUserServiceIsSubmitting).pipe(takeUntil(this.destroy$)).subscribe(v => this.isServicesSubmitting = v);
-    this.store.select(selectUserAgenceIsLoading).pipe(takeUntil(this.destroy$)).subscribe(v => this.isAgencesLoading = v);
-    this.store.select(selectUserAgenceIsSubmitting).pipe(takeUntil(this.destroy$)).subscribe(v => this.isAgencesSubmitting = v);
-    this.store.select(selectUserPosteIsLoading).pipe(takeUntil(this.destroy$)).subscribe(v => this.isPostesLoading = v);
-    this.store.select(selectUserPosteIsSubmitting).pipe(takeUntil(this.destroy$)).subscribe(v => this.isPostesSubmitting = v);
-    this.store.select(selectUserCategoriesalarieIsLoading).pipe(takeUntil(this.destroy$)).subscribe(v => this.isCategoriesLoading = v);
-    this.store.select(selectUserCategoriesalarieIsSubmitting).pipe(takeUntil(this.destroy$)).subscribe(v => this.isCategoriesSubmitting = v);
-    this.store.select(selectUserAllergieIsLoading).pipe(takeUntil(this.destroy$)).subscribe(v => this.isAllergiesLoading = v);
-    this.store.select(selectUserAllergieIsSubmitting).pipe(takeUntil(this.destroy$)).subscribe(v => this.isAllergiesSubmitting = v);
+    this.connectedUserId = this.tokenStorage.getUser()?.id ?? null;
 
-    this.actions$.pipe(ofType(adduserDataSuccess), takeUntil(this.destroy$)).subscribe(({ newData }) => {
-      const uid = newData?.id;
-      if (!uid) return;
-      const s = this.serviceSnapshot.filter(l => !l._isDeleted);
-      const a = this.agenceSnapshot.filter(l => !l._isDeleted);
-      const p = this.posteSnapshot.filter(l => !l._isDeleted);
-      const c = this.categorieSnapshot.filter(l => !l._isDeleted);
-      const al = this.allergieSnapshot.filter(l => !l._isDeleted);
-      if (s.length > 0)  this.store.dispatch(UserServiceActions.saveUserServicesBatch({ userId: uid, items: s.map(l => ({ service: l.service, date_debut: l.date_debut, date_fin: l.date_fin || null, statut: l.statut })) }));
-      if (a.length > 0)  this.store.dispatch(UserAgenceActions.saveUserAgencesBatch({ userId: uid, items: a.map(l => ({ agence: l.agence, date_debut: l.date_debut, date_fin: l.date_fin || null, statut: l.statut })) }));
-      if (p.length > 0)  this.store.dispatch(UserPosteActions.saveUserPostesBatch({ userId: uid, items: p.map(l => ({ poste: l.poste, date_debut: l.date_debut, date_fin: l.date_fin || null, statut: l.statut })) }));
-      if (c.length > 0)  this.store.dispatch(UserCategoriesalarieActions.saveUserCategoriesalariesBatch({ userId: uid, items: c.map(l => ({ categoriesalarie: l.categoriesalarie, date_debut: l.date_debut, date_fin: l.date_fin || null, statut: l.statut })) }));
-      if (al.length > 0) this.store.dispatch(UserAllergieActions.saveUserAllergiesBatch({ userId: uid, items: al.map(l => ({ libelle: l.libelle })) }));
-      this.serviceSnapshot = []; this.agenceSnapshot = []; this.posteSnapshot = []; this.categorieSnapshot = []; this.allergieSnapshot = [];
-    });
-
-    this.actions$.pipe(ofType(changerMotDePasseSuccess), takeUntil(this.destroy$)).subscribe(() => {
-      this.toastService.success('Mot de passe modifié avec succès !', 'Succès');
-      this.closeMdpModal();
+    // Erreurs des actions de liste (suppression, activation) : message du serveur
+    this.actions$.pipe(
+      ofType(deleteuserFailure, deletemultipleuserFailure, activerUserFailure, desactiverUserFailure,
+             activerMultipleUsersFailure, desactiverMultipleUsersFailure),
+      takeUntil(this.destroy$),
+    ).subscribe(({ error }) => {
+      this.toastService.error(error || 'Opération refusée.', 'Erreur');
+      this.loadData(this.currentPage);
     });
 
     this.loadData(1);
@@ -260,7 +245,7 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     this.addUser?.onHidden.subscribe(() => {
       this.userForm.reset(); this._resetAllLignes(); this.currentUserId = null;
-      this.submitted = false; this._dispatchResetAll();
+      this.submitted = false;
       this.setModalTitle('Ajouter un utilisateur'); this.setModalBtn('Enregistrer');
     });
     this.deleteRecordModal?.onHidden.subscribe(() => { this.deleteID = null; });
@@ -541,32 +526,21 @@ getDerniereCategorie(user: any): any | null {
   private _resetAllLignes(): void {
     this.serviceLignes=[]; this.agenceLignes=[]; this.posteLignes=[]; this.categorieLignes=[]; this.allergieLignes=[];
   }
-  private _resetAllSnapshots(): void {
-    this.serviceSnapshot=[]; this.agenceSnapshot=[]; this.posteSnapshot=[]; this.categorieSnapshot=[]; this.allergieSnapshot=[];
-  }
-  private _dispatchResetAll(): void {
-    this.store.dispatch(UserServiceActions.resetUserService());
-    this.store.dispatch(UserAgenceActions.resetUserAgence());
-    this.store.dispatch(UserPosteActions.resetUserPoste());
-    this.store.dispatch(UserCategoriesalarieActions.resetUserCategoriesalarie());
-    this.store.dispatch(UserAllergieActions.resetUserAllergie());
-  }
-
   private _mapLignes<T extends { date_debut?: string; date_fin?: string | null; _isNew?: boolean; _isDeleted?: boolean; _hasError?: boolean }>(items: T[]): T[] {
     return items.map(t => ({ ...t, date_debut: t.date_debut ? t.date_debut.split('T')[0] : '', date_fin: t.date_fin ? t.date_fin.split('T')[0] : '', _isNew: false, _isDeleted: false, _hasError: false }));
   }
 
-  private _loadSousStores(userId: number): void {
-    this.store.dispatch(UserServiceActions.fetchUserServices({ userId }));
-    this.store.select(selectUserServiceItems).pipe(filter(i => i.length > 0), take(1)).subscribe(i => { this.serviceLignes = this._mapLignes(i); });
-    this.store.dispatch(UserAgenceActions.fetchUserAgences({ userId }));
-    this.store.select(selectUserAgenceItems).pipe(filter(i => i.length > 0), take(1)).subscribe(i => { this.agenceLignes = this._mapLignes(i); });
-    this.store.dispatch(UserPosteActions.fetchUserPostes({ userId }));
-    this.store.select(selectUserPosteItems).pipe(filter(i => i.length > 0), take(1)).subscribe(i => { this.posteLignes = this._mapLignes(i); });
-    this.store.dispatch(UserCategoriesalarieActions.fetchUserCategoriesalaries({ userId }));
-    this.store.select(selectUserCategoriesalarieItems).pipe(filter(i => i.length > 0), take(1)).subscribe(i => { this.categorieLignes = this._mapLignes(i); });
-    this.store.dispatch(UserAllergieActions.fetchUserAllergies({ userId }));
-    this.store.select(selectUserAllergieItems).pipe(filter(i => i.length > 0), take(1)).subscribe(i => { this.allergieLignes = i.map(a => ({ ...a, _isNew: false, _isDeleted: false, _hasError: false })); });
+  /**
+   * Historique de l'agent : repris directement de la fiche renvoyée par /users/
+   * (user_services, user_agences…). Avant : 5 requêtes paginées (10 lignes
+   * maximum) et des abonnements jamais terminés quand une liste était vide.
+   */
+  private _chargerHistorique(user: any): void {
+    this.serviceLignes   = this._mapLignes(user.user_services          || []);
+    this.agenceLignes    = this._mapLignes(user.user_agences           || []);
+    this.posteLignes     = this._mapLignes(user.user_postes            || []);
+    this.categorieLignes = this._mapLignes(user.user_categoriesalaries || []);
+    this.allergieLignes  = (user.user_allergies || []).map((a: any) => ({ ...a, _isNew: false, _isDeleted: false, _hasError: false }));
   }
 
   // ══════════════════════════════════════════════════════════
@@ -575,9 +549,10 @@ getDerniereCategorie(user: any): any | null {
 
   openAddModal(): void {
     this.lastActiveElement = document.activeElement as HTMLElement;
-    this.currentUserId = null; this._resetAllLignes(); this._resetAllSnapshots();
+    this.currentUserId = null; this._resetAllLignes();
     this.submitted = false; this.userForm.reset();
-    this.userForm.patchValue({ is_active: true, groups: [] }); this._dispatchResetAll();
+    this.userForm.patchValue({ is_active: true, groups: [] });
+    this._motDePasseObligatoire(true);
     this.setModalTitle('Ajouter un utilisateur'); this.setModalBtn('Enregistrer'); this.addUser?.show();
   }
 
@@ -590,9 +565,10 @@ getDerniereCategorie(user: any): any | null {
     this.lastActiveElement = document.activeElement as HTMLElement;
     const editData = this.users.find(u => u.id === id);
     if (!editData) return;
-    this.currentUserId = id; this._resetAllLignes(); this._resetAllSnapshots(); this.submitted = false; this._dispatchResetAll();
+    this.currentUserId = id; this._resetAllLignes(); this.submitted = false;
     this.userForm.patchValue({ ...editData, password: '', password2: '', groups: (editData.groups || []).map(Number) });
-    this._loadSousStores(id);
+    this._motDePasseObligatoire(false);
+    this._chargerHistorique(editData);
     this.setModalTitle('Modifier l\'utilisateur'); this.setModalBtn('Enregistrer'); this.addUser?.show();
   }
 
@@ -603,16 +579,28 @@ getDerniereCategorie(user: any): any | null {
   ajouterCategorie(): void  { this.categorieLignes.push({ categoriesalarie: undefined, date_debut: '', date_fin: null, statut: undefined, _isNew: true, _isDeleted: false, _hasError: false }); }
   ajouterAllergie(): void   { this.allergieLignes.push({ libelle: '', _isNew: true, _isDeleted: false, _hasError: false }); }
 
-  supprimerService(i: number): void   { this._supprimerLigne(i, this.serviceLignes,   id => this.store.dispatch(UserServiceActions.deleteUserService({ id }))); }
-  supprimerAgence(i: number): void    { this._supprimerLigne(i, this.agenceLignes,    id => this.store.dispatch(UserAgenceActions.deleteUserAgence({ id }))); }
-  supprimerPoste(i: number): void     { this._supprimerLigne(i, this.posteLignes,     id => this.store.dispatch(UserPosteActions.deleteUserPoste({ id }))); }
-  supprimerCategorie(i: number): void { this._supprimerLigne(i, this.categorieLignes, id => this.store.dispatch(UserCategoriesalarieActions.deleteUserCategoriesalarie({ id }))); }
-  supprimerAllergie(i: number): void  { this._supprimerLigne(i, this.allergieLignes,  id => this.store.dispatch(UserAllergieActions.deleteUserAllergie({ id }))); }
+  supprimerService(i: number): void   { this._supprimerLigne(i, this.serviceLignes); }
+  supprimerAgence(i: number): void    { this._supprimerLigne(i, this.agenceLignes); }
+  supprimerPoste(i: number): void     { this._supprimerLigne(i, this.posteLignes); }
+  supprimerCategorie(i: number): void { this._supprimerLigne(i, this.categorieLignes); }
+  supprimerAllergie(i: number): void  { this._supprimerLigne(i, this.allergieLignes); }
 
-  private _supprimerLigne(index: number, lignes: any[], dispatchFn: (id: number) => void): void {
+  /**
+   * Ligne existante : seulement marquée, supprimée au clic sur « Enregistrer »
+   * (avant : supprimée immédiatement, même si on annulait ensuite).
+   */
+  private _supprimerLigne(index: number, lignes: any[]): void {
     const l = lignes[index];
+    if (!l) return;
     if (l._isNew) lignes.splice(index, 1);
-    else if (l.id) { dispatchFn(l.id); lignes.splice(index, 1); }
+    else l._isDeleted = true;
+  }
+
+  /** Mot de passe obligatoire à la création, facultatif en modification */
+  private _motDePasseObligatoire(obligatoire: boolean): void {
+    const ctrl = this.userForm.get('password');
+    ctrl?.setValidators(obligatoire ? [Validators.required, passwordStrengthValidator] : [passwordStrengthValidator]);
+    ctrl?.updateValueAndValidity();
   }
 
   get serviceLignesVisibles()   { return this.serviceLignes.filter(l => !l._isDeleted); }
@@ -647,6 +635,14 @@ getDerniereCategorie(user: any): any | null {
   }
 
   // ── Sauvegarde ─────────────────────────────────────────────
+  /**
+   * 1. Enregistre la fiche (création ou modification) ;
+   * 2. puis l'historique, requête par requête et dans cet ordre : suppressions,
+   *    modifications, créations (clôturer l'ancienne agence AVANT d'ajouter la
+   *    nouvelle, sinon le serveur refuse le chevauchement des périodes).
+   * Les messages de succès / d'erreur reflètent la réponse réelle du serveur
+   * (avant : « succès » affiché et fenêtre fermée même en cas de refus).
+   */
   saveProperty(): void {
     this.submitted = true;
     if (this.userForm.invalid) { this.toastService.error('Veuillez vérifier les informations saisies.', 'Erreur'); return; }
@@ -660,36 +656,70 @@ getDerniereCategorie(user: any): any | null {
     const formValue = { ...this.userForm.value };
     if (!formValue.password) { delete formValue.password; delete formValue.password2; }
     formValue.groups = (formValue.groups || []).map(Number);
+    formValue.email = formValue.email || '';
+    formValue.contact = formValue.contact || '';
+    formValue.poste_telephone = formValue.poste_telephone || '';
+    const creation = !formValue.id;
+    if (creation) delete formValue.id;
 
-    if (formValue.id) {
-      this.store.dispatch(updateuserData({ updatedData: formValue }));
-      this.toastService.success('Utilisateur mis à jour avec succès !', 'Succès');
-      const uid = formValue.id;
-      this._saveML(uid, this.serviceLignes, 'service', d => this.store.dispatch(UserServiceActions.createUserService({ data: d })), (id, d) => this.store.dispatch(UserServiceActions.updateUserService({ id, data: d })));
-      this._saveML(uid, this.agenceLignes, 'agence', d => this.store.dispatch(UserAgenceActions.createUserAgence({ data: d })), (id, d) => this.store.dispatch(UserAgenceActions.updateUserAgence({ id, data: d })));
-      this._saveML(uid, this.posteLignes, 'poste', d => this.store.dispatch(UserPosteActions.createUserPoste({ data: d })), (id, d) => this.store.dispatch(UserPosteActions.updateUserPoste({ id, data: d })));
-      this._saveML(uid, this.categorieLignes, 'categoriesalarie', d => this.store.dispatch(UserCategoriesalarieActions.createUserCategoriesalarie({ data: d })), (id, d) => this.store.dispatch(UserCategoriesalarieActions.updateUserCategoriesalarie({ id, data: d })));
-      this.allergieLignes.forEach(l => {
-        if (l._isNew && !l._isDeleted) this.store.dispatch(UserAllergieActions.createUserAllergie({ data: { user: uid, libelle: l.libelle } }));
-        else if (!l._isNew && !l._isDeleted && l.id) this.store.dispatch(UserAllergieActions.updateUserAllergie({ id: l.id, data: { user: uid, libelle: l.libelle } }));
-      });
-    } else {
-      this.serviceSnapshot=[...this.serviceLignes]; this.agenceSnapshot=[...this.agenceLignes];
-      this.posteSnapshot=[...this.posteLignes]; this.categorieSnapshot=[...this.categorieLignes];
-      this.allergieSnapshot=[...this.allergieLignes];
-      delete formValue.id;
-      this.store.dispatch(adduserData({ newData: formValue }));
-      this.toastService.success('Utilisateur ajouté avec succès !', 'Succès');
-    }
-    this.submitted = false; this.userForm.reset(); this.closeAddModal();
+    this.isSaving = true;
+    const fiche$: Observable<any> = creation
+      ? this.userService.createUser(formValue)
+      : this.userService.updateUser(formValue);
+
+    fiche$.pipe(
+      switchMap(user => this._enregistrerHistorique(user?.id ?? formValue.id)),
+      takeUntil(this.destroy$),
+    ).subscribe({
+      next: erreurs => {
+        this.isSaving = false;
+        if (erreurs.length) {
+          this.toastService.warning(
+            `Agent enregistré, mais une partie de l'historique a été refusée : ${erreurs.join(' ; ')}`,
+            'Attention', { timeOut: 10000 });
+        } else {
+          this.toastService.success(creation ? 'Utilisateur ajouté avec succès !' : 'Utilisateur mis à jour avec succès !', 'Succès');
+        }
+        this.submitted = false;
+        this.closeAddModal();
+        this.loadData(creation ? 1 : this.currentPage);
+      },
+      error: err => {
+        // Fiche refusée (identifiant déjà utilisé, mot de passe trop faible…) : la fenêtre reste ouverte
+        this.isSaving = false;
+        this.toastService.error(typeof err === 'string' ? err : 'Enregistrement impossible.', 'Erreur');
+      },
+    });
   }
 
-  private _saveML(uid: number, lignes: any[], fk: string, cFn: (d: any) => void, uFn: (id: number, d: any) => void): void {
-    lignes.forEach(l => {
-      const d = { user: uid, [fk]: l[fk], date_debut: l.date_debut, date_fin: l.date_fin || null, statut: l.statut };
-      if (l._isNew && !l._isDeleted) cFn(d);
-      else if (!l._isNew && !l._isDeleted && l.id) uFn(l.id, d);
-    });
+  /** Enregistre l'historique de l'agent ; renvoie la liste des messages d'erreur */
+  private _enregistrerHistorique(uid: number): Observable<string[]> {
+    const erreurs: string[] = [];
+    const appel = (obs: Observable<any>, quoi: string) => obs.pipe(
+      catchError(err => { erreurs.push(`${quoi} : ${typeof err === 'string' ? err : 'refusé'}`); return of(null); }));
+
+    const tables: { lignes: any[]; fk: string; quoi: string; api: any }[] = [
+      { lignes: this.serviceLignes,   fk: 'service',          quoi: 'Service',   api: this.userServiceService },
+      { lignes: this.agenceLignes,    fk: 'agence',           quoi: 'Agence',    api: this.userAgenceService },
+      { lignes: this.posteLignes,     fk: 'poste',            quoi: 'Poste',     api: this.userPosteService },
+      { lignes: this.categorieLignes, fk: 'categoriesalarie', quoi: 'Catégorie', api: this.userCategoriesalarieService },
+    ];
+    const donnees = (l: any, fk: string) =>
+      ({ user: uid, [fk]: Number(l[fk]), date_debut: l.date_debut, date_fin: l.date_fin || null, statut: Number(l.statut) });
+
+    const operations: Observable<any>[] = [];
+    for (const t of tables) {
+      t.lignes.filter(l => l._isDeleted && l.id).forEach(l => operations.push(appel(t.api.delete(l.id), t.quoi)));
+      t.lignes.filter(l => !l._isNew && !l._isDeleted && l.id).forEach(l => operations.push(appel(t.api.update(l.id, donnees(l, t.fk)), t.quoi)));
+      t.lignes.filter(l => l._isNew && !l._isDeleted).forEach(l => operations.push(appel(t.api.create(donnees(l, t.fk)), t.quoi)));
+    }
+    const al = this.allergieLignes;
+    al.filter(l => l._isDeleted && l.id).forEach(l => operations.push(appel(this.userAllergieService.delete(l.id!), 'Allergie')));
+    al.filter(l => !l._isNew && !l._isDeleted && l.id).forEach(l => operations.push(appel(this.userAllergieService.update(l.id!, { user: uid, libelle: l.libelle }), 'Allergie')));
+    al.filter(l => l._isNew && !l._isDeleted).forEach(l => operations.push(appel(this.userAllergieService.create({ user: uid, libelle: l.libelle }), 'Allergie')));
+
+    if (!operations.length) return of([]);
+    return concat(...operations).pipe(toArray(), map(() => erreurs));
   }
 
   // ── Activation ─────────────────────────────────────────────
@@ -701,9 +731,28 @@ getDerniereCategorie(user: any): any | null {
   desactiverSelection(): void { if (!this.checkedValGet.length) return; this.store.dispatch(desactiverMultipleUsers({ ids: this.checkedValGet })); this.toastService.success(`${this.checkedValGet.length} désactivé(s).`, 'Succès'); this.checkedValGet = []; this.masterSelected = false; }
 
   // ── Modal MDP ──────────────────────────────────────────────
-  openMdpModal(user: any): void { this.lastActiveElement = document.activeElement as HTMLElement; this.currentUserId = user.id; this.mdpSubmitted = false; this.mdpForm.reset(); this.mdpModal?.show(); }
+  /** Changer SON propre mot de passe exige l'ancien (règle du serveur) */
+  get mdpPourSoi(): boolean { return this.currentUserId != null && this.currentUserId === this.connectedUserId; }
+
+  openMdpModal(user: any): void {
+    this.lastActiveElement = document.activeElement as HTMLElement; this.currentUserId = user.id;
+    this.mdpSubmitted = false; this.mdpForm.reset();
+    this.mdpForm.get('old_password')?.setValidators(this.mdpPourSoi ? [Validators.required] : []);
+    this.mdpForm.get('old_password')?.updateValueAndValidity();
+    this.mdpModal?.show();
+  }
   closeMdpModal(): void { this.lastActiveElement?.focus(); setTimeout(() => { this.mdpModal?.hide(); this.currentUserId = null; }, 10); }
-  saveMdp(): void { this.mdpSubmitted = true; if (this.mdpForm.invalid || !this.currentUserId) return; this.store.dispatch(changerMotDePasse({ id: this.currentUserId, password: this.mdpForm.value.password })); }
+  saveMdp(): void {
+    this.mdpSubmitted = true;
+    if (this.mdpForm.invalid || !this.currentUserId) return;
+    const { password, old_password } = this.mdpForm.value;
+    this.userService.changerMotDePasse(this.currentUserId, password, this.mdpPourSoi ? old_password : undefined)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => { this.toastService.success('Mot de passe modifié avec succès !', 'Succès'); this.closeMdpModal(); },
+        error: err => this.toastService.error(typeof err === 'string' ? err : 'Modification impossible.', 'Erreur'),
+      });
+  }
 
   // ── Modal suppression ──────────────────────────────────────
   removeItem(id: any): void { this.lastActiveElement = document.activeElement as HTMLElement; this.deleteID = id; this.deleteRecordModal?.show(); }
@@ -719,17 +768,17 @@ getDerniereCategorie(user: any): any | null {
   viewDetails(id: any): void {
     this.lastActiveElement = document.activeElement as HTMLElement;
     const data = this.users.find(u => u.id === id);
-    if (data) { this.selectedUser = data; this._resetAllLignes(); this._dispatchResetAll(); this._loadSousStores(id); this.viewUser?.show(); }
+    if (data) { this.selectedUser = data; this._chargerHistorique(data); this.viewUser?.show(); }
     else this.toastService.error('Utilisateur introuvable', 'Erreur');
   }
-  closeViewModal(): void { this.lastActiveElement?.focus(); setTimeout(() => { this.viewUser?.hide(); this.selectedUser = null; this._resetAllLignes(); this._dispatchResetAll(); }, 10); }
+  closeViewModal(): void { this.lastActiveElement?.focus(); setTimeout(() => { this.viewUser?.hide(); this.selectedUser = null; this._resetAllLignes(); }, 10); }
 
   // ── Helpers affichage ──────────────────────────────────────
-  getStatutLibelle(id: number): string    { return this.statuts.find(s => s.id === id)?.libelle_statut ?? '—'; }
-  getAgenceLibelle(id: number): string    { return this.agences.find(a => a.id === id)?.nom_agence ?? '—'; }
-  getServiceLibelle(id: number): string   { return this.services.find(s => s.id === id)?.libelle_service ?? '—'; }
-  getPosteLibelle(id: number): string     { return this.postes.find(p => p.id === id)?.libelle ?? '—'; }
-  getCategorieLibelle(id: number): string { return this.categoriesalaries.find(c => c.id === id)?.libelle ?? '—'; }
+  getStatutLibelle(id: number): string    { return this.statuts.find(s => s.id === Number(id))?.libelle_statut ?? '—'; }
+  getAgenceLibelle(id: number): string    { return this.agences.find(a => a.id === Number(id))?.nom_agence ?? '—'; }
+  getServiceLibelle(id: number): string   { return this.services.find(s => s.id === Number(id))?.libelle_service ?? '—'; }
+  getPosteLibelle(id: number): string     { return this.postes.find(p => p.id === Number(id))?.libelle ?? '—'; }
+  getCategorieLibelle(id: number): string { return this.categoriesalaries.find(c => c.id === Number(id))?.libelle ?? '—'; }
 
   formatDate(d: string): string {
     if (!d) return '—';

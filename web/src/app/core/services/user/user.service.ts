@@ -75,10 +75,11 @@ export class UserService {
   }
 
   // ── Mot de passe ──────────────────────────────────────────
-  changerMotDePasse(id: number, password: string): Observable<any> {
-    return this.http.patch<any>(
-      `${this.apiUrl}/users/${id}/changer-mot-de-passe/`, { password }
-    );
+  /** old_password : obligatoire quand on change SON propre mot de passe */
+  changerMotDePasse(id: number, password: string, old_password?: string): Observable<any> {
+    const body: any = { password };
+    if (old_password) body.old_password = old_password;
+    return this.http.patch<any>(`${this.apiUrl}/users/${id}/changer-mot-de-passe/`, body);
   }
 
   // ── Pagination info ───────────────────────────────────────

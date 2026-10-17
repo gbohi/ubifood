@@ -355,7 +355,7 @@
               @if (f['username'].invalid && (f['username'].touched || submitted)) { <div class="text-danger mt-1"><small>Requis</small></div> }
             </div>
             <div class="col-md-4">
-              <label class="form-label">Email <span class="text-danger">*</span></label>
+              <label class="form-label">Email <small class="text-muted">(facultatif)</small></label>
               <input type="email" class="form-control" formControlName="email" placeholder="Email">
               @if (f['email'].invalid && (f['email'].touched || submitted)) { <div class="text-danger mt-1"><small>Email invalide</small></div> }
             </div>
@@ -412,13 +412,14 @@
           @if (!f['id'].value) {
             <h6 class="text-muted text-uppercase mb-3 small">
               <i class="ph-lock me-1"></i>Mot de passe
-              <span class="text-muted fw-normal" style="font-size:.75rem;">(optionnel — 8 car. min, 1 maj., 1 chiffre, 1 spécial)</span>
+              <span class="text-muted fw-normal" style="font-size:.75rem;">(obligatoire — 8 car. min, 1 maj., 1 chiffre, 1 spécial)</span>
             </h6>
             <div class="row g-3 mb-4">
               <div class="col-md-6">
-                <label class="form-label">Mot de passe</label>
+                <label class="form-label">Mot de passe <span class="text-danger">*</span></label>
                 <input type="password" class="form-control" [class.is-invalid]="pwdErrors&&pwdTouched" formControlName="password" placeholder="Mot de passe">
                 @if (pwdTouched&&pwdErrors) {
+                  @if (pwdErrors['required'])   { <div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>Le mot de passe est obligatoire</small></div> }
                   @if (pwdErrors['minLength'])  { <div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>8 caractères minimum</small></div> }
                   @if (pwdErrors['majuscule'])  { <div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>1 majuscule requise</small></div> }
                   @if (pwdErrors['chiffre'])    { <div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>1 chiffre requis</small></div> }
@@ -545,10 +546,7 @@
           <div class="hstack gap-2 justify-content-end">
             <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()"><i class="bi bi-x-lg me-1"></i>Fermer</button>
             <button type="submit" class="btn btn-primary" id="add-btn"
-                    [disabled]="userForm.invalid||isServicesSubmitting||isAgencesSubmitting||isPostesSubmitting||isCategoriesSubmitting||isAllergiesSubmitting">
-              @if(isServicesSubmitting||isAgencesSubmitting||isPostesSubmitting||isCategoriesSubmitting||isAllergiesSubmitting){<span class="spinner-border spinner-border-sm me-1" role="status"></span>}
-              Enregistrer
-            </button>
+                    [disabled]="userForm.invalid || isSaving">Enregistrer</button>
           </div>
         </div>
       </form>
@@ -564,6 +562,14 @@
       <form (ngSubmit)="saveMdp()" [formGroup]="mdpForm" novalidate autocomplete="off">
         <div class="modal-body">
           <div class="alert alert-info py-2 mb-3" style="font-size:.8rem;"><strong>Exigences :</strong> 8 car. min | 1 majuscule | 1 chiffre | 1 caractère spécial</div>
+          @if (mdpPourSoi) {
+            <div class="mb-3">
+              <label class="form-label">Mot de passe actuel <span class="text-danger">*</span></label>
+              <input type="password" class="form-control" formControlName="old_password" placeholder="Mot de passe actuel"
+                     [class.is-invalid]="mdpSubmitted && mdpForm.get('old_password')?.invalid">
+              <small class="text-muted">Requis pour modifier votre propre mot de passe.</small>
+            </div>
+          }
           <div class="mb-3">
             <label class="form-label">Nouveau mot de passe <span class="text-danger">*</span></label>
             <input type="password" class="form-control" [class.is-invalid]="mdpErrors&&mdpTouched" formControlName="password" placeholder="Nouveau mot de passe">
