@@ -376,47 +376,60 @@ class RetraitProvider extends ChangeNotifier {
 }
 
 // ══════════════════════════════════════════════════════════════
-// TARIF PROVIDER
+// FACTURATION PROVIDER
+// Montants calculés par le serveur : le mobile n'applique plus lui-même
+// les tarifs (avant : catégorie actuelle de l'agent appliquée à tous ses
+// repas, d'où des écarts avec le web et le tableau de bord).
 // ══════════════════════════════════════════════════════════════
 
-class TarifProvider extends ChangeNotifier {
-  List<PlatCategoriesalarieModel> _tarifs = [];
+class FacturationProvider extends ChangeNotifier {
+  Map<int, LigneFacturation> _lignes = {};
   bool _loading = false;
+  bool _loaded = false;
   String? _error;
-  int? _categoriesalarieId;
 
-  List<PlatCategoriesalarieModel> get tarifs => _tarifs;
   bool get loading => _loading;
+  bool get loaded => _loaded;
   String? get error => _error;
-  bool get loaded => _tarifs.isNotEmpty;
 
-  Future<void> loadTarifs(int categoriesalarieId) async {
-    if (_categoriesalarieId == categoriesalarieId && _tarifs.isNotEmpty) return;
+  /// Charge 12 mois d'historique et 3 mois à venir (commandes anticipées).
+  Future<void> charger() async {
     _loading = true;
     _error = null;
     notifyListeners();
     try {
-      _tarifs = await tarifService.getTarifs(categoriesalarieId);
-      _categoriesalarieId = categoriesalarieId;
-      _loading = false;
-      notifyListeners();
+      final now = DateTime.now();
+      final debut = DateTime(now.year - 1, now.month, 1);
+      final fin = DateTime(now.year, now.month + 4, 0);
+      String iso(DateTime d) =>
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final lignes = await facturationService.mesLignes(
+          dateDebut: iso(debut), dateFin: iso(fin));
+      _lignes = {for (final l in lignes) l.commandeId: l};
+      _loaded = true;
     } catch (e) {
-      debugPrint('=== TarifProvider ERROR: $e ===');
-      _error = 'Impossible de charger les tarifs';
-      _loading = false;
-      notifyListeners();
+      _error = 'Impossible de charger la facturation';
     }
+    _loading = false;
+    notifyListeners();
   }
 
-  double getMontant(String dateMenu) =>
-      tarifService.getMontantPourDate(_tarifs, dateMenu);
+  /// Montant d'un repas (null : annulé, hors période ou sans tarif).
+  double? montant(Commande c) => _lignes[c.id]?.montant;
 
-  double calculerTotal(List<Commande> commandes) {
-    return commandes.where((c) => c.statut != StatutCommande.annulee).fold(0.0,
-        (sum, c) {
-      final dateMenu = c.menuDetail?.dateMenu ?? '';
-      return sum + getMontant(dateMenu);
-    });
+  /// Total des repas facturables (commandés et non annulés).
+  double calculerTotal(List<Commande> commandes) => commandes
+      .where((c) => c.statut != StatutCommande.annulee)
+      .fold(0.0, (sum, c) => sum + (montant(c) ?? 0));
+
+  /// Vrai si toutes les commandes facturables du mois sont figées (mois clôturé).
+  bool estCloture(List<Commande> commandes) {
+    final facturables = commandes
+        .where((c) => c.statut != StatutCommande.annulee)
+        .map((c) => _lignes[c.id])
+        .toList();
+    return facturables.isNotEmpty &&
+        facturables.every((l) => l != null && l.cloturee);
   }
 }
 

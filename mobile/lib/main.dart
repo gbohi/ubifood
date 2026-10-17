@@ -55,7 +55,7 @@ class CantineApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MenuProvider()),
         ChangeNotifierProvider(create: (_) => CommandeProvider()),
         ChangeNotifierProvider(create: (_) => RetraitProvider()),
-        ChangeNotifierProvider(create: (_) => TarifProvider()),
+        ChangeNotifierProvider(create: (_) => FacturationProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
         ChangeNotifierProxyProvider<AuthProvider, AllergieProvider>(
           create: (_) => AllergieProvider(),

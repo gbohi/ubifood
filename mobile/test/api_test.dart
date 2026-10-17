@@ -1,4 +1,5 @@
 import 'package:cantine_app/core/api/api_client.dart';
+import 'package:cantine_app/core/services/cantine_service.dart';
 import 'package:cantine_app/shared/models/models.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,6 +63,28 @@ void main() {
       final user = AuthUser.fromJson(json(['employe']));
       expect(user.derniereAgenceId, 3);
       expect(user.derniereAgence, 'Siège');
+    });
+  });
+
+  group('LigneFacturation', () {
+    test('montant figé, provisoire ou sans tarif', () {
+      final figee = LigneFacturation.fromJson({
+        'commande_id': 1,
+        'date_menu': '2026-08-20',
+        'montant': 1500,
+        'source': 'facture'
+      });
+      expect(figee.montant, 1500.0);
+      expect(figee.cloturee, isTrue);
+
+      final sansTarif = LigneFacturation.fromJson({
+        'commande_id': 2,
+        'date_menu': '2026-09-02',
+        'montant': null,
+        'source': 'calcul'
+      });
+      expect(sansTarif.montant, isNull);
+      expect(sansTarif.cloturee, isFalse);
     });
   });
 }

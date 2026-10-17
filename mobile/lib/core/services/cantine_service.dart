@@ -159,60 +159,49 @@ class RetraitService {
 }
 
 // ══════════════════════════════════════════════════════════════
-// TARIF SERVICE
+// FACTURATION SERVICE
+// Les montants sont calculés par le serveur (GET /facturation/) :
+// repas commandés et non annulés, au tarif de la catégorie salarié en
+// vigueur à la date du menu ; montants figés pour les mois clôturés.
 // ══════════════════════════════════════════════════════════════
 
-class PlatCategoriesalarieModel {
-  final int id;
-  final int categoriesalarieId;
-  final double montant;
-  final String dateDebut;
-  final String? dateFin;
+class LigneFacturation {
+  final int commandeId;
+  final String dateMenu;
+  final double? montant; // null : pas de tarif défini pour ce repas
+  final bool cloturee; // true : mois clôturé, montant figé
 
-  const PlatCategoriesalarieModel({
-    required this.id,
-    required this.categoriesalarieId,
+  const LigneFacturation({
+    required this.commandeId,
+    required this.dateMenu,
     required this.montant,
-    required this.dateDebut,
-    this.dateFin,
+    required this.cloturee,
   });
 
-  factory PlatCategoriesalarieModel.fromJson(Map<String, dynamic> j) =>
-      PlatCategoriesalarieModel(
-        id: j['id'],
-        categoriesalarieId: j['categoriesalarie'],
-        montant: double.tryParse(j['montant'].toString()) ?? 0,
-        dateDebut: j['date_debut'] ?? '',
-        dateFin: j['date_fin'],
+  factory LigneFacturation.fromJson(Map<String, dynamic> j) => LigneFacturation(
+        commandeId: j['commande_id'],
+        dateMenu: j['date_menu'] ?? '',
+        montant: (j['montant'] as num?)?.toDouble(),
+        cloturee: j['source'] == 'facture',
       );
-
-  bool actifPour(String dateMenu) {
-    final d = dateDebut.substring(0, 10);
-    final fin = dateFin != null ? dateFin!.substring(0, 10) : null;
-    final target = dateMenu.substring(0, 10);
-    if (target.compareTo(d) < 0) return false;
-    if (fin != null && target.compareTo(fin) > 0) return false;
-    return true;
-  }
 }
 
-class TarifService {
-  Future<List<PlatCategoriesalarieModel>> getTarifs(
-      int categoriesalarieId) async {
-    final res = await apiClient.get(
-      '/plat-categoriesalaries/',
-      params: {'categoriesalarie': categoriesalarieId, 'page_size': 1000},
-    );
-    final list = (res.data['results'] ?? res.data) as List;
-    return list.map((e) => PlatCategoriesalarieModel.fromJson(e)).toList();
-  }
-
-  double getMontantPourDate(
-      List<PlatCategoriesalarieModel> tarifs, String dateMenu) {
-    final valides = tarifs.where((t) => t.actifPour(dateMenu)).toList();
-    if (valides.isEmpty) return 0;
-    valides.sort((a, b) => b.dateDebut.compareTo(a.dateDebut));
-    return valides.first.montant;
+class FacturationService {
+  /// Lignes de facturation de l'utilisateur connecté sur la période.
+  Future<List<LigneFacturation>> mesLignes({
+    required String dateDebut,
+    required String dateFin,
+  }) async {
+    final res = await apiClient.get('/facturation/', params: {
+      'date_debut': dateDebut,
+      'date_fin': dateFin,
+    });
+    final employes = res.data['employes'] as List? ?? [];
+    return [
+      for (final e in employes)
+        for (final l in (e['lignes'] as List? ?? []))
+          LigneFacturation.fromJson(l as Map<String, dynamic>),
+    ];
   }
 }
 
@@ -224,7 +213,7 @@ final authService = AuthService();
 final menuService = MenuService();
 final commandeService = CommandeService();
 final retraitService = RetraitService();
-final tarifService = TarifService();
+final facturationService = FacturationService();
 
 // ══════════════════════════════════════════════════════════════
 // ALLERGIE SERVICE

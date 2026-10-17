@@ -33,11 +33,8 @@ class _FacturationScreenState extends State<FacturationScreen>
     _tabs = TabController(length: 2, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CommandeProvider>().loadMesCommandes();
-      final auth = context.read<AuthProvider>();
-      final catId = auth.user?.derniereCategoriesalarieId;
-      if (catId != null) {
-        context.read<TarifProvider>().loadTarifs(catId);
-      }
+      // Montants calculés par le serveur (règle unique de facturation)
+      context.read<FacturationProvider>().charger();
     });
   }
 
@@ -67,8 +64,10 @@ class _FacturationScreenState extends State<FacturationScreen>
             IconButton(
               icon: const Icon(Icons.refresh_rounded),
               tooltip: 'Actualiser',
-              onPressed: () =>
-                  context.read<CommandeProvider>().loadMesCommandes(),
+              onPressed: () => Future.wait([
+                context.read<CommandeProvider>().loadMesCommandes(),
+                context.read<FacturationProvider>().charger(),
+              ]),
             ),
         ],
         bottom: TabBar(
@@ -87,7 +86,7 @@ class _FacturationScreenState extends State<FacturationScreen>
           ],
         ),
       ),
-      body: Consumer2<CommandeProvider, TarifProvider>(
+      body: Consumer2<CommandeProvider, FacturationProvider>(
           builder: (_, cmdProv, tarifProv, __) {
         if (cmdProv.isLoading) {
           return ListView(
@@ -477,7 +476,7 @@ class _CommandeHistoriqueCard extends StatelessWidget {
 
 class _RecapMensuelTab extends StatelessWidget {
   final List<Commande> commandes;
-  final TarifProvider tarifProvider;
+  final FacturationProvider tarifProvider;
 
   const _RecapMensuelTab({
     required this.commandes,
@@ -512,12 +511,12 @@ class _RecapMensuelTab extends StatelessWidget {
       );
     }
 
-    if (!tarifProvider.loaded && !tarifProvider.loading) {
+    if (tarifProvider.error != null) {
       return EmptyState(
         icon: Icons.price_change_outlined,
-        title: 'Tarifs non disponibles',
-        subtitle: 'Votre catégorie salariale n\'a pas de tarif défini.\n'
-            'Contactez votre administrateur.',
+        title: 'Facturation indisponible',
+        subtitle: 'Impossible de charger vos montants.\n'
+            'Tirez vers le bas pour réessayer.',
       );
     }
 
@@ -542,7 +541,7 @@ class _RecapMensuelTab extends StatelessWidget {
 class _MoisCard extends StatefulWidget {
   final String moisKey;
   final List<Commande> commandes;
-  final TarifProvider tarifProvider;
+  final FacturationProvider tarifProvider;
 
   const _MoisCard({
     required this.moisKey,
@@ -625,8 +624,12 @@ class _MoisCardState extends State<_MoisCard> {
                         fontWeight: FontWeight.w800,
                         color: AppColors.accent)),
                 const SizedBox(height: 2),
-                const Text('Total à payer',
-                    style: TextStyle(
+                // Mois clôturé : montant figé ; sinon calcul provisoire
+                Text(
+                    widget.tarifProvider.estCloture(widget.commandes)
+                        ? 'Facture clôturée'
+                        : 'Montant provisoire',
+                    style: const TextStyle(
                         fontSize: 10, color: AppColors.lightTextSecondary)),
               ]),
             ]),
@@ -695,7 +698,7 @@ class _MoisCardState extends State<_MoisCard> {
               final dateMenu = c.menuDetail?.dateMenu ?? '';
               final d =
                   dateMenu.isNotEmpty ? DateTime.tryParse(dateMenu) : null;
-              final montant = widget.tarifProvider.getMontant(dateMenu);
+              final montant = widget.tarifProvider.montant(c) ?? 0;
 
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
@@ -876,7 +879,7 @@ class _MoisCardState extends State<_MoisCard> {
                 final c = e.value;
                 final dm = c.menuDetail?.dateMenu ?? '';
                 final d = dm.isNotEmpty ? DateTime.tryParse(dm) : null;
-                final montant = widget.tarifProvider.getMontant(dm);
+                final montant = widget.tarifProvider.montant(c) ?? 0;
                 final bg = e.key.isEven
                     ? PdfColors.white
                     : const PdfColor.fromInt(0xFFF4F7FA);
