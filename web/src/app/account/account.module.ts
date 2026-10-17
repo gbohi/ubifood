@@ -13,7 +13,6 @@ import { AuthModule } from './auth/auth.module';
 
 // Component
 import { LoginComponent } from './login/login.component';
-import { RegisterComponent } from './register/register.component';
 import { SignalerUneAnomalieComponent } from './signaler-une-anomalie/signaler-une-anomalie.component';
 
 const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
@@ -26,7 +25,6 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
 @NgModule({
   declarations: [
     LoginComponent,
-    RegisterComponent,
     SignalerUneAnomalieComponent
   ],
   imports: [

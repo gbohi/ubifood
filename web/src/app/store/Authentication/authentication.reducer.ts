@@ -1,7 +1,6 @@
 // src/app/store/Authentication/authentication.reducer.ts
 import { createReducer, on } from '@ngrx/store';
 import {
-  Register, RegisterFailure, RegisterSuccess,
   login, loginFailure, loginSuccess,
   logout, logoutSuccess,
 } from './authentication.actions';
@@ -23,15 +22,6 @@ const initialState: AuthenticationState = {
 
 export const authenticationReducer = createReducer(
   initialState,
-
-  // ── REGISTER ─────────────────────────────────────────────────
-  on(Register, (state) => ({ ...state, loading: true, error: null })),
-  on(RegisterSuccess, (state, { user }) => ({
-    ...state, isLoggedIn: true, user, error: null, loading: false
-  })),
-  on(RegisterFailure, (state, { error }) => ({
-    ...state, error, loading: false
-  })),
 
   // ── LOGIN ─────────────────────────────────────────────────────
   on(login, (state) => ({ ...state, loading: true, error: null })),

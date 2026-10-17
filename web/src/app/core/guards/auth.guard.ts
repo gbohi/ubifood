@@ -25,7 +25,6 @@ export class AuthGuard {
      *
      * Résumé des routes disponibles :
      *   /auth/login          → LoginComponent
-     *   /auth/register       → RegisterComponent
      *   /auth/auth/signin    → SigninComponent  (template Themeforest)
      *   /auth/auth/pass-reset → PassResetComponent
      */

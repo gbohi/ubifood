@@ -563,12 +563,6 @@ export const MENU: MenuItem[] = [
                 parentId: 61,
             },
             {
-                id: 63,
-                label: 'MENUITEMS.AUTHENTICATION.LIST.SIGNUP',
-                link: '/auth/signup',
-                parentId: 61,
-            },
-            {
                 id: 64,
                 label: 'MENUITEMS.AUTHENTICATION.LIST.PASSWORDRESET',
                 link: '/auth/pass-reset',
