@@ -17,7 +17,7 @@ from .permissions import (
     IsAdminRole, IsGestionnaireRole, IsOwnerOrGestionnaire,
     ReadAuthenticatedWriteAdmin, ReadAuthenticatedWriteGestionnaire,
     ReadGestionnaireWriteAdmin, is_admin, is_gestionnaire, is_super_admin,
-    ROLE_SUPER_ADMIN,
+    ADMIN_ROLES, ROLE_SUPER_ADMIN,
 )
 from django.conf import settings
 from django.contrib.auth.models import Group
@@ -245,6 +245,14 @@ class UserViewSet(BaseViewSet):
 
     def perform_update(self, serializer):
         _verifier_peut_gerer(self.request, serializer.instance)
+        if serializer.instance.pk == self.request.user.pk:
+            # Éviter qu'un administrateur se bloque lui-même
+            if serializer.validated_data.get('is_active') is False:
+                raise PermissionDenied("Vous ne pouvez pas désactiver votre propre compte.")
+            groupes = serializer.validated_data.get('groups')
+            if groupes is not None and not self.request.user.is_superuser \
+                    and not {g.name for g in groupes} & ADMIN_ROLES:
+                raise PermissionDenied("Vous ne pouvez pas retirer vos propres droits d'administrateur.")
         super().perform_update(serializer)
 
     def perform_destroy(self, instance):

@@ -25,8 +25,11 @@ class BaseModel(models.Model):
 class User(AbstractUser):
     nom = models.CharField(max_length=255)
     prenom = models.CharField(max_length=255)
-    contact = models.CharField(max_length=255)
-    poste_telephone = models.CharField(max_length=255)
+    # Facultatifs (le formulaire web les présente comme tels ; avant, la
+    # création échouait s'ils étaient vides). contact sert à l'envoi du
+    # code SMS « mot de passe oublié ».
+    contact = models.CharField(max_length=255, blank=True)
+    poste_telephone = models.CharField(max_length=255, blank=True)
     statut = models.ForeignKey('Statut', on_delete=models.CASCADE)
     last_logout = models.DateTimeField(null=True, blank=True)
     

@@ -188,7 +188,43 @@ class UserAllergieSerializer(serializers.ModelSerializer):
         read_only_fields = ['user_created', 'user_updated']
 
 
-class UserServiceSerializer(serializers.ModelSerializer):
+class _PeriodeMixin:
+    """
+    Lignes d'historique d'un agent (service, agence, poste, catégorie) :
+      - la date de fin ne peut pas précéder la date de début ;
+      - si `periode_exclusive`, deux lignes du même agent ne peuvent pas se
+        chevaucher (un agent n'a qu'une agence / une catégorie salarié à la
+        fois : la facturation et les menus en dépendent).
+    """
+    periode_exclusive = False
+    libelle_periode = 'ligne'
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        inst = getattr(self, 'instance', None)
+        debut = attrs.get('date_debut', getattr(inst, 'date_debut', None))
+        fin = attrs.get('date_fin', getattr(inst, 'date_fin', None))
+        user = attrs.get('user', getattr(inst, 'user', None))
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin': "La date de fin doit être postérieure ou égale à la date de début."})
+        if self.periode_exclusive and user and debut:
+            autres = self.Meta.model.objects.filter(user=user)
+            if inst is not None:
+                autres = autres.exclude(pk=inst.pk)
+            # Chevauchement : [debut, fin] ∩ [a.debut, a.fin] ≠ ∅ (fin vide = en cours)
+            autres = autres.filter(Q(date_fin__isnull=True) | Q(date_fin__gte=debut))
+            if fin:
+                autres = autres.filter(date_debut__lte=fin)
+            if autres.exists():
+                raise serializers.ValidationError(
+                    f"Cette période chevauche une autre {self.libelle_periode} de l'agent : "
+                    "renseignez la date de fin de la précédente avant d'en ajouter une nouvelle.")
+        return attrs
+
+
+class UserServiceSerializer(_PeriodeMixin, serializers.ModelSerializer):
+    libelle_periode = 'affectation de service'
     service_id      = serializers.ReadOnlyField(source='service.id')
     service_libelle = serializers.ReadOnlyField(source='service.libelle_service')
     statut_id       = serializers.ReadOnlyField(source='statut.id')
@@ -204,7 +240,9 @@ class UserServiceSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class UserAgenceSerializer(serializers.ModelSerializer):
+class UserAgenceSerializer(_PeriodeMixin, serializers.ModelSerializer):
+    periode_exclusive = True
+    libelle_periode = 'affectation d\'agence'
     agence_id      = serializers.ReadOnlyField(source='agence.id')
     agence_nom     = serializers.ReadOnlyField(source='agence.nom_agence')
     statut_id      = serializers.ReadOnlyField(source='statut.id')
@@ -220,7 +258,8 @@ class UserAgenceSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class UserPosteSerializer(serializers.ModelSerializer):
+class UserPosteSerializer(_PeriodeMixin, serializers.ModelSerializer):
+    libelle_periode = 'affectation de poste'
     statut_libelle = serializers.ReadOnlyField(source='statut.libelle_statut')
     poste_libelle  = serializers.ReadOnlyField(source='poste.libelle')
 
@@ -229,7 +268,9 @@ class UserPosteSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class UserCategoriesalarieSerializer(serializers.ModelSerializer):
+class UserCategoriesalarieSerializer(_PeriodeMixin, serializers.ModelSerializer):
+    periode_exclusive = True
+    libelle_periode = 'catégorie salarié'
     statut_libelle           = serializers.ReadOnlyField(source='statut.libelle_statut')
     categoriesalarie_libelle = serializers.ReadOnlyField(source='categoriesalarie.libelle')
 
@@ -376,6 +417,10 @@ class UserSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         password  = attrs.get('password')
         password2 = attrs.get('password2')
+        if self.instance is None and not password:
+            # Sans mot de passe, le compte créé ne pourrait pas se connecter
+            raise serializers.ValidationError(
+                {"password": "Le mot de passe est obligatoire à la création du compte."})
         if password or password2:
             if password != password2:
                 raise serializers.ValidationError(

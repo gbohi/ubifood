@@ -560,3 +560,78 @@ class FacturePdfTests(_FacturationBase):
         self.assertEqual(montant_en_lettres(Decimal('80000')), 'quatre-vingt-mille')
         self.assertEqual(montant_en_lettres(Decimal('1250300')),
                          'un-million-deux-cent-cinquante-mille-trois-cents')
+
+
+class GestionUtilisateursTests(BaseAPITestCase):
+    """Création / modification d'un agent et de son historique."""
+
+    def donnees(self, **extra):
+        d = {'username': 'nouveau', 'email': '', 'nom': 'Nouveau', 'prenom': 'Agent',
+             'contact': '', 'poste_telephone': '', 'statut': self.statut.id,
+             'is_active': True, 'groups': [self.groupes['employe'].id]}
+        d.update(extra)
+        return d
+
+    def test_creation_avec_champs_facultatifs_vides(self):
+        r = self.client_pour(self.admin).post(
+            f'{API}/users/', self.donnees(password=MDP, password2=MDP), format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        user = User.objects.get(username='nouveau')
+        self.assertTrue(user.check_password(MDP))
+        self.assertEqual(user.user_created, self.admin)
+        self.assertEqual(r.data['roles'], ['employe'])
+
+    def test_creation_sans_mot_de_passe_refusee(self):
+        r = self.client_pour(self.admin).post(f'{API}/users/', self.donnees(), format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('password', r.data)
+
+    def test_identifiant_en_double(self):
+        r = self.client_pour(self.admin).post(
+            f'{API}/users/', self.donnees(username='emp1', password=MDP, password2=MDP), format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('username', r.data)
+
+    def test_modification_sans_toucher_au_mot_de_passe(self):
+        r = self.client_pour(self.admin).put(
+            f'{API}/users/{self.employe.id}/',
+            self.donnees(username='emp1', nom='EMP1-modifié'), format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.employe.refresh_from_db()
+        self.assertEqual(self.employe.nom, 'EMP1-modifié')
+        self.assertTrue(self.employe.check_password(MDP))
+
+    def test_admin_ne_peut_pas_se_bloquer_lui_meme(self):
+        client = self.client_pour(self.admin)
+        url = f'{API}/users/{self.admin.id}/'
+        r = client.put(url, self.donnees(username='admin1', is_active=False,
+                                         groups=[self.groupes['admin'].id]), format='json')
+        self.assertEqual(r.status_code, 403)
+        r = client.put(url, self.donnees(username='admin1', groups=[self.groupes['employe'].id]),
+                       format='json')
+        self.assertEqual(r.status_code, 403)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_active)
+
+    def test_periodes_agence_et_categorie(self):
+        client = self.client_pour(self.admin)
+        ligne = {'user': self.employe2.id, 'agence': self.agence.id, 'statut': self.statut.id}
+        # date de fin avant la date de début
+        r = client.post(f'{API}/user-agences/', {**ligne, 'date_debut': '2026-05-01',
+                                                 'date_fin': '2026-03-01'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        # première agence, en cours
+        r = client.post(f'{API}/user-agences/', {**ligne, 'date_debut': '2026-01-01',
+                                                 'date_fin': None}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        premiere = r.data['id']
+        # seconde agence qui chevauche → refusée
+        r = client.post(f'{API}/user-agences/', {**ligne, 'date_debut': '2026-06-01',
+                                                 'date_fin': None}, format='json')
+        self.assertEqual(r.status_code, 400)
+        # on clôture la première, la seconde passe
+        r = client.patch(f'{API}/user-agences/{premiere}/', {'date_fin': '2026-05-31'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = client.post(f'{API}/user-agences/', {**ligne, 'date_debut': '2026-06-01',
+                                                 'date_fin': None}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
