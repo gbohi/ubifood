@@ -135,6 +135,14 @@ export class PrestataireComponent implements OnInit, AfterViewInit, OnDestroy {
         date_debut: ['', [Validators.required]],
         date_fin:   [''],
         statut:     ['', [Validators.required]],
+        // Coordonnées (facultatives, affichées sur la facture PDF)
+        contact_nom:        [''],
+        adresse:            [''],
+        ville:              [''],
+        telephone:          [''],
+        email:              ['', [Validators.email]],
+        identifiant_fiscal: [''],
+        registre_commerce:  [''],
       },
       { validators: datefinValidator }
     );
@@ -428,6 +436,11 @@ export class PrestataireComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const formValue = { ...this.prestataireForm.value };
     formValue.date_fin = formValue.date_fin || null;
+    // Coordonnées facultatives : chaîne vide plutôt que null (champs texte côté serveur)
+    for (const champ of ['contact_nom', 'adresse', 'ville', 'telephone', 'email',
+                         'identifiant_fiscal', 'registre_commerce']) {
+      formValue[champ] = formValue[champ] ?? '';
+    }
 
     if (formValue.id) {
       // ── Modification ──────────────────────────────────────

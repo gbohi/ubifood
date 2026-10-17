@@ -79,6 +79,9 @@ le web, le mobile et le tableau de bord affichent ce résultat.
   téléphone, e-mail, site, N° contribuable, RCCM, logo, mentions de bas de
   page). Modifiable à tout moment par un administrateur : les factures
   téléchargées ensuite utilisent les nouvelles informations.
+- **Coordonnées du prestataire** (contact, adresse, téléphone, e-mail,
+  N° contribuable, RCCM) : fiche prestataire, Paramètres → Prestataires.
+  Elles figurent aussi sur la facture PDF.
 
 ---
 

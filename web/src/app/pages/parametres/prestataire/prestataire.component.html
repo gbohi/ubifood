@@ -223,6 +223,45 @@
             </div>
           </div>
 
+          <!-- ── Coordonnées (facture PDF) ─────────────────── -->
+          <h6 class="text-muted text-uppercase mb-2 small">
+            <i class="ph-address-book me-1"></i>Coordonnées
+            <small class="text-lowercase fw-normal">(facultatives — affichées sur la facture PDF)</small>
+          </h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label">Personne à contacter</label>
+              <input type="text" class="form-control" formControlName="contact_nom">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Ville</label>
+              <input type="text" class="form-control" formControlName="ville">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Adresse</label>
+              <textarea class="form-control" rows="2" formControlName="adresse"></textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Téléphone</label>
+              <input type="text" class="form-control" formControlName="telephone">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">E-mail</label>
+              <input type="email" class="form-control" formControlName="email">
+              @if (f['email'].invalid && (f['email'].touched || submitted)) {
+                <div class="text-danger mt-1"><small>Adresse e-mail invalide</small></div>
+              }
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">N° compte contribuable</label>
+              <input type="text" class="form-control" formControlName="identifiant_fiscal">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">RCCM</label>
+              <input type="text" class="form-control" formControlName="registre_commerce">
+            </div>
+          </div>
+
           <!-- ── Tableau Tarifs (PlatPrestataire) ──────────── -->
           <div class="d-flex align-items-center justify-content-between mb-2">
             <h6 class="text-muted text-uppercase mb-0 small">
