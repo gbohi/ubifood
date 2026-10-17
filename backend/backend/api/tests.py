@@ -294,3 +294,118 @@ class MotDePasseOublieTests(BaseAPITestCase):
             client.post(f'{API}/users/verify-code/', {'username': 'emp1', 'code': faux})
         r = client.post(f'{API}/users/verify-code/', {'username': 'emp1', 'code': code})
         self.assertEqual(r.status_code, 400)
+
+
+class FacturationTests(BaseAPITestCase):
+    """Règle : repas commandés et non annulés, tarif / catégorie à la date du menu."""
+
+    def setUp(self):
+        from datetime import date, datetime
+        tz = timezone.get_current_timezone()
+        self.d = lambda s: datetime.fromisoformat(s).replace(tzinfo=tz)
+        self.cadre  = Categoriesalarie.objects.create(libelle='Cadre')
+        self.agent  = Categoriesalarie.objects.create(libelle='Agent')
+        # Tarif Cadre : 1000 en août, 1500 à partir du 16/08
+        PlatCategoriesalarie.objects.create(categoriesalarie=self.cadre, montant=Decimal('1000'),
+                                            statut=self.statut, date_debut=self.d('2026-01-01'),
+                                            date_fin=self.d('2026-08-15'))
+        PlatCategoriesalarie.objects.create(categoriesalarie=self.cadre, montant=Decimal('1500'),
+                                            statut=self.statut, date_debut=self.d('2026-08-16'))
+        PlatCategoriesalarie.objects.create(categoriesalarie=self.agent, montant=Decimal('500'),
+                                            statut=self.statut, date_debut=self.d('2026-01-01'))
+        # emp1 : Agent jusqu'au 10/08, Cadre ensuite
+        UserCategoriesalarie.objects.create(user=self.employe, categoriesalarie=self.agent,
+                                            statut=self.statut, date_debut=self.d('2026-01-01'),
+                                            date_fin=self.d('2026-08-10'))
+        UserCategoriesalarie.objects.create(user=self.employe, categoriesalarie=self.cadre,
+                                            statut=self.statut, date_debut=self.d('2026-08-11'))
+        self.date = date
+
+    def commander(self, user, jour, statut='en_attente', plat=None):
+        menu, _ = Menu.objects.get_or_create(date_menu=jour, agence=self.agence,
+                                             typeequipe=self.typeequipe)
+        MenuPlat.objects.get_or_create(menu=menu, plat=plat or self.plat1)
+        return Commande.objects.create(user=user, menu=menu, plat=plat or self.plat1, statut=statut)
+
+    def facturation(self, qui, **params):
+        params.setdefault('date_debut', '2026-08-01')
+        params.setdefault('date_fin', '2026-08-31')
+        r = self.client_pour(qui).get(f"{API}/facturation/", params)
+        self.assertEqual(r.status_code, 200, r.data)
+        return r.data
+
+    def test_regle_et_tarif_a_la_date_du_menu(self):
+        d = self.date
+        self.commander(self.employe, d(2026, 8, 5))                      # Agent : 500
+        self.commander(self.employe, d(2026, 8, 12), statut='retiree')   # Cadre, avant hausse : 1000
+        self.commander(self.employe, d(2026, 8, 20))                     # Cadre, après hausse : 1500
+        self.commander(self.employe, d(2026, 8, 25), statut='annulee')   # annulée : non facturée
+
+        data = self.facturation(self.employe)
+        emp = data['employes'][0]
+        self.assertEqual(emp['nb_repas'], 3)
+        self.assertEqual(emp['total'], 3000.0)
+        self.assertEqual([l['montant'] for l in emp['lignes']], [500.0, 1000.0, 1500.0])
+        self.assertEqual(emp['etat'], 'provisoire')
+
+    def test_employe_ne_voit_que_sa_facturation(self):
+        self.commander(self.employe, self.date(2026, 8, 5))
+        self.commander(self.employe2, self.date(2026, 8, 5))
+        data = self.facturation(self.employe, user=self.employe2.id)
+        self.assertEqual([e['username'] for e in data['employes']], ['emp1'])
+        data = self.facturation(self.gestionnaire)
+        self.assertEqual({e['username'] for e in data['employes']}, {'emp1', 'emp2'})
+        self.assertEqual(data['repas_sans_tarif'], 1)   # emp2 n'a pas de catégorie
+
+    def test_cloture_fige_les_montants(self):
+        self.commander(self.employe, self.date(2026, 8, 20))
+        admin = self.client_pour(self.admin)
+
+        # Gestionnaire : pas le droit de clôturer
+        r = self.client_pour(self.gestionnaire).post(f'{API}/facturation/clotures/cloturer/',
+                                                     {'annee': 2026, 'mois': 8})
+        self.assertEqual(r.status_code, 403)
+
+        r = admin.post(f'{API}/facturation/clotures/cloturer/', {'annee': 2026, 'mois': 8})
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(float(r.data['montant_total']), 1500.0)
+
+        # Hausse de tarif après clôture : sans effet sur le mois clôturé
+        PlatCategoriesalarie.objects.filter(categoriesalarie=self.cadre).update(montant=Decimal('9999'))
+        emp = self.facturation(self.employe)['employes'][0]
+        self.assertEqual(emp['total'], 1500.0)
+        self.assertEqual(emp['etat'], 'cloturee')
+
+        # Double clôture refusée
+        r = admin.post(f'{API}/facturation/clotures/cloturer/', {'annee': 2026, 'mois': 8})
+        self.assertEqual(r.status_code, 400)
+
+        # Facture visible par l'employé, pas par un autre
+        r = self.client_pour(self.employe).get(f'{API}/factures/')
+        self.assertEqual(r.data['count'], 1)
+        self.assertEqual(len(r.data['results'][0]['lignes']), 1)
+        self.assertEqual(self.client_pour(self.employe2).get(f'{API}/factures/').data['count'], 0)
+
+        # Commande d'un mois clôturé non modifiable, agent non supprimable
+        cmd = Commande.objects.get(user=self.employe)
+        self.assertEqual(admin.delete(f'{API}/commandes/{cmd.id}/').status_code, 403)
+        self.assertEqual(admin.delete(f'{API}/users/{self.employe.id}/').status_code, 403)
+
+    def test_cloture_refusee(self):
+        admin = self.client_pour(self.admin)
+        today = timezone.localdate()
+        r = admin.post(f'{API}/facturation/clotures/cloturer/', {'annee': today.year, 'mois': today.month})
+        self.assertEqual(r.status_code, 400)          # mois en cours
+
+        self.commander(self.employe2, self.date(2026, 8, 5))   # emp2 sans catégorie
+        r = admin.post(f'{API}/facturation/clotures/cloturer/', {'annee': 2026, 'mois': 8})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('emp2', r.data['details'][0])
+
+    def test_tableau_de_bord_meme_regle(self):
+        self.commander(self.employe, self.date(2026, 8, 20))                     # 1500
+        self.commander(self.employe, self.date(2026, 8, 21), statut='retiree')   # 1500
+        self.commander(self.employe, self.date(2026, 8, 22), statut='annulee')
+        r = self.client_pour(self.gestionnaire).get(
+            f'{API}/dashboard-cantine/', {'date_debut': '2026-08-01', 'date_fin': '2026-08-31'})
+        self.assertEqual(r.data['fact_employe']['total_montant'], 3000.0)

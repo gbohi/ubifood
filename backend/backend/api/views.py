@@ -43,6 +43,7 @@ from io import BytesIO
 from django.http import FileResponse
 
 from .serializers import nom_complet, validate_password_custom
+from . import facturation as fact
 
 
 # ============================================================
@@ -251,6 +252,9 @@ class UserViewSet(BaseViewSet):
         if instance.pk == self.request.user.pk:
             raise PermissionDenied("Vous ne pouvez pas supprimer votre propre compte.")
         _verifier_peut_gerer(self.request, instance)
+        if instance.factures_mensuelles.exists():
+            raise PermissionDenied(
+                "Cet agent a des factures clôturées : désactivez le compte au lieu de le supprimer.")
         instance.delete()
 
     @action(detail=False, methods=['delete'], permission_classes=[IsAdminRole])
@@ -269,6 +273,10 @@ class UserViewSet(BaseViewSet):
         users = User.objects.filter(id__in=ids)
         for user in users:
             _verifier_peut_gerer(request, user)
+        if users.filter(factures_mensuelles__isnull=False).exists():
+            return Response(
+                {"error": "Certains agents ont des factures clôturées : désactivez-les au lieu de les supprimer."},
+                status=status.HTTP_400_BAD_REQUEST)
         deleted_count, _ = users.delete()
         return Response({
             "message": f"{deleted_count} élément(s) supprimé(s) avec succès",
@@ -1206,6 +1214,22 @@ class CommandeViewSet(BaseViewSet):
             return [IsAdminRole()]
         return super().get_permissions()
 
+    @staticmethod
+    def _verifier_non_facturee(commande):
+        """Une commande d'un mois clôturé est figée (facture déjà émise)."""
+        d = commande.menu.date_menu
+        if ClotureMensuelle.objects.filter(annee=d.year, mois=d.month).exists():
+            raise PermissionDenied(
+                f"Le mois {d.month:02d}/{d.year} est clôturé : cette commande ne peut plus être modifiée.")
+
+    def perform_update(self, serializer):
+        self._verifier_non_facturee(serializer.instance)
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        self._verifier_non_facturee(instance)
+        instance.delete()
+
     def _base_queryset(self):
         return (
             Commande.objects
@@ -1262,6 +1286,7 @@ class CommandeViewSet(BaseViewSet):
     @action(detail=True, methods=['patch'], url_path='annuler')
     def annuler(self, request, pk=None):
         commande   = self.get_object()
+        self._verifier_non_facturee(commande)
         serializer = CommandeAnnulationSerializer(
             commande, data={}, partial=True, context={'request': request}
         )
@@ -1569,25 +1594,14 @@ class DashboardCantineView(APIView):
         # Si aucune agence n'a de prestataire rattaché, on retombe sur
         # l'ancien comportement : le tarif prestataire actif le plus récent.
         #
-        # Employé : catégorie salarié active de l'agent à la date du menu
-        # (UserCategoriesalarie), puis tarif de cette catégorie (PlatCategoriesalarie).
+        # Employé : calcul unique de api/facturation.py (voir plus bas).
         # ════════════════════════════════════════════════════
         commandes_retirees = list(
             commande_qs.filter(statut='retiree')
             .select_related('menu__agence')
         )
 
-        def jour(dt):
-            return timezone.localtime(dt).date() if timezone.is_aware(dt) else dt.date()
-
-        def ligne_active(lignes, d):
-            """Ligne dont la période couvre la date d (la plus récente si plusieurs)."""
-            meilleure = None
-            for l in lignes:
-                if jour(l.date_debut) <= d and (l.date_fin is None or jour(l.date_fin) >= d):
-                    if meilleure is None or l.date_debut > meilleure.date_debut:
-                        meilleure = l
-            return meilleure
+        ligne_active = fact.ligne_active
 
         tarifs_prest = defaultdict(list)
         for pp in PlatPrestataire.objects.select_related('prestataire'):
@@ -1645,40 +1659,27 @@ class DashboardCantineView(APIView):
             ],
         }
 
-        user_ids = {cmd.user_id for cmd in commandes_retirees}
-        cats_par_user = defaultdict(list)
-        for uc in UserCategoriesalarie.objects.filter(user_id__in=user_ids).select_related('categoriesalarie'):
-            cats_par_user[uc.user_id].append(uc)
-        tarifs_cat = defaultdict(list)
-        for pc in PlatCategoriesalarie.objects.all():
-            tarifs_cat[pc.categoriesalarie_id].append(pc)
-
+        # Facturation employé : même calcul que /facturation/ (api/facturation.py) —
+        # repas commandés et non annulés, montants figés pour les mois clôturés.
         total_montant_employe   = Decimal('0.00')
         fact_emp_par_mois       = {i: Decimal('0.00') for i in range(1, 13)}
         fact_emp_par_agence     = {}
         fact_emp_par_categorie  = {}
 
-        for cmd in commandes_retirees:
-            date_menu = cmd.menu.date_menu
-
-            user_cat = ligne_active(cats_par_user.get(cmd.user_id, []), date_menu)
-            if not user_cat:
+        for l in fact.lignes_facturation(commande_qs):
+            if l['montant'] is None:
                 continue
-            pc = ligne_active(tarifs_cat.get(user_cat.categoriesalarie_id, []), date_menu)
-            if not pc:
-                continue
-
-            montant = pc.montant or Decimal('0.00')
+            montant = l['montant']
             total_montant_employe += montant
-            fact_emp_par_mois[date_menu.month] += montant
+            fact_emp_par_mois[l['date_menu'].month] += montant
 
-            agence_nom = cmd.menu.agence.nom_agence
+            agence_nom = l['agence_menu']
             ligne = fact_emp_par_agence.setdefault(
                 agence_nom, {'agence': agence_nom, 'montant': Decimal('0.00'), 'nb_commandes': 0})
             ligne['montant']      += montant
             ligne['nb_commandes'] += 1
 
-            cat_lib = user_cat.categoriesalarie.libelle
+            cat_lib = l['categorie'] or '—'
             ligne = fact_emp_par_categorie.setdefault(
                 cat_lib, {'categorie': cat_lib, 'montant': Decimal('0.00'), 'nb_commandes': 0})
             ligne['montant']      += montant
@@ -2639,3 +2640,145 @@ class NotificationBulkView(APIView):
     def delete(self, request):
         count, _ = Notification.objects.filter(user=request.user).delete()
         return Response({'message': f'{count} notification(s) supprimée(s).'})
+
+
+# ══════════════════════════════════════════════════════════════
+# FACTURATION DES EMPLOYÉS (calcul unique : api/facturation.py)
+# ══════════════════════════════════════════════════════════════
+
+
+def _parse_date(valeur, defaut):
+    from datetime import date as date_type
+    if not valeur:
+        return defaut
+    try:
+        return date_type.fromisoformat(valeur)
+    except ValueError:
+        raise ValidationError(f"Date invalide : {valeur} (format AAAA-MM-JJ)")
+
+
+def _ligne_json(l):
+    return {
+        'commande_id': l['commande_id'],
+        'date_menu':   l['date_menu'].isoformat(),
+        'plat':        l['plat'],
+        'agence_menu': l['agence_menu'],
+        'equipe':      l['equipe'],
+        'statut':      l['statut'],
+        'categorie':   l['categorie'],
+        'montant':     float(l['montant']) if l['montant'] is not None else None,
+        'source':      l['source'],   # 'facture' (mois clôturé, figé) ou 'calcul'
+    }
+
+
+class FacturationView(APIView):
+    """
+    GET /api/api/facturation/?date_debut=AAAA-MM-JJ&date_fin=AAAA-MM-JJ
+                              [&agence=ID&typeequipe=ID&user=ID]
+
+    Facturation des repas sur une période (par défaut : le mois en cours).
+    Employé : uniquement ses propres repas. Gestionnaire / admin : tous.
+    Mois clôturés → montants figés ; autres mois → calcul provisoire.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        aujourdhui = timezone.localdate()
+        debut_defaut, fin_defaut = fact.bornes_mois(aujourdhui.year, aujourdhui.month)
+        debut = _parse_date(request.query_params.get('date_debut'), debut_defaut)
+        fin   = _parse_date(request.query_params.get('date_fin'), fin_defaut)
+
+        qs = Commande.objects.filter(menu__date_menu__gte=debut, menu__date_menu__lte=fin)
+        if is_gestionnaire(request.user):
+            for param, champ in (('user', 'user_id'), ('agence', 'menu__agence_id'),
+                                 ('typeequipe', 'menu__typeequipe_id')):
+                valeur = request.query_params.get(param)
+                if valeur:
+                    if not str(valeur).isdigit():
+                        raise ValidationError(f"Paramètre {param} invalide.")
+                    qs = qs.filter(**{champ: int(valeur)})
+        else:
+            qs = qs.filter(user=request.user)
+
+        employes = fact.synthese_par_employe(fact.lignes_facturation(qs))
+
+        # Infos d'affichage (agence, service, poste de l'agent) en une requête
+        infos = {
+            u.id: u for u in UserViewSet._prefetch(
+                User.objects.filter(id__in=[e['user_id'] for e in employes]))
+        }
+
+        def derniere(lignes, champ):
+            if not lignes:
+                return None
+            return getattr(max(lignes, key=lambda x: x.date_debut), champ)
+
+        resultat = []
+        for e in employes:
+            u = infos.get(e['user_id'])
+            resultat.append({
+                **{k: v for k, v in e.items() if k not in ('lignes', 'total', 'tarif_unitaire')},
+                'total':          float(e['total']),
+                'tarif_unitaire': float(e['tarif_unitaire']) if e['tarif_unitaire'] is not None else None,
+                'agence_agent':   getattr(derniere(list(u.useragence_set.all()), 'agence'), 'nom_agence', None) if u else None,
+                'service':        getattr(derniere(list(u.userservice_set.all()), 'service'), 'libelle_service', None) if u else None,
+                'poste':          getattr(derniere(list(u.userposte_set.all()), 'poste'), 'libelle', None) if u else None,
+                'lignes':         [_ligne_json(l) for l in e['lignes']],
+            })
+
+        return Response({
+            'regle':            fact.REGLE,
+            'date_debut':       debut.isoformat(),
+            'date_fin':         fin.isoformat(),
+            'total_repas':      sum(e['nb_repas'] for e in employes),
+            'total_montant':    float(sum((e['total'] for e in employes), Decimal('0'))),
+            'repas_sans_tarif': sum(e['repas_sans_tarif'] for e in employes),
+            'employes':         resultat,
+        })
+
+
+class ClotureMensuelleViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    GET  /api/api/facturation/clotures/            liste des mois clôturés (gestionnaires)
+    POST /api/api/facturation/clotures/cloturer/   { "annee": 2026, "mois": 9 }  (admins)
+    """
+    queryset = ClotureMensuelle.objects.select_related('cloturee_par').all()
+    serializer_class = ClotureMensuelleSerializer
+    permission_classes = [IsGestionnaireRole]
+    pagination_class = None
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminRole])
+    def cloturer(self, request):
+        try:
+            annee = int(request.data.get('annee'))
+            mois  = int(request.data.get('mois'))
+            if not 1 <= mois <= 12:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({'error': 'Paramètres annee et mois (1-12) requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            cloture = fact.cloturer_mois(annee, mois, request.user)
+        except fact.ClotureImpossible as e:
+            return Response({'error': str(e), 'details': e.details},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(ClotureMensuelleSerializer(cloture).data, status=status.HTTP_201_CREATED)
+
+
+class FactureMensuelleViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    GET /api/api/factures/?annee=&mois=&user=   factures figées
+    Employé : ses factures. Gestionnaire / admin : toutes.
+    """
+    serializer_class = FactureMensuelleSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['annee', 'mois', 'user']
+
+    def get_queryset(self):
+        qs = (FactureMensuelle.objects
+              .select_related('user', 'cloture')
+              .prefetch_related('lignes'))
+        if is_gestionnaire(self.request.user):
+            return qs
+        return qs.filter(user=self.request.user)

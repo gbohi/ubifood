@@ -403,3 +403,67 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"[{self.type}] {self.user.username} — {self.titre}"
+
+
+# ============================================================
+# FACTURATION MENSUELLE FIGÉE
+# Calcul : api/facturation.py. Une fois un mois clôturé, ses montants
+# ne dépendent plus des tarifs / catégories (modifiables ensuite).
+# ============================================================
+
+class ClotureMensuelle(models.Model):
+    """Clôture de la facturation d'un mois (une seule par mois)."""
+    annee         = models.PositiveSmallIntegerField()
+    mois          = models.PositiveSmallIntegerField()
+    cloturee_le   = models.DateTimeField(auto_now_add=True)
+    cloturee_par  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,
+                                      related_name='clotures_facturation')
+    nb_factures   = models.PositiveIntegerField(default=0)
+    nb_repas      = models.PositiveIntegerField(default=0)
+    montant_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    class Meta:
+        db_table = 'clotures_mensuelles'
+        unique_together = ('annee', 'mois')
+        ordering = ['-annee', '-mois']
+
+    def __str__(self):
+        return f"Clôture {self.mois:02d}/{self.annee}"
+
+
+class FactureMensuelle(models.Model):
+    """Facture figée d'un agent pour un mois clôturé."""
+    cloture           = models.ForeignKey(ClotureMensuelle, on_delete=models.PROTECT,
+                                          related_name='factures')
+    user              = models.ForeignKey(User, on_delete=models.PROTECT,
+                                          related_name='factures_mensuelles')
+    annee             = models.PositiveSmallIntegerField()
+    mois              = models.PositiveSmallIntegerField()
+    categorie_libelle = models.CharField(max_length=100, blank=True)
+    nb_repas          = models.PositiveIntegerField()
+    montant_total     = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        db_table = 'factures_mensuelles'
+        unique_together = ('user', 'annee', 'mois')
+        ordering = ['-annee', '-mois', 'user__username']
+
+    def __str__(self):
+        return f"Facture {self.user.username} {self.mois:02d}/{self.annee}"
+
+
+class LigneFacture(models.Model):
+    """Un repas facturé, avec les valeurs figées au moment de la clôture."""
+    facture           = models.ForeignKey(FactureMensuelle, on_delete=models.CASCADE,
+                                          related_name='lignes')
+    commande          = models.OneToOneField(Commande, on_delete=models.SET_NULL, null=True,
+                                             related_name='ligne_facture')
+    date_menu         = models.DateField()
+    plat_nom          = models.CharField(max_length=255)
+    agence_nom        = models.CharField(max_length=255, blank=True)
+    categorie_libelle = models.CharField(max_length=100, blank=True)
+    montant           = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        db_table = 'lignes_facture'
+        ordering = ['date_menu']

@@ -62,6 +62,10 @@ router.register(r'user-postes',            UserPosteViewSet)
 router.register(r'user-categoriesalaries', UserCategoriesalarieViewSet)
 router.register(r'user-allergies',         UserAllergieViewSet, basename='userallergie')
 
+# Facturation mensuelle figée
+router.register(r'facturation/clotures', ClotureMensuelleViewSet, basename='cloture-mensuelle')
+router.register(r'factures',             FactureMensuelleViewSet, basename='facture-mensuelle')
+
 urlpatterns = [
     path('api/', include(router.urls)),
     path('api/token/', ThrottledTokenObtainPairView.as_view(), name='token_obtain_pair'),
@@ -96,6 +100,7 @@ urlpatterns = [
     path('api/allnopagin/groups/', GroupListAPIView.as_view(), name='allnopagin-group-list'),
     path('api/allnopagin/users/', AllUserNopginListAPIView.as_view(), name='allnopagin-user-list'),
     path('api/dashboard-cantine/', DashboardCantineView.as_view(), name='dashboard-cantine'),
+    path('api/facturation/', FacturationView.as_view(), name='facturation'),
     path('api/allnopagin/plats/', AllPlatNopginListAPIView.as_view(), name='allnopagin-plat-list'),
     path('api/allnopagin/prestataires/', AllPrestataireNopginListAPIView.as_view(), name='allnopagin-prestataire-list'),
     path('api/allnopagin/entretienvehicules/', AllEntretienVehiculeNopginListAPIView.as_view(), name='allnopagin-entretienvehicule-list'),

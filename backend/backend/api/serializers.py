@@ -998,3 +998,41 @@ class CompteComptableSerializer(serializers.ModelSerializer):
 
     def get_poste_libelle(self, obj):
         return obj.postereporting.libelle if obj.postereporting else None
+
+
+# ============================================================
+# FACTURATION MENSUELLE FIGÉE
+# ============================================================
+
+class LigneFactureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = LigneFacture
+        fields = ['id', 'commande', 'date_menu', 'plat_nom', 'agence_nom',
+                  'categorie_libelle', 'montant']
+
+
+class FactureMensuelleSerializer(serializers.ModelSerializer):
+    username   = serializers.ReadOnlyField(source='user.username')
+    nom_prenom = serializers.SerializerMethodField()
+    lignes     = LigneFactureSerializer(many=True, read_only=True)
+    cloturee_le = serializers.ReadOnlyField(source='cloture.cloturee_le')
+
+    class Meta:
+        model  = FactureMensuelle
+        fields = ['id', 'user', 'username', 'nom_prenom', 'annee', 'mois',
+                  'categorie_libelle', 'nb_repas', 'montant_total', 'cloturee_le', 'lignes']
+
+    def get_nom_prenom(self, obj):
+        return nom_complet(obj.user)
+
+
+class ClotureMensuelleSerializer(serializers.ModelSerializer):
+    cloturee_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = ClotureMensuelle
+        fields = ['id', 'annee', 'mois', 'cloturee_le', 'cloturee_par', 'cloturee_par_nom',
+                  'nb_factures', 'nb_repas', 'montant_total']
+
+    def get_cloturee_par_nom(self, obj):
+        return nom_complet(obj.cloturee_par) if obj.cloturee_par else None
