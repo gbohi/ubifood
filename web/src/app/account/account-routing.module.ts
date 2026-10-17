@@ -3,11 +3,13 @@ import { Routes, RouterModule } from '@angular/router';
 
 // Component
 import { LoginComponent } from './login/login.component';
+import { MotDePasseOublieComponent } from './mot-de-passe-oublie/mot-de-passe-oublie.component';
 import { SignalerUneAnomalieComponent } from './signaler-une-anomalie/signaler-une-anomalie.component';
 
 const routes: Routes = [
   {
-    path: 'auth', loadChildren: () => import('./auth/auth.module').then(m => m.AuthModule)
+    path: 'mot-de-passe-oublie',
+    component: MotDePasseOublieComponent
   },
   {
     path: 'login',

@@ -82,6 +82,19 @@ export class UserService {
     return this.http.patch<any>(`${this.apiUrl}/users/${id}/changer-mot-de-passe/`, body);
   }
 
+  // ── Mot de passe oublié (public, code par SMS) ───────────
+  demanderCodeReinitialisation(username: string): Observable<{ message: string; contact_masque?: string }> {
+    return this.http.post<any>(`${this.apiUrl}/users/forgot-password/`, { username });
+  }
+
+  verifierCodeReinitialisation(username: string, code: string): Observable<{ reset_token: string }> {
+    return this.http.post<any>(`${this.apiUrl}/users/verify-code/`, { username, code });
+  }
+
+  reinitialiserMotDePasse(username: string, reset_token: string, password: string): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/users/reset-password/`, { username, reset_token, password });
+  }
+
   // ── Pagination info ───────────────────────────────────────
   getCurrentPageInfo(): Observable<{
     currentPage:  number;

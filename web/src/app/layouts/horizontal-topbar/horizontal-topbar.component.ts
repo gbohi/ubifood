@@ -23,7 +23,7 @@ export class HorizontalTopbarComponent {
   @Output() mobileMenuButtonClicked = new EventEmitter();
 
   constructor(private router: Router, public translate: TranslateService, private renderer: Renderer2, private elementRef: ElementRef, private tokenStorage: TokenStorageService) {
-    translate.setDefaultLang('en');
+    translate.setDefaultLang('fr');
   }
 
   ngOnInit(): void {

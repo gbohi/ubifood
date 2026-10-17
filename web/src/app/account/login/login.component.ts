@@ -1,4 +1,4 @@
-// src/app/account/auth/login/login.component.ts
+// src/app/account/login/login.component.ts
 import { Component, OnInit, DestroyRef, inject } from '@angular/core';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';

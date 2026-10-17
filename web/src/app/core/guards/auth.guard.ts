@@ -16,18 +16,7 @@ export class AuthGuard {
       return true;
     }
 
-    /**
-     * CORRIGÉ : '/login' → '/auth/login'
-     *
-     * Dans app-routing.module.ts, AccountModule est chargé sous '/auth'.
-     * AccountRoutingModule définit 'login' → LoginComponent.
-     * La route complète est donc '/auth/login'.
-     *
-     * Résumé des routes disponibles :
-     *   /auth/login          → LoginComponent
-     *   /auth/auth/signin    → SigninComponent  (template Themeforest)
-     *   /auth/auth/pass-reset → PassResetComponent
-     */
+    // Page de connexion : /auth/login (AccountModule est chargé sous /auth)
     this.router.navigate(['/auth/login'], {
       queryParams: { returnUrl: state.url }
     });

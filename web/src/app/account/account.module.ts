@@ -9,10 +9,10 @@ import { DropzoneConfigInterface } from 'ngx-dropzone-wrapper';
 
 // Page Route
 import { AccountRoutingModule } from './account-routing.module';
-import { AuthModule } from './auth/auth.module';
 
 // Component
 import { LoginComponent } from './login/login.component';
+import { MotDePasseOublieComponent } from './mot-de-passe-oublie/mot-de-passe-oublie.component';
 import { SignalerUneAnomalieComponent } from './signaler-une-anomalie/signaler-une-anomalie.component';
 
 const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
@@ -25,12 +25,12 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
 @NgModule({
   declarations: [
     LoginComponent,
+    MotDePasseOublieComponent,
     SignalerUneAnomalieComponent
   ],
   imports: [
     CommonModule,
     AccountRoutingModule,
-    AuthModule,
     FormsModule,
     ReactiveFormsModule,
     DropzoneModule,

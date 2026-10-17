@@ -20,7 +20,7 @@ export class TwoColumnSidebarComponent {
   @Output() mobileMenuButtonClicked = new EventEmitter();
 
   constructor(private router: Router, public translate: TranslateService, private tokenStorage: TokenStorageService) {
-    translate.setDefaultLang('en');
+    translate.setDefaultLang('fr');
   }
 
   ngOnInit(): void {

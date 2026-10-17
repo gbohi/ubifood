@@ -5,22 +5,14 @@ import { CookieService } from 'ngx-cookie-service';
 @Injectable({ providedIn: 'root' })
 export class LanguageService {
 
-  public languages: string[] = ['ar','ch','en','fr', 'gr', 'it', 'ru', 'sp'];
+  // L'application n'est traduite qu'en français (assets/i18n/fr.json) :
+  // les autres fichiers de langue du modèle ne contiennent pas les menus Ubifood.
+  public languages: string[] = ['fr'];
 
   constructor(public translate: TranslateService, private cookieService: CookieService) {
-
-    let browserLang: any;
-    /***
-     * cookie Language Get
-    */
     this.translate.addLangs(this.languages);
-    if (this.cookieService.check('lang')) {
-      browserLang = this.cookieService.get('lang');
-    }
-    else {
-      browserLang = translate.getBrowserLang();
-    }
-    translate.use(browserLang.match(/ar|ch|en|fr|gr|it|ru|sp/) ? browserLang : 'en');
+    this.translate.setDefaultLang('fr');
+    this.translate.use('fr');
   }
 
   /***

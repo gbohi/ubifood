@@ -1,0 +1,129 @@
+<!-- src/app/account/mot-de-passe-oublie/mot-de-passe-oublie.component.html -->
+<section class="auth-page-wrapper py-5 position-relative d-flex align-items-center justify-content-center min-vh-100">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-4">
+                <div class="card mb-0">
+                    <div class="card-body p-sm-1 m-lg-4">
+
+                        <div class="text-center mt-2">
+                            <img src="assets/images/logo_ubipharmci.png" alt="Logo ubifood" width="200">
+                            <h5 class="fs-3xl mt-2">Mot de passe oublié</h5>
+                            <p class="text-muted">
+                                @switch (etape) {
+                                    @case ('matricule') { Saisissez votre matricule : un code vous sera envoyé par SMS. }
+                                    @case ('code') { Saisissez le code à 6 chiffres reçu par SMS (valable 10 minutes). }
+                                    @case ('mdp') { Choisissez votre nouveau mot de passe. }
+                                    @case ('termine') { Votre mot de passe a été modifié. }
+                                }
+                            </p>
+                        </div>
+
+                        <div class="p-2 mt-3">
+
+                            @if (errorMessage) {
+                                <div class="alert alert-danger d-flex align-items-center gap-2 py-2 mb-3" role="alert">
+                                    <i class="ri-error-warning-fill fs-lg flex-shrink-0"></i>
+                                    <span>{{ errorMessage }}</span>
+                                </div>
+                            }
+                            @if (infoMessage) {
+                                <div class="alert alert-info py-2 mb-3" role="status">{{ infoMessage }}</div>
+                            }
+
+                            <!-- Étape 1 : matricule -->
+                            @if (etape === 'matricule') {
+                                <form [formGroup]="matriculeForm" (ngSubmit)="demanderCode()" novalidate>
+                                    <div class="mb-3">
+                                        <label for="username" class="form-label">Matricule <span class="text-danger">*</span></label>
+                                        <input type="text" id="username" class="form-control" formControlName="username"
+                                               autocomplete="username" placeholder="Votre matricule"
+                                               [ngClass]="{ 'is-invalid': matriculeForm.get('username')?.touched && matriculeForm.get('username')?.invalid }">
+                                        <div class="invalid-feedback">Le matricule est requis</div>
+                                    </div>
+                                    <button class="btn btn-primary w-100" type="submit" [disabled]="isLoading">
+                                        @if (isLoading) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                                        Recevoir un code
+                                    </button>
+                                </form>
+                            }
+
+                            <!-- Étape 2 : code SMS -->
+                            @if (etape === 'code') {
+                                <form [formGroup]="codeForm" (ngSubmit)="verifierCode()" novalidate>
+                                    <div class="mb-3">
+                                        <label for="code" class="form-label">Code reçu <span class="text-danger">*</span></label>
+                                        <input type="text" id="code" class="form-control text-center fs-lg" formControlName="code"
+                                               inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"
+                                               [ngClass]="{ 'is-invalid': codeForm.get('code')?.touched && codeForm.get('code')?.invalid }">
+                                        <div class="invalid-feedback">Le code comporte 6 chiffres</div>
+                                    </div>
+                                    <button class="btn btn-primary w-100" type="submit" [disabled]="isLoading">
+                                        @if (isLoading) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                                        Vérifier le code
+                                    </button>
+                                    <div class="text-center mt-3">
+                                        <a href="javascript:void(0)" class="text-muted" (click)="demanderCode()">Renvoyer un code</a>
+                                        <span class="text-muted mx-2">·</span>
+                                        <a href="javascript:void(0)" class="text-muted" (click)="recommencer()">Changer de matricule</a>
+                                    </div>
+                                </form>
+                            }
+
+                            <!-- Étape 3 : nouveau mot de passe -->
+                            @if (etape === 'mdp') {
+                                <form [formGroup]="mdpForm" (ngSubmit)="reinitialiser()" novalidate>
+                                    <div class="mb-3">
+                                        <label for="password" class="form-label">Nouveau mot de passe <span class="text-danger">*</span></label>
+                                        <div class="position-relative auth-pass-inputgroup">
+                                            <input [type]="fieldTextType ? 'text' : 'password'" id="password"
+                                                   class="form-control pe-5" formControlName="password" autocomplete="new-password"
+                                                   [ngClass]="{ 'is-invalid': mdpForm.get('password')?.touched && mdpForm.get('password')?.invalid }">
+                                            <button class="btn btn-link position-absolute end-0 top-0 text-decoration-none text-muted"
+                                                    type="button" (click)="fieldTextType = !fieldTextType">
+                                                <i class="align-middle" [ngClass]="fieldTextType ? 'ri-eye-off-fill' : 'ri-eye-fill'"></i>
+                                            </button>
+                                        </div>
+                                        <ul class="list-unstyled fs-sm mt-2 mb-0">
+                                            @for (r of regles; track r.cle) {
+                                                <li [class.text-success]="regleOk(r.test)" [class.text-muted]="!regleOk(r.test)">
+                                                    <i [ngClass]="regleOk(r.test) ? 'ri-check-line' : 'ri-close-line'"></i> {{ r.libelle }}
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="password2" class="form-label">Confirmer le mot de passe <span class="text-danger">*</span></label>
+                                        <input [type]="fieldTextType ? 'text' : 'password'" id="password2"
+                                               class="form-control" formControlName="password2" autocomplete="new-password"
+                                               [ngClass]="{ 'is-invalid': mdpForm.get('password2')?.touched && mdpForm.hasError('different') }">
+                                        <div class="invalid-feedback">Les deux mots de passe sont différents</div>
+                                    </div>
+                                    <button class="btn btn-primary w-100" type="submit" [disabled]="isLoading">
+                                        @if (isLoading) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                                        Enregistrer le mot de passe
+                                    </button>
+                                </form>
+                            }
+
+                            <!-- Terminé -->
+                            @if (etape === 'termine') {
+                                <div class="alert alert-success mb-3" role="status">
+                                    Mot de passe réinitialisé. Vous pouvez vous connecter avec votre nouveau mot de passe.
+                                </div>
+                                <a routerLink="/auth/login" class="btn btn-primary w-100">Se connecter</a>
+                            }
+
+                            @if (etape !== 'termine') {
+                                <div class="text-center mt-4">
+                                    <a routerLink="/auth/login" class="text-muted"><i class="ri-arrow-left-line align-middle"></i> Retour à la connexion</a>
+                                </div>
+                            }
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
