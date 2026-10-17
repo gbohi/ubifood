@@ -2841,7 +2841,10 @@ class FacturationPrestataireView(APIView):
 
 
 class FacturePrestataireViewSet(viewsets.ReadOnlyModelViewSet):
-    """GET /api/api/factures-prestataires/?annee=&mois=&prestataire=  (gestionnaires)"""
+    """
+    GET /api/api/factures-prestataires/?annee=&mois=&prestataire=   (gestionnaires)
+    GET /api/api/factures-prestataires/{id}/pdf/                     facture PDF officielle
+    """
     serializer_class = FacturePrestataireSerializer
     permission_classes = [IsGestionnaireRole]
     filter_backends = [DjangoFilterBackend]
@@ -2849,3 +2852,36 @@ class FacturePrestataireViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = (FacturePrestataire.objects
                 .select_related('cloture', 'prestataire')
                 .prefetch_related('lignes__user'))
+
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        from .pdf_factures import generer_facture_prestataire
+        facture = self.get_object()
+        contenu = generer_facture_prestataire(facture, ParametresSociete.charger())
+        nom = f"facture-{facture.numero or facture.id}.pdf"
+        reponse = FileResponse(BytesIO(contenu), content_type='application/pdf',
+                               as_attachment=True, filename=nom)
+        return reponse
+
+
+class ParametresSocieteView(APIView):
+    """
+    GET   /api/api/parametres-societe/   en-tête des factures (gestionnaires)
+    PATCH /api/api/parametres-societe/   modification (admins) — JSON ou multipart
+                                          (champ « logo », « supprimer_logo »=true)
+    """
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
+
+    def get_permissions(self):
+        return [IsAdminRole()] if self.request.method not in ('GET', 'HEAD', 'OPTIONS') \
+            else [IsGestionnaireRole()]
+
+    def get(self, request):
+        return Response(ParametresSocieteSerializer(ParametresSociete.charger()).data)
+
+    def patch(self, request):
+        serializer = ParametresSocieteSerializer(ParametresSociete.charger(),
+                                                 data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user_updated=request.user)
+        return Response(serializer.data)

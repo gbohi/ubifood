@@ -339,10 +339,11 @@ def cloturer_mois(annee, mois, par_user):
                 nb_factures_prestataires=len(prestataires),
                 montant_total_prestataires=sum((p['total'] for p in prestataires), Decimal('0')),
             )
-            for p in prestataires:
+            for rang, p in enumerate(prestataires, start=1):
                 facture_p = FacturePrestataire.objects.create(
                     cloture=cloture, prestataire_id=p['prestataire_id'],
                     prestataire_libelle=p['prestataire'], annee=annee, mois=mois,
+                    numero=f"FP-{annee}-{mois:02d}-{rang:03d}",
                     nb_repas=p['nb_repas'], montant_total=p['total'],
                 )
                 LigneFacturePrestataire.objects.bulk_create([

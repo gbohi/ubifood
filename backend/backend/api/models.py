@@ -479,6 +479,8 @@ class FacturePrestataire(models.Model):
     prestataire         = models.ForeignKey(Prestataire, on_delete=models.PROTECT,
                                             related_name='factures_mensuelles')
     prestataire_libelle = models.CharField(max_length=100)
+    # Numéro unique attribué à la clôture : FP-AAAA-MM-NNN
+    numero              = models.CharField(max_length=30, unique=True, null=True, blank=True)
     annee               = models.PositiveSmallIntegerField()
     mois                = models.PositiveSmallIntegerField()
     nb_repas            = models.PositiveIntegerField()
@@ -509,3 +511,40 @@ class LigneFacturePrestataire(models.Model):
     class Meta:
         db_table = 'lignes_facture_prestataire'
         ordering = ['date_menu']
+
+
+# ============================================================
+# PARAMÈTRES DE LA SOCIÉTÉ (en-tête des factures PDF)
+# Enregistrement unique (pk=1), modifiable à tout moment par un admin.
+# Les factures PDF utilisent les paramètres en vigueur au moment du
+# téléchargement ; les montants, eux, restent figés.
+# ============================================================
+
+class ParametresSociete(models.Model):
+    nom                = models.CharField(max_length=255, blank=True)
+    adresse            = models.TextField(blank=True)
+    ville              = models.CharField(max_length=100, blank=True)
+    telephone          = models.CharField(max_length=100, blank=True)
+    email              = models.EmailField(blank=True)
+    site_web           = models.CharField(max_length=255, blank=True)
+    identifiant_fiscal = models.CharField('N° compte contribuable / identifiant fiscal',
+                                          max_length=100, blank=True)
+    registre_commerce  = models.CharField('RCCM', max_length=100, blank=True)
+    pied_de_page       = models.TextField('Mentions de bas de page', blank=True,
+                                          help_text="Ex. coordonnées bancaires, capital social…")
+    logo               = models.ImageField(upload_to='societe/', blank=True, null=True,
+                                           validators=[FileExtensionValidator(['png', 'jpg', 'jpeg'])])
+    updated_at         = models.DateTimeField(auto_now=True)
+    user_updated       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                           related_name='+')
+
+    class Meta:
+        db_table = 'parametres_societe'
+
+    @classmethod
+    def charger(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return self.nom or 'Paramètres société'

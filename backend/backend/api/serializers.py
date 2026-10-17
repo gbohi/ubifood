@@ -1054,5 +1054,36 @@ class FacturePrestataireSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = FacturePrestataire
-        fields = ['id', 'prestataire', 'prestataire_libelle', 'annee', 'mois',
+        fields = ['id', 'numero', 'prestataire', 'prestataire_libelle', 'annee', 'mois',
                   'nb_repas', 'montant_total', 'cloturee_le', 'lignes']
+
+
+class ParametresSocieteSerializer(serializers.ModelSerializer):
+    logo_url = serializers.SerializerMethodField()
+    # true = supprimer le logo actuel
+    supprimer_logo = serializers.BooleanField(write_only=True, required=False, default=False)
+
+    class Meta:
+        model  = ParametresSociete
+        fields = ['nom', 'adresse', 'ville', 'telephone', 'email', 'site_web',
+                  'identifiant_fiscal', 'registre_commerce', 'pied_de_page',
+                  'logo', 'logo_url', 'supprimer_logo', 'updated_at']
+        read_only_fields = ['updated_at']
+        extra_kwargs = {'logo': {'write_only': True, 'required': False}}
+
+    def get_logo_url(self, obj):
+        return obj.logo.url if obj.logo else None
+
+    def validate_logo(self, logo):
+        if logo and logo.size > 2 * 1024 * 1024:
+            raise serializers.ValidationError("Le logo ne doit pas dépasser 2 Mo.")
+        return logo
+
+    def update(self, instance, validated_data):
+        supprimer = validated_data.pop('supprimer_logo', False)
+        nouveau_logo = validated_data.get('logo')
+        if (supprimer or nouveau_logo) and instance.logo:
+            instance.logo.delete(save=False)
+            if supprimer and not nouveau_logo:
+                instance.logo = None
+        return super().update(instance, validated_data)

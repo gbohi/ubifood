@@ -4,6 +4,7 @@ Tests de l'API Ubifood : droits par rôle, commandes, retraits, mot de passe oub
 Lancer : python manage.py test api
 """
 
+import os
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -296,8 +297,8 @@ class MotDePasseOublieTests(BaseAPITestCase):
         self.assertEqual(r.status_code, 400)
 
 
-class FacturationTests(BaseAPITestCase):
-    """Règle : repas commandés et non annulés, tarif / catégorie à la date du menu."""
+class _FacturationBase(BaseAPITestCase):
+    """Catégories, tarifs et prestataire communs aux tests de facturation."""
 
     def setUp(self):
         from datetime import date, datetime
@@ -336,6 +337,11 @@ class FacturationTests(BaseAPITestCase):
                                              typeequipe=self.typeequipe)
         MenuPlat.objects.get_or_create(menu=menu, plat=plat or self.plat1)
         return Commande.objects.create(user=user, menu=menu, plat=plat or self.plat1, statut=statut)
+
+
+
+class FacturationTests(_FacturationBase):
+    """Règle : repas commandés et non annulés, tarif / catégorie à la date du menu."""
 
     def facturation(self, qui, **params):
         params.setdefault('date_debut', '2026-08-01')
@@ -471,3 +477,77 @@ class FacturationTests(BaseAPITestCase):
         r = self.client_pour(self.gestionnaire).get(
             f'{API}/dashboard-cantine/', {'date_debut': '2026-08-01', 'date_fin': '2026-08-31'})
         self.assertEqual(r.data['fact_fournisseur']['total_montant'], 1800.0)
+
+
+import shutil
+import tempfile
+from io import BytesIO as _BytesIO
+
+_MEDIA_TEST = tempfile.mkdtemp(prefix='ubifood-media-')
+
+
+@override_settings(MEDIA_ROOT=_MEDIA_TEST)
+class FacturePdfTests(_FacturationBase):
+    """Paramètres société (en-tête) et facture prestataire PDF."""
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(_MEDIA_TEST, ignore_errors=True)
+
+    def _logo(self):
+        from PIL import Image as PilImage
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        buf = _BytesIO()
+        PilImage.new('RGB', (120, 60), (9, 36, 64)).save(buf, 'PNG')
+        return SimpleUploadedFile('logo.png', buf.getvalue(), content_type='image/png')
+
+    def test_parametres_societe_droits_et_logo(self):
+        url = f'{API}/parametres-societe/'
+        self.assertEqual(self.client_pour(self.employe).get(url).status_code, 403)
+        self.assertEqual(self.client_pour(self.gestionnaire).get(url).status_code, 200)
+        self.assertEqual(self.client_pour(self.gestionnaire).patch(
+            url, {'nom': 'X'}, format='json').status_code, 403)
+
+        r = self.client_pour(self.admin).patch(url, {
+            'nom': 'UBIPHARM CI', 'ville': 'Abidjan', 'identifiant_fiscal': 'CC-123',
+            'logo': self._logo()}, format='multipart')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['logo_url'].startswith('/media/societe/'))
+
+        r = self.client_pour(self.admin).patch(url, {'supprimer_logo': True}, format='json')
+        self.assertIsNone(r.data['logo_url'])
+        self.assertEqual(r.data['nom'], 'UBIPHARM CI')
+
+    def test_facture_prestataire_pdf(self):
+        self.commander(self.employe, self.date(2026, 8, 12))
+        self.commander(self.employe2, self.date(2026, 8, 20), statut='retiree')
+        UserCategoriesalarie.objects.create(user=self.employe2, categoriesalarie=self.agent,
+                                            statut=self.statut, date_debut=self.d('2026-01-01'))
+        self.client_pour(self.admin).patch(f'{API}/parametres-societe/', {
+            'nom': 'UBIPHARM CI', 'adresse': 'Zone 4\nAbidjan', 'ville': 'Abidjan',
+            'pied_de_page': 'Banque X — IBAN CI00 0000', 'logo': self._logo()}, format='multipart')
+        r = self.client_pour(self.admin).post(f'{API}/facturation/clotures/cloturer/',
+                                              {'annee': 2026, 'mois': 8})
+        self.assertEqual(r.status_code, 201, r.data)
+
+        facture = self.client_pour(self.gestionnaire).get(f'{API}/factures-prestataires/').data['results'][0]
+        self.assertEqual(facture['numero'], 'FP-2026-08-001')
+
+        self.assertEqual(self.client_pour(self.employe).get(
+            f"{API}/factures-prestataires/{facture['id']}/pdf/").status_code, 403)
+        r = self.client_pour(self.gestionnaire).get(f"{API}/factures-prestataires/{facture['id']}/pdf/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'], 'application/pdf')
+        contenu = b''.join(r.streaming_content)
+        self.assertTrue(contenu.startswith(b'%PDF'))
+        self.assertIn(b'FP-2026-08-001', contenu)   # titre du document
+        with open(os.path.join(_MEDIA_TEST, 'facture-test.pdf'), 'wb') as f:
+            f.write(contenu)
+
+    def test_montant_en_lettres(self):
+        from .pdf_factures import montant_en_lettres
+        self.assertEqual(montant_en_lettres(Decimal('1700')), 'mille-sept-cents')
+        self.assertEqual(montant_en_lettres(Decimal('80000')), 'quatre-vingt-mille')
+        self.assertEqual(montant_en_lettres(Decimal('1250300')),
+                         'un-million-deux-cent-cinquante-mille-trois-cents')
