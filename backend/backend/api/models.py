@@ -421,6 +421,9 @@ class ClotureMensuelle(models.Model):
     nb_factures   = models.PositiveIntegerField(default=0)
     nb_repas      = models.PositiveIntegerField(default=0)
     montant_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    # Côté prestataires (montant dû aux fournisseurs pour le mois)
+    nb_factures_prestataires      = models.PositiveIntegerField(default=0)
+    montant_total_prestataires    = models.DecimalField(max_digits=14, decimal_places=2, default=0)
 
     class Meta:
         db_table = 'clotures_mensuelles'
@@ -466,4 +469,43 @@ class LigneFacture(models.Model):
 
     class Meta:
         db_table = 'lignes_facture'
+        ordering = ['date_menu']
+
+
+class FacturePrestataire(models.Model):
+    """Facture figée d'un prestataire pour un mois clôturé."""
+    cloture             = models.ForeignKey(ClotureMensuelle, on_delete=models.PROTECT,
+                                            related_name='factures_prestataires')
+    prestataire         = models.ForeignKey(Prestataire, on_delete=models.PROTECT,
+                                            related_name='factures_mensuelles')
+    prestataire_libelle = models.CharField(max_length=100)
+    annee               = models.PositiveSmallIntegerField()
+    mois                = models.PositiveSmallIntegerField()
+    nb_repas            = models.PositiveIntegerField()
+    montant_total       = models.DecimalField(max_digits=14, decimal_places=2)
+
+    class Meta:
+        db_table = 'factures_prestataires'
+        unique_together = ('prestataire', 'annee', 'mois')
+        ordering = ['-annee', '-mois', 'prestataire_libelle']
+
+    def __str__(self):
+        return f"Facture {self.prestataire_libelle} {self.mois:02d}/{self.annee}"
+
+
+class LigneFacturePrestataire(models.Model):
+    """Un repas facturé par le prestataire, valeurs figées à la clôture."""
+    facture    = models.ForeignKey(FacturePrestataire, on_delete=models.CASCADE,
+                                   related_name='lignes')
+    commande   = models.OneToOneField(Commande, on_delete=models.SET_NULL, null=True,
+                                      related_name='ligne_facture_prestataire')
+    user       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,
+                                   related_name='+')
+    date_menu  = models.DateField()
+    plat_nom   = models.CharField(max_length=255)
+    agence_nom = models.CharField(max_length=255, blank=True)
+    montant    = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        db_table = 'lignes_facture_prestataire'
         ordering = ['date_menu']

@@ -1,7 +1,6 @@
 import hmac
 import logging
 import secrets
-from collections import defaultdict
 
 from rest_framework import viewsets, filters, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -756,6 +755,21 @@ class PrestataireViewSet(BaseViewSet):
     filterset_fields = ['libelle']
     search_fields = ['libelle']
     ordering_fields = ['libelle', 'created_at']
+
+    def perform_destroy(self, instance):
+        if instance.factures_mensuelles.exists():
+            raise PermissionDenied(
+                "Ce prestataire a des factures clôturées : il ne peut pas être supprimé.")
+        instance.delete()
+
+    @action(detail=False, methods=['delete'], permission_classes=[IsAdminRole])
+    def bulk_delete(self, request):
+        ids = request.data.get('ids', [])
+        if Prestataire.objects.filter(id__in=ids, factures_mensuelles__isnull=False).exists():
+            return Response(
+                {"error": "Certains prestataires ont des factures clôturées : ils ne peuvent pas être supprimés."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return super().bulk_delete(request)
 
 
 class PlatPrestataireViewSet(BaseViewSet):
@@ -1584,63 +1598,30 @@ class DashboardCantineView(APIView):
             for row in evo_par_date_qs
         ]
         # ════════════════════════════════════════════════════
-        # FACTURATION
-        # Les tarifs sont chargés une seule fois en mémoire (avant : 1 à 2
-        # requêtes SQL par commande retirée).
-        #
-        # Prestataire : pour chaque commande retirée, on prend le prestataire
-        # rattaché à l'agence du menu (AgencePrestataire actif à la date du
-        # menu), puis son tarif (PlatPrestataire actif à cette date).
-        # Si aucune agence n'a de prestataire rattaché, on retombe sur
-        # l'ancien comportement : le tarif prestataire actif le plus récent.
-        #
-        # Employé : calcul unique de api/facturation.py (voir plus bas).
+        # FACTURATION — même calcul que /facturation/ et
+        # /facturation/prestataires/ (api/facturation.py) : repas commandés
+        # et non annulés, tarifs à la date du menu, montants figés pour les
+        # mois clôturés.
         # ════════════════════════════════════════════════════
-        commandes_retirees = list(
-            commande_qs.filter(statut='retiree')
-            .select_related('menu__agence')
-        )
-
-        ligne_active = fact.ligne_active
-
-        tarifs_prest = defaultdict(list)
-        for pp in PlatPrestataire.objects.select_related('prestataire'):
-            tarifs_prest[pp.prestataire_id].append(pp)
-        tous_tarifs_prest = [pp for lst in tarifs_prest.values() for pp in lst]
-
-        prest_par_agence = defaultdict(list)
-        for ap in AgencePrestataire.objects.all():
-            prest_par_agence[ap.agence_id].append(ap)
-
         total_montant_prestataire = Decimal('0.00')
         fact_prest_par_mois       = {i: Decimal('0.00') for i in range(1, 13)}
         fact_prest_par_agence     = {}
         fact_prest_par_prest      = {}
 
-        for cmd in commandes_retirees:
-            date_menu = cmd.menu.date_menu
-            agence_id = cmd.menu.agence_id
-
-            if prest_par_agence:
-                ap = ligne_active(prest_par_agence.get(agence_id, []), date_menu)
-                pp = ligne_active(tarifs_prest.get(ap.prestataire_id, []), date_menu) if ap else None
-            else:
-                pp = ligne_active(tous_tarifs_prest, date_menu)
-
-            if not pp:
+        for l in fact.lignes_prestataires(commande_qs):
+            if l['montant'] is None:
                 continue
-
-            montant = pp.montant or Decimal('0.00')
+            montant = l['montant']
             total_montant_prestataire += montant
-            fact_prest_par_mois[date_menu.month] += montant
+            fact_prest_par_mois[l['date_menu'].month] += montant
 
-            agence_nom = cmd.menu.agence.nom_agence
+            agence_nom = l['agence_menu']
             ligne = fact_prest_par_agence.setdefault(
                 agence_nom, {'agence': agence_nom, 'montant': Decimal('0.00'), 'nb_commandes': 0})
             ligne['montant']      += montant
             ligne['nb_commandes'] += 1
 
-            prest_nom = pp.prestataire.libelle if pp.prestataire else 'Inconnu'
+            prest_nom = l['prestataire'].libelle
             ligne = fact_prest_par_prest.setdefault(
                 prest_nom, {'prestataire': prest_nom, 'montant': Decimal('0.00'), 'nb_commandes': 0})
             ligne['montant']      += montant
@@ -1659,8 +1640,7 @@ class DashboardCantineView(APIView):
             ],
         }
 
-        # Facturation employé : même calcul que /facturation/ (api/facturation.py) —
-        # repas commandés et non annulés, montants figés pour les mois clôturés.
+        # Facturation employé
         total_montant_employe   = Decimal('0.00')
         fact_emp_par_mois       = {i: Decimal('0.00') for i in range(1, 13)}
         fact_emp_par_agence     = {}
@@ -2782,3 +2762,84 @@ class FactureMensuelleViewSet(viewsets.ReadOnlyModelViewSet):
         if is_gestionnaire(self.request.user):
             return qs
         return qs.filter(user=self.request.user)
+
+
+class FacturationPrestataireView(APIView):
+    """
+    GET /api/api/facturation/prestataires/?date_debut=&date_fin=
+                                          [&prestataire=ID&agence=ID&typeequipe=ID]
+
+    Montant dû à chaque prestataire, détaillé par agent puis par repas.
+    Repas commandés et non annulés ; prestataire = celui rattaché à l'agence
+    du menu à la date du menu ; tarif = son PlatPrestataire à cette date.
+    Gestionnaires et administrateurs.
+    """
+    permission_classes = [IsGestionnaireRole]
+
+    def get(self, request):
+        aujourdhui = timezone.localdate()
+        debut_defaut, fin_defaut = fact.bornes_mois(aujourdhui.year, aujourdhui.month)
+        debut = _parse_date(request.query_params.get('date_debut'), debut_defaut)
+        fin   = _parse_date(request.query_params.get('date_fin'), fin_defaut)
+
+        qs = Commande.objects.filter(menu__date_menu__gte=debut, menu__date_menu__lte=fin)
+        for param, champ in (('agence', 'menu__agence_id'), ('typeequipe', 'menu__typeequipe_id')):
+            valeur = request.query_params.get(param)
+            if valeur:
+                if not str(valeur).isdigit():
+                    raise ValidationError(f"Paramètre {param} invalide.")
+                qs = qs.filter(**{champ: int(valeur)})
+
+        lignes = fact.lignes_prestataires(qs)
+        prestataire_id = request.query_params.get('prestataire')
+        anomalies = fact._anomalies_prestataires(lignes)
+        prestataires = fact.synthese_par_prestataire(lignes)
+        if prestataire_id:
+            if not str(prestataire_id).isdigit():
+                raise ValidationError("Paramètre prestataire invalide.")
+            prestataires = [p for p in prestataires if p['prestataire_id'] == int(prestataire_id)]
+
+        def ligne_json(l):
+            return {
+                'commande_id': l['commande_id'],
+                'date_menu':   l['date_menu'].isoformat(),
+                'plat':        l['plat'],
+                'statut':      l['statut'],
+                'montant':     float(l['montant']) if l['montant'] is not None else None,
+                'source':      l['source'],
+            }
+
+        return Response({
+            'regle': ("Repas commandés et non annulés, facturés par le prestataire rattaché à "
+                      "l'agence du menu, à son tarif en vigueur à la date du menu"),
+            'date_debut':    debut.isoformat(),
+            'date_fin':      fin.isoformat(),
+            'total_repas':   sum(p['nb_repas'] for p in prestataires),
+            'total_montant': float(sum((p['total'] for p in prestataires), Decimal('0'))),
+            # Repas qui ne peuvent être attribués / tarifés (toutes agences de la période)
+            'anomalies':     anomalies,
+            'prestataires': [
+                {
+                    **{k: v for k, v in p.items() if k not in ('agents', 'total')},
+                    'total': float(p['total']),
+                    'agents': [
+                        {
+                            **{k: v for k, v in a.items() if k not in ('lignes', 'total')},
+                            'total':  float(a['total']),
+                            'lignes': [ligne_json(l) for l in a['lignes']],
+                        } for a in p['agents']
+                    ],
+                } for p in prestataires
+            ],
+        })
+
+
+class FacturePrestataireViewSet(viewsets.ReadOnlyModelViewSet):
+    """GET /api/api/factures-prestataires/?annee=&mois=&prestataire=  (gestionnaires)"""
+    serializer_class = FacturePrestataireSerializer
+    permission_classes = [IsGestionnaireRole]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['annee', 'mois', 'prestataire']
+    queryset = (FacturePrestataire.objects
+                .select_related('cloture', 'prestataire')
+                .prefetch_related('lignes__user'))

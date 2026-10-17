@@ -65,6 +65,7 @@ router.register(r'user-allergies',         UserAllergieViewSet, basename='useral
 # Facturation mensuelle figée
 router.register(r'facturation/clotures', ClotureMensuelleViewSet, basename='cloture-mensuelle')
 router.register(r'factures',             FactureMensuelleViewSet, basename='facture-mensuelle')
+router.register(r'factures-prestataires', FacturePrestataireViewSet, basename='facture-prestataire')
 
 urlpatterns = [
     path('api/', include(router.urls)),
@@ -101,6 +102,7 @@ urlpatterns = [
     path('api/allnopagin/users/', AllUserNopginListAPIView.as_view(), name='allnopagin-user-list'),
     path('api/dashboard-cantine/', DashboardCantineView.as_view(), name='dashboard-cantine'),
     path('api/facturation/', FacturationView.as_view(), name='facturation'),
+    path('api/facturation/prestataires/', FacturationPrestataireView.as_view(), name='facturation-prestataires'),
     path('api/allnopagin/plats/', AllPlatNopginListAPIView.as_view(), name='allnopagin-plat-list'),
     path('api/allnopagin/prestataires/', AllPrestataireNopginListAPIView.as_view(), name='allnopagin-prestataire-list'),
     path('api/allnopagin/entretienvehicules/', AllEntretienVehiculeNopginListAPIView.as_view(), name='allnopagin-entretienvehicule-list'),

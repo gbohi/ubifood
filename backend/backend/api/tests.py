@@ -15,9 +15,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import (
-    Agence, Categoriesalarie, Commande, Menu, MenuPlat, Plat,
-    PlatCategoriesalarie, Statut, TypeEquipe, TypePlat, User, UserAgence,
-    UserAllergie, UserCategoriesalarie,
+    Agence, AgencePrestataire, Categoriesalarie, Commande, Menu, MenuPlat, Plat,
+    PlatCategoriesalarie, PlatPrestataire, Prestataire, Statut, TypeEquipe, TypePlat,
+    User, UserAgence, UserAllergie, UserCategoriesalarie,
 )
 
 API = '/api/api'
@@ -319,6 +319,16 @@ class FacturationTests(BaseAPITestCase):
                                             date_fin=self.d('2026-08-10'))
         UserCategoriesalarie.objects.create(user=self.employe, categoriesalarie=self.cadre,
                                             statut=self.statut, date_debut=self.d('2026-08-11'))
+        # Prestataire du Siège : 800 par repas, 900 à partir du 16/08
+        self.traiteur = Prestataire.objects.create(libelle='Traiteur A', statut=self.statut,
+                                                   date_debut=self.d('2026-01-01'))
+        AgencePrestataire.objects.create(prestataire=self.traiteur, agence=self.agence,
+                                         statut=self.statut, date_debut=self.d('2026-01-01'))
+        PlatPrestataire.objects.create(prestataire=self.traiteur, montant=Decimal('800'),
+                                       statut=self.statut, date_debut=self.d('2026-01-01'),
+                                       date_fin=self.d('2026-08-15'))
+        PlatPrestataire.objects.create(prestataire=self.traiteur, montant=Decimal('900'),
+                                       statut=self.statut, date_debut=self.d('2026-08-16'))
         self.date = date
 
     def commander(self, user, jour, statut='en_attente', plat=None):
@@ -409,3 +419,55 @@ class FacturationTests(BaseAPITestCase):
         r = self.client_pour(self.gestionnaire).get(
             f'{API}/dashboard-cantine/', {'date_debut': '2026-08-01', 'date_fin': '2026-08-31'})
         self.assertEqual(r.data['fact_employe']['total_montant'], 3000.0)
+
+    # ── Côté prestataires ─────────────────────────────────────
+    def facturation_prestataires(self, qui, **params):
+        params.setdefault('date_debut', '2026-08-01')
+        params.setdefault('date_fin', '2026-08-31')
+        return self.client_pour(qui).get(f"{API}/facturation/prestataires/", params)
+
+    def test_prestataire_regle_et_tarif_a_la_date(self):
+        d = self.date
+        self.commander(self.employe, d(2026, 8, 5))                      # 800
+        self.commander(self.employe2, d(2026, 8, 20), statut='retiree')  # 900
+        self.commander(self.employe, d(2026, 8, 25), statut='annulee')   # non facturé
+
+        self.assertEqual(self.facturation_prestataires(self.employe).status_code, 403)
+        data = self.facturation_prestataires(self.gestionnaire).data
+        p = data['prestataires'][0]
+        self.assertEqual((p['prestataire'], p['nb_repas'], p['total']), ('Traiteur A', 2, 1700.0))
+        self.assertEqual({a['username'] for a in p['agents']}, {'emp1', 'emp2'})
+        self.assertEqual(data['anomalies'], [])
+
+    def test_agence_sans_prestataire_signalee(self):
+        autre = Agence.objects.create(nom_agence='Annexe')
+        menu = Menu.objects.create(date_menu=self.date(2026, 8, 6), agence=autre,
+                                   typeequipe=self.typeequipe)
+        MenuPlat.objects.create(menu=menu, plat=self.plat1)
+        Commande.objects.create(user=self.employe, menu=menu, plat=self.plat1)
+        data = self.facturation_prestataires(self.gestionnaire).data
+        self.assertEqual(data['total_repas'], 0)
+        self.assertIn('Annexe', data['anomalies'][0])
+
+    def test_cloture_fige_aussi_les_prestataires(self):
+        self.commander(self.employe, self.date(2026, 8, 20))
+        r = self.client_pour(self.admin).post(f'{API}/facturation/clotures/cloturer/',
+                                              {'annee': 2026, 'mois': 8})
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(float(r.data['montant_total_prestataires']), 900.0)
+
+        PlatPrestataire.objects.update(montant=Decimal('5000'))
+        p = self.facturation_prestataires(self.gestionnaire).data['prestataires'][0]
+        self.assertEqual((p['total'], p['etat']), (900.0, 'cloturee'))
+
+        r = self.client_pour(self.gestionnaire).get(f'{API}/factures-prestataires/')
+        self.assertEqual(r.data['count'], 1)
+        self.assertEqual(self.client_pour(self.admin).delete(
+            f'{API}/prestataires/{self.traiteur.id}/').status_code, 403)
+
+    def test_tableau_de_bord_prestataire_meme_regle(self):
+        self.commander(self.employe, self.date(2026, 8, 20))                     # 900
+        self.commander(self.employe2, self.date(2026, 8, 21), statut='retiree')  # 900
+        r = self.client_pour(self.gestionnaire).get(
+            f'{API}/dashboard-cantine/', {'date_debut': '2026-08-01', 'date_fin': '2026-08-31'})
+        self.assertEqual(r.data['fact_fournisseur']['total_montant'], 1800.0)

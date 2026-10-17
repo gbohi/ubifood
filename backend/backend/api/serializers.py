@@ -1032,7 +1032,27 @@ class ClotureMensuelleSerializer(serializers.ModelSerializer):
     class Meta:
         model  = ClotureMensuelle
         fields = ['id', 'annee', 'mois', 'cloturee_le', 'cloturee_par', 'cloturee_par_nom',
-                  'nb_factures', 'nb_repas', 'montant_total']
+                  'nb_factures', 'nb_repas', 'montant_total',
+                  'nb_factures_prestataires', 'montant_total_prestataires']
 
     def get_cloturee_par_nom(self, obj):
         return nom_complet(obj.cloturee_par) if obj.cloturee_par else None
+
+
+class LigneFacturePrestataireSerializer(serializers.ModelSerializer):
+    username = serializers.ReadOnlyField(source='user.username')
+
+    class Meta:
+        model  = LigneFacturePrestataire
+        fields = ['id', 'commande', 'user', 'username', 'date_menu', 'plat_nom',
+                  'agence_nom', 'montant']
+
+
+class FacturePrestataireSerializer(serializers.ModelSerializer):
+    lignes      = LigneFacturePrestataireSerializer(many=True, read_only=True)
+    cloturee_le = serializers.ReadOnlyField(source='cloture.cloturee_le')
+
+    class Meta:
+        model  = FacturePrestataire
+        fields = ['id', 'prestataire', 'prestataire_libelle', 'annee', 'mois',
+                  'nb_repas', 'montant_total', 'cloturee_le', 'lignes']
