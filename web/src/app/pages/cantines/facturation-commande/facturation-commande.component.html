@@ -312,8 +312,9 @@
       </div>
       <div class="card-body">
         <p class="text-muted small mb-3">
-          La clôture fige la facture de chaque agent pour le mois : les changements ultérieurs
-          de tarif ou de catégorie ne la modifient plus. Seul un mois terminé peut être clôturé,
+          La clôture fige la facture de chaque agent et de chaque prestataire pour le mois :
+          les changements ultérieurs de tarif, de catégorie ou de rattachement d'agence ne
+          les modifient plus. Seul un mois terminé peut être clôturé,
           et une seule fois.
         </p>
 
@@ -336,7 +337,8 @@
                   <th>Mois</th>
                   <th class="text-center">Factures</th>
                   <th class="text-center">Repas</th>
-                  <th class="text-end">Montant (FCFA)</th>
+                  <th class="text-end">Agents (FCFA)</th>
+                  <th class="text-end">Prestataires (FCFA)</th>
                   <th>Clôturé le</th>
                   <th>Par</th>
                 </tr>
@@ -348,6 +350,7 @@
                     <td class="text-center">{{ c.nb_factures }}</td>
                     <td class="text-center">{{ c.nb_repas }}</td>
                     <td class="text-end fw-semibold">{{ formatMontant(+c.montant_total) }}</td>
+                    <td class="text-end fw-semibold">{{ formatMontant(+c.montant_total_prestataires) }}</td>
                     <td>{{ c.cloturee_le | date:'dd/MM/yyyy HH:mm' }}</td>
                     <td>{{ c.cloturee_par_nom || '—' }}</td>
                   </tr>

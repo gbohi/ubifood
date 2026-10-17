@@ -2637,6 +2637,21 @@ def _parse_date(valeur, defaut):
         raise ValidationError(f"Date invalide : {valeur} (format AAAA-MM-JJ)")
 
 
+def _infos_agents(user_ids):
+    """Agence, service et poste actuels de chaque agent (une requête + prefetch)."""
+    def derniere(lignes, champ):
+        return getattr(max(lignes, key=lambda x: x.date_debut), champ) if lignes else None
+
+    infos = {}
+    for u in UserViewSet._prefetch(User.objects.filter(id__in=set(user_ids))):
+        infos[u.id] = {
+            'agence_agent': getattr(derniere(list(u.useragence_set.all()), 'agence'), 'nom_agence', None),
+            'service':      getattr(derniere(list(u.userservice_set.all()), 'service'), 'libelle_service', None),
+            'poste':        getattr(derniere(list(u.userposte_set.all()), 'poste'), 'libelle', None),
+        }
+    return infos
+
+
 def _ligne_json(l):
     return {
         'commande_id': l['commande_id'],
@@ -2682,29 +2697,17 @@ class FacturationView(APIView):
 
         employes = fact.synthese_par_employe(fact.lignes_facturation(qs))
 
-        # Infos d'affichage (agence, service, poste de l'agent) en une requête
-        infos = {
-            u.id: u for u in UserViewSet._prefetch(
-                User.objects.filter(id__in=[e['user_id'] for e in employes]))
-        }
-
-        def derniere(lignes, champ):
-            if not lignes:
-                return None
-            return getattr(max(lignes, key=lambda x: x.date_debut), champ)
-
-        resultat = []
-        for e in employes:
-            u = infos.get(e['user_id'])
-            resultat.append({
+        infos = _infos_agents([e['user_id'] for e in employes])
+        resultat = [
+            {
                 **{k: v for k, v in e.items() if k not in ('lignes', 'total', 'tarif_unitaire')},
+                **infos.get(e['user_id'], {}),
                 'total':          float(e['total']),
                 'tarif_unitaire': float(e['tarif_unitaire']) if e['tarif_unitaire'] is not None else None,
-                'agence_agent':   getattr(derniere(list(u.useragence_set.all()), 'agence'), 'nom_agence', None) if u else None,
-                'service':        getattr(derniere(list(u.userservice_set.all()), 'service'), 'libelle_service', None) if u else None,
-                'poste':          getattr(derniere(list(u.userposte_set.all()), 'poste'), 'libelle', None) if u else None,
                 'lignes':         [_ligne_json(l) for l in e['lignes']],
-            })
+            }
+            for e in employes
+        ]
 
         return Response({
             'regle':            fact.REGLE,
@@ -2799,6 +2802,8 @@ class FacturationPrestataireView(APIView):
                 raise ValidationError("Paramètre prestataire invalide.")
             prestataires = [p for p in prestataires if p['prestataire_id'] == int(prestataire_id)]
 
+        infos = _infos_agents([a['user_id'] for p in prestataires for a in p['agents']])
+
         def ligne_json(l):
             return {
                 'commande_id': l['commande_id'],
@@ -2825,6 +2830,7 @@ class FacturationPrestataireView(APIView):
                     'agents': [
                         {
                             **{k: v for k, v in a.items() if k not in ('lignes', 'total')},
+                            **infos.get(a['user_id'], {}),
                             'total':  float(a['total']),
                             'lignes': [ligne_json(l) for l in a['lignes']],
                         } for a in p['agents']

@@ -56,6 +56,8 @@ export interface ClotureMensuelle {
   nb_factures: number;
   nb_repas: number;
   montant_total: string;
+  nb_factures_prestataires: number;
+  montant_total_prestataires: string;
 }
 
 @Component({
@@ -235,7 +237,8 @@ export class FacturationCommandeComponent implements OnInit {
           this.isCloturing = false;
           this.clotureMessage =
             `${this.libelleMois(c.annee, c.mois)} clôturé : ${c.nb_factures} facture(s), ` +
-            `${c.nb_repas} repas, ${this.formatMontant(Number(c.montant_total))} FCFA.`;
+            `${c.nb_repas} repas, ${this.formatMontant(Number(c.montant_total))} FCFA facturés aux agents, ` +
+            `${this.formatMontant(Number(c.montant_total_prestataires))} FCFA dus aux prestataires.`;
           this.chargerClotures();
           if (this.hasSearched) this.rechercher();
         },

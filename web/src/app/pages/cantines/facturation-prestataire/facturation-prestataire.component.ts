@@ -1,23 +1,19 @@
 // src/app/pages/cantine/facturation-prestataire/facturation-prestataire.component.ts
 //
-// Facturation prestataire : ce que nous devons payer au prestataire
-//
-// Logique montant par commande :
-//   1. Récupérer plat_id + date_menu de la commande
-//   2. Chercher dans PlatPrestataire la ligne active :
-//      plat = plat_id
-//      prestataire = prestataire sélectionné
-//      date_debut <= date_menu <= date_fin (ou date_fin null)
-//      Parmi les lignes qui correspondent, prendre celle avec date_debut la plus récente
-//   3. montant = PlatPrestataire.montant
-//   4. Total agent = somme des montants de ses commandes
-//   5. Total général = montant dû au prestataire
+// Facturation prestataire : ce que nous devons payer au prestataire.
+// AUCUN calcul de tarif ici : les montants viennent du serveur
+// (GET /api/api/facturation/prestataires/), seule source de vérité :
+//   - repas commandés et non annulés ;
+//   - facturés par le prestataire rattaché à l'agence du menu
+//     (AgencePrestataire), à son tarif (PlatPrestataire), tous deux en
+//     vigueur à la date du menu ;
+//   - montants figés pour les mois clôturés.
 
-import { Component, OnInit, OnDestroy, DestroyRef, inject } from '@angular/core';
+import { Component, OnInit, DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { environment } from 'src/environments/environment';
 
 import { selectAllAgenceWithoutPagination } from 'src/app/store/Agence/agence-selector';
@@ -25,24 +21,11 @@ import { fetchagenceNoPaginateData } from 'src/app/store/Agence/agence.action';
 import { selectAllTypeequipeWithoutPagination } from 'src/app/store/Typeequipe/typeequipe-selector';
 import { fetchtypeequipeNoPaginateData } from 'src/app/store/Typeequipe/typeequipe.action';
 
-import {
-  fetchCommandesParAgencePeriode,
-  resetCommandesParAgencePeriode,
-  resetCommandeError,
-} from 'src/app/store/Commande/commande.action';
-import {
-  selectCommandesParAgencePeriode,
-  selectCommandeIsLoading,
-  selectCommandeError,
-} from 'src/app/store/Commande/commande-selector';
-import { CommandeModel } from 'src/app/store/Commande/commande.model';
-
-import { selectAlluserWithoutPagination } from 'src/app/store/User/user-selector';
-import { fetchuserNoPaginateData } from 'src/app/store/User/user.action';
-
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+export type EtatFacture = 'cloturee' | 'provisoire' | 'partielle';
 
 // ── Interface ligne facturation prestataire ────────────────────
 export interface LigneFacturationPrestataire {
@@ -55,18 +38,17 @@ export interface LigneFacturationPrestataire {
   service:      string;
   poste:        string;
   nbCommandes:  number;
-  totalMontant: number;   // somme des montants PlatPrestataire de ses commandes
+  totalMontant: number;   // somme des montants calculés par le serveur
   detail: {               // détail par date_menu
     dateMenu:   string;
     platNom:    string;
-    montant:    number;   // tarif prestataire actif ce jour
+    montant:    number;   // tarif prestataire du jour (0 = pas de tarif)
     nbFois:     number;
     sousTotal:  number;
   }[];
   statuts: {
     en_attente: number;
     retiree:    number;
-    annulee:    number;
   };
 }
 
@@ -75,7 +57,7 @@ export interface LigneFacturationPrestataire {
   templateUrl: './facturation-prestataire.component.html',
   styleUrl: './facturation-prestataire.component.scss',
 })
-export class FacturationPrestataireComponent implements OnInit, OnDestroy {
+export class FacturationPrestataireComponent implements OnInit {
 
   breadCrumbItems = [
     { label: 'Cantine', active: false },
@@ -84,27 +66,18 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
 
   agences:      any[] = [];
   typeEquipes:  any[] = [];
-  prestataires: any[] = [];   // liste des prestataires
-  platPrestataires: any[] = []; // PlatPrestataire avec montants
+  prestataires: any[] = [];
 
-  usersMap: Map<string, any> = new Map();
-
-  usersById: Map<number, any> = new Map();
-
-  isLoading    = false;
-  isLoadingRef = false;
-  hasSearched  = false;
+  isLoading   = false;
+  hasSearched = false;
   error: string | null = null;
 
   filterForm!: UntypedFormGroup;
 
-  // ✅ Statuts multiples (ng-select)
-  readonly TOUS_STATUTS = [
-    { value: 'en_attente', label: 'En attente' },
-    { value: 'retiree',    label: 'Retirée'    },
-    { value: 'annulee',    label: 'Annulée'    },
-  ];
-  statutsSelectionnes: string[] = [];
+  regle = '';
+  etat: EtatFacture | null = null;
+  anomalies: string[] = [];
+  repasSansTarif = 0;
 
   lignesFacturation: LigneFacturationPrestataire[] = [];
   totalNbCommandes = 0;
@@ -116,7 +89,6 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
   // Lignes détail dépliées
   detailOuvert: Set<string> = new Set();
 
-  private _commandesBrutes: CommandeModel[] = [];
   private destroyRef = inject(DestroyRef);
   private apiUrl = `${environment.apiUrl}/api/api`;
 
@@ -127,18 +99,15 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    this.store.dispatch(resetCommandeError());
-    const today = new Date().toISOString().split('T')[0];
-
+    const { debut, fin } = this._moisCourant();
     this.filterForm = this.fb.group({
-      date_debut:   [today],
-      date_fin:     [''],
+      date_debut:   [debut],
+      date_fin:     [fin],
       prestataire:  ['', [Validators.required]],  // obligatoire
       agence:       [''],
       typeequipe:   [''],
     });
 
-    // ── Référentiels ──────────────────────────────────────────
     this.store.dispatch(fetchagenceNoPaginateData());
     this.store.select(selectAllAgenceWithoutPagination)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -149,284 +118,107 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(t => this.typeEquipes = t ?? []);
 
-    // ── Charger les prestataires ──────────────────────────────
-    this._chargerPrestataires();
-
-    // ── Users ─────────────────────────────────────────────────
-    // Tous les agents (avant : seulement la 1re page de 10 utilisateurs)
-    this.store.dispatch(fetchuserNoPaginateData());
-    this.store.select(selectAlluserWithoutPagination)
+    this.http.get<any[]>(`${this.apiUrl}/allnopagin/prestataires/`)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(users => {
-        this.usersMap = new Map();
-        this.usersById = new Map();
-        (users ?? []).forEach(u => {
-          if (u.id != null) this.usersById.set(Number(u.id), u);
-          if (u.username) this.usersMap.set(u.username, u);
-          const nomComplet = `${u.first_name || ''} ${u.last_name || ''}`.trim();
-          if (nomComplet) this.usersMap.set(nomComplet, u);
-          const nomCustom = `${u.nom || ''} ${u.prenom || ''}`.trim();
-          if (nomCustom) this.usersMap.set(nomCustom, u);
-        });
-        if (this._commandesBrutes.length > 0) {
-          this._construireFacturation(this._commandesBrutes);
-        }
-      });
-
-    // ── Commandes ─────────────────────────────────────────────
-    this.store.select(selectCommandeIsLoading)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(v => this.isLoading = v);
-
-    this.store.select(selectCommandeError)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(e => this.error = e);
-
-    this.store.select(selectCommandesParAgencePeriode)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(commandes => {
-        if (commandes) {
-          this._commandesBrutes = commandes;
-          this._construireFacturation(commandes);
-        }
-      });
+      .subscribe(p => this.prestataires = p ?? []);
   }
 
-  ngOnDestroy(): void {
-    this.store.dispatch(resetCommandesParAgencePeriode());
+  private _moisCourant(): { debut: string; fin: string } {
+    const now = new Date();
+    const iso = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return {
+      debut: iso(new Date(now.getFullYear(), now.getMonth(), 1)),
+      fin:   iso(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+    };
   }
 
   // ══════════════════════════════════════════════════════════
-  // CHARGEMENT RÉFÉRENTIELS
-  // ══════════════════════════════════════════════════════════
-
-  private _chargerPrestataires(): void {
-    this.http.get<any>(`${this.apiUrl}/prestataires/?page_size=1000`)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(response => {
-        this.prestataires = Array.isArray(response) ? response : (response.results ?? []);
-      });
-  }
-
-  private _chargerPlatPrestataires(prestataireId: number): void {
-    this.isLoadingRef = true;
-    this.http.get<any>(
-      `${this.apiUrl}/plat-prestataires/?prestataire=${prestataireId}&page_size=1000`
-    ).pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: response => {
-          this.platPrestataires = Array.isArray(response) ? response : (response.results ?? []);
-          this.isLoadingRef = false;
-          if (this._commandesBrutes.length > 0) {
-            this._construireFacturation(this._commandesBrutes);
-          }
-        },
-        error: () => { this.isLoadingRef = false; }
-      });
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // ✅ MONTANT DEPUIS PlatPrestataire
-  //
-  // PlatPrestataire = tarif global du prestataire sur une période
-  // (pas de lien avec un plat spécifique)
-  //
-  // Pour une date_menu donnée, on cherche la ligne PlatPrestataire active :
-  //   date_debut <= date_menu
-  //   date_fin   >= date_menu  OU  date_fin est null
-  // Parmi les lignes valides → prendre celle avec date_debut la plus récente
-  // ══════════════════════════════════════════════════════════
-
-  private _getMontantPourDate(dateMenu: string): number {
-    if (!dateMenu || !this.platPrestataires.length) return 0;
-
-    const lignesValides = this.platPrestataires.filter(pp => {
-      const apresDebut = !pp.date_debut || pp.date_debut.substring(0, 10) <= dateMenu;
-      const avantFin   = !pp.date_fin   || pp.date_fin.substring(0, 10)   >= dateMenu;
-      return apresDebut && avantFin;
-    });
-
-    if (!lignesValides.length) return 0;
-
-    const derniere = lignesValides.reduce((prev: any, curr: any) =>
-      (curr.date_debut || '') > (prev.date_debut || '') ? curr : prev
-    );
-
-    return parseFloat(derniere.montant) || 0;
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // HELPERS USER
-  // ══════════════════════════════════════════════════════════
-
-  private _getUserFromCommande(c: CommandeModel): any | null {
-    if (c.user_id != null && this.usersById.has(c.user_id)) {
-      return this.usersById.get(c.user_id);
-    }
-    return (c.user_nom ? this.usersMap.get(c.user_nom) : null) ?? null;
-  }
-
-  private _getUsername(user: any, fallback: string): string {
-    return user?.username || fallback;
-  }
-
-  private _getNomPrenom(user: any): string {
-    if (!user) return '—';
-    const nom    = user.nom    || user.last_name  || '';
-    const prenom = user.prenom || user.first_name || '';
-    return `${nom} ${prenom}`.trim() || user.username || '—';
-  }
-
-  private _derniereLigne(lignes: any[]): any | null {
-    if (!lignes || !lignes.length) return null;
-    return lignes.reduce((prev: any, curr: any) =>
-      (curr.date_debut || '') > (prev.date_debut || '') ? curr : prev
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // ✅ CONSTRUCTION FACTURATION
-  // ══════════════════════════════════════════════════════════
-
-  private _construireFacturation(commandes: CommandeModel[]): void {
-    // Filtre statuts
-    const cmdFiltrees = this.statutsSelectionnes.length > 0
-      ? commandes.filter(c => this.statutsSelectionnes.includes(c.statut))
-      : commandes;
-
-    // Grouper par user_nom
-    const grouped: Map<string, { commandes: CommandeModel[]; user: any | null }> = new Map();
-
-    cmdFiltrees.forEach(c => {
-      // Regroupement par identifiant d'agent (avant : par nom affiché,
-      // ce qui fusionnait les homonymes)
-      const key = c.user_id != null ? `#${c.user_id}` : (c.user_nom ?? 'Inconnu');
-      if (!grouped.has(key)) {
-        grouped.set(key, { commandes: [], user: this._getUserFromCommande(c) });
-      }
-      grouped.get(key)!.commandes.push(c);
-    });
-
-    this.lignesFacturation = [];
-    this.totalNbCommandes  = 0;
-    this.totalMontant      = 0;
-
-    grouped.forEach(({ commandes: cmds, user }, userNomKey) => {
-      const statuts = { en_attente: 0, retiree: 0, annulee: 0 };
-      cmds.forEach(c => {
-        if      (c.statut === 'en_attente') statuts.en_attente++;
-        else if (c.statut === 'retiree')    statuts.retiree++;
-        else if (c.statut === 'annulee')    statuts.annulee++;
-      });
-
-      // ✅ Montant global du prestataire par commande selon la date_menu
-      // Regrouper les commandes par date_menu pour le détail
-      const dateMap: Map<string, { dateMenu: string; platNom: string; montant: number; nbFois: number }> = new Map();
-      let totalAgent = 0;
-
-      cmds.forEach(c => {
-        const dateMenu = c.menu_detail?.date_menu ?? '';
-        const platNom  = c.plat_detail?.nom ?? '—';
-        // ✅ montant = tarif du prestataire actif à la date_menu
-        const montant  = this._getMontantPourDate(dateMenu);
-
-        totalAgent += montant;
-
-        // Détail regroupé par date_menu
-        const key = dateMenu;
-        if (!dateMap.has(key)) {
-          dateMap.set(key, { dateMenu, platNom, montant, nbFois: 0 });
-        }
-        const entry = dateMap.get(key)!;
-        entry.nbFois++;
-        // Si plusieurs plats le même jour, on note "Plusieurs plats"
-        if (entry.platNom !== platNom) entry.platNom = 'Plusieurs plats';
-      });
-
-      const detail = Array.from(dateMap.values())
-        .sort((a, b) => a.dateMenu.localeCompare(b.dateMenu))
-        .map(d => ({
-          platNom:   d.platNom,
-          montant:   d.montant,
-          nbFois:    d.nbFois,
-          sousTotal: d.montant * d.nbFois,
-          // On stocke aussi la date pour l'affichage
-          dateMenu:  d.dateMenu,
-        }));
-
-      // Données RH
-      const dernierSvc  = user ? this._derniereLigne(user.user_services  || []) : null;
-      const derniereAgc = user ? this._derniereLigne(user.user_agences   || []) : null;
-      const dernierPst  = user ? this._derniereLigne(user.user_postes    || []) : null;
-
-      this.lignesFacturation.push({
-        userId:       user?.id ?? null,
-        username:     this._getUsername(user, cmds[0]?.user_username ?? cmds[0]?.user_nom ?? userNomKey),
-        nomPrenom:    this._getNomPrenom(user),
-        agenceMenu:   cmds[0]?.menu_detail?.agence_nom          ?? '—',
-        agenceAgent:  derniereAgc ? (derniereAgc.agence_nom     || '—') : '—',
-        equipe:       cmds[0]?.menu_detail?.typeequipe_libelle  ?? '—',
-        service:      dernierSvc  ? (dernierSvc.service_libelle  || '—') : '—',
-        poste:        dernierPst  ? (dernierPst.poste_libelle    || '—') : '—',
-        nbCommandes:  cmds.length,
-        totalMontant: totalAgent,
-        detail,
-        statuts,
-      });
-
-      this.totalNbCommandes += cmds.length;
-      this.totalMontant     += totalAgent;
-    });
-
-    this.lignesFacturation.sort((a, b) => a.username.localeCompare(b.username));
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // RECHERCHE
+  // CALCUL (serveur)
   // ══════════════════════════════════════════════════════════
 
   onPrestataireChange(): void {
     const id = this.filterForm.get('prestataire')?.value;
-    if (id) {
-      this.prestataireSelectionne = this.prestataires.find(p => p.id === +id) ?? null;
-      this._chargerPlatPrestataires(+id);
-    } else {
-      this.prestataireSelectionne = null;
-      this.platPrestataires       = [];
-    }
-  }
-
-  onStatutChange(): void {
-    if (this._commandesBrutes.length > 0) {
-      this._construireFacturation(this._commandesBrutes);
-    }
+    this.prestataireSelectionne = id ? (this.prestataires.find(p => p.id === +id) ?? null) : null;
   }
 
   rechercher(): void {
     if (this.filterForm.get('prestataire')?.invalid) return;
-    const { date_debut, date_fin, agence, typeequipe } = this.filterForm.value;
+    const { date_debut, date_fin, prestataire, agence, typeequipe } = this.filterForm.value;
+    let params = new HttpParams().set('prestataire', prestataire);
+    if (date_debut) params = params.set('date_debut', date_debut);
+    if (date_fin)   params = params.set('date_fin', date_fin);
+    if (agence)     params = params.set('agence', agence);
+    if (typeequipe) params = params.set('typeequipe', typeequipe);
+
     this.hasSearched = true;
-    this.store.dispatch(fetchCommandesParAgencePeriode({
-      date_debut: date_debut || undefined,
-      date_fin:   date_fin   || undefined,
-      agence:     agence     ? +agence     : undefined,
-      typeequipe: typeequipe ? +typeequipe : undefined,
-    }));
+    this.isLoading = true;
+    this.error = null;
+    this.detailOuvert = new Set();
+    this.http.get<any>(`${this.apiUrl}/facturation/prestataires/`, { params })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: data => {
+          const p = (data.prestataires ?? [])[0];
+          this.regle            = data.regle;
+          this.anomalies        = data.anomalies ?? [];
+          this.etat             = p?.etat ?? null;
+          this.repasSansTarif   = p?.repas_sans_tarif ?? 0;
+          this.totalNbCommandes = p?.nb_repas ?? 0;
+          this.totalMontant     = p?.total ?? 0;
+          this.lignesFacturation = (p?.agents ?? []).map((a: any) => this._ligne(a));
+          this.isLoading = false;
+        },
+        error: err => {
+          this.error = typeof err === 'string' ? err : 'Erreur lors du calcul de la facturation';
+          this.isLoading = false;
+        },
+      });
+  }
+
+  /** Mise en forme d'un agent (regroupement par date pour l'affichage uniquement) */
+  private _ligne(a: any): LigneFacturationPrestataire {
+    const parDate = new Map<string, { dateMenu: string; platNom: string; montant: number; nbFois: number; sousTotal: number }>();
+    for (const l of a.lignes ?? []) {
+      const d = parDate.get(l.date_menu)
+        ?? { dateMenu: l.date_menu, platNom: l.plat, montant: l.montant ?? 0, nbFois: 0, sousTotal: 0 };
+      if (d.platNom !== l.plat) d.platNom = 'Plusieurs plats';
+      d.nbFois++;
+      d.sousTotal += l.montant ?? 0;
+      parDate.set(l.date_menu, d);
+    }
+    return {
+      userId:       a.user_id,
+      username:     a.username,
+      nomPrenom:    a.nom_prenom,
+      agenceMenu:   a.agence_menu || '—',
+      agenceAgent:  a.agence_agent || '—',
+      equipe:       a.equipe || '—',
+      service:      a.service || '—',
+      poste:        a.poste || '—',
+      nbCommandes:  a.nb_repas,
+      totalMontant: a.total,
+      detail:       Array.from(parDate.values()).sort((x, y) => x.dateMenu.localeCompare(y.dateMenu)),
+      statuts:      { en_attente: a.statuts.en_attente, retiree: a.statuts.retiree },
+    };
   }
 
   resetFilters(): void {
-    const today = new Date().toISOString().split('T')[0];
-    this.filterForm.reset({ date_debut: today, date_fin: '', prestataire: '', agence: '', typeequipe: '' });
-    this.hasSearched           = false;
-    this.statutsSelectionnes   = [];
-    this.lignesFacturation     = [];
-    this.totalNbCommandes      = 0;
-    this.totalMontant          = 0;
-    this._commandesBrutes      = [];
+    const { debut, fin } = this._moisCourant();
+    this.filterForm.reset({ date_debut: debut, date_fin: fin, prestataire: '', agence: '', typeequipe: '' });
+    this.hasSearched            = false;
+    this.lignesFacturation      = [];
+    this.totalNbCommandes       = 0;
+    this.totalMontant           = 0;
+    this.anomalies              = [];
+    this.etat                   = null;
+    this.repasSansTarif         = 0;
     this.prestataireSelectionne = null;
-    this.platPrestataires      = [];
-    this.detailOuvert          = new Set();
-    this.store.dispatch(resetCommandesParAgencePeriode());
+    this.detailOuvert           = new Set();
+  }
+
+  libelleEtat(etat: EtatFacture | null): string {
+    return etat === 'cloturee' ? 'Clôturée' : etat === 'partielle' ? 'Partielle' : 'Provisoire';
   }
 
   // ── Toggle détail plats par agent ─────────────────────────
@@ -454,14 +246,12 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
     return n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   }
 
-  dismissAlert(): void { this.store.dispatch(resetCommandeError()); }
+  dismissAlert(): void { this.error = null; }
 
-  get isLoadingAll(): boolean { return this.isLoading || this.isLoadingRef; }
+  get isLoadingAll(): boolean { return this.isLoading; }
 
   get hasPlatsSansMontant(): boolean {
-    return this.lignesFacturation.some(l =>
-      l.detail.some(d => d.montant === 0)
-    );
+    return this.repasSansTarif > 0;
   }
 
   get prestataireNom(): string {
@@ -572,7 +362,7 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
     const head = [[
       'N°', 'Username', 'Nom & Prénom', 'Agence menu', 'Agence agent',
       'Équipe', 'Service', 'Poste',
-      'Nb cmd', 'Att.', 'Ret.', 'Ann.', 'Total dû (FCFA)',
+      'Nb cmd', 'Att.', 'Ret.', 'État', 'Total dû (FCFA)',
     ]];
 
     const body: any[][] = [];
@@ -591,7 +381,7 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
         l.nbCommandes,
         l.statuts.en_attente,
         l.statuts.retiree,
-        l.statuts.annulee,
+        this.libelleEtat(this.etat),
         this.formatMontant(l.totalMontant),
       ]);
       // Sous-lignes détail plats
@@ -675,7 +465,7 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
     // Définition des colonnes
     const head = [[
       'N°', 'Username', 'Nom & Prénom', 'Agence', 'Service', 'Poste',
-      'Nb cmd', 'Att.', 'Ret.', 'Ann.', 'Total dû (FCFA)',
+      'Nb cmd', 'Att.', 'Ret.', 'État', 'Total dû (FCFA)',
     ]];
 
     const body: any[][] = [];
@@ -691,7 +481,7 @@ export class FacturationPrestataireComponent implements OnInit, OnDestroy {
         l.nbCommandes,
         l.statuts.en_attente,
         l.statuts.retiree,
-        l.statuts.annulee,
+        this.libelleEtat(this.etat),
         this.formatMontant(l.totalMontant),
       ]);
     });
