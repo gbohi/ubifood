@@ -198,6 +198,7 @@
     "PARAMETRES": {
       "TEXT": "Paramètres",
       "LIST": {
+        "SOCIETE": "Société (factures)",
         "AGENCE": "Agence",
         "ETAT": "Etat",
         "PRIORITE": "Priorité",

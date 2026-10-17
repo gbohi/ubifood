@@ -71,6 +71,14 @@ le web, le mobile et le tableau de bord affichent ce résultat.
   tarif prestataire (sinon la liste des éléments à corriger est affichée).
 - Après clôture, les commandes du mois ne sont plus modifiables, et un agent ou
   un prestataire facturé ne peut plus être supprimé (désactiver l'agent).
+- **Facture prestataire PDF** : chaque prestataire reçoit à la clôture une
+  facture numérotée `FP-AAAA-MM-NNN`, téléchargeable sur la page
+  « Facturation prestataire » (bloc « Factures officielles »). Le PDF est
+  généré par le serveur à partir de la facture figée.
+- **En-tête des factures** : Paramètres → Société (nom, adresse, ville,
+  téléphone, e-mail, site, N° contribuable, RCCM, logo, mentions de bas de
+  page). Modifiable à tout moment par un administrateur : les factures
+  téléchargées ensuite utilisent les nouvelles informations.
 
 ---
 

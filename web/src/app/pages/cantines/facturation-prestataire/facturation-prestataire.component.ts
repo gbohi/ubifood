@@ -21,6 +21,7 @@ import { fetchagenceNoPaginateData } from 'src/app/store/Agence/agence.action';
 import { selectAllTypeequipeWithoutPagination } from 'src/app/store/Typeequipe/typeequipe-selector';
 import { fetchtypeequipeNoPaginateData } from 'src/app/store/Typeequipe/typeequipe.action';
 
+import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -86,6 +87,10 @@ export class FacturationPrestataireComponent implements OnInit {
   // Prestataire sélectionné (objet complet pour affichage)
   prestataireSelectionne: any | null = null;
 
+  // Factures officielles (mois clôturés) du prestataire sélectionné
+  facturesOfficielles: any[] = [];
+  telechargementEnCours: number | null = null;
+
   // Lignes détail dépliées
   detailOuvert: Set<string> = new Set();
 
@@ -140,6 +145,34 @@ export class FacturationPrestataireComponent implements OnInit {
   onPrestataireChange(): void {
     const id = this.filterForm.get('prestataire')?.value;
     this.prestataireSelectionne = id ? (this.prestataires.find(p => p.id === +id) ?? null) : null;
+    this.facturesOfficielles = [];
+    if (id) {
+      this.http.get<any>(`${this.apiUrl}/factures-prestataires/`,
+                         { params: new HttpParams().set('prestataire', id).set('page_size', 100) })
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(r => this.facturesOfficielles = Array.isArray(r) ? r : (r.results ?? []));
+    }
+  }
+
+  /** Facture PDF officielle générée par le serveur à partir de la facture figée */
+  telechargerFacture(f: any): void {
+    this.telechargementEnCours = f.id;
+    this.http.get(`${this.apiUrl}/factures-prestataires/${f.id}/pdf/`, { responseType: 'blob' })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: blob => {
+          saveAs(blob, `facture-${f.numero || f.id}.pdf`);
+          this.telechargementEnCours = null;
+        },
+        error: () => {
+          this.error = 'Téléchargement de la facture impossible.';
+          this.telechargementEnCours = null;
+        },
+      });
+  }
+
+  libelleMois(annee: number, mois: number): string {
+    return new Date(annee, mois - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
   }
 
   rechercher(): void {
@@ -214,6 +247,7 @@ export class FacturationPrestataireComponent implements OnInit {
     this.etat                   = null;
     this.repasSansTarif         = 0;
     this.prestataireSelectionne = null;
+    this.facturesOfficielles    = [];
     this.detailOuvert           = new Set();
   }
 
@@ -318,6 +352,7 @@ export class FacturationPrestataireComponent implements OnInit {
       'Tarif (FCFA)':  '',
       'Nb cmd':        this.totalNbCommandes,
       'Total (FCFA)':  this.totalMontant,
+      'État':          this.libelleEtat(this.etat),
     });
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -351,6 +386,7 @@ export class FacturationPrestataireComponent implements OnInit {
     doc.setFont('helvetica', 'normal');
     doc.text(
       `Période : ${date_debut ? this.formatDate(date_debut) : ''}${date_fin ? ' au ' + this.formatDate(date_fin) : ''} — ` +
+      `État : ${this.libelleEtat(this.etat)} — ` +
       `Généré le : ${new Date().toLocaleDateString('fr-FR')} — ` +
       `${this.lignesFacturation.length} agent(s) — ` +
       `${this.totalNbCommandes} commande(s) — ` +
@@ -388,7 +424,8 @@ export class FacturationPrestataireComponent implements OnInit {
       l.detail.forEach(d => {
         body.push([
           '',
-          { content: `→ ${d.platNom}`, colSpan: 7, styles: { fontStyle: 'italic', textColor: [100, 100, 100] } },
+          { content: `→ ${this.formatDate(d.dateMenu)} — ${d.platNom} (${this.formatMontant(d.montant)} FCFA × ${d.nbFois})`,
+            colSpan: 7, styles: { fontStyle: 'italic', textColor: [100, 100, 100] } },
           d.nbFois,
           '', '', '',
           { content: this.formatMontant(d.sousTotal), styles: { textColor: [80, 80, 80] } },
@@ -457,6 +494,7 @@ export class FacturationPrestataireComponent implements OnInit {
     doc.setFont('helvetica', 'normal');
     doc.text(
       `Période : ${date_debut ? this.formatDate(date_debut) : ''}${date_fin ? ' au ' + this.formatDate(date_fin) : ''} | ` +
+      `État : ${this.libelleEtat(this.etat)} | ` +
       `Généré le : ${new Date().toLocaleDateString('fr-FR')} | ` +
       `Total agents : ${this.lignesFacturation.length}`,
       14, 22

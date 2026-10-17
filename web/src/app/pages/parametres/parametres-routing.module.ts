@@ -19,9 +19,17 @@ import { FonctionComponent } from './fonction/fonction.component';
 import { CategoriesalarieComponent } from './categoriesalarie/categoriesalarie.component';
 import { PrestataireComponent } from './prestataire/prestataire.component';
 import { PosteComponent } from './poste/poste.component';
+import { SocieteComponent } from './societe/societe.component';
 
 
 const routes: Routes = [
+  {
+    // En-tête des factures PDF
+    path: 'societe',
+    component: SocieteComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
+  },
   {
     path: 'agence',
     component: AgenceComponent,

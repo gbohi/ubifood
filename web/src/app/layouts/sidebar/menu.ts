@@ -1269,6 +1269,13 @@ export const MENU: MenuItem[] = [
         icon: 'ph-gear-light',
         subItems: [
             {
+                id: 199,
+                label: 'MENUITEMS.PARAMETRES.LIST.SOCIETE',
+                link: '/parametres/societe',
+                roles: ADMINS,
+                parentId: 175
+            },
+            {
                 id: 176,
                 label: 'MENUITEMS.PARAMETRES.LIST.AGENCE',
                 link: '/parametres/agence',

@@ -1,6 +1,6 @@
 
 <!-- src/app/pages/cantine/facturation-prestataire/facturation-prestataire.component.html -->
-<app-breadcrumbs [breadCrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<app-breadcrumbs [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
 
 <div class="row">
   <div class="col-12">
@@ -97,6 +97,59 @@
         }
       </div>
     </div>
+
+    <!-- ══ FACTURES OFFICIELLES (mois clôturés) ═════════════════ -->
+    @if (prestataireSelectionne) {
+      <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2">
+          <h6 class="mb-0"><i class="ph-file-pdf me-2"></i>Factures officielles — {{ prestataireSelectionne.libelle }}</h6>
+          <span class="badge bg-secondary-subtle text-secondary">{{ facturesOfficielles.length }}</span>
+        </div>
+        <div class="card-body">
+          @if (facturesOfficielles.length === 0) {
+            <div class="text-muted small">
+              Aucune facture officielle : elles sont créées à la clôture d'un mois
+              (page « Facturation commandes », bloc « Clôtures mensuelles »).
+            </div>
+          } @else {
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>N° facture</th>
+                    <th>Mois</th>
+                    <th class="text-center">Repas</th>
+                    <th class="text-end">Montant (FCFA)</th>
+                    <th>Clôturée le</th>
+                    <th class="text-end"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (f of facturesOfficielles; track f.id) {
+                    <tr>
+                      <td class="fw-medium">{{ f.numero || f.id }}</td>
+                      <td class="text-capitalize">{{ libelleMois(f.annee, f.mois) }}</td>
+                      <td class="text-center">{{ f.nb_repas }}</td>
+                      <td class="text-end fw-semibold">{{ formatMontant(+f.montant_total) }}</td>
+                      <td>{{ f.cloturee_le | date:'dd/MM/yyyy HH:mm' }}</td>
+                      <td class="text-end">
+                        <button class="btn btn-subtle-danger btn-sm" type="button"
+                                [disabled]="telechargementEnCours === f.id" (click)="telechargerFacture(f)">
+                          @if (telechargementEnCours === f.id) {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                          } @else { <i class="ph-download-simple me-1"></i> }
+                          Télécharger la facture
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      </div>
+    }
 
     <!-- ══ RÉSULTATS ════════════════════════════════════════════ -->
     <div class="card">

@@ -1,0 +1,103 @@
+<app-breadcrumbs title="Société" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+
+<div class="row">
+  <div class="col-xl-9">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0"><i class="ph-buildings me-2"></i>Société — en-tête des factures</h5>
+        <small class="text-muted">
+          Ces informations apparaissent sur les factures PDF des prestataires. Elles peuvent
+          être modifiées à tout moment ; les montants des factures, eux, restent figés.
+        </small>
+      </div>
+      <div class="card-body">
+        @if (message) {
+          <div class="alert alert-success py-2 small"><i class="ph-check-circle me-1"></i>{{ message }}</div>
+        }
+        @if (erreur) {
+          <div class="alert alert-danger py-2 small"><i class="ph-warning me-1"></i>{{ erreur }}</div>
+        }
+
+        @if (isLoading) {
+          <div class="text-center py-5"><span class="spinner-border text-primary" role="status"></span></div>
+        } @else {
+          <form [formGroup]="form" (ngSubmit)="enregistrer()">
+            <div class="row g-3">
+              <div class="col-md-8">
+                <label class="form-label">Nom de la société</label>
+                <input class="form-control" formControlName="nom" placeholder="Ex. UBIPHARM Côte d'Ivoire">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Ville</label>
+                <input class="form-control" formControlName="ville" placeholder="Ex. Abidjan">
+                <small class="text-muted">Utilisée pour « Fait à … ».</small>
+              </div>
+              <div class="col-12">
+                <label class="form-label">Adresse</label>
+                <textarea class="form-control" rows="2" formControlName="adresse"></textarea>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Téléphone</label>
+                <input class="form-control" formControlName="telephone">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">E-mail</label>
+                <input class="form-control" type="email" formControlName="email"
+                       [class.is-invalid]="form.get('email')?.invalid && form.get('email')?.touched">
+                <div class="invalid-feedback">Adresse e-mail invalide.</div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Site web</label>
+                <input class="form-control" formControlName="site_web">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">N° compte contribuable / identifiant fiscal</label>
+                <input class="form-control" formControlName="identifiant_fiscal">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">RCCM</label>
+                <input class="form-control" formControlName="registre_commerce">
+              </div>
+              <div class="col-12">
+                <label class="form-label">Mentions de bas de page</label>
+                <textarea class="form-control" rows="3" formControlName="pied_de_page"
+                          placeholder="Ex. coordonnées bancaires, capital social… (3 lignes maximum sur la facture)"></textarea>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Logo (PNG ou JPEG, 2 Mo maximum)</label>
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                  @if (apercuNouveauLogo) {
+                    <img [src]="apercuNouveauLogo" alt="Nouveau logo" class="border rounded p-1" style="max-height: 70px">
+                  } @else if (logoUrl && !supprimerLogo) {
+                    <img [src]="logoUrl" alt="Logo actuel" class="border rounded p-1" style="max-height: 70px">
+                  } @else {
+                    <span class="text-muted small">Aucun logo</span>
+                  }
+                  <input type="file" class="form-control" style="max-width: 320px"
+                         accept="image/png,image/jpeg" (change)="onLogoChoisi($event)">
+                  @if ((logoUrl && !supprimerLogo) || apercuNouveauLogo) {
+                    <button type="button" class="btn btn-subtle-danger btn-sm" (click)="retirerLogo()">
+                      <i class="ph-trash me-1"></i>Retirer le logo
+                    </button>
+                  }
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-4">
+              <small class="text-muted">
+                @if (derniereModification) { Dernière modification : {{ derniereModification | date:'dd/MM/yyyy HH:mm' }} }
+              </small>
+              <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1" role="status"></span> }
+                @else { <i class="ph-floppy-disk me-1"></i> }
+                Enregistrer
+              </button>
+            </div>
+          </form>
+        }
+      </div>
+    </div>
+  </div>
+</div>
