@@ -285,6 +285,15 @@ class Prestataire(BaseModel):
     date_debut = models.DateTimeField()
     date_fin = models.DateTimeField(null=True, blank=True)
     statut = models.ForeignKey(Statut, on_delete=models.CASCADE)
+    # Coordonnées (affichées sur les factures PDF)
+    contact_nom        = models.CharField('Personne à contacter', max_length=150, blank=True)
+    adresse            = models.TextField(blank=True)
+    ville              = models.CharField(max_length=100, blank=True)
+    telephone          = models.CharField(max_length=100, blank=True)
+    email              = models.EmailField(blank=True)
+    identifiant_fiscal = models.CharField('N° compte contribuable / identifiant fiscal',
+                                          max_length=100, blank=True)
+    registre_commerce  = models.CharField('RCCM', max_length=100, blank=True)
 
 class Categoriesalarie(BaseModel):
     libelle = models.CharField(max_length=100)

@@ -527,6 +527,15 @@ class FacturePdfTests(_FacturationBase):
         self.client_pour(self.admin).patch(f'{API}/parametres-societe/', {
             'nom': 'UBIPHARM CI', 'adresse': 'Zone 4\nAbidjan', 'ville': 'Abidjan',
             'pied_de_page': 'Banque X — IBAN CI00 0000', 'logo': self._logo()}, format='multipart')
+        r = self.client_pour(self.admin).patch(f'{API}/prestataires/{self.traiteur.id}/', {
+            'contact_nom': 'M. Kouassi', 'adresse': 'Cocody, Rue 12', 'ville': 'Abidjan',
+            'telephone': '+225 07 00 00 00', 'email': 'contact@traiteur-a.ci',
+            'identifiant_fiscal': 'CC-987', 'registre_commerce': 'CI-ABJ-2020-B-1'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['contact_nom'], 'M. Kouassi')
+        self.assertEqual(self.client_pour(self.gestionnaire).patch(
+            f'{API}/prestataires/{self.traiteur.id}/', {'ville': 'X'}, format='json').status_code, 403)
+
         r = self.client_pour(self.admin).post(f'{API}/facturation/clotures/cloturer/',
                                               {'annee': 2026, 'mois': 8})
         self.assertEqual(r.status_code, 201, r.data)

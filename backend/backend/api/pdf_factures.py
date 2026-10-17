@@ -181,13 +181,29 @@ def generer_facture_prestataire(facture, societe):
                                 ('RIGHTPADDING', (0, 0), (-1, -1), 0)]))
     elements += [entete, Spacer(1, 8 * mm)]
 
-    # ── Prestataire ────────────────────────────────────────────
-    cadre = Table([[p('PRESTATAIRE', petit)], [p(facture.prestataire_libelle, gras)]],
-                  colWidths=[180 * mm])
+    # ── Prestataire (coordonnées actuelles de sa fiche) ────────
+    prest = facture.prestataire
+    lignes_prest = [[p('PRESTATAIRE', petit)], [p(facture.prestataire_libelle, gras)]]
+    for valeur in (
+        getattr(prest, 'contact_nom', '') and f"À l'attention de : {prest.contact_nom}",
+        getattr(prest, 'adresse', ''),
+        getattr(prest, 'ville', ''),
+        ' — '.join(x for x in (getattr(prest, 'telephone', '') and f"Tél. : {prest.telephone}",
+                                getattr(prest, 'email', '')) if x),
+        ' — '.join(x for x in (
+            getattr(prest, 'identifiant_fiscal', '') and f"N° contribuable : {prest.identifiant_fiscal}",
+            getattr(prest, 'registre_commerce', '') and f"RCCM : {prest.registre_commerce}") if x),
+    ):
+        if valeur:
+            lignes_prest.append([p(valeur, petit)])
+    cadre = Table(lignes_prest, colWidths=[180 * mm])
     cadre.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, -1), GRIS),
                                ('LEFTPADDING', (0, 0), (-1, -1), 4 * mm),
-                               ('TOPPADDING', (0, 0), (-1, -1), 1.5 * mm),
-                               ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5 * mm)]))
+                               ('TOPPADDING', (0, 0), (-1, -1), 0.3 * mm),
+                               ('BOTTOMPADDING', (0, 0), (-1, -1), 0.3 * mm),
+                               ('TOPPADDING', (0, 0), (-1, 0), 2 * mm),
+                               ('BOTTOMPADDING', (0, 1), (-1, 1), 1 * mm),
+                               ('BOTTOMPADDING', (0, -1), (-1, -1), 2 * mm)]))
     elements += [cadre, Spacer(1, 4 * mm),
                  p(f"Repas servis au personnel en {periode} — {facture.nb_repas} repas. "
                    "Montants figés à la clôture du mois."),
