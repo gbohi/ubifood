@@ -43,7 +43,7 @@ class _RetraitScreenState extends State<RetraitScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cliquez sur le Qrcode'),
+        title: const Text('Scannez le QR code'),
         actions: [
           IconButton(
             icon: Icon(_scanMode
@@ -368,8 +368,10 @@ class _ResultatCard extends StatelessWidget {
 
             const SizedBox(height: 14),
 
-            // Bouton valider retrait
-            if (!result.aRetire && result.commandes.isNotEmpty)
+            // Bouton valider retrait (uniquement s'il reste une commande en attente)
+            if (!result.aRetire &&
+                result.commandes
+                    .any((c) => c.statut == StatutCommande.enAttente))
               AppButton(
                 label: 'Valider le retrait',
                 icon: Icons.done_all_rounded,

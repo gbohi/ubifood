@@ -1,30 +1,23 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// Tests unitaires des modèles (remplace le test « compteur » du gabarit
+// Flutter, qui référençait un package et une classe inexistants).
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ubifood/main.dart';
+import 'package:cantine_app/shared/models/models.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('StatutCommande : conversion depuis la valeur serveur', () {
+    expect(
+        StatutCommandeExt.fromString('en_attente'), StatutCommande.enAttente);
+    expect(StatutCommandeExt.fromString('annulee'), StatutCommande.annulee);
+    expect(StatutCommandeExt.fromString('retiree'), StatutCommande.retiree);
+    expect(StatutCommande.enAttente.value, 'en_attente');
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('Commande : seule une commande en attente peut être annulée', () {
+    final c = Commande.fromJson({'id': 1, 'statut': 'en_attente'});
+    final a = Commande.fromJson({'id': 2, 'statut': 'annulee'});
+    expect(c.peutAnnuler, isTrue);
+    expect(a.peutAnnuler, isFalse);
   });
 }
