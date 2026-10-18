@@ -26,20 +26,23 @@ export const MENU: MenuItem[] = [
         label: 'MENUITEMS.APPS.TEXT',
         isTitle: true
     },
-    /*{
+    {
+        // Besoins : réservé aux administrateurs
         id: 182,
         label: 'MENUITEMS.BESOINS.TEXT',
         icon: 'ph-ticket',
         parentId: 8,
+        roles: ADMINS,
         subItems: [
             {
                 id: 201,
                 label: 'MENUITEMS.APPS.LIST.LISTBESOIN',
                 link: '/besoins/list-besoin',
+                roles: ADMINS,
                 parentId: 182
             }
         ]
-    },*/
+    },
     {
         id: 210,
         label: 'MENUITEMS.CANTINES.TEXT',
@@ -115,99 +118,7 @@ export const MENU: MenuItem[] = [
                 parentId: 210
             }
         ]
-    },/*
-    {
-        id: 220,
-        label: 'MENUITEMS.COMPTABILITE.TEXT',
-        icon: 'ph-money-light',
-        parentId: 8,
-        subItems: [
-            {
-                id: 221,
-                label: 'MENUITEMS.COMPTABILITE.LIST.GENERATIONBANCAIRE',
-                link: '/comptabilite/generation-bancaire',
-                parentId: 220
-            }
-        ]
     },
-    {
-        id: 230,
-        label: 'MENUITEMS.MOYENSGENERAUX.TEXT',
-        icon: 'ph-cpu-thin',
-        parentId: 8,
-        subItems: [
-            {
-                id: 231,
-                label: 'MENUITEMS.MOYENSGENERAUX.LIST.IMPORTERENTRTIEN',
-                link: '/moyens-generaux/importer-entretien',
-                parentId: 230
-            },
-            {
-                id: 232,
-                label: 'MENUITEMS.MOYENSGENERAUX.LIST.LISTENTRETIEN',
-                link: '/moyens-generaux/liste-entretien',
-                parentId: 230
-            },
-            {
-                id: 233,
-                label: 'MENUITEMS.MOYENSGENERAUX.LIST.LISTVEHICULE',
-                link: '/moyens-generaux/liste-vehicule',
-                parentId: 230
-            }
-        ]
-    },
-    {
-        id: 300,
-        label: 'MENUITEMS.GESTIONCOMPTES.TEXT',
-        icon: 'ph-ticket',
-        parentId: 8,
-        subItems: [
-            {
-                id: '300A1',
-                label: 'MENUITEMS.GESTIONCOMPTES.LIST.LISTCOMPTE',
-                link: '/plan-comptable/comptecomptable',
-                parentId: 300
-            },
-            {
-                id: '300A2',
-                label: 'MENUITEMS.GESTIONCOMPTES.LIST.LISTCATEGORIECOMPTE',
-                link: '/plan-comptable/categoriecomptable',
-                parentId: 300
-            },
-            {
-                id: '300A3',
-                label: 'MENUITEMS.GESTIONCOMPTES.LIST.LISTPOSTECOMPTE',
-                link: '/plan-comptable/postereporting',
-                parentId: 300
-            },
-            {
-                id: '300A4',
-                label: 'MENUITEMS.GESTIONCOMPTES.LIST.LISTCLASSECOMPTE',
-                link: '/plan-comptable/classecomptable',
-                parentId: 300
-            }
-        ]
-    },*/
-    /*{
-        id: 240,
-        label: 'MENUITEMS.RESSOURCESHUMAINES.TEXT',
-        icon: 'ph-cpu-thin',
-        parentId: 8,
-        subItems: [
-            {
-                id: 241,
-                label: 'MENUITEMS.RESSOURCESHUMAINES.LIST.IMPORTERSALAIRE',
-                link: '/ressources-humaines/importer-salaire',
-                parentId: 240
-            },
-            {
-                id: 242,
-                label: 'MENUITEMS.RESSOURCESHUMAINES.LIST.LISTSALAIRE',
-                link: '/ressources-humaines/liste-salaire',
-                parentId: 240
-            }
-        ]
-    },*/
 
     //Menu ubici
     {
@@ -290,13 +201,6 @@ export const MENU: MenuItem[] = [
                 label: 'MENUITEMS.PARAMETRES.LIST.TYPEPLAT',
                 link: '/parametres/typeplat',
                 roles: GESTIONNAIRES,
-                parentId: 175
-            },
-            {
-                id: 185,
-                label: 'MENUITEMS.PARAMETRES.LIST.TYPEVEHICULE',
-                link: '/parametres/type-vehicule',
-                roles: ADMINS,
                 parentId: 175
             },
             {

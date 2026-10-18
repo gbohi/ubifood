@@ -12,24 +12,12 @@ const routes: Routes = [
     path: 'parametres', loadChildren: () => import('./parametres/parametres.module').then(m => m.ParametresModule)
   },
   {
-    path: 'besoins', loadChildren: () => import('./besoins/besoins.module').then(m => m.BesoinsModule)
+    // Besoins : réservé aux administrateurs
+    path: 'besoins', loadChildren: () => import('./besoins/besoins.module').then(m => m.BesoinsModule),
+    canActivate: [RoleGuard], data: { roles: ADMINS }
   },
   {
     path: 'cantines', loadChildren: () => import('./cantines/cantines.module').then(m => m.CantinesModule)
-  },/*
-  {
-    path: 'comptabilite', loadChildren: () => import('./comptabilite/comptabilite.module').then(m => m.ComptabiliteModule)
-  },*/
-  {
-    path: 'moyens-generaux', loadChildren: () => import('./moyens-generaux/moyens-generaux.module').then(m => m.MoyensgenerauxModule),
-    canActivate: [RoleGuard], data: { roles: ADMINS }
-  },
-  /*{
-    path: 'ressources-humaines', loadChildren: () => import('./ressources-humaines/ressources-humaines.module').then(m => m.RessourcesHumainesModule)
-  },*/
-  {
-    path: 'plan-comptable', loadChildren: () => import('./plan-comptable/plan-comptable.module').then(m => m.PlanComptableModule),
-    canActivate: [RoleGuard], data: { roles: ADMINS }
   },
 ];
 

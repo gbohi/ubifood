@@ -15,7 +15,7 @@
       "TEXT": "applications",
       "LIST": {
         "BESOIN": "Besoin",
-        "LISTBESOIN":"Liste besoin"
+        "LISTBESOIN":"Liste des besoins"
       }
     },
     "PAGES": {

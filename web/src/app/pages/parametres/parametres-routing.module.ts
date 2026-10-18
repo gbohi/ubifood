@@ -13,7 +13,6 @@ import { DepartementComponent } from './departement/departement.component';
 import { RoleComponent } from './role/role.component';
 import { UserComponent } from './user/user.component';
 import { TypeplatComponent } from './typeplat/typeplat.component';
-import { TypeVehiculeComponent } from './type-vehicule/type-vehicule.component';
 import { TypeequipeComponent } from './typeequipe/typeequipe/typeequipe.component';
 import { FonctionComponent } from './fonction/fonction.component';
 import { CategoriesalarieComponent } from './categoriesalarie/categoriesalarie.component';
@@ -91,12 +90,6 @@ const routes: Routes = [
     component: TypeplatComponent,
     canActivate: [RoleGuard],
     data: { roles: GESTIONNAIRES }
-  },
-  {
-    path: 'type-vehicule',
-    component: TypeVehiculeComponent,
-    canActivate: [RoleGuard],
-    data: { roles: ADMINS }
   },
   {
     path: 'type-equipe',

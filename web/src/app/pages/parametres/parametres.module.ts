@@ -36,7 +36,6 @@ import { DepartementComponent } from './departement/departement.component';
 import { RoleComponent } from './role/role.component';
 import { UserComponent } from './user/user.component';
 import { TypeplatComponent } from './typeplat/typeplat.component';
-import { TypeVehiculeComponent } from './type-vehicule/type-vehicule.component';
 import { TypeequipeComponent } from './typeequipe/typeequipe/typeequipe.component';
 import { FonctionComponent } from './fonction/fonction.component';
 import { CategoriesalarieComponent } from './categoriesalarie/categoriesalarie.component';
@@ -65,7 +64,6 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     RoleComponent,
     UserComponent,
     TypeplatComponent,
-    TypeVehiculeComponent,
     TypeequipeComponent,
     FonctionComponent,
     CategoriesalarieComponent,

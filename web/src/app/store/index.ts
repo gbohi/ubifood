@@ -17,15 +17,6 @@ import { UserReducer, UserState } from "./User/user.reducer";
 import { BesoinReducer, BesoinState } from "./Besoin/besoin.reducer";
 import { TypeplatReducer, TypeplatState } from "./Typeplat/typeplat.reducer";
 import { PlatReducer, PlatState } from "./Plat/plat.reducer";
-import { TypevehiculeReducer, TypevehiculeState } from "./Typevehicule/typevehicule.reducer";
-import { VehiculeReducer, VehiculeState } from "./Vehicule/vehicule.reducer";
-import { EntretienvehiculeReducer, EntretienvehiculeState } from "./Entretienvehicule/entretienvehicule.reducer";
-import { dashboardentretienvehiculeReducer, DashboardEntretienVehiculeState } from "./Dashboardentretienvehicule/dashboardentretienvehicule.reducer";
-import { DashboardSimulationReducer, DashboardSimulationState } from "./Dashboardsimulation/dashboardsimulation.reducer";
-import { CategoriecomptableReducer, CategoriecomptableState } from "./Categoriecomptable/categoriecomptable.reducer";
-import { ClassecomptableReducer, ClassecomptableState } from "./Classecomptable/classecomptable.reducer";
-import { PostereportingReducer, PostereportingState } from "./Postereporting/postereporting.reducer";
-import { ComptecomptableReducer, ComptecomptableState } from "./Comptecomptable/comptecomptable.reducer";
 import { MenuReducer, MenuState } from "./Menu/menu.reducer";
 import { TypeequipeReducer, TypeequipeState } from "./Typeequipe/typeequipe.reducer";
 import { commandeReducer, CommandeState } from "./Commande/commande.reducer";
@@ -55,15 +46,6 @@ export interface RootReducerState {
     besoin: BesoinState;
     typeplat: TypeplatState;
     plat: PlatState;
-    typevehicule: TypevehiculeState;
-    vehicule: VehiculeState;
-    entretienvehicule: EntretienvehiculeState;
-    dashboardentretienvehicule: DashboardEntretienVehiculeState;
-    dashboardsimulation: DashboardSimulationState;
-    categoriecomptable: CategoriecomptableState;
-    classecomptable: ClassecomptableState;
-    postereporting: PostereportingState;
-    comptecomptable: ComptecomptableState;
     menu: MenuState;
     typeequipe: TypeequipeState,
     commande: CommandeState,
@@ -96,15 +78,6 @@ export const rootReducer: ActionReducerMap<RootReducerState> = {
     besoin: BesoinReducer,
     typeplat: TypeplatReducer,
     plat: PlatReducer,
-    typevehicule: TypevehiculeReducer,
-    vehicule: VehiculeReducer,
-    entretienvehicule: EntretienvehiculeReducer,
-    dashboardentretienvehicule: dashboardentretienvehiculeReducer,
-    dashboardsimulation: DashboardSimulationReducer,
-    categoriecomptable: CategoriecomptableReducer,
-    classecomptable: ClassecomptableReducer,
-    postereporting: PostereportingReducer,
-    comptecomptable: ComptecomptableReducer,
     menu: MenuReducer,
     typeequipe: TypeequipeReducer,
     commande: commandeReducer,

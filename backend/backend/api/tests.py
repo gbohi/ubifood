@@ -145,13 +145,25 @@ class DroitsParRoleTests(BaseAPITestCase):
 
     def test_endpoints_sensibles_fermes_aux_anonymes(self):
         anonyme = self.client_pour()
-        for url in ('/simulation/', '/allnopagin/groups/', '/allnopagin/agences/',
-                    '/etat-entretien-groupes/', '/allnopagin/vehicules/'):
+        for url in ('/besoins/', '/allnopagin/groups/', '/allnopagin/agences/'):
             self.assertEqual(anonyme.get(f'{API}{url}').status_code, 401, url)
 
-    def test_simulation_reservee_aux_admins(self):
-        self.assertEqual(self.client_pour(self.employe).get(f'{API}/simulation/').status_code, 403)
-        self.assertEqual(self.client_pour(self.admin).get(f'{API}/simulation/').status_code, 200)
+    def test_besoins_reserves_aux_admins(self):
+        for u in (self.employe, self.gestionnaire):
+            client = self.client_pour(u)
+            self.assertEqual(client.get(f'{API}/besoins/').status_code, 403)
+            self.assertEqual(client.get(f'{API}/besoin-documents/').status_code, 403)
+            self.assertEqual(client.post('/api/besoins/creer/').status_code, 403)
+        self.assertEqual(self.client_pour(self.admin).get(f'{API}/besoins/').status_code, 200)
+
+    def test_modules_retires(self):
+        """Comptabilité, moyens généraux, plan comptable et RH n'existent plus."""
+        admin = self.client_pour(self.admin)
+        for url in ('/simulation/', '/vehicules/', '/typevehicules/', '/entretienvehicules/',
+                    '/comptecomptables/', '/categoriecomptables/', '/classecomptables/',
+                    '/postereportings/', '/etat-entretien-groupes/'):
+            self.assertEqual(admin.get(f'{API}{url}').status_code, 404, url)
+        self.assertEqual(admin.post(f'{API}/apb128/generer/').status_code, 404)
 
     def test_changer_son_mot_de_passe(self):
         client = self.client_pour(self.employe)

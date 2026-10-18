@@ -52,21 +52,7 @@ router.register(r'commandes', CommandeViewSet, basename='commande')
 router.register(r'retraits',  RetraitViewSet,  basename='retrait')
 router.register(r'typeequipes', TypeEquipeViewSet)
 
-# Entretien vehicule
-router.register(r'typevehicules', TypeVehiculeViewSet)
-router.register(r'vehicules', VehiculeViewSet)
-router.register(r'entretienvehicules', EntretienVehiculeViewSet)
 
-# Simulation salaire
-router.register(r'simulation', SimulationViewSet)
-router.register(r'simulation2', Simulation2ViewSet, basename='simulation2')
-router.register(r'simulationsalaires', SimulationSalaireCrudViewSet, basename='simulationsalaire-crud')
-
-#Plan comptable
-router.register(r'categoriecomptables', CategorieComptableViewSet)
-router.register(r'classecomptables', ClasseComptableViewSet)
-router.register(r'postereportings', PosteReportingViewSet)
-router.register(r'comptecomptables', CompteComptableViewSet)
 router.register(r'plat-prestataires', PlatPrestataireViewSet)
 router.register(r'agence-prestataires', AgencePrestataireViewSet)
 router.register(r'plat-categoriesalaries', PlatCategoriesalarieViewSet)
@@ -94,20 +80,8 @@ urlpatterns = [
     path('api/allnopagin/agences/', AllAgenceNopginListAPIView.as_view(), name='allnopagin-agence-list'),
     path('api/allnopagin/typeplats/', PublicTypePlatListAPIView.as_view(), name='allnopagin-typeplat-list'),
     path('api/allnopagin/typeequipes/', PublicTypeEquipeListAPIView.as_view(), name='allnopagin-typeequipe-list'),
-    path('api/allnopagin/typevehicules/', PublicTypeVehiculeListAPIView.as_view(), name='allnopagin-typevehicule-list'),
-    path('api/allnopagin/vehicules/', PublicVehiculeListAPIView.as_view(), name='allnopagin-vehicule-list'),
     path('api/allnopagin/statuts/', PublicStatutListAPIView.as_view(), name='allnopagin-statut-list'),
     path('api/allnopagin/etats/', PublicEtatListAPIView.as_view(), name='allnopagin-etat-list'),
-    path('api/apb128/generer/', GenererAPB128View.as_view(), name='generer-apb128'),
-    path('api/import-entretien/', ImportEntretienExcelView.as_view(), name='import-entretien'),
-    path('api/etat-entretien-groupes/', EtatEntretienGroupesView.as_view(), name='etat-entretien-groupes'),
-    path('api/simulationsalaire/upload/', SimulationSalaireUploadView.as_view(), name='simulation-upload'),
-    path('api/simulationsalaire/list/', SimulationSalaireListView.as_view(), name='simulation-list'),
-    path('api/generer-historique2/', GenererSimulationHistorique2View.as_view(), name='generer-historique2'),
-    path('api/allnopagin/categoriecomptables/', PublicCategorieComptableListAPIView.as_view(), name='allnopagin-categoriecomptable-list'),
-    path('api/allnopagin/postereportings/', PosteReportingListAPIView.as_view(), name='allnopagin-postereporting-list'),
-    path('api/allnopagin/classecomptables/', ClasseComptableListAPIView.as_view(), name='allnopagin-classecomptable-list'),
-    path('api/allnopagin/comptecomptables/', CompteComptableListAPIView.as_view(), name='allnopagin-comptecomptable-list'),
     path('api/allnopagin/fonctions/', FonctionListAPIView.as_view(), name='allnopagin-fonction-list'),
     path('api/allnopagin/services/', ServiceListAPIView.as_view(), name='allnopagin-service-list'),
     path('api/allnopagin/categoriesalaries/', CategoriesalarieListAPIView.as_view(), name='allnopagin-categoriesalarie-list'),
@@ -121,8 +95,6 @@ urlpatterns = [
     path('api/parametres-cantine/', ParametresCantineView.as_view(), name='parametres-cantine'),
     path('api/allnopagin/plats/', AllPlatNopginListAPIView.as_view(), name='allnopagin-plat-list'),
     path('api/allnopagin/prestataires/', AllPrestataireNopginListAPIView.as_view(), name='allnopagin-prestataire-list'),
-    path('api/allnopagin/entretienvehicules/', AllEntretienVehiculeNopginListAPIView.as_view(), name='allnopagin-entretienvehicule-list'),
-    path('api/allnopagin/simulationsalaires/', AllSimulationSalaireNopginListAPIView.as_view(), name='allnopagin-simulationsalaire-list'),
     path('api/device-tokens/', DeviceTokenView.as_view(), name='device-token'),
     path('api/device-tokens/supprimer/', DeviceTokenView.as_view(), name='device-token-delete'),
     path('api/notifications/mes-notifications/', NotificationListView.as_view(), name='mes-notifications'),

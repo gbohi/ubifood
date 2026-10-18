@@ -1,4 +1,3 @@
-from collections import defaultdict
 from rest_framework import serializers
 from datetime import datetime, time, timedelta
 from django.db import IntegrityError
@@ -1002,235 +1001,15 @@ class RetraitSerializer(serializers.ModelSerializer):
 # GESTION VÉHICULE
 # ============================================================
 
-class TypeVehiculeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TypeVehicule
-        fields = '__all__'
-
-
-class VehiculeSerializer(serializers.ModelSerializer):
-    type_vehicule_id      = serializers.ReadOnlyField(source='type_vehicule.id')
-    type_vehicule_libelle = serializers.ReadOnlyField(source='type_vehicule.libelle')
-    agence_id             = serializers.ReadOnlyField(source='agence.id')
-    agence_nom            = serializers.ReadOnlyField(source='agence.nom_agence')
-    statut_id             = serializers.ReadOnlyField(source='statut.id')
-    statut_libelle        = serializers.ReadOnlyField(source='statut.libelle_statut')
-
-    class Meta:
-        model = Vehicule
-        fields = '__all__'
-
-
-class EntretienVehiculeSerializer(serializers.ModelSerializer):
-    vehicule_id               = serializers.ReadOnlyField(source='vehicule.id')
-    vehicule_immatriculation  = serializers.ReadOnlyField(source='vehicule.immatriculation')
-    vehicule_description      = serializers.ReadOnlyField(source='vehicule.description')
-    vehicule_date_circulation = serializers.ReadOnlyField(source='vehicule.date_circulation')
-
-    class Meta:
-        model = EntretienVehicule
-        fields = '__all__'
-
-
-def get_entretien_par_agence_avec_groupement(annee, agence_id=None, immatriculation=None):
-    queryset = EntretienVehicule.objects.filter(
-        date_entretien_vehicule__year=annee
-    ).select_related('vehicule', 'vehicule__agence')
-
-    if agence_id is not None:
-        queryset = queryset.filter(vehicule__agence__id=agence_id)
-    if immatriculation:
-        queryset = queryset.filter(vehicule__immatriculation__iexact=immatriculation)
-
-    resultats         = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
-    total_global_mois = defaultdict(float)
-
-    for ev in queryset:
-        try:
-            mois = int(ev.periode.split("-")[1])
-        except Exception:
-            mois = ev.date_entretien_vehicule.month
-
-        agence  = ev.vehicule.agence.nom_agence
-        immat   = ev.vehicule.immatriculation
-        montant = float(ev.debit)
-
-        resultats[agence][immat][mois] += montant
-        total_global_mois[mois]        += montant
-
-    data         = []
-    total_global = 0.0
-
-    for agence, vehicules in resultats.items():
-        vehicule_list     = []
-        total_mois_agence = defaultdict(float)
-
-        for immat, mois_dict in vehicules.items():
-            total     = sum(mois_dict.values())
-            mois_data = {m: round(mois_dict.get(m, 0), 2) for m in range(1, 13)}
-            for m, v in mois_data.items():
-                total_mois_agence[m] += v
-            vehicule_list.append({"immatriculation": immat, "mois": mois_data, "total": round(total, 2)})
-
-        total_agence  = sum(total_mois_agence.values())
-        total_global += total_agence
-        data.append({
-            "agence":              agence,
-            "vehicules":           vehicule_list,
-            "total_agence_mois":   {m: round(total_mois_agence.get(m, 0), 2) for m in range(1, 13)},
-            "total_agence_global": round(total_agence, 2)
-        })
-
-    return {
-        "donnees":           data,
-        "total_global_mois": {m: round(total_global_mois.get(m, 0), 2) for m in range(1, 13)},
-        "total_global":      round(total_global, 2)
-    }
-
 
 # ============================================================
 # RESSOURCES HUMAINES
 # ============================================================
 
-class SimulationHistoriqueSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SimulationHistorique
-        fields = '__all__'
-
-
-class SimulationHistorique2Serializer(serializers.ModelSerializer):
-    class Meta:
-        model = SimulationHistorique2
-        fields = '__all__'
-
-
-class SimulationSalaireSerializer(serializers.ModelSerializer):
-    historique      = serializers.SerializerMethodField()
-    total_matricule = serializers.SerializerMethodField()
-
-    class Meta:
-        model = SimulationSalaire
-        fields = [
-            'id', 'matricule', 'categorie', 'date_naissance',
-            'salaire_base', 'sursalaire', 'salaire_brut_2025',
-            'created_at', 'historique', 'total_matricule',
-        ]
-
-    def get_historique(self, obj):
-        request       = self.context.get('request')
-        historique_qs = obj.historique.all()
-        filters       = Q()
-        if request is not None:
-            annee_debut = request.query_params.get('annee_debut')
-            annee_fin   = request.query_params.get('annee_fin')
-            salaire_min = request.query_params.get('salaire_min')
-            salaire_max = request.query_params.get('salaire_max')
-            if annee_debut: filters &= Q(annee__gte=annee_debut)
-            if annee_fin:   filters &= Q(annee__lte=annee_fin)
-            if salaire_min: filters &= Q(salaire__gte=salaire_min)
-            if salaire_max: filters &= Q(salaire__lte=salaire_max)
-        if filters:
-            historique_qs = historique_qs.filter(filters)
-        self._filtered_historique = historique_qs
-        return SimulationHistoriqueSerializer(historique_qs, many=True).data
-
-    def get_total_matricule(self, obj):
-        historique_qs = getattr(self, '_filtered_historique', obj.historique.all())
-        return {
-            "salaire":      sum(float(h.salaire)      for h in historique_qs),
-            "augmentation": sum(float(h.augmentation) for h in historique_qs),
-            "cotisation":   sum(float(h.cotisation)   for h in historique_qs),
-        }
-
-
-class SimulationSalaire2Serializer(serializers.ModelSerializer):
-    historique2     = serializers.SerializerMethodField()
-    total_matricule = serializers.SerializerMethodField()
-
-    class Meta:
-        model = SimulationSalaire
-        fields = [
-            'id', 'matricule', 'categorie', 'date_naissance',
-            'salaire_base', 'sursalaire', 'salaire_brut_2025',
-            'created_at', 'historique2', 'total_matricule',
-        ]
-
-    def get_historique2(self, obj):
-        request       = self.context.get('request')
-        historique_qs = obj.historique2.all()
-        filters       = Q()
-        if request is not None:
-            annee_debut = request.query_params.get('annee_debut')
-            annee_fin   = request.query_params.get('annee_fin')
-            salaire_min = request.query_params.get('salaire_min')
-            salaire_max = request.query_params.get('salaire_max')
-            if annee_debut: filters &= Q(annee__gte=annee_debut)
-            if annee_fin:   filters &= Q(annee__lte=annee_fin)
-            if salaire_min: filters &= Q(salaire__gte=salaire_min)
-            if salaire_max: filters &= Q(salaire__lte=salaire_max)
-        if filters:
-            historique_qs = historique_qs.filter(filters)
-        self._filtered_historique2 = historique_qs
-        return SimulationHistorique2Serializer(historique_qs, many=True).data
-
-    def get_total_matricule(self, obj):
-        historique_qs = getattr(self, '_filtered_historique2', obj.historique2.all())
-        return {
-            "salaire":      sum(float(h.salaire)      for h in historique_qs),
-            "augmentation": sum(float(h.augmentation) for h in historique_qs),
-            "cotisation":   sum(float(h.cotisation)   for h in historique_qs),
-        }
-
 
 # ============================================================
 # PLAN COMPTABLE
 # ============================================================
-
-class CategorieComptableSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CategorieComptable
-        fields = '__all__'
-
-
-class ClasseComptableSerializer(serializers.ModelSerializer):
-    categorie_id      = serializers.ReadOnlyField(source='categoriecomptable.id')
-    categorie_libelle = serializers.ReadOnlyField(source='categoriecomptable.libelle')
-
-    class Meta:
-        model = ClasseComptable
-        fields = '__all__'
-
-
-class PosteReportingSerializer(serializers.ModelSerializer):
-    categorie_id      = serializers.ReadOnlyField(source='categoriecomptable.id')
-    categorie_libelle = serializers.ReadOnlyField(source='categoriecomptable.libelle')
-
-    class Meta:
-        model = PosteReporting
-        fields = '__all__'
-
-
-class CompteComptableSerializer(serializers.ModelSerializer):
-    classe_id      = serializers.ReadOnlyField(source='classecomptable.id')
-    classe_numero  = serializers.ReadOnlyField(source='classecomptable.numeroclasse')
-    classe_libelle = serializers.ReadOnlyField(source='classecomptable.libelle')
-
-    poste_id      = serializers.SerializerMethodField()
-    poste_code    = serializers.SerializerMethodField()
-    poste_libelle = serializers.SerializerMethodField()
-
-    class Meta:
-        model = CompteComptable
-        fields = '__all__'
-
-    def get_poste_id(self, obj):
-        return obj.postereporting.id if obj.postereporting else None
-
-    def get_poste_code(self, obj):
-        return obj.postereporting.codepr if obj.postereporting else None
-
-    def get_poste_libelle(self, obj):
-        return obj.postereporting.libelle if obj.postereporting else None
 
 
 # ============================================================
@@ -1359,7 +1138,6 @@ class BanniereSerializer(serializers.ModelSerializer):
         if 'image' in validated_data and instance.image:
             instance.image.delete(save=False)
         return super().update(instance, validated_data)
-
 
 
 class AvisPlatSerializer(serializers.ModelSerializer):

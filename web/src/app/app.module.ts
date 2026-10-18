@@ -44,15 +44,6 @@ import { UserEffects } from './store/User/user.effects';
 import { BesoinEffects } from './store/Besoin/besoin.effects';
 import { TypeplatEffects } from './store/Typeplat/typeplat.effects';
 import { PlatEffects } from './store/Plat/plat.effects';
-import { TypevehiculeEffects } from './store/Typevehicule/typevehicule.effects';
-import { VehiculeEffects } from './store/Vehicule/vehicule.effects';
-import { EntretienvehiculeEffects } from './store/Entretienvehicule/entretienvehicule.effects';
-import { DashboardEntretienVehiculeEffects } from './store/Dashboardentretienvehicule/dashboardentretienvehicule.effects';
-import { DashboardSimulationEffects } from './store/Dashboardsimulation/dashboardsimulation.effects';
-import { CategoriecomptableEffects } from './store/Categoriecomptable/categoriecomptable.effects';
-import { ClassecomptableEffects } from './store/Classecomptable/classecomptable.effects';
-import { PostereportingEffects } from './store/Postereporting/postereporting.effects';
-import { ComptecomptableEffects } from './store/Comptecomptable/comptecomptable.effects';
 import { MenuEffects } from './store/Menu/menu.effects';
 import { TypeequipeEffects } from './store/Typeequipe/typeequipe.effects';
 import { CommandeEffects } from './store/Commande/commande.effects';
@@ -107,15 +98,6 @@ export function createTranslateLoader(http: HttpClient): any {
       BesoinEffects,
       TypeplatEffects,
       PlatEffects,
-      TypevehiculeEffects,
-      VehiculeEffects,
-      EntretienvehiculeEffects,
-      DashboardEntretienVehiculeEffects,
-      DashboardSimulationEffects,
-      CategoriecomptableEffects,
-      ClassecomptableEffects,
-      PostereportingEffects,
-      ComptecomptableEffects,
       MenuEffects,
       TypeequipeEffects,
       CommandeEffects,
