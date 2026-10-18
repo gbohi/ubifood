@@ -5,6 +5,7 @@ import { LanguageService } from 'src/app/core/services/language.service';
 import { CookieService } from 'ngx-cookie-service';
 import { AuthenticationService } from 'src/app/core/services/auth.service';
 import { Router } from '@angular/router';
+import { GESTIONNAIRES, aUnRole, rolesUtilisateur } from 'src/app/core/helpers/roles';
 
 import { ModalDirective } from 'ngx-bootstrap/modal';
 import { notification } from './data';
@@ -13,6 +14,23 @@ import { Store } from '@ngrx/store';
 import { changeMode } from 'src/app/store/layouts/layout-action';
 import { getLayoutmode } from 'src/app/store/layouts/layout-selector';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
+
+const LIBELLES_ROLES: Record<string, string> = {
+  super_admin:  'Super administrateur',
+  admin:        'Administrateur',
+  gestionnaire: 'Gestionnaire',
+  employe:      'Employé',
+};
+
+/** Raccourcis du menu « Liens utiles » (mêmes droits que le menu latéral) */
+const LIENS_UTILES: { libelle: string; icone: string; lien: string; roles?: string[] }[] = [
+  { libelle: 'Plats',            icone: 'ri-restaurant-line',     lien: '/cantines/liste-plats',             roles: GESTIONNAIRES },
+  { libelle: 'Menus',            icone: 'ri-file-list-3-line',    lien: '/cantines/liste-menus',             roles: GESTIONNAIRES },
+  { libelle: 'Commandes',        icone: 'ri-shopping-cart-line',  lien: '/cantines/liste-commandes',         roles: GESTIONNAIRES },
+  { libelle: 'Retrait',          icone: 'ri-calendar-check-fill', lien: '/cantines/retrait-commande',        roles: GESTIONNAIRES },
+  { libelle: 'Fac. employés',    icone: 'ri-wallet-3-line',       lien: '/cantines/facturation-commande',    roles: GESTIONNAIRES },
+  { libelle: 'Fac. prestataires', icone: 'ri-bank-card-2-line',   lien: '/cantines/facturation-prestataire', roles: GESTIONNAIRES },
+];
 
 @Component({
   selector: 'app-topbar',
@@ -29,6 +47,27 @@ export class TopbarComponent {
   countryName: any;
   cookieValue: any;
   userData: any;
+  liensUtiles: typeof LIENS_UTILES = [];
+
+  /** Prénom et nom de l'utilisateur connecté (à défaut : son matricule) */
+  get nomAffiche(): string {
+    const u = this.userData || {};
+    return [u.prenom, u.nom].filter(Boolean).join(' ') || u.username || '';
+  }
+
+  get initiales(): string {
+    const u = this.userData || {};
+    const mots = [u.prenom, u.nom].filter(Boolean) as string[];
+    const base = mots.length ? mots.map(m => m.trim()[0]) : [(u.username || '?')[0]];
+    return base.join('').slice(0, 2).toUpperCase();
+  }
+
+  /** Rôle le plus élevé de l'utilisateur */
+  get roleAffiche(): string {
+    const roles = rolesUtilisateur(this.userData);
+    const role = ['super_admin', 'admin', 'gestionnaire', 'employe'].find(r => roles.includes(r));
+    return role ? LIBELLES_ROLES[role] : 'Utilisateur';
+  }
   cartData: any;
 
   element: any;
@@ -65,6 +104,7 @@ export class TopbarComponent {
   ngOnInit(): void {
     this.element = document.documentElement;
     this.userData = this.TokenStorageService.getUser();
+    this.liensUtiles = LIENS_UTILES.filter(l => aUnRole(this.userData, l.roles));
     // Panier de démonstration du template supprimé (bloc HTML déjà commenté)
     this.cartData = [];
     this.cartData.map((x: any) => {

@@ -119,6 +119,7 @@
 
             <div class="d-flex align-items-center">
 
+                @if (liensUtiles.length) {
                 <div dropdown class="dropdown topbar-head-dropdown ms-1 header-item">
                     <button dropdownToggle type="button" class="btn btn-icon btn-topbar btn-ghost-dark rounded-circle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                         <i class='bi bi-grid fs-2xl'></i>
@@ -138,53 +139,20 @@
 
                         <div class="p-2">
                             <div class="row g-0">
-                                <div class="col">
-                                    <a class="dropdown-icon-item" href="javascript:void(0);">
-                                        <i class="ri-restaurant-line"></i>
-                                        <span>Les plats</span>
-                                    </a>
-                                </div>
-                                <div class="col">
-                                    <a class="dropdown-icon-item" href="javascript:void(0);">
-                                        <i class="ri-file-list-3-line"></i>
-                                        <span>Menus</span>
-                                    </a>
-                                </div>
-                                <div class="col">
-                                    <a class="dropdown-icon-item" href="javascript:void(0);">
-                                        <!--<img src="assets/images/brands/dribbble.png" alt="Commandes">-->
-                                        <i class="ri-shopping-cart-line"></i>
-                                        <span>Commandes</span>
-                                    </a>
-                                </div>
-                            </div>
-
-                            <div class="row g-0">
-                                <div class="col">
-                                    <a class="dropdown-icon-item" href="javascript:void(0);">
-                                        <!--<img src="assets/images/brands/dropbox.png" alt="Retrait">-->
-                                        <i class="ri-calendar-check-fill"></i>
-                                        <span>Retrait</span>
-                                    </a>
-                                </div>
-                                <div class="col">
-                                    <a class="dropdown-icon-item" href="javascript:void(0);">
-                                        <!--<img src="assets/images/brands/mail_chimp.png" alt="Fac Employés">-->
-                                        <i class="ri-wallet-3-line"></i>
-                                        <span>Fac Employés</span>
-                                    </a>
-                                </div>
-                                <div class="col">
-                                    <a class="dropdown-icon-item" href="javascript:void(0);">
-                                        <!--<img src="assets/images/brands/slack.png" alt="Fac Prestataires">-->
-                                        <i class="ri-bank-card-2-line"></i>
-                                        <span>Fac Prestataires</span>
-                                    </a>
-                                </div>
+                                @for (lien of liensUtiles; track lien.lien) {
+                                    <div class="col-4">
+                                        <a class="dropdown-icon-item" [routerLink]="lien.lien">
+                                            <i [class]="lien.icone"></i>
+                                            <span>{{ lien.libelle }}</span>
+                                        </a>
+                                    </div>
+                                }
                             </div>
                         </div>
                     </div>
                 </div>
+
+                }
 
                 <!--<div dropdown class="dropdown ms-1 topbar-head-dropdown header-item">
                     <button dropdownToggle type="button" class="btn btn-icon btn-topbar btn-ghost-secondary rounded-circle">
@@ -428,16 +396,16 @@
                 <div dropdown class="dropdown ms-sm-3 header-item topbar-user">
                     <button dropdownToggle type="button" class="btn shadow-none" id="page-header-user-dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                         <span class="d-flex align-items-center">
-                            <img class="rounded-circle header-profile-user" src="assets/images/users/32/avatar-1.jpg" alt="Header Avatar">
+                            <span class="rounded-circle bg-primary-subtle text-primary fw-semibold fs-sm d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 36px; height: 36px;">{{ initiales }}</span>
                             <span class="text-start ms-xl-2">
-                                <span class="d-none d-xl-inline-block ms-1 fw-medium user-name-text">{{userData?.first_name}} {{userData?.last_name}}</span>
-                                <span class="d-none d-xl-block ms-1 fs-sm user-name-sub-text">Admin</span>
+                                <span class="d-none d-xl-inline-block ms-1 fw-medium user-name-text">{{ nomAffiche }}</span>
+                                <span class="d-none d-xl-block ms-1 fs-sm user-name-sub-text text-nowrap">{{ roleAffiche }}</span>
                             </span>
                         </span>
                     </button>
                     <div *dropdownMenu class="dropdown-menu dropdown-menu-end">
                         <!-- item-->
-                        <h6 class="dropdown-header">Bienvenue !</h6>
+                        <h6 class="dropdown-header">Bienvenue {{ nomAffiche }} !</h6>
                         <div class="dropdown-divider"></div>
                         <a class="dropdown-item" href="javascript: void(0);" (click)="logout()"><i class="mdi mdi-logout text-muted fs-lg align-middle me-1"></i> <span class="align-middle" data-key="t-logout"> Déconnexion</span></a>
                     </div>
