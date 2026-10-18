@@ -1,4 +1,6 @@
 // src/app/pages/cantine/liste-plats/liste-plats.component.ts
+import { filtrerAgencesGerees } from 'src/app/core/helpers/roles';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 import { Component, OnInit, QueryList, ViewChild, ViewChildren, ElementRef, DestroyRef, inject } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
@@ -43,6 +45,8 @@ import { PlatModel } from 'src/app/store/Plat/plat.model';
   providers: [DecimalPipe, DatePipe]
 })
 export class ListePlatsComponent implements OnInit {
+  // Un gestionnaire ne gère que les agences auxquelles il est rattaché
+  private userConnecte = inject(TokenStorageService).getUser();
 
   // ── Breadcrumb ──────────────────────────────────────────────
   breadCrumbItems!: Array<{}>;
@@ -158,7 +162,7 @@ export class ListePlatsComponent implements OnInit {
     this.store.select(selectAllAgenceWithoutPagination).pipe(
       takeUntilDestroyed(this.destroyRef)
     ).subscribe(data => {
-      if (data) this.agences = data;
+      if (data) this.agences = filtrerAgencesGerees(data, this.userConnecte);
     });
 
     this.store.select(selectAllTypeplatWithoutPagination).pipe(

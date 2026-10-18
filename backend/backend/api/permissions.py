@@ -46,6 +46,27 @@ def is_gestionnaire(user):
                 (user.is_superuser or get_roles(user) & GESTIONNAIRE_ROLES))
 
 
+def agences_gerees(user):
+    """
+    Agences dont un gestionnaire s'occupe (commandes, retraits, menus, plats,
+    facturation) : None pour un administrateur (toutes), sinon les agences
+    auxquelles il est rattaché aujourd'hui (ensemble vide s'il n'en a aucune).
+    """
+    if is_admin(user):
+        return None
+    if not hasattr(user, '_agences_cache'):
+        from django.db.models import Q
+        from django.utils import timezone
+        from .models import UserAgence
+        maintenant = timezone.now()
+        user._agences_cache = set(
+            UserAgence.objects.filter(user=user, date_debut__lte=maintenant)
+            .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=maintenant))
+            .values_list('agence_id', flat=True)
+        )
+    return user._agences_cache
+
+
 class IsAdminRole(permissions.BasePermission):
     """Réservé aux rôles super_admin / admin."""
     message = "Action réservée aux administrateurs."

@@ -9,6 +9,8 @@
 //     vigueur à la date du menu ;
 //   - montants figés pour les mois clôturés.
 
+import { filtrerAgencesGerees } from 'src/app/core/helpers/roles';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 import { Component, OnInit, DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
@@ -59,6 +61,8 @@ export interface LigneFacturationPrestataire {
   styleUrl: './facturation-prestataire.component.scss',
 })
 export class FacturationPrestataireComponent implements OnInit {
+  // Un gestionnaire ne gère que les agences auxquelles il est rattaché
+  private userConnecte = inject(TokenStorageService).getUser();
 
   breadCrumbItems = [
     { label: 'Cantine', active: false },
@@ -116,7 +120,7 @@ export class FacturationPrestataireComponent implements OnInit {
     this.store.dispatch(fetchagenceNoPaginateData());
     this.store.select(selectAllAgenceWithoutPagination)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(a => this.agences = a ?? []);
+      .subscribe(a => this.agences = filtrerAgencesGerees(a ?? [], this.userConnecte));
 
     this.store.dispatch(fetchtypeequipeNoPaginateData());
     this.store.select(selectAllTypeequipeWithoutPagination)

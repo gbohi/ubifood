@@ -604,6 +604,12 @@ class PlatSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['user_created', 'user_updated']
 
+    def validate(self, attrs):
+        verifier_agence_geree(self, attrs.get('agence', getattr(self.instance, 'agence', None)), 'Plat')
+        if self.instance is not None:
+            verifier_agence_geree(self, self.instance.agence, 'Plat')
+        return attrs
+
 
 class PlatImageUploadSerializer(serializers.ModelSerializer):
     TAILLE_MAX = 5 * 1024 * 1024
@@ -638,6 +644,7 @@ class MenuPlatSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         menu = attrs.get('menu', getattr(self.instance, 'menu', None))
         plat = attrs.get('plat', getattr(self.instance, 'plat', None))
+        verifier_agence_geree(self, menu.agence, 'Menu')
         verifier_mois_ouvert(menu.date_menu)
         doublon = MenuPlat.objects.filter(menu=menu, plat=plat)
         if self.instance is not None:
@@ -652,6 +659,18 @@ def verifier_mois_ouvert(d):
     if ClotureMensuelle.objects.filter(annee=d.year, mois=d.month).exists():
         raise serializers.ValidationError(
             f"Le mois {d.month:02d}/{d.year} est clôturé : sa facturation est figée.")
+
+
+def verifier_agence_geree(serializer, agence, objet):
+    """Un gestionnaire ne crée / modifie que les menus et plats de son agence."""
+    from rest_framework.exceptions import PermissionDenied
+    from .permissions import agences_gerees
+    request = serializer.context.get('request')
+    if request is None or agence is None:
+        return
+    geres = agences_gerees(request.user)
+    if geres is not None and agence.pk not in geres:
+        raise PermissionDenied(f"{objet} de l'agence {agence.nom_agence} : ce n'est pas votre agence.")
 
 
 def commandes_actives(menu, plat=None):
@@ -682,6 +701,10 @@ class MenuSerializer(serializers.ModelSerializer):
         agence     = attrs.get('agence', getattr(inst, 'agence', None))
         typeequipe = attrs.get('typeequipe', getattr(inst, 'typeequipe', None))
         plat_ids   = attrs.get('plat_ids')
+
+        verifier_agence_geree(self, agence, 'Menu')
+        if inst is not None:
+            verifier_agence_geree(self, inst.agence, 'Menu')
 
         if inst is None and not plat_ids:
             raise serializers.ValidationError({'plat_ids': "Sélectionnez au moins un plat."})

@@ -16,7 +16,7 @@ from .serializers import *
 from .permissions import (
     IsAdminRole, IsGestionnaireRole, IsOwnerOrGestionnaire,
     ReadAuthenticatedWriteAdmin, ReadAuthenticatedWriteGestionnaire,
-    ReadGestionnaireWriteAdmin, is_admin, is_gestionnaire, is_super_admin,
+    ReadGestionnaireWriteAdmin, is_admin, is_gestionnaire, is_super_admin, agences_gerees,
     ADMIN_ROLES, ROLE_SUPER_ADMIN,
 )
 from django.conf import settings
@@ -1126,7 +1126,13 @@ class PlatViewSet(BaseViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     bulk_delete_permission_classes = [IsGestionnaireRole]
 
+    def get_queryset(self):
+        return filtrer_agences_gerees(self.request, super().get_queryset(), 'agence_id')
+
     def verifier_suppression(self, instance):
+        geres = agences_gerees(self.request.user)
+        if geres is not None and instance.agence_id not in geres:
+            raise PermissionDenied("Ce plat n'est pas celui de votre agence.")
         # Supprimer un plat effacerait les menus et commandes qui le contiennent
         if MenuPlat.objects.filter(plat=instance).exists() or Commande.objects.filter(plat=instance).exists():
             raise ValidationError(
@@ -1188,6 +1194,23 @@ class PlatImageViewSet(BaseViewSet):
     queryset = PlatImage.objects.all().order_by('id')
     serializer_class = PlatImageSerializer
 
+    def _verifier_plat(self, plat):
+        geres = agences_gerees(self.request.user)
+        if geres is not None and plat.agence_id not in geres:
+            raise PermissionDenied("Ce plat n'est pas celui de votre agence.")
+
+    def perform_create(self, serializer):
+        self._verifier_plat(serializer.validated_data['plat'])
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self._verifier_plat(serializer.instance.plat)
+        self._verifier_plat(serializer.validated_data.get('plat', serializer.instance.plat))
+        super().perform_update(serializer)
+
+    def verifier_suppression(self, instance):
+        self._verifier_plat(instance.plat)
+
 
 class MenuViewSet(BaseViewSet):
     permission_classes = [ReadAuthenticatedWriteGestionnaire]
@@ -1210,7 +1233,11 @@ class MenuViewSet(BaseViewSet):
     ordering_fields = ['date_menu', 'created_at']
     bulk_delete_permission_classes = [IsGestionnaireRole]
 
+    def get_queryset(self):
+        return filtrer_agences_gerees(self.request, super().get_queryset(), 'agence_id')
+
     def verifier_suppression(self, instance):
+        verifier_menu_gere(self.request.user, instance)
         # La suppression d'un menu effacerait ses commandes et ses retraits
         verifier_mois_ouvert(instance.date_menu)
         if commandes_actives(instance).exists():
@@ -1225,6 +1252,7 @@ class MenuPlatViewSet(BaseViewSet):
     filterset_fields = ['menu']
 
     def verifier_suppression(self, instance):
+        verifier_menu_gere(self.request.user, instance.menu)
         verifier_mois_ouvert(instance.menu.date_menu)
         if commandes_actives(instance.menu, instance.plat).exists():
             raise ValidationError(
@@ -1235,27 +1263,23 @@ class MenuPlatViewSet(BaseViewSet):
 # COMMANDE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def agences_gerees(user):
-    """
-    Agences dont l'utilisateur gère les commandes et les retraits :
-    None pour un administrateur (toutes), sinon les agences auxquelles le
-    gestionnaire est rattaché aujourd'hui (ensemble vide s'il n'en a aucune).
-    """
-    if is_admin(user):
-        return None
-    maintenant = timezone.now()
-    return set(
-        UserAgence.objects.filter(user=user, date_debut__lte=maintenant)
-        .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=maintenant))
-        .values_list('agence_id', flat=True)
-    )
-
-
 def verifier_menu_gere(user, menu):
     """Un gestionnaire n'agit que sur les menus de son agence."""
     geres = agences_gerees(user)
     if geres is not None and menu.agence_id not in geres:
         raise PermissionDenied("Ce menu n'est pas celui de votre agence.")
+
+
+def filtrer_agences_gerees(request, qs, champ_agence):
+    """
+    Écrans de gestion (paramètre ?gerees=1) : un gestionnaire ne voit que
+    ses agences. Sans ce paramètre, la lecture reste ouverte (un agent peut
+    commander dans toute agence).
+    """
+    if request.query_params.get('gerees') not in ('1', 'true'):
+        return qs
+    geres = agences_gerees(request.user)
+    return qs if geres is None else qs.filter(**{f'{champ_agence}__in': geres})
 
 
 class CommandeViewSet(BaseViewSet):
@@ -2517,6 +2541,9 @@ class AllPlatNopginListAPIView(ListAPIView):
     permission_classes = [IsAuthenticated]
     pagination_class   = None
 
+    def get_queryset(self):
+        return filtrer_agences_gerees(self.request, super().get_queryset(), 'agence_id')
+
 
 # ============================================================
 # AJOUTER DANS views.py
@@ -2732,10 +2759,11 @@ def _ligne_json(l):
 class FacturationView(APIView):
     """
     GET /api/api/facturation/?date_debut=AAAA-MM-JJ&date_fin=AAAA-MM-JJ
-                              [&agence=ID&typeequipe=ID&user=ID]
+                              [&agence=ID&typeequipe=ID&user=ID&moi=1]
 
     Facturation des repas sur une période (par défaut : le mois en cours).
-    Employé : uniquement ses propres repas. Gestionnaire / admin : tous.
+    Employé (ou moi=1) : uniquement ses propres repas, toutes agences.
+    Gestionnaire : repas servis dans ses agences. Administrateur : tous.
     Mois clôturés → montants figés ; autres mois → calcul provisoire.
     """
     permission_classes = [IsAuthenticated]
@@ -2747,7 +2775,12 @@ class FacturationView(APIView):
         fin   = _parse_date(request.query_params.get('date_fin'), fin_defaut)
 
         qs = Commande.objects.filter(menu__date_menu__gte=debut, menu__date_menu__lte=fin)
-        if is_gestionnaire(request.user):
+        moi = request.query_params.get('moi') in ('1', 'true')
+        if is_gestionnaire(request.user) and not moi:
+            # Gestionnaire : repas servis dans ses agences
+            geres = agences_gerees(request.user)
+            if geres is not None:
+                qs = qs.filter(menu__agence_id__in=geres)
             for param, champ in (('user', 'user_id'), ('agence', 'menu__agence_id'),
                                  ('typeequipe', 'menu__typeequipe_id')):
                 valeur = request.query_params.get(param)
@@ -2825,9 +2858,15 @@ class FactureMensuelleViewSet(viewsets.ReadOnlyModelViewSet):
         qs = (FactureMensuelle.objects
               .select_related('user', 'cloture')
               .prefetch_related('lignes'))
-        if is_gestionnaire(self.request.user):
+        user = self.request.user
+        if not is_gestionnaire(user):
+            return qs.filter(user=user)
+        geres = agences_gerees(user)
+        if geres is None:
             return qs
-        return qs.filter(user=self.request.user)
+        # Gestionnaire : ses factures, et celles dont tous les repas ont été servis dans ses agences
+        hors = LigneFacture.objects.exclude(commande__menu__agence_id__in=geres).values('facture_id')
+        return qs.filter(Q(user=user) | (Q(lignes__isnull=False) & ~Q(pk__in=hors))).distinct()
 
 
 class FacturationPrestataireView(APIView):
@@ -2849,6 +2888,9 @@ class FacturationPrestataireView(APIView):
         fin   = _parse_date(request.query_params.get('date_fin'), fin_defaut)
 
         qs = Commande.objects.filter(menu__date_menu__gte=debut, menu__date_menu__lte=fin)
+        geres = agences_gerees(request.user)
+        if geres is not None:
+            qs = qs.filter(menu__agence_id__in=geres)
         for param, champ in (('agence', 'menu__agence_id'), ('typeequipe', 'menu__typeequipe_id')):
             valeur = request.query_params.get(param)
             if valeur:
@@ -2915,6 +2957,17 @@ class FacturePrestataireViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = (FacturePrestataire.objects
                 .select_related('cloture', 'prestataire')
                 .prefetch_related('lignes__user'))
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        geres = agences_gerees(self.request.user)
+        if geres is None:
+            return qs
+        # Une facture officielle couvre toutes les agences du prestataire :
+        # un gestionnaire ne voit que celles qui ne concernent que ses agences.
+        hors = LigneFacturePrestataire.objects.exclude(
+            commande__menu__agence_id__in=geres).values('facture_id')
+        return qs.filter(lignes__isnull=False).exclude(pk__in=hors).distinct()
 
     @action(detail=True, methods=['get'])
     def pdf(self, request, pk=None):

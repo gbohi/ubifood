@@ -198,6 +198,8 @@ class FacturationService {
     final res = await apiClient.get('/facturation/', params: {
       'date_debut': dateDebut,
       'date_fin': dateFin,
+      // Ses propres repas, même pour un gestionnaire (sinon : tous ses agents)
+      'moi': 1,
     });
     final employes = res.data['employes'] as List? ?? [];
     return [

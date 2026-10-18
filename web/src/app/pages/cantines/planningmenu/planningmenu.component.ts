@@ -1,4 +1,6 @@
 // src/app/pages/cantine/planning-menus/planning-menus.component.ts
+import { filtrerAgencesGerees } from 'src/app/core/helpers/roles';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 import { Component, OnInit, DestroyRef, inject } from '@angular/core';
 import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -35,6 +37,8 @@ export interface PlanningGroup {
   styleUrl: './planningmenu.component.scss',
 })
 export class PlanningMenuComponent implements OnInit {
+  // Un gestionnaire ne gère que les agences auxquelles il est rattaché
+  private userConnecte = inject(TokenStorageService).getUser();
 
   breadCrumbItems = [
     { label: 'Cantine', active: false },
@@ -75,7 +79,7 @@ export class PlanningMenuComponent implements OnInit {
 
     this.store.select(selectAllAgenceWithoutPagination).pipe(
       takeUntilDestroyed(this.destroyRef)
-    ).subscribe(data => { if (data) this.agences = data; });
+    ).subscribe(data => { if (data) this.agences = filtrerAgencesGerees(data, this.userConnecte); });
 
     this.store.select(selectAllTypeequipeWithoutPagination).pipe(
       takeUntilDestroyed(this.destroyRef)
@@ -107,7 +111,7 @@ export class PlanningMenuComponent implements OnInit {
     this.isLoading = true;
     const { date_debut, date_fin, agence, typeequipe } = this.filterForm.value;
 
-    let url = `${this.apiUrl}/menus/?page_size=1000`;
+    let url = `${this.apiUrl}/menus/?page_size=1000&gerees=1`;
     if (date_debut)  url += `&date_menu__gte=${date_debut}`;   // double underscore requis par django-filter
     if (date_fin)    url += `&date_menu__lte=${date_fin}`;     // double underscore requis par django-filter
     if (agence)      url += `&agence=${agence}`;

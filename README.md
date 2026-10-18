@@ -45,7 +45,7 @@ Les rôles sont les groupes Django (à créer dans l'admin Django s'ils n'existe
 |----------------|--------|
 | `super_admin`  | Tout, y compris gérer les autres administrateurs et attribuer `super_admin` |
 | `admin`        | Administration : utilisateurs, référentiels, véhicules, RH, plan comptable |
-| `gestionnaire` | Cantine : plats, menus, facturation ; commandes, retraits et tableau de bord **de son agence uniquement** (agence de rattachement en cours) |
+| `gestionnaire` | Cantine **de son agence uniquement** (agence de rattachement en cours) : plats, menus, planning, commandes, retraits, tableau de bord, facturation. Factures officielles : seulement celles qui ne concernent que son agence. L'administrateur voit toutes les agences |
 | `employe`      | Commander / annuler ses repas (web « Commander » ou mobile, dans n'importe quelle agence), gérer ses allergies, ses besoins |
 
 Le backend applique ces règles sur chaque endpoint ; le web et le mobile

@@ -31,7 +31,8 @@ export class PlatService {
     this.currentPage = page;
     if (search !== undefined) this.currentSearch = search;
 
-    let url = `${this.apiUrl}/api/plats/?page=${page}`;
+    // gerees=1 : un gestionnaire ne voit que les plats de son agence
+    let url = `${this.apiUrl}/api/plats/?page=${page}&gerees=1`;
     if (this.currentSearch) url += `&search=${encodeURIComponent(this.currentSearch)}`;
 
     return this.http.get<ApiResponse<PlatModel>>(url)

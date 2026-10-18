@@ -1,4 +1,6 @@
 // src/app/pages/cantine/liste-menus/liste-menus.component.ts
+import { filtrerAgencesGerees } from 'src/app/core/helpers/roles';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 import {
   Component, OnInit, ViewChild, ElementRef, DestroyRef, inject
 } from '@angular/core';
@@ -49,6 +51,8 @@ import { environment } from 'src/environments/environment';
   providers: [DecimalPipe, DatePipe]
 })
 export class ListeMenusComponent implements OnInit {
+  // Un gestionnaire ne gère que les agences auxquelles il est rattaché
+  private userConnecte = inject(TokenStorageService).getUser();
 
   // ── Breadcrumb ──────────────────────────────────────────────
   breadCrumbItems!: Array<{}>;
@@ -153,7 +157,7 @@ export class ListeMenusComponent implements OnInit {
 
     this.store.select(selectAllAgenceWithoutPagination).pipe(
       takeUntilDestroyed(this.destroyRef)
-    ).subscribe(data => { if (data) this.agences = data; });
+    ).subscribe(data => { if (data) this.agences = filtrerAgencesGerees(data, this.userConnecte); });
 
     this.store.select(selectAllTypeequipeWithoutPagination).pipe(
       takeUntilDestroyed(this.destroyRef)
@@ -228,7 +232,7 @@ export class ListeMenusComponent implements OnInit {
    */
   private loadTousLesPlats(): void {
     this.isPlatsLoading = true;
-    this.http.get<PlatModel[]>(`${this.apiUrl}/allnopagin/plats/`)
+    this.http.get<PlatModel[]>(`${this.apiUrl}/allnopagin/plats/?gerees=1`)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (plats) => {

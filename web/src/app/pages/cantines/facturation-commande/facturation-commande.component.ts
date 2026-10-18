@@ -5,6 +5,7 @@
 // repas commandés et non annulés, au tarif de la catégorie salarié en
 // vigueur à la date du menu ; montants figés pour les mois clôturés.
 
+import { filtrerAgencesGerees } from 'src/app/core/helpers/roles';
 import { Component, OnInit, DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
@@ -66,6 +67,8 @@ export interface ClotureMensuelle {
   styleUrl: './facturation-commande.component.scss',
 })
 export class FacturationCommandeComponent implements OnInit {
+  // Un gestionnaire ne gère que les agences auxquelles il est rattaché
+  private userConnecte = inject(TokenStorageService).getUser();
 
   breadCrumbItems = [
     { label: 'Cantine', active: false },
@@ -117,7 +120,7 @@ export class FacturationCommandeComponent implements OnInit {
     this.store.dispatch(fetchagenceNoPaginateData());
     this.store.select(selectAllAgenceWithoutPagination)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(a => this.agences = a ?? []);
+      .subscribe(a => this.agences = filtrerAgencesGerees(a ?? [], this.userConnecte));
 
     this.store.dispatch(fetchtypeequipeNoPaginateData());
     this.store.select(selectAllTypeequipeWithoutPagination)

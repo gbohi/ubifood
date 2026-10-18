@@ -24,7 +24,7 @@ export class MenuService {
 
   getAllMenus(page: number = 1): Observable<ApiResponse<MenulistModel>> {
     this.currentPage = page;
-    return this.http.get<ApiResponse<MenulistModel>>(`${this.apiUrl}/menus/?page=${page}`)
+    return this.http.get<ApiResponse<MenulistModel>>(`${this.apiUrl}/menus/?page=${page}&gerees=1`)
       .pipe(
         tap((response) => { this.totalItems = response.count; }),
         catchError(this.handleError)

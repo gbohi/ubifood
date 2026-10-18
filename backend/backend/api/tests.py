@@ -352,6 +352,73 @@ class CantineReglesTests(BaseAPITestCase):
         r = admin.post(f'{API}/retraits/', {'user_id': self.employe.id, 'menu_id': yop.id, 'badge_matricule': 'emp1'})
         self.assertEqual(r.status_code, 201, r.data)
 
+    def test_gestionnaire_menus_et_plats_de_son_agence(self):
+        yop = self.menu_yopougon()
+        r = self.gest.post(f'{API}/menus/', {**self.data_menu(), 'agence': yop.agence_id}, format='json')
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.gest.delete(f'{API}/menus/{yop.id}/').status_code, 403)
+        plat = {'nom': 'Placali', 'type_plat': self.typeplat.id, 'agence': yop.agence_id}
+        self.assertEqual(self.gest.post(f'{API}/plats/', plat).status_code, 403)
+        self.assertEqual(self.client_pour(self.admin).post(f'{API}/plats/', plat).status_code, 201)
+        plat_yop = Plat.objects.get(nom='Placali')
+        self.assertEqual(self.gest.patch(f'{API}/plats/{plat_yop.id}/', {'nom': 'X'}).status_code, 403)
+        self.assertEqual(self.gest.delete(f'{API}/plats/{plat_yop.id}/').status_code, 403)
+
+        # Écrans de gestion (?gerees=1) : ses agences ; lecture libre sinon (commande)
+        self.creer_menu()
+        agences = {m['agence'] for m in self.gest.get(f'{API}/menus/', {'gerees': 1}).data['results']}
+        self.assertEqual(agences, {self.agence.id})
+        agences = {m['agence'] for m in self.gest.get(f'{API}/menus/').data['results']}
+        self.assertIn(yop.agence_id, agences)
+        noms = {p['nom'] for p in self.gest.get(f'{API}/allnopagin/plats/', {'gerees': 1}).data}
+        self.assertNotIn('Placali', noms)
+        agences = {m['agence'] for m in self.client_pour(self.admin).get(f'{API}/menus/', {'gerees': 1}).data['results']}
+        self.assertIn(yop.agence_id, agences)
+
+    def test_facturation_gestionnaire_de_son_agence(self):
+        from .facturation import cloturer_mois
+        from .models import ClotureMensuelle
+        # Tarifs agent et prestataire de Yopougon
+        debut = timezone.now() - timedelta(days=400)
+        cat = Categoriesalarie.objects.create(libelle='Agent')
+        UserCategoriesalarie.objects.create(user=self.employe, categoriesalarie=cat, statut=self.statut, date_debut=debut)
+        UserCategoriesalarie.objects.create(user=self.gestionnaire, categoriesalarie=cat, statut=self.statut, date_debut=debut)
+        PlatCategoriesalarie.objects.create(categoriesalarie=cat, montant=Decimal('500'), statut=self.statut, date_debut=debut)
+        yop = self.menu_yopougon(jours=-40)
+        autre = Prestataire.objects.create(libelle='Traiteur Yop', statut=self.statut, date_debut=debut)
+        AgencePrestataire.objects.create(prestataire=autre, agence=yop.agence, statut=self.statut, date_debut=debut)
+        PlatPrestataire.objects.create(prestataire=autre, montant=Decimal('700'), statut=self.statut, date_debut=debut)
+        siege = self.creer_menu(jours=-40)
+        Commande.objects.create(user=self.employe, menu=siege, plat=self.plat1)
+        Commande.objects.create(user=self.employe, menu=yop, plat=self.plat1, statut='retiree')
+        jour = str(siege.date_menu)
+        periode = {'date_debut': jour, 'date_fin': jour}
+
+        r = self.gest.get(f'{API}/facturation/', periode)
+        self.assertEqual((r.data['total_repas'], r.data['total_montant']), (1, 500.0))
+        # « Ma facturation » (moi=1) : ses propres repas, toutes agences
+        Commande.objects.create(user=self.gestionnaire, menu=yop, plat=self.plat1)
+        r = self.gest.get(f'{API}/facturation/', {**periode, 'moi': 1})
+        self.assertEqual([e['user_id'] for e in r.data['employes']], [self.gestionnaire.id])
+        self.assertEqual(r.data['total_repas'], 1)
+        r = self.gest.get(f'{API}/facturation/prestataires/', periode)
+        self.assertEqual([p['prestataire'] for p in r.data['prestataires']], ['Traiteur'])
+        admin = self.client_pour(self.admin)
+        self.assertEqual(admin.get(f'{API}/facturation/', periode).data['total_repas'], 3)
+        self.assertEqual(len(admin.get(f'{API}/facturation/prestataires/', periode).data['prestataires']), 2)
+
+        # Factures officielles figées : seulement celles de ses agences
+        d = siege.date_menu
+        cloturer_mois(d.year, d.month, self.admin)
+        libelles = {f['prestataire_libelle'] for f in self.gest.get(f'{API}/factures-prestataires/').data['results']}
+        self.assertEqual(libelles, {'Traiteur'})
+        self.assertEqual(len(admin.get(f'{API}/factures-prestataires/').data['results']), 2)
+        # La facture de l'agent couvre deux agences : réservée à l'administrateur ;
+        # le gestionnaire voit la sienne
+        ids = [f['user'] for f in self.gest.get(f'{API}/factures/').data['results']]
+        self.assertEqual(ids, [self.gestionnaire.id])
+        self.assertEqual(admin.get(f'{API}/factures/').data['count'], 2)
+
     def test_gestionnaire_voit_ses_propres_commandes_ailleurs(self):
         yop = self.menu_yopougon()
         cmd = Commande.objects.create(user=self.gestionnaire, menu=yop, plat=self.plat1)
@@ -602,7 +669,8 @@ class FacturationTests(_FacturationBase):
                                    typeequipe=self.typeequipe)
         MenuPlat.objects.create(menu=menu, plat=self.plat1)
         Commande.objects.create(user=self.employe, menu=menu, plat=self.plat1)
-        data = self.facturation_prestataires(self.gestionnaire).data
+        # L'administrateur voit toutes les agences (le gestionnaire seulement la sienne)
+        data = self.facturation_prestataires(self.admin).data
         self.assertEqual(data['total_repas'], 0)
         self.assertIn('Annexe', data['anomalies'][0])
 
