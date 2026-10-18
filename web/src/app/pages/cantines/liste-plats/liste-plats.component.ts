@@ -3,11 +3,12 @@ import { Component, OnInit, QueryList, ViewChild, ViewChildren, ElementRef, Dest
 import { DecimalPipe } from '@angular/common';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
-import { filter } from 'rxjs';
+import { Subject, filter } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ModalDirective } from 'ngx-bootstrap/modal';
 import { DatePipe } from '@angular/common';
-import { DropzoneConfigInterface } from 'ngx-dropzone-wrapper';
+import { DropzoneComponent, DropzoneConfigInterface } from 'ngx-dropzone-wrapper';
 import { Store } from '@ngrx/store';
 import { PageChangedEvent } from 'ngx-bootstrap/pagination';
 
@@ -15,7 +16,6 @@ import {
   deleteplatData,
   deletemultipleplatData,
   fetchplatData,
-  fetchstatistiqueplatData,
   createPlatWithFiles,
   updatePlatWithFiles,
 } from 'src/app/store/Plat/plat.action';
@@ -25,7 +25,6 @@ import {
   selectTotalItems,
   selectLoading,
   selectCurrentPage,
-  selectStatistiqueGlobale,
   selectSuccessMessage,
   selectErrorMessage,
 } from 'src/app/store/Plat/plat-selector';
@@ -67,15 +66,14 @@ export class ListePlatsComponent implements OnInit {
   checkedValGet: any[] = [];
   deleteID: any;
   term: any;
+  private pendingDelete = false;
+  private searchTerms = new Subject<string>();
+
+  // ── Mode du modal (ajout / édition) ─────────────────────────
+  isEdit = false;
 
   // ── Images ──────────────────────────────────────────────────
-  /**
-   * AVANT : deux tableaux distincts — uploadedFiles (alimenté par Dropzone)
-   *         et uploadedFilesNouvelles (utilisé dans saveProperty) → images
-   *         jamais envoyées au backend.
-   *
-   * APRÈS : un seul tableau uploadedFiles utilisé partout.
-   */
+  // Fichiers en attente : envoyés au backend uniquement à la sauvegarde
   uploadedFiles: any[] = [];
   imagesExistantes: any[] = [];
   imagesASupprimerIds: number[] = [];
@@ -87,10 +85,6 @@ export class ListePlatsComponent implements OnInit {
   direction: 'asc' | 'desc' = 'asc';
 
   // ── URL backend ─────────────────────────────────────────────
-  /**
-   * AVANT : baseUrl = 'http://localhost:8000' codée en dur dans le composant
-   * APRÈS : lue depuis environment.ts — une seule source de vérité
-   */
   baseUrl = environment.apiUrl;
 
   // ── Accessibilité ───────────────────────────────────────────
@@ -101,6 +95,7 @@ export class ListePlatsComponent implements OnInit {
   @ViewChild('deleteRecordModal', { static: false }) deleteRecordModal?: ModalDirective;
   @ViewChild('viewPlat', { static: false }) viewPlat?: ModalDirective;
   @ViewChild('mainContainer', { static: false }) mainContainer?: ElementRef;
+  @ViewChild(DropzoneComponent, { static: false }) dropzone?: DropzoneComponent;
 
   // ── DestroyRef (Angular 16+) ─────────────────────────────────
   /**
@@ -125,14 +120,12 @@ export class ListePlatsComponent implements OnInit {
     this.platForm = this.formBuilder.group({
       id: [''],
       nom: ['', [Validators.required]],
-      description: ['', [Validators.required]],
+      description: [''],
       type_plat: ['', [Validators.required]],
       agence: ['', [Validators.required]]
     });
 
     // ── Abonnements avec takeUntilDestroyed ─────────────────────
-    // AVANT : 7 subscribe() sans unsubscribe → fuite mémoire à chaque
-    //         navigation. takeUntilDestroyed résout ça proprement.
 
     this.store.select(selectLoading).pipe(
       takeUntilDestroyed(this.destroyRef)
@@ -174,19 +167,21 @@ export class ListePlatsComponent implements OnInit {
       if (data) this.typeplats = data;
     });
 
-    // ── Feedback UI — remplace actions$.pipe(ofType(...)) ───────
-    // AVANT : dans saveProperty(), on faisait actions$.pipe(ofType(...), take(1))
-    //         → anti-pattern NgRx, abonnement non contrôlé si appelé deux fois.
-    //
-    // APRÈS : le reducer écrit successMessage/errorMessage dans le state.
-    //         Le composant observe ces valeurs via des selectors.
-    //         Un seul abonnement dans ngOnInit gère tous les cas.
+    // ── Feedback UI ─────────────────────────────────────────────
+    // Le reducer écrit successMessage/errorMessage dans le state ;
+    // un seul abonnement gère création, mise à jour et suppression.
 
     this.store.select(selectSuccessMessage).pipe(
       takeUntilDestroyed(this.destroyRef),
       filter((msg): msg is string => !!msg)
     ).subscribe(msg => {
       this.toastService.success(msg, 'Succès');
+      if (this.pendingDelete) {
+        // Suppression confirmée par le serveur : on ferme le modal
+        this.pendingDelete = false;
+        this.afterDeleteActions();
+        return;
+      }
       this.platForm.reset();
       this.uploadedFiles = [];
       this.imagesExistantes = [];
@@ -199,7 +194,16 @@ export class ListePlatsComponent implements OnInit {
       filter((msg): msg is string => !!msg)
     ).subscribe(msg => {
       this.toastService.error(msg, 'Erreur');
+      // En cas d'échec de suppression, le modal reste ouvert
+      this.pendingDelete = false;
     });
+
+    // Recherche côté serveur (?search=) avec debounce
+    this.searchTerms.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => this.loadData(1));
 
     this.loadData(1);
   }
@@ -209,10 +213,11 @@ export class ListePlatsComponent implements OnInit {
       takeUntilDestroyed(this.destroyRef)
     ).subscribe(() => {
       this.platForm.reset();
-      const modaltitle = document.querySelector('.modal-title') as HTMLElement;
-      if (modaltitle) modaltitle.innerHTML = 'Ajouter un plat';
-      const modalbtn = document.getElementById('add-btn') as HTMLElement;
-      if (modalbtn) modalbtn.innerHTML = 'Ajouter';
+      this.isEdit = false;
+      this.uploadedFiles = [];
+      this.imagesExistantes = [];
+      this.imagesASupprimerIds = [];
+      this.dropzone?.directiveRef?.reset();
     });
 
     this.deleteRecordModal?.onHidden.pipe(
@@ -225,8 +230,7 @@ export class ListePlatsComponent implements OnInit {
   // ── Chargement ──────────────────────────────────────────────
 
   loadData(page: number = 1): void {
-    this.store.dispatch(fetchplatData({ page }));
-    this.store.dispatch(fetchstatistiqueplatData());
+    this.store.dispatch(fetchplatData({ page, search: (this.term ?? '').trim() }));
     this.store.dispatch(fetchagenceNoPaginateData());
     this.store.dispatch(fetchtypeplatNoPaginateData());
   }
@@ -234,20 +238,41 @@ export class ListePlatsComponent implements OnInit {
   // ── Dropzone ────────────────────────────────────────────────
 
   dropzoneConfig: DropzoneConfigInterface = {
+    autoProcessQueue: false,
     clickable: true,
     addRemoveLinks: true,
     previewsContainer: false,
   };
 
-  onUploadSuccess(event: any) {
-    setTimeout(() => {
-      // Un seul tableau — uploadedFiles est utilisé dans saveProperty()
-      this.uploadedFiles.push(event[0]);
-    }, 0);
+  // Aucun envoi par Dropzone (autoProcessQueue: false) : les fichiers sont
+  // collectés à l'ajout puis envoyés au backend avec le formulaire.
+  onFileAdded(file: any) {
+    if (!this.uploadedFiles.includes(file)) {
+      this.uploadedFiles.push(file);
+    }
   }
 
-  removeFile(event: any) {
-    this.uploadedFiles.splice(this.uploadedFiles.indexOf(event), 1);
+  // Fichier refusé par Dropzone (type ou taille) : on le retire de la liste
+  onFileError(event: any) {
+    const [file, message] = Array.isArray(event) ? event : [event, ''];
+    this.onFileRemoved(file);
+    this.dropzone?.directiveRef?.dropzone()?.removeFile(file);
+    this.toastService.error(
+      typeof message === 'string' && message ? message : 'Fichier refusé.',
+      'Erreur'
+    );
+  }
+
+  // Retrait depuis la Dropzone
+  onFileRemoved(file: any) {
+    const index = this.uploadedFiles.indexOf(file);
+    if (index !== -1) this.uploadedFiles.splice(index, 1);
+  }
+
+  // Retrait depuis la liste de prévisualisation
+  removeFile(file: any) {
+    this.onFileRemoved(file);
+    this.dropzone?.directiveRef?.dropzone()?.removeFile(file);
   }
 
   // ── Formulaire ──────────────────────────────────────────────
@@ -268,7 +293,7 @@ export class ListePlatsComponent implements OnInit {
       }
     });
 
-    // Nouvelles images — même tableau que onUploadSuccess
+    // Nouvelles images en attente
     this.uploadedFiles.forEach(file => {
       formData.append('new_images', file);
     });
@@ -297,25 +322,14 @@ export class ListePlatsComponent implements OnInit {
     }
     setTimeout(() => {
       this.addPlat?.hide();
-      const modaltitle = document.querySelector('.modal-title') as HTMLElement;
-      if (modaltitle) modaltitle.innerHTML = 'Ajouter un plat';
-      const modalbtn = document.getElementById('add-btn') as HTMLElement;
-      if (modalbtn) modalbtn.innerHTML = 'Ajouter';
     }, 10);
   }
 
   editList(id: any) {
     this.lastActiveElement = document.activeElement as HTMLElement;
+    this.isEdit = true;
     this.addPlat?.show();
 
-    
-
-    const modaltitle = document.querySelector('.modal-title') as HTMLElement;
-    if (modaltitle) modaltitle.innerHTML = 'Modifier le plat';
-    const modalbtn = document.getElementById('add-btn') as HTMLElement;
-    if (modalbtn) modalbtn.innerHTML = 'Mettre à jour';
-
-    //const editData = typeof id === 'number' ? this.plats[id] : this.plats.find(p => p.id === id);
     const editData = this.plats.find(p => p.id === id);
 
     if (editData) {
@@ -376,14 +390,14 @@ export class ListePlatsComponent implements OnInit {
 
   confirmDelete(id?: any) {
     if (id) {
+      this.pendingDelete = true;
       this.store.dispatch(deleteplatData({ id: id.toString() }));
-      this.afterDeleteActions();
       return;
     }
 
     if (this.checkedValGet?.length > 0) {
+      this.pendingDelete = true;
       this.store.dispatch(deletemultipleplatData({ id: this.checkedValGet.join(',') }));
-      this.afterDeleteActions();
       return;
     }
 
@@ -436,17 +450,7 @@ export class ListePlatsComponent implements OnInit {
   // ── Recherche ───────────────────────────────────────────────
 
   filterdata() {
-    if (this.term) {
-      // AVANT : filtrait sur el.titre → champ inexistant dans PlatModel
-      // APRÈS : filtre sur el.nom → champ correct
-      this.plats = this.platList.filter(el =>
-        el.nom?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.id?.toString().includes(this.term)
-      );
-    } else {
-      this.loadData(this.currentPage);
-    }
-    this.updateNoResultDisplay();
+    this.searchTerms.next((this.term ?? '').trim());
   }
 
   updateNoResultDisplay() {
@@ -464,7 +468,7 @@ export class ListePlatsComponent implements OnInit {
   // ── Utilitaires images ──────────────────────────────────────
 
   isImage(path: string): boolean {
-    return ['.jpg', '.jpeg', '.png', '.gif', '.bmp'].some(
+    return ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].some(
       ext => path?.toLowerCase().endsWith(ext)
     );
   }

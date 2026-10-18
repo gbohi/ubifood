@@ -54,11 +54,13 @@ import { RetraitCommandeComponent } from './retrait-commande/retrait-commande/re
 import { FacturationCommandeComponent } from './facturation-commande/facturation-commande.component';
 import { FacturationPrestataireComponent } from './facturation-prestataire/facturation-prestataire.component';
 
+// Aucun envoi par Dropzone : les fichiers sont collectés côté composant puis
+// envoyés au backend avec le formulaire (FormData). L'URL n'est qu'un placeholder.
 const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
-  // Change this to your upload POST address:
-  url: 'https://httpbin.org/post',
-  maxFilesize: 50,
-  acceptedFiles: 'image/*'
+  url: '/',
+  autoProcessQueue: false,
+  maxFilesize: 5, // Mo
+  acceptedFiles: '.jpg,.jpeg,.png,.webp'
 };
 
 @NgModule({

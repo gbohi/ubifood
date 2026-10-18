@@ -1,5 +1,5 @@
 <!-- Start Breadcrumbs -->
-<app-breadcrumbs title="Vue de liste" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<app-breadcrumbs title="Plats" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
 <!-- End Breadcrumbs -->
 
 <div class="row">
@@ -28,7 +28,7 @@
                                 <i class="ri-delete-bin-2-line"></i> Supprimer ({{checkedValGet.length}})
                             </button>
                             <button class="btn btn-secondary" (click)="addPlat?.show()">
-                                <i class="bi bi-person-plus align-baseline me-1"></i> Ajouter un plat
+                                <i class="ri-add-line align-baseline me-1"></i> Ajouter un plat
                             </button>
                         </div>
                     </div>
@@ -51,9 +51,7 @@
                                 </th>
                                 <th scope="col" class="sort cursor-pointer" (click)="onSort('id')">N°</th>
                                 <th scope="col" class="sort cursor-pointer" (click)="onSort('nom')">Nom</th>
-                                <!-- CORRIGÉ : colonne triée sur type_plat_libelle (champ réel du modèle) -->
                                 <th scope="col" class="sort cursor-pointer" (click)="onSort('type_plat_libelle')">Type</th>
-                                <!-- CORRIGÉ : colonne triée sur agence_nom (champ réel du modèle) -->
                                 <th scope="col" class="sort cursor-pointer" (click)="onSort('agence_nom')">Proposé par</th>
                                 <th scope="col" class="sort cursor-pointer" (click)="onSort('created_at')">Date création</th>
                                 <th scope="col">Action</th>
@@ -61,7 +59,7 @@
                         </thead>
                         <tbody class="list form-check-all" id="invoice-list-data">
 
-                            @for (data of plats; track data.id; let idx = $index) {
+                            @for (data of plats; track data.id) {
                             <tr id="l_{{data.id}}">
                                 <td>
                                     <div class="form-check">
@@ -74,19 +72,10 @@
                                     </div>
                                 </td>
                                 <td class="plat_id">
-                                    <a href="javascript:void(0);" class="fw-medium link-primary">{{ idx + 1 }}</a>
+                                    <a href="javascript:void(0);" class="fw-medium link-primary">{{ data.id }}</a>
                                 </td>
                                 <td class="nom">{{data.nom}}</td>
-                                <!--
-                                    CORRIGÉ : data.type_plat_detail.libelle → data.type_plat_libelle
-                                    AVANT : accès à un objet imbriqué _detail qui n'existe plus
-                                            depuis la correction des serializers Django (ReadOnlyField)
-                                    APRÈS : champ plat directement sur l'objet
-                                -->
                                 <td class="type_plat">{{data.type_plat_libelle}}</td>
-                                <!--
-                                    CORRIGÉ : data.agence_detail.nom_agence → data.agence_nom
-                                -->
                                 <td class="agence">{{data.agence_nom}}</td>
                                 <td class="created_at">{{ data.created_at | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
                                 <td>
@@ -99,12 +88,6 @@
                                             </a>
                                         </li>
                                         <li>
-                                            <!--
-                                                CORRIGÉ : editList($index) → editList(data.id)
-                                                AVANT : on passait l'index du tableau local, qui change
-                                                        après un tri ou une recherche → mauvais plat édité.
-                                                APRÈS : on passe l'ID stable du plat.
-                                            -->
                                             <a href="javascript:void(0);"
                                                (click)="editList(data.id)"
                                                class="btn btn-subtle-secondary btn-icon btn-sm edit-item-btn">
@@ -126,7 +109,6 @@
                             <!-- Message si liste vide (sans recherche active) -->
                             <tr *ngIf="plats?.length === 0 && !term && !isLoading">
                                 <td colspan="7" class="text-center py-4">
-                                    <!-- CORRIGÉ : colspan 4 → 7 (nombre réel de colonnes) -->
                                     <i class="ph-file-x fs-1 text-primary"></i>
                                     <h5 class="mt-2">Aucun plat disponible</h5>
                                     <p class="text-muted mb-0">Veuillez ajouter un plat pour commencer.</p>
@@ -169,6 +151,8 @@
                             [totalItems]="totalItems"
                             [itemsPerPage]="10"
                             [(ngModel)]="currentPage"
+                            previousText="Précédent"
+                            nextText="Suivant"
                             (pageChanged)="pageChanged($event)">
                         </pagination>
                     </div>
@@ -188,7 +172,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="addPlatModalLabel">Ajouter un plat</h5>
+                <h5 class="modal-title" id="addPlatModalLabel">{{ isEdit ? 'Modifier le plat' : 'Ajouter un plat' }}</h5>
                 <button type="button" class="btn-close" (click)="closeAddModal()"></button>
             </div>
 
@@ -285,7 +269,9 @@
                         <dropzone class="dropzone"
                                   [config]="dropzoneConfig"
                                   [message]="'Déposez des fichiers ici ou cliquez pour télécharger.'"
-                                  (success)="onUploadSuccess($event)">
+                                  (addedFile)="onFileAdded($event)"
+                                  (removedFile)="onFileRemoved($event)"
+                                  (error)="onFileError($event)">
                         </dropzone>
 
                         <!-- Prévisualisation des nouvelles images -->
@@ -333,7 +319,7 @@
                             @if (isLoading) {
                                 <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                             }
-                            Ajouter
+                            {{ isEdit ? 'Mettre à jour' : 'Ajouter' }}
                         </button>
                     </div>
                 </div>
@@ -410,19 +396,11 @@
 
                 <div class="mb-3">
                     <label class="form-label fw-medium">Type :</label>
-                    <!--
-                        CORRIGÉ : selectedPlat?.type_plat_detail.libelle → selectedPlat?.type_plat_libelle
-                        L'accès à .type_plat_detail.libelle causait une erreur "Cannot read properties
-                        of undefined" si type_plat_detail était null ou absent.
-                    -->
                     <span class="ms-2">{{selectedPlat?.type_plat_libelle}}</span>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label fw-medium">Proposé par :</label>
-                    <!--
-                        CORRIGÉ : selectedPlat?.agence_detail.nom_agence → selectedPlat?.agence_nom
-                    -->
                     <span class="ms-2">{{selectedPlat?.agence_nom}}</span>
                 </div>
 
@@ -448,10 +426,6 @@
 
                             <ng-template #fileLink>
                                 <a [href]="getFullUrl(doc.url)" target="_blank">
-                                    <!--
-                                        CORRIGÉ : getFileName(doc.image) → getFileName(doc.url)
-                                        doc.image n'existe pas dans PlatImage — le champ s'appelle doc.url
-                                    -->
                                     📄 {{ getFileName(doc.url) }}
                                 </a>
                             </ng-template>

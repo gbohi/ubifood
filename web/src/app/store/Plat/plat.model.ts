@@ -10,13 +10,7 @@ export interface PlatImage {
 }
 
 /**
- * Modèle complet d'un plat
- *
- * AVANT : seuls 4 champs déclarés (id, nom, description, type_plat, agence)
- *         → le template plantait en TypeScript sur type_plat_libelle,
- *           agence_nom, images, created_at car non typés.
- *
- * APRÈS : modèle aligné avec ce que l'API retourne réellement.
+ * Modèle complet d'un plat, aligné avec ce que l'API retourne.
  */
 export interface PlatModel {
   // ── Champs écriture (envoyés à l'API) ──────────────────────

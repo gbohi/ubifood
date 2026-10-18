@@ -22,10 +22,10 @@ export class PlatCategoriesalarieService {
   constructor(private http: HttpClient) {}
 
   // ── Récupérer les tarifs d'une catégorie salarié ──────────
-  // ✅ Réponse paginée → on extrait results
+  // Réponse paginée → on extrait results (page_size=1000 : tous les tarifs)
   getByCategoriesalarie(categoriesalarieId: number): Observable<PlatCategoriesalarieModel[]> {
     return this.http.get<PaginatedResponse<PlatCategoriesalarieModel>>(
-      `${this.apiUrl}/plat-categoriesalaries/?categoriesalarie=${categoriesalarieId}`
+      `${this.apiUrl}/plat-categoriesalaries/?categoriesalarie=${categoriesalarieId}&page_size=1000`
     ).pipe(
       map(response => response.results)
     );

@@ -22,10 +22,10 @@ export class PlatPrestataireService {
   constructor(private http: HttpClient) {}
 
   // ── Récupérer les tarifs d'un prestataire ─────────────────
-  // ✅ Réponse paginée → on extrait results
+  // Réponse paginée → on extrait results (page_size=1000 : tous les tarifs)
   getByPrestataire(prestataireId: number): Observable<PlatPrestataireModel[]> {
     return this.http.get<PaginatedResponse<PlatPrestataireModel>>(
-      `${this.apiUrl}/plat-prestataires/?prestataire=${prestataireId}`
+      `${this.apiUrl}/plat-prestataires/?prestataire=${prestataireId}&page_size=1000`
     ).pipe(
       map(response => response.results)
     );

@@ -16,18 +16,25 @@ export class PlatService {
   // Pagination locale — mise à jour à chaque appel getAllPlats()
   private currentPage = 1;
   private totalItems = 0;
+  // Dernier terme de recherche — réutilisé lors des rechargements (après création, suppression…)
+  private currentSearch = '';
   private readonly itemsPerPage = 10;
 
   constructor(private http: HttpClient) {}
 
   /**
-   * Liste paginée des plats.
+   * Liste paginée des plats, filtrée côté serveur par ?search= (nom, description).
+   * Sans `search`, le dernier terme utilisé est conservé.
    * Le token JWT est injecté automatiquement par AuthInterceptor.
    */
-  getAllPlats(page: number = 1): Observable<ApiResponse<PlatModel>> {
+  getAllPlats(page: number = 1, search?: string): Observable<ApiResponse<PlatModel>> {
     this.currentPage = page;
+    if (search !== undefined) this.currentSearch = search;
 
-    return this.http.get<ApiResponse<PlatModel>>(`${this.apiUrl}/api/plats/?page=${page}`)
+    let url = `${this.apiUrl}/api/plats/?page=${page}`;
+    if (this.currentSearch) url += `&search=${encodeURIComponent(this.currentSearch)}`;
+
+    return this.http.get<ApiResponse<PlatModel>>(url)
       .pipe(
         tap((response) => {
           this.totalItems = response.count;
@@ -122,8 +129,15 @@ export class PlatService {
   /**
    * Gestion centralisée des erreurs HTTP.
    * Transforme toute erreur Angular/HTTP en ApiError uniforme.
+   * L'ErrorInterceptor fournit déjà un message lisible (string) : on l'utilise tel quel.
    */
-  private handleError(error: HttpErrorResponse) {
+  private handleError(error: HttpErrorResponse | string) {
+    if (typeof error === 'string') {
+      const msgError: ApiError = { status: 0, message: error };
+      console.error('Erreur API Plat :', msgError);
+      return throwError(() => msgError);
+    }
+
     const apiError: ApiError = {
       status: error.status,
       message: 'Une erreur est survenue',
