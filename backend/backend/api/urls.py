@@ -1,12 +1,20 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework.throttling import ScopedRateThrottle
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import *
 
 
+class ConnexionSerializer(TokenObtainPairSerializer):
+    default_error_messages = {
+        'no_active_account': 'Matricule ou mot de passe incorrect, ou compte désactivé.',
+    }
+
+
 class ThrottledTokenObtainPairView(TokenObtainPairView):
     """Connexion JWT avec limitation de débit (anti force brute)."""
+    serializer_class = ConnexionSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'login'
 

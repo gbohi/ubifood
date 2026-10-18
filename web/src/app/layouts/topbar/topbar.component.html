@@ -31,90 +31,6 @@
                     </span>
                 </button>
 
-                <form class="app-search d-none d-md-inline-flex">
-                    <div class="position-relative">
-                        <input type="text" class="form-control" placeholder="Recherche..." autocomplete="off" id="search-options" value="" (keyup)="Search()">
-                        <span class="mdi mdi-magnify search-widget-icon"></span>
-                        <span class="mdi mdi-close-circle search-widget-icon search-widget-icon-close d-none" id="search-close-options" (click)="closeBtn()"></span>
-                    </div>
-                    <div class="dropdown-menu dropdown-menu-lg" id="search-dropdown">
-                        <ngx-simplebar style="max-height: 320px;">
-                            <!-- item-->
-                            <div class="dropdown-header">
-                                <h6 class="text-overflow text-muted mb-0 text-uppercase">Recherche récente</h6>
-                            </div>
-
-                            <div class="dropdown-item bg-transparent text-wrap">
-                                <a routerLink="/" class="btn btn-subtle-secondary btn-sm btn-rounded me-1">how to setup <i class="mdi mdi-magnify"></i></a>
-                                <a routerLink="/" class="btn btn-subtle-secondary btn-sm btn-rounded">buttons <i class="mdi mdi-magnify"></i></a>
-                            </div>
-                            <!-- item-->
-                            <div class="dropdown-header mt-2">
-                                <h6 class="text-overflow text-muted mb-1 text-uppercase">Pages</h6>
-                            </div>
-
-                            <!-- item-->
-                            <a href="javascript:void(0);" class="dropdown-item notify-item">
-                                <i class="ri-bubble-chart-line align-middle fs-18 text-muted me-2"></i>
-                                <span>Analytics Dashboard</span>
-                            </a>
-
-                            <!-- item-->
-                            <a href="javascript:void(0);" class="dropdown-item notify-item">
-                                <i class="ri-lifebuoy-line align-middle fs-18 text-muted me-2"></i>
-                                <span>Help Center</span>
-                            </a>
-
-                            <!-- item-->
-                            <a href="javascript:void(0);" class="dropdown-item notify-item">
-                                <i class="ri-user-settings-line align-middle fs-18 text-muted me-2"></i>
-                                <span>My account settings</span>
-                            </a>
-
-                            <!-- item-->
-                            <div class="dropdown-header mt-2">
-                                <h6 class="text-overflow text-muted mb-2 text-uppercase">Members</h6>
-                            </div>
-
-                            <div class="notification-list">
-                                <!-- item -->
-                                <a href="javascript:void(0);" class="dropdown-item notify-item py-2">
-                                    <div class="d-flex">
-                                        <img src="assets/images/users/48/avatar-2.jpg" class="me-3 rounded-circle avatar-xs" alt="user-pic">
-                                        <div class="flex-1">
-                                            <h6 class="m-0">Angela Bernier</h6>
-                                            <span class="fs-11 mb-0 text-muted">Manager</span>
-                                        </div>
-                                    </div>
-                                </a>
-                                <!-- item -->
-                                <a href="javascript:void(0);" class="dropdown-item notify-item py-2">
-                                    <div class="d-flex">
-                                        <img src="assets/images/users/avatar-3.jpg" class="me-3 rounded-circle avatar-xs" alt="user-pic">
-                                        <div class="flex-1">
-                                            <h6 class="m-0">David Grasso</h6>
-                                            <span class="fs-11 mb-0 text-muted">Web Designer</span>
-                                        </div>
-                                    </div>
-                                </a>
-                                <!-- item -->
-                                <a href="javascript:void(0);" class="dropdown-item notify-item py-2">
-                                    <div class="d-flex">
-                                        <img src="assets/images/users/avatar-5.jpg" class="me-3 rounded-circle avatar-xs" alt="user-pic">
-                                        <div class="flex-1">
-                                            <h6 class="m-0">Mike Bunch</h6>
-                                            <span class="fs-11 mb-0 text-muted">React Developer</span>
-                                        </div>
-                                    </div>
-                                </a>
-                            </div>
-                        </ngx-simplebar>
-
-                        <div class="text-center pt-3 pb-1">
-                            <a href="javascript:void(0);" class="btn btn-primary btn-sm">Voir tous les résultats<i class="ri-arrow-right-line ms-1"></i></a>
-                        </div>
-                    </div>
-                </form>
             </div>
 
             <div class="d-flex align-items-center">
@@ -376,7 +292,7 @@
                             </ngx-simplebar>
                             <div class="notification-actions" id="notification-actions">
                                 <div class="d-flex text-muted justify-content-center align-items-center">
-                                    Select <div id="select-content" class="text-body fw-semibold px-1">{{checkedValGet.length}}</div> Result <button type="button" class="btn btn-link link-danger p-0 ms-2" (click)="removeNotificationModal.show()">Remove</button>
+                                    Sélection : <div id="select-content" class="text-body fw-semibold px-1">{{checkedValGet.length}}</div> élément(s) <button type="button" class="btn btn-link link-danger p-0 ms-2" (click)="removeNotificationModal.show()">Supprimer</button>
                                 </div>
                             </div>
                             <div class="empty-notification-elem text-center px-4 d-none">
@@ -428,13 +344,13 @@
                         <i class="bi bi-trash display-4"></i>
                     </div>
                     <div class="mt-4 fs-base">
-                        <h4 class="mb-1">Are you sure ?</h4>
-                        <p class="text-muted mx-4 mb-0">Are you sure you want to remove this Notification ?</p>
+                        <h4 class="mb-1">Êtes-vous sûr ?</h4>
+                        <p class="text-muted mx-4 mb-0">Voulez-vous vraiment supprimer ces notifications ?</p>
                     </div>
                 </div>
                 <div class="d-flex gap-2 justify-content-center mt-4 mb-2">
-                    <button type="button" class="btn w-sm btn-light" (click)="removeNotificationModal.hide()">Close</button>
-                    <button type="button" class="btn w-sm btn-danger" id="delete-notification" (click)="notificationDelete()">Yes, Delete It!</button>
+                    <button type="button" class="btn w-sm btn-light" (click)="removeNotificationModal.hide()">Annuler</button>
+                    <button type="button" class="btn w-sm btn-danger" id="delete-notification" (click)="notificationDelete()">Oui, supprimer</button>
                 </div>
             </div>
 
@@ -455,13 +371,13 @@
                         <i class="bi bi-trash display-5"></i>
                     </div>
                     <div class="mt-4">
-                        <h4>Are you sure ?</h4>
-                        <p class="text-muted mx-4 mb-0">Are you sure you want to remove this product ?</p>
+                        <h4>Êtes-vous sûr ?</h4>
+                        <p class="text-muted mx-4 mb-0">Voulez-vous vraiment retirer cet article ?</p>
                     </div>
                 </div>
                 <div class="d-flex gap-2 justify-content-center mt-4 mb-2">
-                    <button type="button" class="btn w-sm btn-light" (click)="removeCartModal.hide()">Close</button>
-                    <button type="button" class="btn w-sm btn-danger" id="remove-cartproduct" (click)="confirmDelete()">Yes, Delete It!</button>
+                    <button type="button" class="btn w-sm btn-light" (click)="removeCartModal.hide()">Annuler</button>
+                    <button type="button" class="btn w-sm btn-danger" id="remove-cartproduct" (click)="confirmDelete()">Oui, supprimer</button>
                 </div>
             </div>
 

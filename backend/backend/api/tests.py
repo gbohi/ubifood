@@ -1071,3 +1071,15 @@ class ReferentielsTests(BaseAPITestCase):
         self.assertEqual(admin.post(f'{API}/agences/', {'nom_agence': 'plateau'}).status_code, 400)
         self.assertEqual(admin.post(f'{API}/agences/', {'nom_agence': '   '}).status_code, 400)
         self.assertEqual(admin.delete(f'{API}/agences/{r.data["id"]}/').status_code, 204)
+
+
+class ConnexionTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_mauvais_mot_de_passe_message_clair(self):
+        User.objects.create_user(username='m001', password='Bon#2026',
+                                 statut=Statut.objects.create(libelle_statut='Actif'))
+        r = APIClient().post('/api/api/token/', {'username': 'm001', 'password': 'faux'}, format='json')
+        self.assertEqual(r.status_code, 401)
+        self.assertEqual(r.data['detail'], 'Matricule ou mot de passe incorrect, ou compte désactivé.')

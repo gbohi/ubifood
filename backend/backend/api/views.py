@@ -59,6 +59,10 @@ _NOMS_LIES = {
     'AgencePrestataire': 'des rattachements agence / prestataire',
     'PlatPrestataire': 'des tarifs', 'PlatCategoriesalarie': 'des tarifs',
     'FactureMensuelle': 'des factures', 'FacturePrestataire': 'des factures',
+    'AvisPlat': 'des avis', 'Notification': 'des notifications', 'Prestataire': 'des prestataires',
+    'Banniere': 'des bannières', 'DeviceToken': 'des appareils', 'ClotureMensuelle': 'des clôtures',
+    'PlatImage': 'des photos de plats', 'UserAllergie': 'des allergies', 'BesoinService': 'des besoins',
+    'LigneFacture': 'des factures', 'LigneFacturePrestataire': 'des factures', 'EntretienVehicule': 'des entretiens',
 }
 
 
@@ -120,13 +124,13 @@ class BaseViewSet(viewsets.ModelViewSet):
             return
         valeur = (serializer.validated_data[champ] or '').strip()
         if not valeur:
-            raise ValidationError({champ: "Ce champ ne peut pas être vide."})
+            raise ValidationError("Le libellé est obligatoire.")
         serializer.validated_data[champ] = valeur
         doublons = serializer.Meta.model.objects.filter(**{f'{champ}__iexact': valeur})
         if serializer.instance is not None:
             doublons = doublons.exclude(pk=serializer.instance.pk)
         if doublons.exists():
-            raise ValidationError({champ: f"« {valeur} » existe déjà."})
+            raise ValidationError(f"« {valeur} » existe déjà.")
 
     def perform_create(self, serializer):
         self._verifier_libelle(serializer)

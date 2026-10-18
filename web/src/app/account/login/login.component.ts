@@ -61,11 +61,11 @@ export class LoginComponent implements OnInit {
       ofType(loginSuccess),
       takeUntilDestroyed(this.destroyRef)
     ).subscribe(() => {
-      // ✅ Demander permission notifications et envoyer token FCM au backend
-      // Token JWT disponible à ce stade → l'envoi au backend fonctionnera
-      this.webNotif.requestPermissionAndSaveToken();
-
-      this.router.navigateByUrl(this.destinationApresConnexion());
+      // Redirection d'abord : la demande d'autorisation des notifications
+      // ne doit pas retarder l'arrivée sur la page.
+      this.router.navigateByUrl(this.destinationApresConnexion()).finally(() =>
+        // Token JWT disponible à ce stade → l'envoi du token FCM au backend fonctionnera
+        this.webNotif.requestPermissionAndSaveToken());
     });
   }
 
