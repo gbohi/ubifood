@@ -4,7 +4,7 @@ import { PrestatairelistModel, ApiResponse } from './prestataire.model';
 // fetch prestataire data
 export const fetchprestataireData = createAction(
     '[Data] Fetch prestataire Table Data',
-    props<{ page?: number }>()
+    props<{ page?: number; search?: string }>()
 );
 
 export const fetchprestataireSuccess = createAction(

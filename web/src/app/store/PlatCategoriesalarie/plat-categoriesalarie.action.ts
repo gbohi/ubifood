@@ -10,11 +10,11 @@ export const fetchPlatCategoriesalarie = createAction(
 );
 export const fetchPlatCategoriesalarieSuccess = createAction(
   '[PlatCategoriesalarie] Fetch By Categoriesalarie Success',
-  props<{ tarifs: PlatCategoriesalarieModel[] }>()
+  props<{ categoriesalarieId: number; tarifs: PlatCategoriesalarieModel[] }>()
 );
 export const fetchPlatCategoriesalarieFailure = createAction(
   '[PlatCategoriesalarie] Fetch By Categoriesalarie Failure',
-  props<{ error: string }>()
+  props<{ categoriesalarieId: number; error: string }>()
 );
 
 // ── Créer un tarif ────────────────────────────────────────────

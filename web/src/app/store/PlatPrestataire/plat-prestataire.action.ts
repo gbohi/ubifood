@@ -10,11 +10,11 @@ export const fetchPlatPrestataire = createAction(
 );
 export const fetchPlatPrestataireSuccess = createAction(
   '[PlatPrestataire] Fetch By Prestataire Success',
-  props<{ tarifs: PlatPrestataireModel[] }>()
+  props<{ prestataireId: number; tarifs: PlatPrestataireModel[] }>()
 );
 export const fetchPlatPrestataireFailure = createAction(
   '[PlatPrestataire] Fetch By Prestataire Failure',
-  props<{ error: string }>()
+  props<{ prestataireId: number; error: string }>()
 );
 
 // ── Créer un tarif ────────────────────────────────────────────

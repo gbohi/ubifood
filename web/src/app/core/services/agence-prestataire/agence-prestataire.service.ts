@@ -25,7 +25,7 @@ export class AgencePrestataireService {
   // ✅ Réponse paginée → on extrait results
   getByPrestataire(prestataireId: number): Observable<AgencePrestataireModel[]> {
     return this.http.get<PaginatedResponse<AgencePrestataireModel>>(
-      `${this.apiUrl}/agence-prestataires/?prestataire=${prestataireId}`
+      `${this.apiUrl}/agence-prestataires/?prestataire=${prestataireId}&page_size=1000`
     ).pipe(
       map(response => response.results)
     );

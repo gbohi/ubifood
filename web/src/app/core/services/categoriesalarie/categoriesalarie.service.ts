@@ -13,17 +13,22 @@ export class CategoriesalarieService {
 
   // Infos de pagination conservées en mémoire pour la gestion post-suppression
   private currentPage   = 1;
+  private currentSearch = '';
   private totalItems    = 0;
   private itemsPerPage  = 10;
 
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllCategoriesalaries(page: number = 1): Observable<ApiResponse<CategoriesalarielistModel>> {
+  // search : undefined = conserver le dernier filtre (rechargements après
+  // ajout / suppression), '' = aucun filtre. Filtrage côté serveur (?search=).
+  getAllCategoriesalaries(page: number = 1, search?: string): Observable<ApiResponse<CategoriesalarielistModel>> {
     this.currentPage = page;
+    if (search !== undefined) this.currentSearch = search.trim();
+    const filtre = this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '';
     // ✅ Plus de getAuthHeaders() — le JWT est géré par l'intercepteur HTTP
     return this.http.get<ApiResponse<CategoriesalarielistModel>>(
-      `${this.apiUrl}/categoriesalaries/?page=${page}`
+      `${this.apiUrl}/categoriesalaries/?page=${page}${filtre}`
     ).pipe(
       tap(response => {
         this.totalItems  = response.count;

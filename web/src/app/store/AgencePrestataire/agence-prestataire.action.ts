@@ -10,11 +10,11 @@ export const fetchAgencePrestataire = createAction(
 );
 export const fetchAgencePrestataireSuccess = createAction(
   '[AgencePrestataire] Fetch By Prestataire Success',
-  props<{ agences: AgencePrestataireModel[] }>()
+  props<{ prestataireId: number; agences: AgencePrestataireModel[] }>()
 );
 export const fetchAgencePrestataireFailure = createAction(
   '[AgencePrestataire] Fetch By Prestataire Failure',
-  props<{ error: string }>()
+  props<{ prestataireId: number; error: string }>()
 );
 
 // ── Créer une liaison ─────────────────────────────────────────

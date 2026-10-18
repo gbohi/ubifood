@@ -2,8 +2,8 @@
 
 import { Injectable, inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { of, forkJoin } from 'rxjs';
-import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
+import { of, concat } from 'rxjs';
+import { catchError, map, mergeMap, switchMap, toArray } from 'rxjs/operators';
 import { PlatCategoriesalarieService } from 'src/app/core/services/plat-categoriesalarie/plat-categoriesalarie.service';
 import * as PlatCategoriesalarieActions from './plat-categoriesalarie.action';
 
@@ -20,8 +20,9 @@ export class PlatCategoriesalarieEffects {
       ofType(PlatCategoriesalarieActions.fetchPlatCategoriesalarie),
       switchMap(({ categoriesalarieId }) =>
         this.platCategoriesalarieService.getByCategoriesalarie(categoriesalarieId).pipe(
-          map(tarifs => PlatCategoriesalarieActions.fetchPlatCategoriesalarieSuccess({ tarifs })),
+          map(tarifs => PlatCategoriesalarieActions.fetchPlatCategoriesalarieSuccess({ categoriesalarieId, tarifs })),
           catchError(err => of(PlatCategoriesalarieActions.fetchPlatCategoriesalarieFailure({
+            categoriesalarieId,
             error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors du chargement des tarifs.'
           })))
         )
@@ -92,7 +93,8 @@ export class PlatCategoriesalarieEffects {
           })
         );
 
-        return forkJoin(requests).pipe(
+        return concat(...requests).pipe(
+          toArray(),
           map(() => PlatCategoriesalarieActions.savePlatCategoriesalariesBatchSuccess({
             categoriesalarieId
           })),

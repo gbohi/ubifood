@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { PrestataireService } from 'src/app/core/services/prestataire/prestataire.service';
 
@@ -44,8 +44,9 @@ export class PrestataireEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchprestataireData),
-      mergeMap(({ page }) =>
-        this.prestataireService.getAllPrestataires(page || 1).pipe(
+      // switchMap : une recherche plus récente annule la précédente
+      switchMap(({ page, search }) =>
+        this.prestataireService.getAllPrestataires(page || 1, search).pipe(
           map(response => fetchprestataireSuccess({ response })),
           catchError(error => of(fetchprestataireFailure({ error: error.toString() })))
         )

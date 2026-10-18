@@ -1,6 +1,7 @@
 // src/app/pages/categoriesalarie/categoriesalarie.component.ts
 
-import { Component, OnInit, AfterViewInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, AfterViewInit, ViewChild, ElementRef, DestroyRef, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
@@ -8,17 +9,21 @@ import { ModalDirective } from 'ngx-bootstrap/modal';
 import { Actions, ofType } from '@ngrx/effects';
 import { Store } from '@ngrx/store';
 import { PageChangedEvent } from 'ngx-bootstrap/pagination';
-import { Subject } from 'rxjs';
-import { filter, take, takeUntil } from 'rxjs/operators';
+import { Observable, Subject, concat, of } from 'rxjs';
+import {
+  catchError, debounceTime, distinctUntilChanged, filter, map,
+  switchMap, take, takeUntil, toArray,
+} from 'rxjs/operators';
 
 // ── Categoriesalarie store ─────────────────────────────────────
 import {
-  addcategoriesalarieData,
-  addcategoriesalarieDataSuccess,
   deletecategoriesalarieData,
+  deletecategoriesalarieFailure,
+  deletecategoriesalarieSuccess,
   deletemultiplecategoriesalarieData,
+  deletemultiplecategoriesalarieFailure,
+  deletemultiplecategoriesalarieSuccess,
   fetchcategoriesalarieData,
-  updatecategoriesalarieData,
 } from 'src/app/store/Categoriesalarie/categoriesalarie.action';
 import {
   selectcategoriesalarieData,
@@ -26,6 +31,7 @@ import {
   selectLoading,
   selectCurrentPage,
 } from 'src/app/store/Categoriesalarie/categoriesalarie-selector';
+import { CategoriesalarieService } from 'src/app/core/services/categoriesalarie/categoriesalarie.service';
 
 // ── Statut store ───────────────────────────────────────────────
 import { selectAllSatutWithoutPagination } from 'src/app/store/Statut/statut-selector';
@@ -33,12 +39,9 @@ import { fetchstatutNoPaginateData } from 'src/app/store/Statut/statut.action';
 
 // ── PlatCategoriesalarie store ────────────────────────────────
 import * as PlatCategoriesalarieActions from 'src/app/store/PlatCategoriesalarie/plat-categoriesalarie.action';
-import {
-  selectPlatCategoriesalarieTarifs,
-  selectPlatCategoriesalarieIsLoading,
-  selectPlatCategoriesalarieIsSubmitting,
-} from 'src/app/store/PlatCategoriesalarie/plat-categoriesalarie-selector';
+import { selectPlatCategoriesalarieIsLoading } from 'src/app/store/PlatCategoriesalarie/plat-categoriesalarie-selector';
 import { PlatCategoriesalarieModel } from 'src/app/store/PlatCategoriesalarie/plat-categoriesalarie.model';
+import { PlatCategoriesalarieService } from 'src/app/core/services/plat-categoriesalarie/plat-categoriesalarie.service';
 
 @Component({
   selector: 'app-categoriesalarie',
@@ -46,7 +49,7 @@ import { PlatCategoriesalarieModel } from 'src/app/store/PlatCategoriesalarie/pl
   styleUrl: './categoriesalarie.component.scss',
   providers: [DecimalPipe, DatePipe],
 })
-export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestroy {
+export class CategoriesalarieComponent implements OnInit, AfterViewInit {
 
   breadCrumbItems = [
     { label: 'Catégorie salarié', active: false },
@@ -55,7 +58,6 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
 
   // ── Categoriesalarie ──────────────────────────────────────
   categoriesalaries:    any[] = [];
-  categoriesalarieList: any[] = [];
   statuts:              any[] = [];
   totalItems  = 0;
   currentPage = 1;
@@ -63,6 +65,7 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
 
   categoriesalarieForm!: UntypedFormGroup;
   submitted      = false;
+  isSaving       = false;
   masterSelected = false;
   term: any;
   checkedValGet:             any[] = [];
@@ -70,14 +73,17 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
   deleteID: any;
   direction = 'asc';
 
+  modalTitle = 'Ajouter une catégorie salarié';
+  modalBtn   = 'Enregistrer';
+
   // ── PlatCategoriesalarie ──────────────────────────────────
   isTarifsLoading           = false;
-  isTarifsSubmitting        = false;
   currentCategoriesalarieId: number | null = null;
   tarifLignes:               PlatCategoriesalarieModel[] = [];
-  private tarifLignesSnapshot: PlatCategoriesalarieModel[] = [];
 
-  private destroy$ = new Subject<void>();
+  private destroyRef = inject(DestroyRef);
+  private search$          = new Subject<string>();
+  private annulerChargement$ = new Subject<void>();
   private lastActiveElement: HTMLElement | null = null;
 
   @ViewChild('addCategoriesalarie',  { static: false }) addCategoriesalarie?:  ModalDirective;
@@ -90,6 +96,8 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
     private toastService: ToastrService,
     private store: Store,
     private actions$: Actions,
+    private categoriesalarieService: CategoriesalarieService,
+    private platCategoriesalarieService: PlatCategoriesalarieService,
   ) {}
 
   ngOnInit(): void {
@@ -100,88 +108,88 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
 
     // ── Categoriesalarie selectors ─────────────────────────
     this.store.select(selectLoading)
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(v => this.isLoading = v);
 
     this.store.select(selectTotalItems)
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(v => this.totalItems = v ?? 0);
 
     this.store.select(selectCurrentPage)
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(v => this.currentPage = v ?? 1);
 
     this.store.select(selectcategoriesalarieData)
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(data => {
         if (data) {
-          this.categoriesalaries    = data.map(item => ({ ...item, state: false }));
-          this.categoriesalarieList = [...this.categoriesalaries];
-          this.updateNoResultDisplay();
+          this.categoriesalaries = data.map(item => ({ ...item, state: false }));
+          // Nouvelle page / nouveau résultat : la sélection précédente n'a plus de sens
+          this.masterSelected = false;
+          this.checkedValGet  = [];
         }
       });
 
     // ── Statuts ────────────────────────────────────────────
     this.store.dispatch(fetchstatutNoPaginateData());
     this.store.select(selectAllSatutWithoutPagination)
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(data => this.statuts = data ?? []);
 
-    // ── PlatCategoriesalarie selectors ─────────────────────
+    // ── PlatCategoriesalarie ───────────────────────────────
     this.store.select(selectPlatCategoriesalarieIsLoading)
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(v => this.isTarifsLoading = v);
 
-    this.store.select(selectPlatCategoriesalarieIsSubmitting)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(v => this.isTarifsSubmitting = v);
+    // ── Recherche serveur (?search=), temporisée ───────────
+    this.search$.pipe(
+      map(t => (t ?? '').trim()),
+      debounceTime(350),
+      distinctUntilChanged(),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(() => this.loadData(1));
 
-    // ── SOLUTION 2 — Batch après création ─────────────────
+    // ── Retour serveur des suppressions ────────────────────
     this.actions$.pipe(
-      ofType(addcategoriesalarieDataSuccess),
-      takeUntil(this.destroy$)
-    ).subscribe(({ newData }) => {
-      const tarifsACreer = this.tarifLignesSnapshot.filter(l => !l._isDeleted);
-      if (newData?.id && tarifsACreer.length > 0) {
-        this.store.dispatch(PlatCategoriesalarieActions.savePlatCategoriesalariesBatch({
-          categoriesalarieId: newData.id,
-          tarifs: tarifsACreer.map(l => ({
-            montant:    l.montant,
-            date_debut: l.date_debut,
-            date_fin:   l.date_fin || null,
-            statut:     l.statut,
-          })),
-        }));
-      }
-      this.tarifLignesSnapshot = [];
+      ofType(deletecategoriesalarieSuccess, deletemultiplecategoriesalarieSuccess),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(a => this.toastService.success(
+      a.type === deletecategoriesalarieSuccess.type
+        ? 'Catégorie salarié supprimée avec succès !'
+        : 'Catégories salariés supprimées avec succès !', 'Succès'));
+
+    this.actions$.pipe(
+      ofType(deletecategoriesalarieFailure, deletemultiplecategoriesalarieFailure),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(({ error }) => {
+      this.toastService.error(error || 'Suppression impossible.', 'Erreur', { timeOut: 10000 });
+      this.loadData(this.currentPage);
     });
 
     this.loadData(1);
   }
 
   ngAfterViewInit(): void {
-    this.addCategoriesalarie?.onHidden.subscribe(() => {
-      this.categoriesalarieForm.reset();
-      this.tarifLignes               = [];
-      this.currentCategoriesalarieId = null;
-      this.submitted                 = false;
-      this.store.dispatch(PlatCategoriesalarieActions.resetPlatCategoriesalarie());
-      this.setModalTitle('Ajouter une catégorie salarié');
-      this.setModalBtn('Enregistrer');
-    });
+    this.addCategoriesalarie?.onHidden
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        this.annulerChargement$.next();
+        this.categoriesalarieForm.reset();
+        this.tarifLignes               = [];
+        this.currentCategoriesalarieId = null;
+        this.submitted                 = false;
+        this.store.dispatch(PlatCategoriesalarieActions.resetPlatCategoriesalarie());
+        this.modalTitle = 'Ajouter une catégorie salarié';
+        this.modalBtn   = 'Enregistrer';
+      });
 
-    this.deleteRecordModal?.onHidden.subscribe(() => {
-      this.deleteID = null;
-    });
-  }
-
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
+    this.deleteRecordModal?.onHidden
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.deleteID = null);
   }
 
   loadData(page: number = 1): void {
-    this.store.dispatch(fetchcategoriesalarieData({ page }));
+    this.store.dispatch(fetchcategoriesalarieData({ page, search: (this.term ?? '').trim() }));
   }
 
   private mapTarifsToLignes(tarifs: PlatCategoriesalarieModel[]): PlatCategoriesalarieModel[] {
@@ -195,55 +203,71 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
     }));
   }
 
+  /**
+   * Charge les tarifs de la catégorie `id`. Le store est vidé avant, et seule
+   * la réponse (succès ou échec) correspondant à CET id est prise en compte :
+   * jamais les tarifs de la fiche ouverte précédemment. Une liste vide est valide.
+   */
+  private chargerTarifs(id: number): void {
+    this.annulerChargement$.next();
+    this.tarifLignes = [];
+    this.store.dispatch(PlatCategoriesalarieActions.resetPlatCategoriesalarie());
+
+    this.actions$.pipe(
+      ofType(
+        PlatCategoriesalarieActions.fetchPlatCategoriesalarieSuccess,
+        PlatCategoriesalarieActions.fetchPlatCategoriesalarieFailure,
+      ),
+      filter(a => a.categoriesalarieId === id),
+      take(1),
+      takeUntil(this.annulerChargement$),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(a => {
+      if ('tarifs' in a) {
+        this.tarifLignes = this.mapTarifsToLignes(a.tarifs ?? []);
+      } else {
+        this.toastService.error(a.error || 'Erreur lors du chargement des tarifs.', 'Erreur');
+      }
+    });
+
+    this.store.dispatch(PlatCategoriesalarieActions.fetchPlatCategoriesalarie({ categoriesalarieId: id }));
+  }
+
   // ── Modal Ajouter ─────────────────────────────────────────
   openAddModal(): void {
     this.lastActiveElement         = document.activeElement as HTMLElement;
+    this.annulerChargement$.next();
     this.currentCategoriesalarieId = null;
     this.tarifLignes               = [];
-    this.tarifLignesSnapshot       = [];
     this.submitted                 = false;
     this.categoriesalarieForm.reset();
     this.store.dispatch(PlatCategoriesalarieActions.resetPlatCategoriesalarie());
-    this.setModalTitle('Ajouter une catégorie salarié');
-    this.setModalBtn('Enregistrer');
+    this.modalTitle = 'Ajouter une catégorie salarié';
+    this.modalBtn   = 'Enregistrer';
     this.addCategoriesalarie?.show();
   }
 
+  /** « Fermer » : abandonne toutes les modifications (y compris les suppressions de lignes) */
   closeAddModal(): void {
     this.lastActiveElement?.focus();
-    setTimeout(() => {
-      this.addCategoriesalarie?.hide();
-      this.setModalTitle('Ajouter une catégorie salarié');
-      this.setModalBtn('Enregistrer');
-    }, 10);
+    setTimeout(() => this.addCategoriesalarie?.hide(), 10);
   }
 
   // ── Modal Édition ─────────────────────────────────────────
   editList(id: any): void {
-    this.lastActiveElement         = document.activeElement as HTMLElement;
-    const editData                 = this.categoriesalaries.find(p => p.id === id);
+    this.lastActiveElement = document.activeElement as HTMLElement;
+    const editData         = this.categoriesalaries.find(p => p.id === id);
     if (!editData) return;
 
     this.currentCategoriesalarieId = id;
-    this.tarifLignesSnapshot       = [];
-    this.tarifLignes               = [];
     this.submitted                 = false;
+    this.categoriesalarieForm.reset();
+    this.categoriesalarieForm.patchValue({ id: editData.id, libelle: editData.libelle });
 
-    this.categoriesalarieForm.patchValue(editData);
+    this.chargerTarifs(id);
 
-    // Charger les tarifs
-    this.store.dispatch(PlatCategoriesalarieActions.fetchPlatCategoriesalarie({
-      categoriesalarieId: id
-    }));
-    this.store.select(selectPlatCategoriesalarieTarifs).pipe(
-      filter(tarifs => tarifs.length > 0),
-      take(1)
-    ).subscribe(tarifs => {
-      this.tarifLignes = this.mapTarifsToLignes(tarifs);
-    });
-
-    this.setModalTitle('Modifier la catégorie salarié');
-    this.setModalBtn('Enregistrer');
+    this.modalTitle = 'Modifier la catégorie salarié';
+    this.modalBtn   = 'Enregistrer';
     this.addCategoriesalarie?.show();
   }
 
@@ -255,20 +279,26 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
     });
   }
 
+  /** Une ligne existante est seulement marquée : la suppression part sur « Enregistrer » */
   supprimerLigneTarif(index: number): void {
     const ligne = this.tarifLignes[index];
-    if (ligne._isNew) {
+    if (!ligne) return;
+    if (ligne._isNew || !ligne.id) {
       this.tarifLignes.splice(index, 1);
-    } else if (ligne.id) {
-      this.store.dispatch(PlatCategoriesalarieActions.deletePlatCategoriesalarie({ id: ligne.id }));
-      this.tarifLignes.splice(index, 1);
+    } else {
+      ligne._isDeleted = true;
     }
+  }
+
+  montantInvalide(l: PlatCategoriesalarieModel): boolean {
+    return l.montant == null || (l.montant as any) === '' || Number(l.montant) < 0;
   }
 
   private validerTarifs(): boolean {
     let valid = true;
     this.tarifLignes.filter(l => !l._isDeleted).forEach(l => {
-      const hasError = !l.montant || !l.date_debut || !l.statut ||
+      const hasError = this.montantInvalide(l) || !l.date_debut ||
+        l.statut == null || (l.statut as any) === '' || (l.statut as any) === 'undefined' ||
         (!!l.date_fin && !!l.date_debut && l.date_fin < l.date_debut);
       l._hasError = hasError;
       if (hasError) valid = false;
@@ -277,8 +307,16 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
   }
 
   // ── Sauvegarde ────────────────────────────────────────────
+  /**
+   * 1. Enregistre la catégorie (création ou modification) ; en cas de refus
+   *    (libellé vide / déjà utilisé…), message du serveur et fenêtre ouverte ;
+   * 2. puis les tarifs, une requête après l'autre : suppressions, modifications
+   *    (ex. clôturer l'ancien tarif), créations — sinon le serveur refuse le
+   *    chevauchement des périodes. Les lignes refusées sont listées.
+   */
   saveProperty(): void {
     this.submitted = true;
+    if (this.isSaving) return;
 
     if (this.categoriesalarieForm.invalid) {
       this.toastService.error('Veuillez vérifier les informations saisies.', 'Erreur');
@@ -290,48 +328,69 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
     }
 
     const formValue = { ...this.categoriesalarieForm.value };
+    const creation  = !formValue.id;
+    if (creation) delete formValue.id;
 
-    if (formValue.id) {
-      // ── Modification ──────────────────────────────────────
-      this.store.dispatch(updatecategoriesalarieData({ updatedData: formValue }));
-      this.toastService.success('Catégorie salarié mise à jour avec succès !', 'Succès');
+    this.isSaving = true;
+    const fiche$: Observable<any> = creation
+      ? this.categoriesalarieService.createCategoriesalarie(formValue)
+      : this.categoriesalarieService.updateCategoriesalarie(formValue);
 
-      this.tarifLignes.forEach(ligne => {
-        if (ligne._isNew && !ligne._isDeleted) {
-          this.store.dispatch(PlatCategoriesalarieActions.createPlatCategoriesalarie({
-            data: {
-              categoriesalarie: formValue.id,
-              montant:          ligne.montant,
-              date_debut:       ligne.date_debut,
-              date_fin:         ligne.date_fin || null,
-              statut:           ligne.statut,
-            }
-          }));
-        } else if (!ligne._isNew && !ligne._isDeleted && ligne.id) {
-          this.store.dispatch(PlatCategoriesalarieActions.updatePlatCategoriesalarie({
-            id:   ligne.id,
-            data: {
-              categoriesalarie: formValue.id,
-              montant:          ligne.montant,
-              date_debut:       ligne.date_debut,
-              date_fin:         ligne.date_fin || null,
-              statut:           ligne.statut,
-            }
-          }));
+    fiche$.pipe(
+      switchMap(cat => this.enregistrerTarifs(cat?.id ?? formValue.id)),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
+      next: erreurs => {
+        this.isSaving = false;
+        if (erreurs.length) {
+          this.toastService.warning(
+            `Catégorie enregistrée, mais des tarifs ont été refusés : ${erreurs.join(' ; ')}`,
+            'Attention', { timeOut: 10000 });
+        } else {
+          this.toastService.success(
+            creation ? 'Catégorie salarié ajoutée avec succès !' : 'Catégorie salarié mise à jour avec succès !',
+            'Succès');
         }
-      });
+        this.submitted = false;
+        this.closeAddModal();
+        this.loadData(creation ? 1 : this.currentPage);
+      },
+      error: err => {
+        this.isSaving = false;
+        this.toastService.error(typeof err === 'string' ? err : 'Enregistrement impossible.', 'Erreur');
+      },
+    });
+  }
 
-    } else {
-      // ── Création — snapshot AVANT fermeture ───────────────
-      this.tarifLignesSnapshot = [...this.tarifLignes];
-      delete formValue.id;
-      this.store.dispatch(addcategoriesalarieData({ newData: formValue }));
-      this.toastService.success('Catégorie salarié ajoutée avec succès !', 'Succès');
-    }
+  /** Enregistre les tarifs séquentiellement ; renvoie les messages d'erreur */
+  private enregistrerTarifs(categoriesalarieId: number): Observable<string[]> {
+    const erreurs: string[] = [];
+    const libelle = (l: PlatCategoriesalarieModel) =>
+      `${l.montant} FCFA du ${this.formatDate(l.date_debut!)}${l.date_fin ? ' au ' + this.formatDate(l.date_fin) : ''}`;
+    const appel = (obs: Observable<any>, l: PlatCategoriesalarieModel, quoi: string) => obs.pipe(
+      catchError(err => {
+        erreurs.push(`${quoi} ${libelle(l)} : ${typeof err === 'string' ? err : 'refusé'}`);
+        return of(null);
+      }));
+    const donnees = (l: PlatCategoriesalarieModel) => ({
+      categoriesalarie: categoriesalarieId,
+      montant:          Number(l.montant),
+      date_debut:       l.date_debut,
+      date_fin:         l.date_fin || null,
+      statut:           Number(l.statut),
+    });
 
-    this.submitted = false;
-    this.categoriesalarieForm.reset();
-    this.closeAddModal();
+    const L = this.tarifLignes;
+    const operations: Observable<any>[] = [
+      ...L.filter(l => l._isDeleted && l.id)
+          .map(l => appel(this.platCategoriesalarieService.delete(l.id!), l, 'Suppression du tarif')),
+      ...L.filter(l => !l._isNew && !l._isDeleted && l.id)
+          .map(l => appel(this.platCategoriesalarieService.update(l.id!, donnees(l)), l, 'Tarif')),
+      ...L.filter(l => l._isNew && !l._isDeleted)
+          .map(l => appel(this.platCategoriesalarieService.create(donnees(l)), l, 'Nouveau tarif')),
+    ];
+    if (!operations.length) return of([]);
+    return concat(...operations).pipe(toArray(), map(() => erreurs));
   }
 
   // ── Getters ───────────────────────────────────────────────
@@ -351,16 +410,15 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
     setTimeout(() => this.deleteRecordModal?.hide(), 10);
   }
 
+  /** Le message (succès ou refus du serveur, ex. catégorie encore utilisée) arrive par les actions */
   confirmDelete(id?: any): void {
     if (id) {
       this.store.dispatch(deletecategoriesalarieData({ id: id.toString() }));
-      this.toastService.success('Catégorie salarié supprimée avec succès !', 'Succès');
       this.afterDeleteActions();
       return;
     }
     if (this.checkedValGet?.length > 0) {
       this.store.dispatch(deletemultiplecategoriesalarieData({ id: this.checkedValGet.join(',') }));
-      this.toastService.success('Catégories salariés supprimées avec succès !', 'Succès');
       this.afterDeleteActions();
       return;
     }
@@ -381,18 +439,7 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
     const data = this.categoriesalaries.find(p => p.id === id);
     if (data) {
       this.selectedCategoriesalarie = data;
-      this.tarifLignes              = [];
-
-      this.store.dispatch(PlatCategoriesalarieActions.fetchPlatCategoriesalarie({
-        categoriesalarieId: id
-      }));
-      this.store.select(selectPlatCategoriesalarieTarifs).pipe(
-        filter(tarifs => tarifs.length > 0),
-        take(1)
-      ).subscribe(tarifs => {
-        this.tarifLignes = this.mapTarifsToLignes(tarifs);
-      });
-
+      this.chargerTarifs(id);
       this.viewCategoriesalarie?.show();
     } else {
       this.toastService.error('Catégorie salarié introuvable', 'Erreur');
@@ -403,6 +450,7 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
     this.lastActiveElement?.focus();
     setTimeout(() => {
       this.viewCategoriesalarie?.hide();
+      this.annulerChargement$.next();
       this.selectedCategoriesalarie = null;
       this.tarifLignes              = [];
       this.store.dispatch(PlatCategoriesalarieActions.resetPlatCategoriesalarie());
@@ -411,7 +459,7 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
 
   // ── Helpers ───────────────────────────────────────────────
   getStatutLibelle(statutId: number): string {
-    return this.statuts.find(s => s.id === statutId)?.libelle_statut ?? '—';
+    return this.statuts.find(s => s.id === Number(statutId))?.libelle_statut ?? '—';
   }
 
   formatDate(d: string): string {
@@ -449,35 +497,12 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit, OnDestr
     return v1 < v2 ? -1 : v1 > v2 ? 1 : 0;
   }
 
+  /** Recherche côté serveur (tout le référentiel, pas seulement la page affichée) */
   filterdata(): void {
-    if (this.term) {
-      this.categoriesalaries = this.categoriesalarieList.filter(el =>
-        el.libelle?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.id?.toString().includes(this.term)
-      );
-    } else {
-      this.loadData(this.currentPage);
-    }
-    this.updateNoResultDisplay();
-  }
-
-  updateNoResultDisplay(): void {
-    const el = document.querySelector('.noresult') as HTMLElement;
-    if (!el) return;
-    el.style.display = this.term && this.categoriesalaries.length === 0 ? 'block' : 'none';
+    this.search$.next(this.term ?? '');
   }
 
   pageChanged(event: PageChangedEvent): void {
     this.loadData(event.page);
-  }
-
-  private setModalTitle(title: string): void {
-    const el = document.querySelector('.modal-title') as HTMLElement;
-    if (el) el.innerHTML = title;
-  }
-
-  private setModalBtn(label: string): void {
-    const el = document.getElementById('add-btn') as HTMLElement;
-    if (el) el.innerHTML = label;
   }
 }

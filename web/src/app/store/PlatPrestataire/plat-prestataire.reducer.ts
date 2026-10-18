@@ -5,6 +5,8 @@ import { PlatPrestataireModel } from './plat-prestataire.model';
 import * as PlatPrestataireActions from './plat-prestataire.action';
 
 export interface PlatPrestataireState {
+  /** Id du parent dont les lignes sont chargées (null = aucune) */
+  prestataireId: number | null;
   tarifs:        PlatPrestataireModel[];
   isLoading:     boolean;
   isSubmitting:  boolean;
@@ -13,6 +15,7 @@ export interface PlatPrestataireState {
 }
 
 export const initialPlatPrestataireState: PlatPrestataireState = {
+  prestataireId: null,
   tarifs:         [],
   isLoading:      false,
   isSubmitting:   false,
@@ -24,12 +27,14 @@ export const platPrestataireReducer = createReducer(
   initialPlatPrestataireState,
 
   // ── Fetch ──────────────────────────────────────────────────
-  on(PlatPrestataireActions.fetchPlatPrestataire, state => ({
-    ...state, isLoading: true, error: null
+  on(PlatPrestataireActions.fetchPlatPrestataire, (state, { prestataireId }) => ({
+    // Les lignes d'un autre parent ne doivent jamais rester visibles
+    ...state, isLoading: true, error: null,
+    tarifs: state.prestataireId === prestataireId ? state.tarifs : [], prestataireId,
   })),
-  on(PlatPrestataireActions.fetchPlatPrestataireSuccess, (state, { tarifs }) => ({
-    ...state, isLoading: false, tarifs
-  })),
+  on(PlatPrestataireActions.fetchPlatPrestataireSuccess, (state, { prestataireId, tarifs }) =>
+    state.prestataireId !== prestataireId ? state : ({ ...state, isLoading: false, tarifs })
+  ),
   on(PlatPrestataireActions.fetchPlatPrestataireFailure, (state, { error }) => ({
     ...state, isLoading: false, error
   })),

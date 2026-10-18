@@ -5,6 +5,8 @@ import { PlatCategoriesalarieModel } from './plat-categoriesalarie.model';
 import * as PlatCategoriesalarieActions from './plat-categoriesalarie.action';
 
 export interface PlatCategoriesalarieState {
+  /** Id du parent dont les lignes sont chargées (null = aucune) */
+  categoriesalarieId: number | null;
   tarifs:         PlatCategoriesalarieModel[];
   isLoading:      boolean;
   isSubmitting:   boolean;
@@ -13,6 +15,7 @@ export interface PlatCategoriesalarieState {
 }
 
 export const initialPlatCategoriesalarieState: PlatCategoriesalarieState = {
+  categoriesalarieId: null,
   tarifs:         [],
   isLoading:      false,
   isSubmitting:   false,
@@ -24,12 +27,14 @@ export const platCategoriesalarieReducer = createReducer(
   initialPlatCategoriesalarieState,
 
   // ── Fetch ──────────────────────────────────────────────────
-  on(PlatCategoriesalarieActions.fetchPlatCategoriesalarie, state => ({
-    ...state, isLoading: true, error: null
+  on(PlatCategoriesalarieActions.fetchPlatCategoriesalarie, (state, { categoriesalarieId }) => ({
+    // Les lignes d'un autre parent ne doivent jamais rester visibles
+    ...state, isLoading: true, error: null,
+    tarifs: state.categoriesalarieId === categoriesalarieId ? state.tarifs : [], categoriesalarieId,
   })),
-  on(PlatCategoriesalarieActions.fetchPlatCategoriesalarieSuccess, (state, { tarifs }) => ({
-    ...state, isLoading: false, tarifs
-  })),
+  on(PlatCategoriesalarieActions.fetchPlatCategoriesalarieSuccess, (state, { categoriesalarieId, tarifs }) =>
+    state.categoriesalarieId !== categoriesalarieId ? state : ({ ...state, isLoading: false, tarifs })
+  ),
   on(PlatCategoriesalarieActions.fetchPlatCategoriesalarieFailure, (state, { error }) => ({
     ...state, isLoading: false, error
   })),

@@ -2,8 +2,8 @@
 
 import { Injectable, inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { of, forkJoin } from 'rxjs';
-import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
+import { of, concat } from 'rxjs';
+import { catchError, map, mergeMap, switchMap, toArray } from 'rxjs/operators';
 import { AgencePrestataireService } from 'src/app/core/services/agence-prestataire/agence-prestataire.service';
 import * as AgencePrestataireActions from './agence-prestataire.action';
 
@@ -20,8 +20,9 @@ export class AgencePrestataireEffects {
       ofType(AgencePrestataireActions.fetchAgencePrestataire),
       switchMap(({ prestataireId }) =>
         this.agencePrestataireService.getByPrestataire(prestataireId).pipe(
-          map(agences => AgencePrestataireActions.fetchAgencePrestataireSuccess({ agences })),
+          map(agences => AgencePrestataireActions.fetchAgencePrestataireSuccess({ prestataireId, agences })),
           catchError(err => of(AgencePrestataireActions.fetchAgencePrestataireFailure({
+            prestataireId,
             error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors du chargement des agences.'
           })))
         )
@@ -90,7 +91,8 @@ export class AgencePrestataireEffects {
           })
         );
 
-        return forkJoin(requests).pipe(
+        return concat(...requests).pipe(
+          toArray(),
           map(() => AgencePrestataireActions.saveAgencePrestatairesBatchSuccess({ prestataireId })),
           catchError(err => of(AgencePrestataireActions.saveAgencePrestatairesBatchFailure({
             error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la sauvegarde des agences.'

@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { CategoriesalarieService } from 'src/app/core/services/categoriesalarie/categoriesalarie.service';
 
@@ -44,8 +44,9 @@ export class CategoriesalarieEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchcategoriesalarieData),
-      mergeMap(({ page }) =>
-        this.CategoriesalarieService.getAllCategoriesalaries(page || 1).pipe(
+      // switchMap : une recherche plus récente annule la précédente
+      switchMap(({ page, search }) =>
+        this.CategoriesalarieService.getAllCategoriesalaries(page || 1, search).pipe(
           map(response => fetchcategoriesalarieSuccess({ response })),
           catchError(error => of(fetchcategoriesalarieFailure({ error: error.toString() })))
         )

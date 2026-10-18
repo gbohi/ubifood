@@ -11,7 +11,7 @@
             <div class="search-box">
               <input type="text" class="form-control search"
                      placeholder="Rechercher par libellé ou ID..."
-                     [(ngModel)]="term" (keyup)="filterdata()">
+                     [(ngModel)]="term" (ngModelChange)="filterdata()">
               <i class="ri-search-line search-icon"></i>
             </div>
           </div>
@@ -109,13 +109,15 @@
             </div>
           }
 
-          <div class="noresult" style="display: none;">
-            <div class="text-center py-4">
-              <i class="ph-magnifying-glass fs-1 text-primary"></i>
-              <h5 class="mt-2">Aucun résultat trouvé</h5>
-              <p class="text-muted mb-0">Aucune catégorie ne correspond à votre recherche.</p>
+          @if (term && categoriesalaries.length === 0 && !isLoading) {
+            <div class="noresult">
+              <div class="text-center py-4">
+                <i class="ph-magnifying-glass fs-1 text-primary"></i>
+                <h5 class="mt-2">Aucun résultat trouvé</h5>
+                <p class="text-muted mb-0">Aucune catégorie ne correspond à votre recherche.</p>
+              </div>
             </div>
-          </div>
+          }
         </div>
 
         @if (categoriesalaries.length > 0) {
@@ -129,6 +131,7 @@
             <div class="col-sm-auto mt-3 mt-sm-0">
               <pagination class="pagination-wrap justify-content-center hstack gap-2"
                           [totalItems]="totalItems" [itemsPerPage]="10"
+                          previousText="Précédent" nextText="Suivant"
                           [(ngModel)]="currentPage" (pageChanged)="pageChanged($event)">
               </pagination>
             </div>
@@ -148,7 +151,7 @@
     <div class="modal-content">
 
       <div class="modal-header">
-        <h5 class="modal-title">Ajouter une catégorie salarié</h5>
+        <h5 class="modal-title">{{ modalTitle }}</h5>
         <button type="button" class="btn-close" (click)="closeAddModal()"></button>
       </div>
 
@@ -200,11 +203,7 @@
             <div class="text-center py-3 text-muted border rounded mb-2">
               <i class="ph-currency-circle-dollar fs-3"></i>
               <p class="mb-0 mt-1 small">
-                @if (currentCategoriesalarieId) {
-                  Aucun tarif enregistré. Cliquez sur "Ajouter un tarif".
-                } @else {
-                  Enregistrez d'abord la catégorie pour ajouter des tarifs.
-                }
+                Aucun tarif enregistré. Cliquez sur "Ajouter un tarif".
               </p>
             </div>
           } @else {
@@ -224,7 +223,7 @@
                     <tr [class.table-danger]="ligne._hasError">
                       <td style="min-width: 130px;">
                         <input type="number" class="form-control form-control-sm"
-                               [class.is-invalid]="ligne._hasError && !ligne.montant"
+                               [class.is-invalid]="ligne._hasError && montantInvalide(ligne)"
                                [(ngModel)]="ligne.montant" [ngModelOptions]="{standalone: true}"
                                placeholder="Montant" min="0">
                       </td>
@@ -268,7 +267,9 @@
           @if (!isTarifsLoading && tarifLignesVisibles.length > 0) {
             <div class="alert alert-info py-2 small mb-0">
               <i class="ph-info me-1"></i>
-              Un seul tarif actif à la fois. Le tarif le plus récent est utilisé pour la paie.
+              Un seul tarif par période : les périodes d'une même catégorie ne peuvent pas se chevaucher
+              (clôturez l'ancien tarif avant d'en ouvrir un nouveau). Le repas est facturé au tarif
+              en vigueur à la date du menu.
             </div>
           }
 
@@ -276,15 +277,15 @@
 
         <div class="modal-footer">
           <div class="hstack gap-2 justify-content-end">
-            <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()">
+            <button type="button" class="btn btn-ghost-danger" [disabled]="isSaving" (click)="closeAddModal()">
               <i class="bi bi-x-lg me-1"></i>Fermer
             </button>
             <button type="submit" class="btn btn-primary" id="add-btn"
-                    [disabled]="categoriesalarieForm.invalid || isTarifsSubmitting">
-              @if (isTarifsSubmitting) {
+                    [disabled]="categoriesalarieForm.invalid || isSaving || isTarifsLoading">
+              @if (isSaving) {
                 <span class="spinner-border spinner-border-sm me-1" role="status"></span>
               }
-              Enregistrer
+              {{ modalBtn }}
             </button>
           </div>
         </div>

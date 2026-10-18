@@ -2,8 +2,8 @@
 
 import { Injectable, inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { of, forkJoin } from 'rxjs';
-import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
+import { of, concat } from 'rxjs';
+import { catchError, map, mergeMap, switchMap, toArray } from 'rxjs/operators';
 import { PlatPrestataireService } from 'src/app/core/services/plat-prestataire/plat-prestataire.service';
 import * as PlatPrestataireActions from './plat-prestataire.action';
 
@@ -20,8 +20,9 @@ export class PlatPrestataireEffects {
       ofType(PlatPrestataireActions.fetchPlatPrestataire),
       switchMap(({ prestataireId }) =>
         this.platPrestataireService.getByPrestataire(prestataireId).pipe(
-          map(tarifs => PlatPrestataireActions.fetchPlatPrestataireSuccess({ tarifs })),
+          map(tarifs => PlatPrestataireActions.fetchPlatPrestataireSuccess({ prestataireId, tarifs })),
           catchError(err => of(PlatPrestataireActions.fetchPlatPrestataireFailure({
+            prestataireId,
             error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors du chargement des tarifs.'
           })))
         )
@@ -90,7 +91,8 @@ export class PlatPrestataireEffects {
           })
         );
 
-        return forkJoin(requests).pipe(
+        return concat(...requests).pipe(
+          toArray(),
           map(() => PlatPrestataireActions.savePlatPrestatairesBatchSuccess({ prestataireId })),
           catchError(err => of(PlatPrestataireActions.savePlatPrestatairesBatchFailure({
             error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la sauvegarde des tarifs.'

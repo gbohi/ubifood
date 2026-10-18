@@ -5,6 +5,8 @@ import { AgencePrestataireModel } from './agence-prestataire.model';
 import * as AgencePrestataireActions from './agence-prestataire.action';
 
 export interface AgencePrestataireState {
+  /** Id du parent dont les lignes sont chargées (null = aucune) */
+  prestataireId: number | null;
   agences:        AgencePrestataireModel[];
   isLoading:      boolean;
   isSubmitting:   boolean;
@@ -13,6 +15,7 @@ export interface AgencePrestataireState {
 }
 
 export const initialAgencePrestataireState: AgencePrestataireState = {
+  prestataireId: null,
   agences:        [],
   isLoading:      false,
   isSubmitting:   false,
@@ -24,12 +27,14 @@ export const agencePrestataireReducer = createReducer(
   initialAgencePrestataireState,
 
   // ── Fetch ──────────────────────────────────────────────────
-  on(AgencePrestataireActions.fetchAgencePrestataire, state => ({
-    ...state, isLoading: true, error: null
+  on(AgencePrestataireActions.fetchAgencePrestataire, (state, { prestataireId }) => ({
+    // Les lignes d'un autre parent ne doivent jamais rester visibles
+    ...state, isLoading: true, error: null,
+    agences: state.prestataireId === prestataireId ? state.agences : [], prestataireId,
   })),
-  on(AgencePrestataireActions.fetchAgencePrestataireSuccess, (state, { agences }) => ({
-    ...state, isLoading: false, agences
-  })),
+  on(AgencePrestataireActions.fetchAgencePrestataireSuccess, (state, { prestataireId, agences }) =>
+    state.prestataireId !== prestataireId ? state : ({ ...state, isLoading: false, agences })
+  ),
   on(AgencePrestataireActions.fetchAgencePrestataireFailure, (state, { error }) => ({
     ...state, isLoading: false, error
   })),
