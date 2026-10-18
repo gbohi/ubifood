@@ -6,7 +6,7 @@ import { BesoinlistModel, ApiResponse, StatistiqueGlobale } from './besoin.model
 // ── Fetch paginé ──────────────────────────────────────────────
 export const fetchbesoinData = createAction(
   '[Data] Fetch besoin Table Data',
-  props<{ page?: number }>()
+  props<{ page?: number; search?: string }>()
 );
 export const fetchbesoinSuccess = createAction(
   '[Data] Fetch besoin Data Success',
@@ -31,13 +31,15 @@ export const fetchstatistiquebesoinFailure = createAction(
 );
 
 // ── Ajouter (authentifié) ─────────────────────────────────────
+// FormData (champs + pièces jointes documents[]) → POST /api/besoins/creer/
+// Objet simple → POST /api/api/besoins/
 export const addbesoinData = createAction(
   '[Data] Add besoinData',
-  props<{ newData: BesoinlistModel }>()
+  props<{ newData: BesoinlistModel | FormData }>()
 );
 export const addbesoinDataSuccess = createAction(
   '[Data] Add besoinData Success',
-  props<{ newData: BesoinlistModel }>()
+  props<{ newData: any }>()
 );
 export const addbesoinDataFailure = createAction(
   '[Data] Add besoinData Failure',

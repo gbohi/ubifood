@@ -10,6 +10,34 @@ export interface BesoinlistModel {
   etat?: number;                // ID de l’état
   priorite?: number;            // ID de la priorité
   user?: number;                // ID de l’utilisateur
+
+  // ── Champs en lecture seule renvoyés par BesoinSerializer ──
+  created_at?: string;
+  typebesoin_libelle?: string;
+  etat_libelle?: string;
+  priorite_libelle?: string;
+  user_username?: string;
+  user_nom?: string;
+  user_prenom?: string;
+  documents?: BesoinDocumentModel[];
+  services?: BesoinServiceModel[];
+}
+
+/** Pièce jointe d'un besoin (BesoinDocumentSerializer) */
+export interface BesoinDocumentModel {
+  id: number;
+  besoin: number;
+  document: string;            // URL du fichier (/media/documents_besoins/...)
+  date_creation?: string;
+}
+
+/** Service affecté à un besoin (BesoinServiceSerializer) */
+export interface BesoinServiceModel {
+  id: number;
+  besoin: number;
+  service: number;
+  service_libelle?: string;
+  date_creation?: string;
 }
 
 

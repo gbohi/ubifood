@@ -6,22 +6,6 @@ import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { BesoinsRoutingModule } from './besoins-routing.module';
 import { SharedModule } from 'src/app/shared/shared.module';
 
-// Select Droup down
-import { NgSelectModule } from '@ng-select/ng-select';
-
-// Range Slider
-import { NgxSliderModule } from 'ngx-slider-v2';
-
-//Wizard
-import { CdkStepperModule } from '@angular/cdk/stepper';
-import { NgStepperModule } from 'angular-ng-stepper';
-
-// Simplebar
-import { SimplebarAngularModule } from 'simplebar-angular';
-
-// Flat Picker
-import { FlatpickrModule } from 'angularx-flatpickr';
-
 // Count To
 import { CountUpModule } from 'ngx-countup';
 
@@ -30,26 +14,24 @@ import { DropzoneModule } from 'ngx-dropzone-wrapper';
 import { DROPZONE_CONFIG } from 'ngx-dropzone-wrapper';
 import { DropzoneConfigInterface } from 'ngx-dropzone-wrapper';
 
-import { BsDropdownModule } from 'ngx-bootstrap/dropdown';
 import { PaginationModule } from 'ngx-bootstrap/pagination';
 import { ModalModule } from 'ngx-bootstrap/modal';
-import { AccordionModule } from 'ngx-bootstrap/accordion';
-import { TabsModule } from 'ngx-bootstrap/tabs';
-import { RatingModule } from 'ngx-bootstrap/rating';
-
 import { ProgressbarModule } from 'ngx-bootstrap/progressbar';
 import { TooltipModule } from 'ngx-bootstrap/tooltip';
-import { BsDatepickerModule } from 'ngx-bootstrap/datepicker';
 
 // Component
 import { ListBesoinComponent } from './list-besoin/list-besoin/list-besoin.component';
-import { NgxEditorModule } from 'ngx-editor';
 
+// Les fichiers ne sont jamais envoyés par Dropzone (autoProcessQueue: false) :
+// ils sont joints au FormData du besoin. Dropzone exige toutefois une URL.
 const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
-  // Change this to your upload POST address:
-  url: 'https://httpbin.org/post',
+  url: '/',
+  autoProcessQueue: false,
   maxFilesize: 50,
-  acceptedFiles: 'image/*'
+  // Mêmes extensions que le validateur du modèle BesoinDocument
+  acceptedFiles: '.pdf,.docx,.jpg,.jpeg,.png',
+  dictInvalidFileType: 'Type de fichier non autorisé (PDF, DOCX, JPG, PNG).',
+  dictFileTooBig: 'Fichier trop volumineux ({{filesize}} Mo, maximum {{maxFilesize}} Mo).',
 };
 
 @NgModule({
@@ -60,26 +42,14 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     CommonModule,
     BesoinsRoutingModule,
     SharedModule,
-    BsDropdownModule.forRoot(),
     PaginationModule.forRoot(),
     ModalModule.forRoot(),
     FormsModule,
     ReactiveFormsModule,
-    AccordionModule.forRoot(),
-    TabsModule.forRoot(),
     ProgressbarModule.forRoot(),
     TooltipModule.forRoot(),
-    BsDatepickerModule.forRoot(),
     CountUpModule,
-    SimplebarAngularModule,
-    NgxEditorModule,
     DropzoneModule,
-    NgStepperModule,
-    CdkStepperModule,
-    RatingModule,
-    NgSelectModule,
-    NgxSliderModule,
-    FlatpickrModule.forRoot()
   ],
   providers: [
     DatePipe,
@@ -91,4 +61,3 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
   schemas: [CUSTOM_ELEMENTS_SCHEMA]
 })
 export class BesoinsModule { }
-

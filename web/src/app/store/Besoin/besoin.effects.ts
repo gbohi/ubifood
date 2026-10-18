@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { BesoinService } from 'src/app/core/services/besoin/besoin.service';
 import {
@@ -29,6 +29,10 @@ import {
   fetchstatistiquebesoinFailure,
 } from './besoin.action';
 
+// L'ErrorInterceptor transforme les erreurs HTTP en message texte (français)
+const message = (error: any, defaut: string): string =>
+  typeof error === 'string' && error ? error : defaut;
+
 @Injectable()
 export class BesoinEffects {
 
@@ -36,11 +40,11 @@ export class BesoinEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchbesoinData),
-      mergeMap(({ page }) =>
-        this.besoinService.getAllBesoins(page ?? 1).pipe(
+      switchMap(({ page, search }) =>
+        this.besoinService.getAllBesoins(page ?? 1, search).pipe(
           map((response) => fetchbesoinSuccess({ response })),
           catchError((error) =>
-            of(fetchbesoinFailure({ error: error.toString() }))
+            of(fetchbesoinFailure({ error: message(error, 'Erreur lors du chargement des besoins') }))
           )
         )
       )
@@ -51,41 +55,53 @@ export class BesoinEffects {
   fetchStatistiqueGlobale$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchstatistiquebesoinData),
-      mergeMap(() =>
+      switchMap(() =>
         this.besoinService.getStatistiquesGlobales().pipe(
           map((response) => fetchstatistiquebesoinSuccess({ response })),
           catchError((error) =>
-            of(fetchstatistiquebesoinFailure({ error: error.message ?? error.toString() }))
+            of(fetchstatistiquebesoinFailure({ error: message(error, 'Erreur lors du chargement des statistiques') }))
           )
         )
       )
     )
   );
 
-  // ── Ajouter (authentifié) ───────────────────────────────────
+  // Statistiques à jour après chaque ajout / modification / suppression
+  refreshStatistiques$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(addbesoinDataSuccess, updatebesoinDataSuccess, deletebesoinSuccess, deletemultiplebesoinSuccess),
+      map(() => fetchstatistiquebesoinData())
+    )
+  );
+
+  // ── Ajouter ─────────────────────────────────────────────────
+  // FormData : besoin + pièces jointes (POST /api/besoins/creer/)
   addData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addbesoinData),
       mergeMap(({ newData }) =>
-        this.besoinService.createBesoin(newData).pipe(
+        (newData instanceof FormData
+          ? this.besoinService.createBesoinWithDocuments(newData)
+          : this.besoinService.createBesoin(newData)
+        ).pipe(
           map((response) => addbesoinDataSuccess({ newData: response })),
           catchError((error) =>
-            of(addbesoinDataFailure({ error: error.toString() }))
+            of(addbesoinDataFailure({ error: message(error, "Erreur lors de l'ajout du besoin") }))
           )
         )
       )
     )
   );
 
-  // Recharger à la page 1 après ajout
+  // Recharger à la page 1 après ajout (recherche conservée)
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addbesoinDataSuccess),
-      map(() => fetchbesoinData({ page: 1 }))
+      map(() => fetchbesoinData({ page: 1, search: this.besoinService.getCurrentSearch() }))
     )
   );
 
-  // ── Ajouter (sans authentification — FormData) ──────────────
+  // ── Ajouter (« Signaler une anomalie » — FormData) ──────────
   addNoAuthData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addNoAuthbesoinData),
@@ -93,7 +109,7 @@ export class BesoinEffects {
         this.besoinService.createNoAuthBesoin(newData as FormData).pipe(
           map((response) => addNoAuthbesoinDataSuccess({ newData: response })),
           catchError((error) =>
-            of(addNoAuthbesoinDataFailure({ error: error.toString() }))
+            of(addNoAuthbesoinDataFailure({ error: message(error, "Erreur lors de l'ajout du besoin") }))
           )
         )
       )
@@ -106,9 +122,9 @@ export class BesoinEffects {
       ofType(updatebesoinData),
       mergeMap(({ updatedData }) =>
         this.besoinService.updateBesoin(updatedData).pipe(
-          map(() => updatebesoinDataSuccess({ updatedData })),
+          map((response) => updatebesoinDataSuccess({ updatedData: response ?? updatedData })),
           catchError((error) =>
-            of(updatebesoinDataFailure({ error: error.toString() }))
+            of(updatebesoinDataFailure({ error: message(error, 'Erreur lors de la mise à jour du besoin') }))
           )
         )
       )
@@ -121,7 +137,9 @@ export class BesoinEffects {
       ofType(updatebesoinDataSuccess),
       mergeMap(() =>
         this.besoinService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchbesoinData({ page: currentPage }))
+          map(({ currentPage }) => fetchbesoinData({
+            page: currentPage, search: this.besoinService.getCurrentSearch(),
+          }))
         )
       )
     )
@@ -135,7 +153,7 @@ export class BesoinEffects {
         this.besoinService.deleteBesoin(id).pipe(
           map(() => deletebesoinSuccess({ id })),
           catchError((error) =>
-            of(deletebesoinFailure({ error: error.toString() }))
+            of(deletebesoinFailure({ error: message(error, 'Erreur lors de la suppression du besoin') }))
           )
         )
       )
@@ -153,9 +171,9 @@ export class BesoinEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchbesoinData({ page: targetPage });
+            return fetchbesoinData({ page: targetPage, search: this.besoinService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchbesoinData({ page: 1 })))
+          catchError(() => of(fetchbesoinData({ page: 1, search: this.besoinService.getCurrentSearch() })))
         )
       )
     )
@@ -167,7 +185,7 @@ export class BesoinEffects {
       ofType(deletemultiplebesoinData),
       mergeMap(({ id }) => {
         if (!id || id.trim() === '') {
-          return of(deletemultiplebesoinFailure({ error: 'Aucun ID valide' }));
+          return of(deletemultiplebesoinFailure({ error: 'Aucun besoin sélectionné.' }));
         }
 
         const idArray = id
@@ -176,15 +194,13 @@ export class BesoinEffects {
           .filter((n) => !isNaN(n));
 
         if (idArray.length === 0) {
-          return of(deletemultiplebesoinFailure({
-            error: 'Aucun ID valide après conversion',
-          }));
+          return of(deletemultiplebesoinFailure({ error: 'Aucun besoin sélectionné.' }));
         }
 
         return this.besoinService.deleteMultipleBesoin(idArray).pipe(
           map(() => deletemultiplebesoinSuccess({ id })),
           catchError((error) =>
-            of(deletemultiplebesoinFailure({ error: error.toString() }))
+            of(deletemultiplebesoinFailure({ error: message(error, 'Erreur lors de la suppression des besoins') }))
           )
         );
       })
@@ -204,9 +220,9 @@ export class BesoinEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchbesoinData({ page: targetPage });
+            return fetchbesoinData({ page: targetPage, search: this.besoinService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchbesoinData({ page: 1 })))
+          catchError(() => of(fetchbesoinData({ page: 1, search: this.besoinService.getCurrentSearch() })))
         );
       })
     )
@@ -214,6 +230,6 @@ export class BesoinEffects {
 
   constructor(
     private actions$: Actions,
-    private besoinService: BesoinService  // ✅ CrudService supprimé
+    private besoinService: BesoinService
   ) {}
 }
