@@ -230,6 +230,9 @@ class Commande {
   final Menu? menuDetail;
   final String userNom;
 
+  /// Avis de l'agent sur ce repas (repas retirés uniquement)
+  final Avis? avis;
+
   const Commande({
     required this.id,
     required this.statut,
@@ -238,9 +241,24 @@ class Commande {
     this.platDetail,
     this.menuDetail,
     required this.userNom,
+    this.avis,
   });
 
   bool get peutAnnuler => statut == StatutCommande.enAttente;
+
+  /// Un repas retiré peut être noté (ou sa note modifiée)
+  bool get peutNoter => statut == StatutCommande.retiree;
+
+  Commande copyWithAvis(Avis? avis) => Commande(
+        id: id,
+        statut: statut,
+        dateCommande: dateCommande,
+        dateAnnulation: dateAnnulation,
+        platDetail: platDetail,
+        menuDetail: menuDetail,
+        userNom: userNom,
+        avis: avis,
+      );
 
   factory Commande.fromJson(Map<String, dynamic> j) => Commande(
         id: j['id'],
@@ -252,6 +270,69 @@ class Commande {
         menuDetail:
             j['menu_detail'] != null ? Menu.fromJson(j['menu_detail']) : null,
         userNom: j['user_nom'] ?? '',
+        avis: j['avis'] is Map<String, dynamic>
+            ? Avis.fromJson(j['avis'] as Map<String, dynamic>)
+            : null,
+      );
+}
+
+// ══════════════════════════════════════════════════════════════
+// AVIS (note d'un repas retiré)
+// ══════════════════════════════════════════════════════════════
+
+class Avis {
+  final int id;
+  final int note; // 1 à 5
+  final String commentaire;
+
+  const Avis({required this.id, required this.note, this.commentaire = ''});
+
+  factory Avis.fromJson(Map<String, dynamic> j) => Avis(
+        id: j['id'],
+        note: (j['note'] as num?)?.toInt() ?? 0,
+        commentaire: j['commentaire'] ?? '',
+      );
+}
+
+class AvisRecent {
+  final int note;
+  final String commentaire;
+  final String auteur;
+  final String date;
+
+  const AvisRecent({
+    required this.note,
+    required this.commentaire,
+    required this.auteur,
+    required this.date,
+  });
+
+  factory AvisRecent.fromJson(Map<String, dynamic> j) => AvisRecent(
+        note: (j['note'] as num?)?.toInt() ?? 0,
+        commentaire: j['commentaire'] ?? '',
+        auteur: j['auteur'] ?? '',
+        date: j['date'] ?? '',
+      );
+}
+
+/// Résumé des avis d'un plat (GET /plats/{id}/avis/)
+class ResumeAvisPlat {
+  final double? noteMoyenne;
+  final int nbAvis;
+  final List<AvisRecent> derniers;
+
+  const ResumeAvisPlat({
+    required this.noteMoyenne,
+    required this.nbAvis,
+    required this.derniers,
+  });
+
+  factory ResumeAvisPlat.fromJson(Map<String, dynamic> j) => ResumeAvisPlat(
+        noteMoyenne: (j['note_moyenne'] as num?)?.toDouble(),
+        nbAvis: (j['nb_avis'] as num?)?.toInt() ?? 0,
+        derniers: (j['derniers'] as List? ?? [])
+            .map((e) => AvisRecent.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 }
 

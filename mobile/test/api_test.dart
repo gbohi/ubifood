@@ -87,4 +87,34 @@ void main() {
       expect(sansTarif.cloturee, isFalse);
     });
   });
+
+  group('Avis', () {
+    test('lit l\'avis d\'une commande et le résumé d\'un plat', () {
+      final sans = Commande.fromJson({'id': 1, 'statut': 'retiree', 'avis': null});
+      expect(sans.avis, isNull);
+      expect(sans.peutNoter, isTrue);
+
+      final avec = Commande.fromJson({
+        'id': 2,
+        'statut': 'retiree',
+        'avis': {'id': 7, 'note': 4, 'commentaire': 'Très bon'}
+      });
+      expect(avec.avis?.note, 4);
+      expect(avec.avis?.commentaire, 'Très bon');
+      expect(sans.copyWithAvis(avec.avis).avis?.id, 7);
+
+      final r = ResumeAvisPlat.fromJson({
+        'note_moyenne': 4.2,
+        'nb_avis': 12,
+        'derniers': [
+          {'note': 5, 'commentaire': 'Top', 'auteur': 'Fatou K.', 'date': '2026-10-01'}
+        ]
+      });
+      expect(r.noteMoyenne, 4.2);
+      expect(r.nbAvis, 12);
+      expect(r.derniers.single.auteur, 'Fatou K.');
+      expect(ResumeAvisPlat.fromJson({'note_moyenne': null, 'nb_avis': 0})
+          .noteMoyenne, isNull);
+    });
+  });
 }

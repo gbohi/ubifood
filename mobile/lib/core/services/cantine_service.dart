@@ -162,6 +162,36 @@ class CommandeService {
 }
 
 // ══════════════════════════════════════════════════════════════
+// AVIS SERVICE (notes des repas retirés)
+// ══════════════════════════════════════════════════════════════
+
+class AvisService {
+  /// Premier avis sur une commande retirée (une seule fois par commande).
+  Future<Avis> donnerAvis(int commandeId, int note, String commentaire) async {
+    final res = await apiClient.post('/avis-plats/', data: {
+      'commande_id': commandeId,
+      'note': note,
+      'commentaire': commentaire,
+    });
+    return Avis.fromJson(res.data);
+  }
+
+  Future<Avis> modifierAvis(int id, int note, String commentaire) async {
+    final res = await apiClient.patch('/avis-plats/$id/', data: {
+      'note': note,
+      'commentaire': commentaire,
+    });
+    return Avis.fromJson(res.data);
+  }
+
+  /// Note moyenne, nombre d'avis et derniers commentaires d'un plat.
+  Future<ResumeAvisPlat> resumePlat(int platId) async {
+    final res = await apiClient.get('/plats/$platId/avis/');
+    return ResumeAvisPlat.fromJson(res.data as Map<String, dynamic>);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // RETRAIT SERVICE
 // ══════════════════════════════════════════════════════════════
 
@@ -255,6 +285,7 @@ class FacturationService {
 final authService = AuthService();
 final menuService = MenuService();
 final commandeService = CommandeService();
+final avisService = AvisService();
 final banniereService = BanniereService();
 final retraitService = RetraitService();
 final facturationService = FacturationService();

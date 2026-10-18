@@ -14,6 +14,7 @@ import '../profil/qr_code_screen.dart';
 import '../commandes/commandes_screen.dart';
 import '../facturation/facturation_screen.dart';
 import '../notifications/notification_screen.dart';
+import '../avis/avis_widgets.dart';
 
 // ── InheritedWidget pour navigation depuis Dashboard ──────────
 class MainShellNavigator extends InheritedWidget {
@@ -706,6 +707,45 @@ class _RepasDuJourCard extends StatelessWidget {
                         fontWeight: FontWeight.w500)),
               ),
             ]),
+            // ── Avis sur le repas retiré ──────────────────────
+            if (retire) ...[
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerRight,
+                child: c.avis == null
+                    ? TextButton.icon(
+                        style: TextButton.styleFrom(
+                            foregroundColor: _vertFonce,
+                            backgroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12))),
+                        icon: const Icon(Icons.star_outline_rounded, size: 18),
+                        label: const Text('Donner mon avis'),
+                        onPressed: () => showAvisSheet(context, c),
+                      )
+                    : Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => showAvisSheet(context, c),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              EtoilesNote(
+                                  note: c.avis!.note,
+                                  size: 18,
+                                  emptyColor: _vertFonce.withOpacity(0.25)),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.edit_rounded,
+                                  size: 14, color: _vertFonce),
+                            ]),
+                          ),
+                        ),
+                      ),
+              ),
+            ],
           ],
         ]),
       ),

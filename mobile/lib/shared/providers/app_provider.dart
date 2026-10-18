@@ -339,6 +339,27 @@ class CommandeProvider extends ChangeNotifier {
     }
   }
 
+  /// Note un repas retiré : création (POST) ou modification (PATCH) de
+  /// l'avis, puis mise à jour de la commande dans la liste.
+  Future<bool> noter(Commande c, int note, String commentaire) async {
+    _error = null;
+    try {
+      final avis = c.avis == null
+          ? await avisService.donnerAvis(c.id, note, commentaire)
+          : await avisService.modifierAvis(c.avis!.id, note, commentaire);
+      final idx = _mesCommandes.indexWhere((e) => e.id == c.id);
+      if (idx != -1) {
+        _mesCommandes[idx] = _mesCommandes[idx].copyWithAvis(avis);
+      }
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = messageErreurApi(e) ?? 'Impossible d\'enregistrer votre avis';
+      notifyListeners();
+      return false;
+    }
+  }
+
   void clearMessages() {
     _error = null;
     _successMessage = null;

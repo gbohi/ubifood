@@ -7,6 +7,42 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../shared/models/models.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../core/services/cantine_service.dart';
+import '../avis/avis_widgets.dart';
+
+// Même règle que le serveur (Africa/Abidjan = UTC+0) : J-2 à minuit UTC
+DateTime? _deadline(Menu menu) {
+  final dateMenu = DateTime.tryParse(menu.dateMenu);
+  if (dateMenu == null) return null;
+  return DateTime.utc(dateMenu.year, dateMenu.month, dateMenu.day)
+      .subtract(const Duration(hours: 48));
+}
+
+bool _depasseDelai(Menu menu) {
+  final deadline = _deadline(menu);
+  if (deadline == null) return true;
+  return DateTime.now().toUtc().isAfter(deadline);
+}
+
+String _delaiMessage(Menu menu) {
+  final deadline = _deadline(menu);
+  if (deadline == null) return '';
+  final now = DateTime.now().toUtc();
+  if (now.isAfter(deadline)) return 'Délai de commande dépassé';
+  final diff = deadline.difference(now);
+  if (diff.inHours < 1) return 'Ferme dans ${diff.inMinutes} min';
+  if (diff.inHours < 24) {
+    return 'Ferme dans ${diff.inHours}h${diff.inMinutes.remainder(60).toString().padLeft(2, '0')}';
+  }
+  return 'Commande ouverte encore ${diff.inDays}j ${diff.inHours.remainder(24)}h';
+}
+
+String _dateMenuLongue(Menu menu) {
+  final date = DateTime.tryParse(menu.dateMenu);
+  if (date == null) return menu.dateMenu;
+  final s = DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(date);
+  return s[0].toUpperCase() + s.substring(1);
+}
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
@@ -18,30 +54,6 @@ class _MenuScreenState extends State<MenuScreen> {
   Menu? _menuSelectionne;
   _AgenceLocal? _agenceSelectionnee;
   _EquipeLocal? _equipeSelectionnee;
-
-  bool _depasseDelai(Menu menu) {
-    final dateMenu = DateTime.tryParse(menu.dateMenu);
-    if (dateMenu == null) return true;
-    // Même règle que le serveur (Africa/Abidjan = UTC+0) : J-2 à minuit UTC
-    final deadline = DateTime.utc(dateMenu.year, dateMenu.month, dateMenu.day)
-        .subtract(const Duration(hours: 48));
-    return DateTime.now().toUtc().isAfter(deadline);
-  }
-
-  String _delaiMessage(Menu menu) {
-    final dateMenu = DateTime.tryParse(menu.dateMenu);
-    if (dateMenu == null) return '';
-    // Même règle que le serveur (Africa/Abidjan = UTC+0) : J-2 à minuit UTC
-    final deadline = DateTime.utc(dateMenu.year, dateMenu.month, dateMenu.day)
-        .subtract(const Duration(hours: 48));
-    final now = DateTime.now().toUtc();
-    if (now.isAfter(deadline)) return 'Délai de commande dépassé';
-    final diff = deadline.difference(now);
-    if (diff.inHours < 1) return 'Ferme dans ${diff.inMinutes} min';
-    if (diff.inHours < 24)
-      return 'Ferme dans ${diff.inHours}h${diff.inMinutes.remainder(60).toString().padLeft(2, '0')}';
-    return 'Commande ouverte encore ${diff.inDays}j ${diff.inHours.remainder(24)}h';
-  }
 
   @override
   void initState() {
@@ -431,10 +443,6 @@ class _MenuDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final date = DateTime.tryParse(menu.dateMenu);
-    final dateStr = date != null
-        ? DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(date)
-        : menu.dateMenu;
     final iconColor =
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
 
@@ -465,7 +473,7 @@ class _MenuDetail extends StatelessWidget {
               // ── Ligne 2 : Date complète ────────────────────
               // maxLines: 2 + ellipsis → plus jamais de overflow
               Text(
-                dateStr[0].toUpperCase() + dateStr.substring(1),
+                _dateMenuLongue(menu),
                 style: Theme.of(context).textTheme.titleLarge,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -473,42 +481,8 @@ class _MenuDetail extends StatelessWidget {
               const SizedBox(height: 6),
 
               // ── Ligne 3 : Statut commande ──────────────────
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: depasseDelai
-                      ? AppColors.errorLight
-                      : AppColors.accentLight,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      depasseDelai
-                          ? Icons.lock_clock_rounded
-                          : Icons.timer_outlined,
-                      size: 13,
-                      color: depasseDelai ? AppColors.error : AppColors.accent,
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        delaiMessage,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color:
-                              depasseDelai ? AppColors.error : AppColors.accent,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _DelaiBadge(
+                  depasseDelai: depasseDelai, message: delaiMessage),
               const SizedBox(height: 6),
 
               // ── Ligne 4 : Agence + Équipe ──────────────────
@@ -568,7 +542,10 @@ class _PlatCommandeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
+    return GestureDetector(
+      // Toute la carte ouvre la fiche détaillée du plat
+      onTap: () => _PlatDetailSheet.show(context, menu: menu, plat: plat),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkCard : AppColors.lightSurface,
@@ -623,11 +600,20 @@ class _PlatCommandeCard extends StatelessWidget {
           ]),
         ),
       ]),
+      ),
     );
   }
 
-  Widget _imagePlaceholder() => Container(
-        height: 200,
+  Widget _imagePlaceholder() => const _ImagePlaceholder(height: 200);
+}
+
+class _ImagePlaceholder extends StatelessWidget {
+  final double height;
+  const _ImagePlaceholder({required this.height});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: height,
         width: double.infinity,
         color: AppColors.primary.withOpacity(0.06),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -639,6 +625,44 @@ class _PlatCommandeCard extends StatelessWidget {
                   color: AppColors.primary.withOpacity(0.4), fontSize: 12)),
         ]),
       );
+}
+
+class _DelaiBadge extends StatelessWidget {
+  final bool depasseDelai;
+  final String message;
+  const _DelaiBadge({required this.depasseDelai, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = depasseDelai ? AppColors.error : AppColors.accent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: depasseDelai ? AppColors.errorLight : AppColors.accentLight,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            depasseDelai ? Icons.lock_clock_rounded : Icons.timer_outlined,
+            size: 13,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              message,
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w600, color: color),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Tag extends StatelessWidget {
@@ -948,6 +972,390 @@ class _StatutBouton extends StatelessWidget {
                   color: color, fontWeight: FontWeight.w600, fontSize: 14)),
         ),
       ]),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// FICHE DÉTAILLÉE D'UN PLAT (feuille modale)
+// ══════════════════════════════════════════════════════════════
+
+class _PlatDetailSheet extends StatefulWidget {
+  final Menu menu;
+  final Plat plat;
+  const _PlatDetailSheet({required this.menu, required this.plat});
+
+  static Future<void> show(BuildContext context,
+      {required Menu menu, required Plat plat}) {
+    return showModalBottomSheet<void>(
+      context: context,
+      // Même navigateur que la boîte de confirmation d'annulation
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PlatDetailSheet(menu: menu, plat: plat),
+    );
+  }
+
+  @override
+  State<_PlatDetailSheet> createState() => _PlatDetailSheetState();
+}
+
+class _PlatDetailSheetState extends State<_PlatDetailSheet> {
+  late Future<ResumeAvisPlat> _resume;
+
+  @override
+  void initState() {
+    super.initState();
+    _resume = avisService.resumePlat(widget.plat.id);
+  }
+
+  void _rechargerAvis() =>
+      setState(() => _resume = avisService.resumePlat(widget.plat.id));
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final menu = widget.menu;
+    final plat = widget.plat;
+    final depasse = _depasseDelai(menu);
+    final iconColor =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final bg = isDark ? AppColors.darkSurface : AppColors.lightSurface;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (_, scroll) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        // Messager propre à la feuille : les SnackBars (commande, annulation,
+        // avis) s'affichent au-dessus d'elle et non derrière.
+        child: ScaffoldMessenger(
+          child: Scaffold(
+            backgroundColor: bg,
+            body: ListView(
+              controller: scroll,
+              padding: EdgeInsets.zero,
+              children: [
+                Stack(children: [
+                  _PhotosCarousel(plat: plat),
+                  // Poignée de la feuille, au-dessus de la photo
+                  Positioned(
+                    top: 8,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(2),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withOpacity(0.25),
+                                blurRadius: 4)
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: IconButton.filled(
+                      tooltip: 'Fermer',
+                      style: IconButton.styleFrom(
+                          backgroundColor: Colors.black.withOpacity(0.35),
+                          foregroundColor: Colors.white),
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ]),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(plat.nom,
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 8),
+                      _NoteMoyenne(resume: _resume),
+                      if (plat.typePlatLibelle != null) ...[
+                        const SizedBox(height: 10),
+                        _Tag(
+                            icon: Icons.eco_outlined,
+                            label: plat.typePlatLibelle!,
+                            color: AppColors.accent),
+                      ],
+                      if (plat.description.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Text(plat.description,
+                            style: Theme.of(context).textTheme.bodyMedium),
+                      ],
+                      const SizedBox(height: 18),
+
+                      // ── Menu : date, agence, équipe, délai ─────
+                      _InfoLigne(
+                          icon: Icons.calendar_today_rounded,
+                          color: iconColor,
+                          text: _dateMenuLongue(menu)),
+                      _InfoLigne(
+                          icon: Icons.location_on_rounded,
+                          color: iconColor,
+                          text: menu.agenceNom),
+                      _InfoLigne(
+                          icon: Icons.groups_rounded,
+                          color: iconColor,
+                          text: menu.typeEquipeLibelle),
+                      const SizedBox(height: 4),
+                      _DelaiBadge(
+                          depasseDelai: depasse,
+                          message: _delaiMessage(menu)),
+                      const SizedBox(height: 20),
+
+                      // ── Actions : mêmes règles que la carte ─────
+                      Consumer<CommandeProvider>(
+                        builder: (_, cmdProv, __) {
+                          final retiree = cmdProv.mesCommandes
+                              .where((c) =>
+                                  c.menuDetail?.id == menu.id &&
+                                  c.platDetail?.id == plat.id &&
+                                  c.statut == StatutCommande.retiree)
+                              .firstOrNull;
+                          return Column(children: [
+                            _BoutonCommander(
+                                plat: plat, menu: menu, depasseDelai: depasse),
+                            if (retiree != null) ...[
+                              const SizedBox(height: 10),
+                              // Le résumé des avis est rechargé après notation
+                              AvisCommandeBloc(
+                                  commande: retiree, onSaved: _rechargerAvis),
+                            ],
+                          ]);
+                        },
+                      ),
+
+                      // ── Derniers avis ──────────────────────────
+                      _DerniersAvis(resume: _resume),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoLigne extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String text;
+  const _InfoLigne(
+      {required this.icon, required this.color, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(children: [
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+            child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
+      ]),
+    );
+  }
+}
+
+// ── Carrousel des photos ───────────────────────────────────────
+
+class _PhotosCarousel extends StatefulWidget {
+  final Plat plat;
+  const _PhotosCarousel({required this.plat});
+
+  @override
+  State<_PhotosCarousel> createState() => _PhotosCarouselState();
+}
+
+class _PhotosCarouselState extends State<_PhotosCarousel> {
+  static const _hauteur = 280.0;
+  final _controller = PageController();
+  int _page = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Photo principale en premier
+    final urls = [
+      ...widget.plat.images.where((i) => i.isPrincipale),
+      ...widget.plat.images.where((i) => !i.isPrincipale),
+    ].map((i) => i.url).whereType<String>().toList();
+
+    if (urls.isEmpty) return const _ImagePlaceholder(height: _hauteur);
+
+    return SizedBox(
+      height: _hauteur,
+      child: Stack(children: [
+        PageView.builder(
+          controller: _controller,
+          itemCount: urls.length,
+          onPageChanged: (i) => setState(() => _page = i),
+          itemBuilder: (_, i) => Image.network(
+            urls[i],
+            width: double.infinity,
+            height: _hauteur,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) =>
+                const _ImagePlaceholder(height: _hauteur),
+          ),
+        ),
+        if (urls.length > 1)
+          Positioned(
+            bottom: 12,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(urls.length, (i) {
+                final actif = i == _page;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: actif ? 18 : 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: actif
+                        ? AppColors.accent
+                        : Colors.white.withOpacity(0.75),
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black.withOpacity(0.25),
+                          blurRadius: 3)
+                    ],
+                  ),
+                );
+              }),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
+// ── Note moyenne et derniers avis ──────────────────────────────
+
+class _NoteMoyenne extends StatelessWidget {
+  final Future<ResumeAvisPlat> resume;
+  const _NoteMoyenne({required this.resume});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<ResumeAvisPlat>(
+      future: resume,
+      builder: (_, snap) {
+        final r = snap.data;
+        // Aucun avis (ou erreur de chargement) : rien à afficher
+        if (r == null || r.noteMoyenne == null || r.nbAvis == 0) {
+          return const SizedBox.shrink();
+        }
+        return Row(children: [
+          const Icon(Icons.star_rounded, color: kCouleurEtoile, size: 20),
+          const SizedBox(width: 4),
+          Text('${formatNoteMoyenne(r.noteMoyenne!)} · ${r.nbAvis} avis',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w600)),
+        ]);
+      },
+    );
+  }
+}
+
+class _DerniersAvis extends StatelessWidget {
+  final Future<ResumeAvisPlat> resume;
+  const _DerniersAvis({required this.resume});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return FutureBuilder<ResumeAvisPlat>(
+      future: resume,
+      builder: (_, snap) {
+        final derniers = snap.data?.derniers.take(5).toList() ?? const [];
+        if (derniers.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 24),
+            Text('Derniers avis',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            ...derniers.map((a) {
+              final date = DateTime.tryParse(a.date);
+              return Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkCard : AppColors.lightBackground,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                      color:
+                          isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      EtoilesNote(note: a.note, size: 15),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          [
+                            if (a.auteur.isNotEmpty) a.auteur,
+                            if (date != null)
+                              DateFormat('d MMM yyyy', 'fr_FR').format(date),
+                          ].join(' · '),
+                          style: Theme.of(context).textTheme.bodySmall,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ]),
+                    if (a.commentaire.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(a.commentaire,
+                          style: Theme.of(context).textTheme.bodyMedium),
+                    ],
+                  ],
+                ),
+              );
+            }),
+          ],
+        );
+      },
     );
   }
 }

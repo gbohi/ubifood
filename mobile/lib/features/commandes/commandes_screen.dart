@@ -7,6 +7,7 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../shared/models/models.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../avis/avis_widgets.dart';
 
 class CommandesScreen extends StatefulWidget {
   const CommandesScreen({super.key});
@@ -322,6 +323,12 @@ class _CommandeCard extends StatelessWidget {
                           ))),
                 ]),
               ),
+            ],
+
+            // ── Avis (repas retiré) ───────────────────────────
+            if (commande.peutNoter) ...[
+              const SizedBox(height: 10),
+              AvisCommandeBloc(commande: commande),
             ],
 
             // ── Bouton annuler ────────────────────────────────
