@@ -34,6 +34,38 @@ class _MainShellState extends State<MainShell> {
   final GlobalKey<GestionCommandesScreenState> _gestionKey =
       GlobalKey<GestionCommandesScreenState>();
 
+  @override
+  void initState() {
+    super.initState();
+    cibleNotification.addListener(_ouvrirCibleNotification);
+  }
+
+  @override
+  void dispose() {
+    cibleNotification.removeListener(_ouvrirCibleNotification);
+    super.dispose();
+  }
+
+  /// Appui sur une notification : ouverture de l'onglet concerné
+  void _ouvrirCibleNotification() {
+    final cible = cibleNotification.value;
+    if (cible == null || !mounted) return;
+    cibleNotification.value = null;
+    final isGestionnaire = context.read<AuthProvider>().isGestionnaire;
+    switch (cible) {
+      case CibleNotification.menus:
+        setState(() => _index = 1);
+      case CibleNotification.commandes:
+        if (isGestionnaire) {
+          // Ses propres commandes : écran poussé (pas d'onglet dédié)
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const CommandesScreen()));
+        } else {
+          setState(() => _index = 2);
+        }
+    }
+  }
+
   List<_NavItem> _navItems(bool isGestionnaire) => [
         const _NavItem(Icons.home_rounded, Icons.home_outlined, 'Accueil'),
         const _NavItem(Icons.restaurant_menu_rounded,
@@ -90,7 +122,14 @@ class _MainShellState extends State<MainShell> {
 
     return MainShellNavigator(
       navigateTo: (i) => setState(() => _index = i),
-      child: Scaffold(
+      // Bouton retour Android : retour à l'accueil (comme la flèche de la
+      // barre) au lieu de quitter l'application
+      child: PopScope(
+        canPop: _index == 0,
+        onPopInvoked: (didPop) {
+          if (!didPop) setState(() => _index = 0);
+        },
+        child: Scaffold(
         key: _scaffoldKey,
 
         drawer: _AppDrawer(
@@ -202,6 +241,7 @@ class _MainShellState extends State<MainShell> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -488,8 +528,10 @@ class _AppDrawer extends StatelessWidget {
                   backgroundColor: AppColors.error,
                   foregroundColor: Colors.white),
               onPressed: () async {
+                // Lu avant la fermeture : le contexte du dialogue disparaît
+                final auth = dialogContext.read<AuthProvider>();
                 Navigator.pop(dialogContext);
-                await dialogContext.read<AuthProvider>().logout();
+                await auth.logout();
               },
               child: const Text('Déconnecter')),
         ],

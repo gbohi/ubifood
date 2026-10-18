@@ -39,7 +39,10 @@ class _CommandesScreenState extends State<CommandesScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // Si on arrive via Navigator.push (gestionnaire),
     // le Navigator peut pop → on affiche un vrai AppBar
-    final canPop = Navigator.of(context).canPop();
+    // Route de l'écran lui-même (et non le navigateur) : intégré dans
+    // l'onglet, il ne doit pas afficher de barre quand un autre écran est
+    // poussé par-dessus (notifications…)
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -204,7 +207,8 @@ class _CommandeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final date = DateTime.tryParse(commande.dateCommande);
+    // Horodatage serveur (UTC) affiché à l'heure du téléphone
+    final date = DateTime.tryParse(commande.dateCommande)?.toLocal();
     final dateMenu = commande.menuDetail?.dateMenu;
     final menuDate = dateMenu != null ? DateTime.tryParse(dateMenu) : null;
     final peutAnnuler = commande.peutAnnuler && !_depasseDelai;
@@ -342,7 +346,9 @@ class _CommandeCard extends StatelessWidget {
                     color: AppColors.error,
                     icon: Icons.cancel_outlined,
                     loading: cmdProv.isLoading,
-                    onPressed: () => _showAnnulerDialog(context, cmdProv),
+                    onPressed: cmdProv.isLoading
+                        ? null
+                        : () => _showAnnulerDialog(context, cmdProv),
                   ),
                 )
               else
@@ -431,11 +437,12 @@ class _CommandeCard extends StatelessWidget {
                     foregroundColor: Colors.white,
                   ),
                   onPressed: () async {
-                    Navigator.pop(dialogCtx);
                     // Capturés avant l'await : la carte peut disparaître
                     // (changement d'onglet/statut) pendant l'annulation.
                     final messenger = ScaffoldMessenger.of(context);
                     final facturation = context.read<FacturationProvider>();
+                    Navigator.pop(dialogCtx);
+                    if (cmdProv.isLoading) return;
                     final ok = await cmdProv.annuler(commande.id);
                     if (ok) {
                       facturation.charger();
@@ -452,6 +459,8 @@ class _CommandeCard extends StatelessWidget {
                         margin: const EdgeInsets.all(12),
                       ));
                     } else {
+                      // Commande retirée / annulée entre-temps : on resynchronise
+                      cmdProv.loadMesCommandes();
                       messenger.showSnackBar(SnackBar(
                         content: Text(cmdProv.error ??
                             'Impossible d\'annuler la commande'),

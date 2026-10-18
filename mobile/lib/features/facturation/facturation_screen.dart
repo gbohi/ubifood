@@ -51,7 +51,8 @@ class _FacturationScreenState extends State<FacturationScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final canPop = Navigator.of(context).canPop();
+    // Onglet intégré : pas de barre, même si un autre écran est poussé par-dessus
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,

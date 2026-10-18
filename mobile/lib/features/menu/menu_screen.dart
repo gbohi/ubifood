@@ -88,14 +88,48 @@ class _MenuScreenState extends State<MenuScreen> {
     });
   }
 
+  Future<void> _recharger() => Future.wait([
+        context.read<MenuProvider>().loadMenus(),
+        context.read<CommandeProvider>().loadMesCommandes(),
+      ]);
+
+  /// État vide / erreur rafraîchissable par glissement
+  Widget _defilable(Widget child) => RefreshIndicator(
+        onRefresh: _recharger,
+        child: LayoutBuilder(
+          builder: (_, constraints) => SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: child,
+            ),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Consumer<MenuProvider>(builder: (_, menuProv, __) {
-        if (menuProv.loading) {
+        // Squelettes au premier chargement seulement : une actualisation
+        // garde la liste affichée
+        if (menuProv.loading && menuProv.menus.isEmpty) {
           return ListView(
               padding: const EdgeInsets.all(16),
               children: List.generate(3, (_) => const ShimmerCard(height: 60)));
+        }
+
+        if (menuProv.error != null && menuProv.menus.isEmpty) {
+          return _defilable(EmptyState(
+            icon: Icons.cloud_off_rounded,
+            title: 'Chargement impossible',
+            subtitle: menuProv.error,
+            action: ElevatedButton.icon(
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Réessayer'),
+              onPressed: _recharger,
+            ),
+          ));
         }
 
         final agences = <String, String>{};
@@ -105,33 +139,39 @@ class _MenuScreenState extends State<MenuScreen> {
           equipes[m.typeEquipeId.toString()] = m.typeEquipeLibelle;
         }
 
+        // Filtre devenu sans menu après actualisation : ignoré (sinon le
+        // DropdownButton reçoit une valeur absente de ses items → assertion)
+        final agenceSel = agences.containsKey(_agenceSelectionnee?.id)
+            ? _agenceSelectionnee
+            : null;
+        final equipeSel = equipes.containsKey(_equipeSelectionnee?.id)
+            ? _equipeSelectionnee
+            : null;
+
         final menusFiltres = menuProv.menus.where((m) {
-          final okAgence = _agenceSelectionnee == null ||
-              m.agenceId.toString() == _agenceSelectionnee!.id;
-          final okEquipe = _equipeSelectionnee == null ||
-              m.typeEquipeId.toString() == _equipeSelectionnee!.id;
+          final okAgence =
+              agenceSel == null || m.agenceId.toString() == agenceSel.id;
+          final okEquipe =
+              equipeSel == null || m.typeEquipeId.toString() == equipeSel.id;
           return okAgence && okEquipe;
         }).toList();
 
-        if (_menuSelectionne == null && menusFiltres.isNotEmpty) {
+        // Toujours l'instance de la dernière liste chargée (après une
+        // actualisation, l'ancienne garde des plats périmés)
+        final selection = _menuSelectionne == null
+            ? null
+            : menusFiltres
+                .where((m) => m.id == _menuSelectionne!.id)
+                .firstOrNull;
+
+        if (selection == null && menusFiltres.isNotEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted)
+            if (mounted) {
               setState(() {
                 _menuSelectionne = menusFiltres.firstWhere((m) => m.isToday,
                     orElse: () => menusFiltres.first);
               });
-          });
-        }
-        if (_menuSelectionne != null &&
-            !menusFiltres.any((m) => m.id == _menuSelectionne!.id)) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted)
-              setState(() {
-                _menuSelectionne = menusFiltres.isNotEmpty
-                    ? menusFiltres.firstWhere((m) => m.isToday,
-                        orElse: () => menusFiltres.first)
-                    : null;
-              });
+            }
           });
         }
 
@@ -139,8 +179,8 @@ class _MenuScreenState extends State<MenuScreen> {
           _FiltresBar(
             agences: agences,
             equipes: equipes,
-            agenceSelectionnee: _agenceSelectionnee,
-            equipeSelectionnee: _equipeSelectionnee,
+            agenceSelectionnee: agenceSel,
+            equipeSelectionnee: equipeSel,
             onAgenceChanged: (a) => setState(() {
               _agenceSelectionnee = a;
               _menuSelectionne = null;
@@ -155,23 +195,26 @@ class _MenuScreenState extends State<MenuScreen> {
               menus: menusFiltres,
               // Plusieurs agences possibles : on distingue par l'agence,
               // sinon par l'équipe.
-              distinguerParAgence: _agenceSelectionnee == null,
-              selected: _menuSelectionne,
+              distinguerParAgence: agenceSel == null,
+              selected: selection,
               onSelected: (m) => setState(() => _menuSelectionne = m),
             ),
           Expanded(
             child: menusFiltres.isEmpty
-                ? EmptyState(
+                ? _defilable(const EmptyState(
                     icon: Icons.calendar_today_outlined,
                     title: 'Aucun menu disponible',
                     subtitle: 'Aucun menu pour ces filtres',
-                  )
-                : _menuSelectionne == null
+                  ))
+                : selection == null
                     ? const Center(child: CircularProgressIndicator())
-                    : _MenuDetail(
-                        menu: _menuSelectionne!,
-                        depasseDelai: _depasseDelai(_menuSelectionne!),
-                        delaiMessage: _delaiMessage(_menuSelectionne!),
+                    : RefreshIndicator(
+                        onRefresh: _recharger,
+                        child: _MenuDetail(
+                          menu: selection,
+                          depasseDelai: _depasseDelai(selection),
+                          delaiMessage: _delaiMessage(selection),
+                        ),
                       ),
           ),
         ]);
@@ -447,11 +490,14 @@ class _MenuDetail extends StatelessWidget {
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
 
     if (menu.menuPlats.isEmpty) {
-      return EmptyState(
-        icon: Icons.no_meals_rounded,
-        title: 'Aucun plat',
-        subtitle: 'Aucun plat ajouté pour ce menu',
-      );
+      // ListView : l'actualisation par glissement reste possible
+      return ListView(children: const [
+        EmptyState(
+          icon: Icons.no_meals_rounded,
+          title: 'Aucun plat',
+          subtitle: 'Aucun plat ajouté pour ce menu',
+        ),
+      ]);
     }
 
     return ListView(
@@ -464,7 +510,7 @@ class _MenuDetail extends StatelessWidget {
             children: [
               // ── Ligne 1 : Label ────────────────────────────
               Text(
-                'Menu du Jour',
+                menu.isToday ? 'Menu du jour' : 'Menu',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: AppColors.accent, fontWeight: FontWeight.w600),
               ),
@@ -770,8 +816,11 @@ class _BoutonCommander extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
               ),
-              onPressed: () =>
-                  _confirmerAnnulation(context, cmdProv, commandeCeMenu.id),
+              // Pas de second envoi pendant une action en cours
+              onPressed: cmdProv.isLoading
+                  ? null
+                  : () => _confirmerAnnulation(
+                      context, cmdProv, commandeCeMenu.id),
             ),
           ),
         ],
@@ -859,6 +908,7 @@ class _BoutonCommander extends StatelessWidget {
   }
 
   void _commander(BuildContext context, CommandeProvider cmdProv) async {
+    if (cmdProv.isLoading) return;
     final facturation = context.read<FacturationProvider>();
     final ok = await cmdProv.commander(menuId: menu.id, platId: plat.id);
     // « Ma facturation » doit refléter la nouvelle commande
@@ -885,13 +935,16 @@ class _BoutonCommander extends StatelessWidget {
       ));
       cmdProv.clearMessages();
     }
+    // Refus du serveur (commande déjà passée ailleurs, délai…) : la liste
+    // locale est peut-être périmée, on la recharge
+    if (!ok) cmdProv.loadMesCommandes();
   }
 
   void _confirmerAnnulation(
       BuildContext context, CommandeProvider cmdProv, int commandeId) {
     showDialog(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (dialogCtx) => AlertDialog(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20)),
               title: const Row(children: [
@@ -905,7 +958,7 @@ class _BoutonCommander extends StatelessWidget {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(dialogCtx),
                   child: const Text('Non, garder'),
                 ),
                 ElevatedButton(
@@ -914,11 +967,18 @@ class _BoutonCommander extends StatelessWidget {
                     foregroundColor: Colors.white,
                   ),
                   onPressed: () async {
-                    Navigator.pop(context);
+                    // Capturés avant l'await : la carte peut disparaître
                     final messenger = ScaffoldMessenger.of(context);
                     final facturation = context.read<FacturationProvider>();
+                    Navigator.pop(dialogCtx);
+                    if (cmdProv.isLoading) return;
                     final ok = await cmdProv.annuler(commandeId);
-                    if (ok) facturation.charger();
+                    if (ok) {
+                      facturation.charger();
+                    } else {
+                      // Commande retirée / annulée entre-temps : on resynchronise
+                      cmdProv.loadMesCommandes();
+                    }
                     messenger.showSnackBar(SnackBar(
                       content: Text(ok
                           ? 'Commande annulée'

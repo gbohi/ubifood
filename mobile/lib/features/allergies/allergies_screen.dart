@@ -56,7 +56,8 @@ class _AllergiesScreenState extends State<AllergiesScreen> {
         onPressed: () => _showDialog(context),
       ),
       body: Consumer<AllergieProvider>(builder: (_, prov, __) {
-        if (prov.loading) {
+        // Squelettes au premier chargement : une actualisation garde la liste
+        if (prov.loading && prov.allergies.isEmpty) {
           return ListView(
               padding: const EdgeInsets.all(16),
               children: List.generate(4, (_) => const ShimmerCard(height: 64)));
@@ -116,8 +117,13 @@ class _AllergiesScreenState extends State<AllergiesScreen> {
 
           // ── Liste allergies ───────────────────────────────
           Expanded(
-              child: ListView.separated(
-            padding: const EdgeInsets.all(16),
+              child: RefreshIndicator(
+            onRefresh: _charger,
+            child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            // Marge basse : le bouton « Ajouter » ne masque pas la
+            // dernière carte (boutons modifier / supprimer)
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
             itemCount: prov.allergies.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (_, i) {
@@ -128,7 +134,7 @@ class _AllergiesScreenState extends State<AllergiesScreen> {
                 onDelete: () => _confirmerSuppression(context, prov, a),
               );
             },
-          )),
+          ))),
         ]);
       }),
     );
@@ -279,6 +285,10 @@ class _AllergieSheetState extends State<_AllergieSheet> {
   late TextEditingController _ctrl;
   final _formKey = GlobalKey<FormState>();
 
+  /// Erreur du serveur affichée sous le champ (un SnackBar resterait
+  /// caché derrière la feuille)
+  String? _erreur;
+
   bool get _isEdit => widget.allergie != null;
 
   @override
@@ -329,9 +339,12 @@ class _AllergieSheetState extends State<_AllergieSheet> {
                 color: AppColors.error, size: 20),
           ),
           const SizedBox(width: 12),
-          Text(
-            _isEdit ? 'Modifier l\'allergie' : 'Ajouter une allergie',
-            style: Theme.of(context).textTheme.headlineSmall,
+          // Expanded : pas de débordement sur les petits écrans
+          Expanded(
+            child: Text(
+              _isEdit ? 'Modifier l\'allergie' : 'Ajouter une allergie',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
           ),
         ]),
         const SizedBox(height: 20),
@@ -343,7 +356,12 @@ class _AllergieSheetState extends State<_AllergieSheet> {
             controller: _ctrl,
             autofocus: true,
             textCapitalization: TextCapitalization.sentences,
+            onChanged: (_) {
+              if (_erreur != null) setState(() => _erreur = null);
+            },
             decoration: InputDecoration(
+              errorText: _erreur,
+              errorMaxLines: 3,
               labelText: 'Nom de l\'allergie',
               hintText: 'Ex: Arachides, Lactose, Gluten...',
               prefixIcon: const Icon(Icons.label_outline_rounded,
@@ -381,6 +399,7 @@ class _AllergieSheetState extends State<_AllergieSheet> {
   }
 
   Future<void> _sauvegarder(AllergieProvider prov) async {
+    setState(() => _erreur = null);
     if (!_formKey.currentState!.validate()) return;
     final libelle = _ctrl.text.trim();
     final messenger = ScaffoldMessenger.of(context);
@@ -404,16 +423,10 @@ class _AllergieSheetState extends State<_AllergieSheet> {
         margin: const EdgeInsets.all(12),
       ));
     } else {
-      messenger.showSnackBar(SnackBar(
-        content: Text(prov.error ??
-            (_isEdit
-                ? 'Erreur lors de la modification'
-                : 'Erreur lors de l\'ajout')),
-        backgroundColor: AppColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(12),
-      ));
+      setState(() => _erreur = prov.error ??
+          (_isEdit
+              ? 'Erreur lors de la modification'
+              : 'Erreur lors de l\'ajout'));
     }
   }
 }

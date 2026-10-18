@@ -137,6 +137,9 @@ class _AvisSheetState extends State<_AvisSheet> {
         _envoi = false;
         _erreur = cmdProv.error ?? 'Impossible d\'enregistrer votre avis';
       });
+      // Avis déjà donné ailleurs (web) ou commande modifiée : la liste
+      // locale est resynchronisée pour la prochaine ouverture
+      cmdProv.loadMesCommandes();
     }
   }
 

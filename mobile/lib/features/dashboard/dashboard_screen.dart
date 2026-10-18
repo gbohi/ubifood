@@ -40,6 +40,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _bannerKey = GlobalKey<_BannerSliderState>();
+  final _serviceKey = GlobalKey<_ServiceDuJourCardState>();
 
   @override
   void initState() {
@@ -75,6 +76,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           await Future.wait([
             context.read<CommandeProvider>().loadMesCommandes(),
             _bannerKey.currentState?.charger() ?? Future.value(),
+            _serviceKey.currentState?.recharger() ?? Future.value(),
           ]);
         },
         child: CustomScrollView(slivers: [
@@ -231,7 +233,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                     // Gestionnaire : service du jour dans son agence
                     if (auth.isGestionnaire) ...[
-                      const _ServiceDuJourCard(),
+                      _ServiceDuJourCard(key: _serviceKey),
                       const SizedBox(height: 24),
                     ],
 
@@ -446,6 +448,9 @@ class _BannerSliderState extends State<_BannerSlider> {
         _bannieres = liste.where((b) => b.imageUrl != null).toList();
         _current = 0;
       });
+      // Liste rechargée : retour à la première bannière (l'ancienne page
+      // peut ne plus exister)
+      if (_ctrl.hasClients && _bannieres.isNotEmpty) _ctrl.jumpToPage(0);
       _demarrerDefilement();
     } catch (_) {
       // Pas de bannière en cas d'erreur réseau : l'accueil reste utilisable
@@ -759,7 +764,7 @@ class _RepasDuJourCard extends StatelessWidget {
 // ══════════════════════════════════════════════════════════════
 
 class _ServiceDuJourCard extends StatefulWidget {
-  const _ServiceDuJourCard();
+  const _ServiceDuJourCard({super.key});
   @override
   State<_ServiceDuJourCard> createState() => _ServiceDuJourCardState();
 }
@@ -774,9 +779,21 @@ class _ServiceDuJourCardState extends State<_ServiceDuJourCard> {
   }
 
   void _charger() {
-    final j = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    // « Aujourd'hui » au sens du serveur (Africa/Abidjan = UTC+0)
+    final j = DateFormat('yyyy-MM-dd').format(DateTime.now().toUtc());
     _commandes =
         commandeService.getCommandesParAgencePeriode(dateDebut: j, dateFin: j);
+  }
+
+  /// Actualisation par glissement de l'accueil
+  Future<void> recharger() async {
+    if (!mounted) return;
+    setState(_charger);
+    try {
+      await _commandes;
+    } catch (_) {
+      // L'erreur est affichée par le FutureBuilder
+    }
   }
 
   @override
@@ -986,7 +1003,7 @@ class _CommandeItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final date = DateTime.tryParse(commande.dateCommande);
+    final date = DateTime.tryParse(commande.dateCommande)?.toLocal();
     final dateStr =
         date != null ? DateFormat('dd/MM/yyyy à HH:mm').format(date) : '';
     final dateMenu = commande.menuDetail?.dateMenu != null

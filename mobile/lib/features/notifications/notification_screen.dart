@@ -8,6 +8,17 @@ import '../../shared/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 
 // ══════════════════════════════════════════════════════════════
+// NAVIGATION DEPUIS UNE NOTIFICATION
+// ══════════════════════════════════════════════════════════════
+
+/// Écran à ouvrir après un appui sur une notification
+enum CibleNotification { menus, commandes }
+
+/// Demande écoutée par MainShell (l'écran des notifications est poussé
+/// au-dessus de lui et ne peut pas changer l'onglet directement).
+final cibleNotification = ValueNotifier<CibleNotification?>(null);
+
+// ══════════════════════════════════════════════════════════════
 // MODÈLE
 // ══════════════════════════════════════════════════════════════
 
@@ -38,8 +49,11 @@ class NotificationItem {
         titre: j['titre'] ?? '',
         message: j['message'] ?? '',
         lu: j['lu'] ?? false,
-        // Affichage à l'heure du téléphone
-        createdAt: DateTime.parse(j['created_at']).toLocal(),
+        // Affichage à l'heure du téléphone (date absente : pas de plantage
+        // de toute la liste)
+        createdAt:
+            (DateTime.tryParse(j['created_at'] ?? '') ?? DateTime.now())
+                .toLocal(),
         commandeId: j['commande_id'],
         menuId: j['menu_id'],
       );
@@ -65,11 +79,15 @@ class NotificationProvider extends ChangeNotifier {
   int _nonLues = 0;
   bool _loading = false;
   bool _dejaCharge = false;
+  String? _erreur;
   Timer? _timer;
 
   List<NotificationItem> get notifications => _notifications;
   int get nonLues => _nonLues;
   bool get loading => _loading;
+
+  /// Échec du dernier chargement (null si réussi)
+  String? get erreur => _erreur;
 
   /// Démarre le polling toutes les 30 secondes
   void startPolling() {
@@ -84,6 +102,8 @@ class NotificationProvider extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     _dejaCharge = false;
+    _erreur = null;
+    _generation++;
     if (_notifications.isNotEmpty || _nonLues != 0 || _loading) {
       _notifications = [];
       _nonLues = 0;
@@ -98,7 +118,10 @@ class NotificationProvider extends ChangeNotifier {
     super.dispose();
   }
 
+  int _generation = 0;
+
   Future<void> charger() async {
+    final gen = _generation;
     // Premier chargement : indicateur de chargement plutôt que l'état vide
     // « Vous êtes à jour ! » affiché avant l'arrivée des données.
     if (!_dejaCharge && !_loading) {
@@ -107,6 +130,8 @@ class NotificationProvider extends ChangeNotifier {
     }
     try {
       final res = await apiClient.get('/notifications/mes-notifications/');
+      // Déconnexion pendant la requête : pas de données de l'ancien compte
+      if (gen != _generation) return;
       final data = res.data;
       _nonLues = data['non_lues'] ?? 0;
       final list = (data['notifications'] as List? ?? []);
@@ -114,7 +139,11 @@ class NotificationProvider extends ChangeNotifier {
           .map((e) => NotificationItem.fromJson(e as Map<String, dynamic>))
           .toList();
       _dejaCharge = true;
-    } catch (_) {}
+      _erreur = null;
+    } catch (e) {
+      if (gen != _generation) return;
+      _erreur = messageErreurApi(e) ?? 'Impossible de charger les notifications';
+    }
     _loading = false;
     notifyListeners();
   }
@@ -304,11 +333,30 @@ class _NotificationScreenState extends State<NotificationScreen> {
       body: prov.loading && prov.notifications.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : prov.notifications.isEmpty
-              ? _EmptyNotifications()
+              // Vide ou en erreur : l'actualisation par glissement reste
+              // possible
+              ? RefreshIndicator(
+                  onRefresh: prov.charger,
+                  color: AppColors.accent,
+                  child: LayoutBuilder(
+                    builder: (_, constraints) => SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: ConstrainedBox(
+                        constraints:
+                            BoxConstraints(minHeight: constraints.maxHeight),
+                        child: prov.erreur != null
+                            ? _ErreurNotifications(
+                                message: prov.erreur!, onReessayer: prov.charger)
+                            : _EmptyNotifications(),
+                      ),
+                    ),
+                  ),
+                )
               : RefreshIndicator(
                   onRefresh: prov.charger,
                   color: AppColors.accent,
                   child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: prov.notifications.length,
                     separatorBuilder: (_, __) => Divider(
@@ -322,10 +370,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                         notif: notif,
                         onTap: () {
                           if (!notif.lu) prov.marquerLu(notif.id);
-                          // Notification liée à un menu : retour à l'écran
-                          // principal pour le consulter / commander.
-                          if (notif.menuId != null) {
+                          // Retour à l'écran principal sur l'onglet utile :
+                          // commandes (passée, annulée, retirée → avis) ou
+                          // menus (nouveau menu, rappel)
+                          final cible = _cible(notif);
+                          if (cible != null) {
                             Navigator.of(context).popUntil((r) => r.isFirst);
+                            cibleNotification.value = cible;
                           }
                         },
                         onDismiss: () async {
@@ -342,6 +393,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   ),
                 ),
     );
+  }
+
+  CibleNotification? _cible(NotificationItem n) {
+    if (n.type.startsWith('commande_') || n.type == 'retrait_valide') {
+      return CibleNotification.commandes;
+    }
+    if (n.menuId != null) return CibleNotification.menus;
+    if (n.commandeId != null) return CibleNotification.commandes;
+    return null;
   }
 
   void _confirmerToutSupprimer(
@@ -505,6 +565,42 @@ class _NotifConfig {
   final IconData icon;
   final Color color;
   const _NotifConfig(this.icon, this.color);
+}
+
+// ── Erreur de chargement ───────────────────────────────────────
+
+class _ErreurNotifications extends StatelessWidget {
+  final String message;
+  final Future<void> Function() onReessayer;
+  const _ErreurNotifications({required this.message, required this.onReessayer});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+        child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off_rounded,
+              color: AppColors.error, size: 48),
+          const SizedBox(height: 16),
+          Text('Chargement impossible',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Text(message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Réessayer'),
+            onPressed: onReessayer,
+          ),
+        ],
+      ),
+    ));
+  }
 }
 
 // ── Empty state ────────────────────────────────────────────────
