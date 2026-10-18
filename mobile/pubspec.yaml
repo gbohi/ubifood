@@ -25,7 +25,6 @@ dependencies:
   flutter_local_notifications: ^16.3.0
 
   # Navigation
-  go_router: ^13.2.0
 
   # UI
   google_fonts: ^6.1.0

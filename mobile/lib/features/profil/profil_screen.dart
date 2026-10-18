@@ -32,18 +32,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = auth.user;
 
-    final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      appBar: canPop
-          ? AppBar(
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-                tooltip: 'Retour',
-              ),
-              title: const Text('Mon profil'),
-            )
-          : null,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -69,13 +58,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(18)),
                 child: Center(
-                    child: Text(
-                        user?.nom.isNotEmpty == true
-                            ? user!.nom[0].toUpperCase()
-                            : 'U',
+                    child: Text(user?.initiales ?? 'U',
                         style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 28,
+                            fontSize: 24,
                             fontWeight: FontWeight.w700))),
               ),
               const SizedBox(width: 16),
@@ -101,7 +87,11 @@ class _ProfilScreenState extends State<ProfilScreen> {
                           color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(20)),
                       child: Text(
-                          auth.isGestionnaire ? '⚡ Gestionnaire' : '👤 Employé',
+                          user?.isAdmin == true
+                              ? '🛡 Administrateur'
+                              : auth.isGestionnaire
+                                  ? '⚡ Gestionnaire'
+                                  : '👤 Employé',
                           style: const TextStyle(
                               color: Colors.white,
                               fontSize: 11,

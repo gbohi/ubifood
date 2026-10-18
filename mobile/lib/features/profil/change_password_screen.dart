@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../core/api/api_client.dart';
+import '../auth/password_rules.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -29,8 +30,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool get _has8Chars => _nouveauCtrl.text.length >= 8;
   bool get _hasMajuscule => _nouveauCtrl.text.contains(RegExp(r'[A-Z]'));
   bool get _hasChiffre => _nouveauCtrl.text.contains(RegExp(r'[0-9]'));
-  bool get _hasSpecial => _nouveauCtrl.text
-      .contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-+=\[\]\\\/]'));
+  bool get _hasSpecial => _nouveauCtrl.text.contains(regexCaractereSpecial);
   bool get _motDePasseValide =>
       _has8Chars && _hasMajuscule && _hasChiffre && _hasSpecial;
 
@@ -130,6 +130,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 if (!_motDePasseValide) {
                   return 'Ne respecte pas les critères de sécurité';
                 }
+                if (v == _ancienCtrl.text) {
+                  return 'Doit être différent du mot de passe actuel';
+                }
                 return null;
               },
             ),
@@ -158,21 +161,28 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 hintText: 'Répétez le nouveau mot de passe',
                 prefixIcon: const Icon(Icons.check_circle_outline_rounded,
                     color: AppColors.accent, size: 20),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                      _showConfirm
-                          ? Icons.visibility_off_rounded
-                          : Icons.visibility_rounded,
-                      size: 20,
-                      color: AppColors.lightTextSecondary),
-                  onPressed: () => setState(() => _showConfirm = !_showConfirm),
-                ),
-                // Indicateur de correspondance
-                suffixIconColor: _confirmCtrl.text.isNotEmpty
-                    ? (_confirmCtrl.text == _nouveauCtrl.text
-                        ? AppColors.success
-                        : AppColors.error)
-                    : AppColors.lightTextSecondary,
+                suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+                  // Indicateur de correspondance
+                  if (_confirmCtrl.text.isNotEmpty)
+                    Icon(
+                        _confirmCtrl.text == _nouveauCtrl.text
+                            ? Icons.check_circle_rounded
+                            : Icons.cancel_rounded,
+                        size: 20,
+                        color: _confirmCtrl.text == _nouveauCtrl.text
+                            ? AppColors.success
+                            : AppColors.error),
+                  IconButton(
+                    icon: Icon(
+                        _showConfirm
+                            ? Icons.visibility_off_rounded
+                            : Icons.visibility_rounded,
+                        size: 20,
+                        color: AppColors.lightTextSecondary),
+                    onPressed: () =>
+                        setState(() => _showConfirm = !_showConfirm),
+                  ),
+                ]),
               ),
               validator: (v) {
                 if (v == null || v.isEmpty) return 'Requis';
@@ -292,6 +302,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       // Message exact du serveur (« Mot de passe actuel incorrect. »,
       // règle de complexité non respectée…). Avant, toute erreur 400
       // affichait « Mot de passe actuel incorrect ».
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _erreur =

@@ -200,46 +200,57 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     mainAxisAlignment: MainAxisAlignment.end,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Label
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: slide.couleurAccent.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                              color: slide.couleurAccent.withOpacity(0.3)),
+                      // Texte défilant si l'écran est petit ou le texte agrandi
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Label
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: slide.couleurAccent.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                      color:
+                                          slide.couleurAccent.withOpacity(0.3)),
+                                ),
+                                child: Text(slide.sousTitre,
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: slide.couleurAccent,
+                                        letterSpacing: 1.5)),
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              // Titre
+                              Text(slide.titre,
+                                  style: const TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      height: 1.15,
+                                      letterSpacing: -0.5)),
+
+                              const SizedBox(height: 10),
+
+                              // Description
+                              Text(slide.description,
+                                  style: TextStyle(
+                                      fontSize: 14,
+                                      height: 1.55,
+                                      color: Colors.white.withOpacity(0.65),
+                                      fontWeight: FontWeight.w400)),
+                            ],
+                          ),
                         ),
-                        child: Text(slide.sousTitre,
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: slide.couleurAccent,
-                                letterSpacing: 1.5)),
                       ),
 
-                      const SizedBox(height: 10),
-
-                      // Titre
-                      Text(slide.titre,
-                          style: const TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              height: 1.15,
-                              letterSpacing: -0.5)),
-
-                      const SizedBox(height: 10),
-
-                      // Description
-                      Text(slide.description,
-                          style: TextStyle(
-                              fontSize: 14,
-                              height: 1.55,
-                              color: Colors.white.withOpacity(0.65),
-                              fontWeight: FontWeight.w400)),
-
-                      const Spacer(),
+                      const SizedBox(height: 12),
 
                       // Indicateurs + bouton
                       Row(

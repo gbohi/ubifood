@@ -14,12 +14,21 @@ class AllergiesScreen extends StatefulWidget {
 }
 
 class _AllergiesScreenState extends State<AllergiesScreen> {
+  /// Le dernier chargement a échoué (distinct des erreurs d'ajout/suppression)
+  bool _echecChargement = false;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AllergieProvider>().loadAllergies();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _charger());
+  }
+
+  Future<void> _charger() async {
+    if (!mounted) return;
+    final prov = context.read<AllergieProvider>();
+    await prov.loadAllergies();
+    if (!mounted) return;
+    setState(() => _echecChargement = prov.error != null);
   }
 
   @override
@@ -51,6 +60,20 @@ class _AllergiesScreenState extends State<AllergiesScreen> {
           return ListView(
               padding: const EdgeInsets.all(16),
               children: List.generate(4, (_) => const ShimmerCard(height: 64)));
+        }
+
+        if (_echecChargement && prov.allergies.isEmpty) {
+          return EmptyState(
+            icon: Icons.cloud_off_rounded,
+            title: 'Chargement impossible',
+            subtitle: prov.error ?? 'Impossible de charger les allergies',
+            action: AppButton(
+              label: 'Réessayer',
+              icon: Icons.refresh_rounded,
+              width: 200,
+              onPressed: _charger,
+            ),
+          );
         }
 
         if (prov.allergies.isEmpty) {
@@ -126,7 +149,7 @@ class _AllergiesScreenState extends State<AllergiesScreen> {
       BuildContext context, AllergieProvider prov, AllergieModel a) {
     showDialog(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (dialogCtx) => AlertDialog(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
               title: const Row(children: [
@@ -139,7 +162,7 @@ class _AllergiesScreenState extends State<AllergiesScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(dialogCtx),
                   child: const Text('Annuler'),
                 ),
                 ElevatedButton(
@@ -148,18 +171,20 @@ class _AllergiesScreenState extends State<AllergiesScreen> {
                     foregroundColor: Colors.white,
                   ),
                   onPressed: () async {
-                    Navigator.pop(context);
+                    Navigator.pop(dialogCtx);
+                    final messenger = ScaffoldMessenger.of(context);
                     final ok = await prov.supprimer(a.id!);
-                    if (ok && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text('"${a.libelle}" supprimée'),
-                        backgroundColor: AppColors.success,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                        margin: const EdgeInsets.all(12),
-                      ));
-                    }
+                    if (!mounted) return;
+                    messenger.showSnackBar(SnackBar(
+                      content: Text(ok
+                          ? '"${a.libelle}" supprimée'
+                          : (prov.error ?? 'Erreur lors de la suppression')),
+                      backgroundColor: ok ? AppColors.success : AppColors.error,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      margin: const EdgeInsets.all(12),
+                    ));
                   },
                   child: const Text('Supprimer'),
                 ),
@@ -358,15 +383,18 @@ class _AllergieSheetState extends State<_AllergieSheet> {
   Future<void> _sauvegarder(AllergieProvider prov) async {
     if (!_formKey.currentState!.validate()) return;
     final libelle = _ctrl.text.trim();
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
     bool ok;
     if (_isEdit) {
       ok = await prov.modifier(widget.allergie!.id!, libelle);
     } else {
       ok = await prov.ajouter(libelle);
     }
-    if (ok && mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    if (!mounted) return;
+    if (ok) {
+      navigator.pop();
+      messenger.showSnackBar(SnackBar(
         content: Text(_isEdit
             ? '"$libelle" modifiée avec succès'
             : '"$libelle" ajoutée avec succès'),
@@ -375,9 +403,12 @@ class _AllergieSheetState extends State<_AllergieSheet> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(12),
       ));
-    } else if (!ok && mounted && prov.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(prov.error!),
+    } else {
+      messenger.showSnackBar(SnackBar(
+        content: Text(prov.error ??
+            (_isEdit
+                ? 'Erreur lors de la modification'
+                : 'Erreur lors de l\'ajout')),
         backgroundColor: AppColors.error,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

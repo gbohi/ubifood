@@ -37,8 +37,9 @@ class _LoginScreenState extends State<LoginScreen>
         .animate(
             CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic));
     _fadeCtrl.forward();
-    Future.delayed(
-        const Duration(milliseconds: 200), () => _slideCtrl.forward());
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (mounted) _slideCtrl.forward();
+    });
   }
 
   @override
@@ -226,19 +227,27 @@ class _LoginScreenState extends State<LoginScreen>
                     padding: const EdgeInsets.symmetric(
                         horizontal: 20, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: isDark
+                          ? Colors.white.withOpacity(0.1)
+                          : AppColors.primary.withOpacity(0.06),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      border: Border.all(
+                          color: isDark
+                              ? Colors.white.withOpacity(0.2)
+                              : AppColors.primary.withOpacity(0.2)),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(Icons.lock_reset_rounded,
-                          size: 15, color: AppColors.accent),
+                          size: 15,
+                          color: isDark ? AppColors.accent : AppColors.primary),
                       const SizedBox(width: 6),
                       Text('Mot de passe oublié ?',
                           style: TextStyle(
                               fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.accent)),
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? AppColors.accent
+                                  : AppColors.primary)),
                     ]),
                   ),
                 ),

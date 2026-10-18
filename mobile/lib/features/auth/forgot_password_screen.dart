@@ -1,11 +1,18 @@
 // lib/features/auth/forgot_password_screen.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/widgets/common_widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'password_rules.dart';
+
+/// Délai minimal entre deux envois de code SMS
+const _delaiRenvoi = 60;
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -34,6 +41,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   bool _showNouveau = false;
   bool _showConfirm = false;
 
+  // ── Renvoi du code ────────────────────────────────────────
+  Timer? _renvoiTimer;
+  int _renvoiRestant = 0;
+
   // ── Animation ─────────────────────────────────────────────
   late AnimationController _animCtrl;
   late Animation<Offset> _slideAnim;
@@ -54,12 +65,26 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
   @override
   void dispose() {
+    _renvoiTimer?.cancel();
     _animCtrl.dispose();
     _usernameCtrl.dispose();
     _codeCtrl.dispose();
     _nouveauCtrl.dispose();
     _confirmCtrl.dispose();
     super.dispose();
+  }
+
+  void _demarrerDelaiRenvoi() {
+    _renvoiTimer?.cancel();
+    setState(() => _renvoiRestant = _delaiRenvoi);
+    _renvoiTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _renvoiRestant--);
+      if (_renvoiRestant <= 0) t.cancel();
+    });
   }
 
   void _allerEtape(int etape) {
@@ -74,8 +99,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   bool get _has8Chars => _nouveauCtrl.text.length >= 8;
   bool get _hasMaj => _nouveauCtrl.text.contains(RegExp(r'[A-Z]'));
   bool get _hasChiffre => _nouveauCtrl.text.contains(RegExp(r'[0-9]'));
-  bool get _hasSpecial => _nouveauCtrl.text
-      .contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-+=\[\]\\\/]'));
+  bool get _hasSpecial => _nouveauCtrl.text.contains(regexCaractereSpecial);
   bool get _mdpValide => _has8Chars && _hasMaj && _hasChiffre && _hasSpecial;
 
   // ── Étape 1 : Vérifier username ───────────────────────────
@@ -94,19 +118,54 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         '/users/forgot-password/',
         data: {'username': username},
       );
+      if (!mounted) return;
       _contactMasque = res.data['contact_masque'];
       _username = username;
+      _codeCtrl.clear();
       setState(() => _loading = false);
       _allerEtape(2);
+      _demarrerDelaiRenvoi();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
-        _erreur = _parseError(e, {
-          '404': 'Aucun compte trouvé avec cet identifiant.',
-          'contact':
-              'Aucun numéro de contact associé. Contactez l\'administrateur.',
-          'default': 'Erreur lors de l\'envoi. Réessayez.',
-        });
+        _erreur = _parseError(e, 'Erreur lors de l\'envoi. Réessayez.');
+      });
+    }
+  }
+
+  // ── Étape 2 : Renvoyer le code ────────────────────────────
+  Future<void> _renvoyerCode() async {
+    if (_renvoiRestant > 0 || _loading || _username == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final res = await apiClient.postPublic(
+        '/users/forgot-password/',
+        data: {'username': _username},
+      );
+      if (!mounted) return;
+      _codeCtrl.clear();
+      setState(() {
+        _loading = false;
+        _contactMasque = res.data['contact_masque'];
+      });
+      _demarrerDelaiRenvoi();
+      messenger.showSnackBar(SnackBar(
+        content: const Text('Un nouveau code a été envoyé.'),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(12),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = _parseError(e, 'Erreur lors de l\'envoi. Réessayez.');
       });
     }
   }
@@ -127,17 +186,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         '/users/verify-code/',
         data: {'username': _username, 'code': code},
       );
+      if (!mounted) return;
       _resetToken = res.data['reset_token'];
       setState(() => _loading = false);
       _allerEtape(3);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
-        _erreur = _parseError(e, {
-          'expiré': 'Code expiré. Recommencez depuis le début.',
-          'incorrect': 'Code incorrect. Vérifiez votre SMS.',
-          'default': 'Erreur de vérification. Réessayez.',
-        });
+        _erreur = _parseError(e, 'Erreur de vérification. Réessayez.');
       });
     }
   }
@@ -182,13 +239,22 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
       Navigator.pop(context); // Retour au login
     } catch (e) {
+      if (!mounted) return;
+      final message = _parseError(e, 'Erreur. Réessayez.');
+      if (message.contains('Session expirée')) {
+        // Jeton de réinitialisation expiré : on recommence à l'étape 1
+        _resetToken = null;
+        _codeCtrl.clear();
+        _nouveauCtrl.clear();
+        _confirmCtrl.clear();
+        setState(() => _loading = false);
+        _allerEtape(1);
+        setState(() => _erreur = message);
+        return;
+      }
       setState(() {
         _loading = false;
-        _erreur = _parseError(e, {
-          'expiré': 'Session expirée. Recommencez depuis le début.',
-          'complexit': 'Le mot de passe ne respecte pas les critères.',
-          'default': 'Erreur. Réessayez.',
-        });
+        _erreur = message;
       });
     }
   }
@@ -196,14 +262,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   /// Message renvoyé par le serveur (code incorrect, code expiré, trop de
   /// tentatives…). Avant, e.toString() ne contenait pas le corps de la
   /// réponse : seul le message par défaut s'affichait.
-  String _parseError(dynamic e, Map<String, String> messages) {
+  String _parseError(dynamic e, String defaut) {
     if (e is DioException) {
       if (e.response?.statusCode == 429) {
         return 'Trop de tentatives. Réessayez dans une heure.';
       }
       if (e.response == null) return 'Impossible de contacter le serveur.';
     }
-    return messageErreurApi(e) ?? messages['default'] ?? 'Erreur inattendue.';
+    return messageErreurApi(e) ?? defaut;
   }
 
   @override
@@ -294,12 +360,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
       case 2:
         return _EtapeCode(
           ctrl: _codeCtrl,
-          contactMasque: _contactMasque ?? '****',
+          contactMasque: _contactMasque,
           username: _username ?? '',
           loading: _loading,
           erreur: _erreur,
+          renvoiRestant: _renvoiRestant,
           onSubmit: _verifierCode,
-          onRenvoyer: _verifierUsername,
+          onRenvoyer: _renvoyerCode,
         );
       case 3:
         return _EtapeNouveauMdp(
@@ -334,7 +401,7 @@ class _StepIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final labels = ['Identifiant', 'Code SMS', 'Nouveau mdp'];
+    final labels = ['Identifiant', 'Code SMS', 'Nouveau mot de passe'];
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(3, (i) {
@@ -414,7 +481,7 @@ class _EtapeUsername extends StatelessWidget {
       Text('Saisissez votre identifiant pour recevoir un code SMS.',
           style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: 24),
-      Text('Badge / Username', style: Theme.of(context).textTheme.labelLarge),
+      Text('Matricule', style: Theme.of(context).textTheme.labelLarge),
       const SizedBox(height: 8),
       TextField(
         controller: ctrl,
@@ -444,10 +511,11 @@ class _EtapeUsername extends StatelessWidget {
 
 class _EtapeCode extends StatelessWidget {
   final TextEditingController ctrl;
-  final String contactMasque;
+  final String? contactMasque;
   final String username;
   final bool loading;
   final String? erreur;
+  final int renvoiRestant;
   final VoidCallback onSubmit;
   final VoidCallback onRenvoyer;
 
@@ -457,6 +525,7 @@ class _EtapeCode extends StatelessWidget {
     required this.username,
     required this.loading,
     required this.erreur,
+    required this.renvoiRestant,
     required this.onSubmit,
     required this.onRenvoyer,
   });
@@ -467,23 +536,30 @@ class _EtapeCode extends StatelessWidget {
       Text('Code de vérification',
           style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 6),
-      RichText(
-          text: TextSpan(
-        style: Theme.of(context).textTheme.bodyMedium,
-        children: [
-          const TextSpan(text: 'Un code a été envoyé au numéro '),
-          TextSpan(
-              text: contactMasque,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, color: AppColors.accent)),
-        ],
-      )),
+      if (contactMasque == null || contactMasque!.isEmpty)
+        // Réponse neutre du serveur (compte inconnu ou sans numéro)
+        Text(
+            'Si ce compte existe, un code a été envoyé par SMS au numéro enregistré.',
+            style: Theme.of(context).textTheme.bodyMedium)
+      else
+        RichText(
+            text: TextSpan(
+          style: Theme.of(context).textTheme.bodyMedium,
+          children: [
+            const TextSpan(text: 'Un code a été envoyé au numéro '),
+            TextSpan(
+                text: contactMasque,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, color: AppColors.accent)),
+          ],
+        )),
       const SizedBox(height: 24),
       Text('Code à 6 chiffres', style: Theme.of(context).textTheme.labelLarge),
       const SizedBox(height: 8),
       TextField(
         controller: ctrl,
         keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         textAlign: TextAlign.center,
         maxLength: 6,
         textInputAction: TextInputAction.done,
@@ -502,8 +578,10 @@ class _EtapeCode extends StatelessWidget {
       Center(
           child: TextButton.icon(
         icon: const Icon(Icons.refresh_rounded, size: 16),
-        label: const Text('Renvoyer le code'),
-        onPressed: loading ? null : onRenvoyer,
+        label: Text(renvoiRestant > 0
+            ? 'Renvoyer le code dans $renvoiRestant s'
+            : 'Renvoyer le code'),
+        onPressed: loading || renvoiRestant > 0 ? null : onRenvoyer,
       )),
       const SizedBox(height: 8),
       AppButton(
@@ -667,22 +745,28 @@ class _EtapeNouveauMdp extends StatelessWidget {
           hintText: 'Répétez le mot de passe',
           prefixIcon: const Icon(Icons.check_circle_outline_rounded,
               color: AppColors.accent),
-          suffixIcon: IconButton(
-            icon: Icon(
-                showConfirm
-                    ? Icons.visibility_off_rounded
-                    : Icons.visibility_rounded,
-                size: 20,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary),
-            onPressed: onToggleConfirm,
-          ),
-          suffixIconColor: confirmCtrl.text.isNotEmpty
-              ? (confirmCtrl.text == nouveauCtrl.text
-                  ? AppColors.success
-                  : AppColors.error)
-              : null,
+          suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (confirmCtrl.text.isNotEmpty)
+              Icon(
+                  confirmCtrl.text == nouveauCtrl.text
+                      ? Icons.check_circle_rounded
+                      : Icons.cancel_rounded,
+                  size: 20,
+                  color: confirmCtrl.text == nouveauCtrl.text
+                      ? AppColors.success
+                      : AppColors.error),
+            IconButton(
+              icon: Icon(
+                  showConfirm
+                      ? Icons.visibility_off_rounded
+                      : Icons.visibility_rounded,
+                  size: 20,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary),
+              onPressed: onToggleConfirm,
+            ),
+          ]),
         ),
       ),
 

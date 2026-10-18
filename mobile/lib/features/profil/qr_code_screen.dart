@@ -1,5 +1,7 @@
 // lib/features/profil/qr_code_screen.dart
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -16,6 +18,13 @@ class QrCodeScreen extends StatelessWidget {
     final user = auth.user;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final username = user?.username ?? '';
+    // Largeur disponible : écran − marges (24 + 28 + 16 de chaque côté)
+    final qrSize = math
+        .max(
+            120.0,
+            math.min(
+                220.0, MediaQuery.of(context).size.width - 2 * (24 + 28 + 16)))
+        .toDouble();
 
     return Scaffold(
       appBar: AppBar(
@@ -64,7 +73,7 @@ class QrCodeScreen extends StatelessWidget {
                   child: QrImageView(
                     data: username,
                     version: QrVersions.auto,
-                    size: 220,
+                    size: qrSize,
                     backgroundColor: Colors.white,
                     eyeStyle: const QrEyeStyle(
                       eyeShape: QrEyeShape.square,
@@ -74,9 +83,6 @@ class QrCodeScreen extends StatelessWidget {
                       dataModuleShape: QrDataModuleShape.square,
                       color: Color(0xFF092440),
                     ),
-                    embeddedImage: const AssetImage('assets/images/logo.svg'),
-                    embeddedImageStyle:
-                        const QrEmbeddedImageStyle(size: Size(36, 36)),
                   ),
                 ),
 
