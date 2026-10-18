@@ -53,6 +53,7 @@ import { MesCommandesComponent } from './mes-commandes/mes-commandes.component';
 import { RetraitCommandeComponent } from './retrait-commande/retrait-commande/retrait-commande.component';
 import { FacturationCommandeComponent } from './facturation-commande/facturation-commande.component';
 import { FacturationPrestataireComponent } from './facturation-prestataire/facturation-prestataire.component';
+import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
 
 // Aucun envoi par Dropzone : les fichiers sont collectés côté composant puis
 // envoyés au backend avec le formulaire (FormData). L'URL n'est qu'un placeholder.
@@ -73,7 +74,8 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     MesCommandesComponent,
     RetraitCommandeComponent,
     FacturationCommandeComponent,
-    FacturationPrestataireComponent
+    FacturationPrestataireComponent,
+    AvisPlatsComponent
   ],
   imports: [
     CommonModule,

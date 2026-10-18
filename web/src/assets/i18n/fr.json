@@ -237,7 +237,8 @@
         "GESTIONCOMMANDE":"Gestion des Commandes",
         "RETRAITCOMMANDE":"Retrait commande",
         "FACTURATIONCOMMANDE":"Facturation commande",
-        "FACTURATIONPRESTATAIRE":"Facturation prestataire"
+        "FACTURATIONPRESTATAIRE":"Facturation prestataire",
+        "AVIS": "Avis des plats"
       }
     },
     "COMPTABILITE": {

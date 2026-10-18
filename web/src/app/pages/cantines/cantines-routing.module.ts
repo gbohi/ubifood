@@ -14,6 +14,7 @@ import { GestionCommandesComponent } from './gestion-commandes/gestion-commandes
 import { RetraitCommandeComponent } from './retrait-commande/retrait-commande/retrait-commande.component';
 import { FacturationCommandeComponent } from './facturation-commande/facturation-commande.component';
 import { FacturationPrestataireComponent } from './facturation-prestataire/facturation-prestataire.component';
+import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
 
 
 const routes: Routes = [
@@ -26,7 +27,8 @@ const routes: Routes = [
   { path: 'gestion-commandes', component: GestionCommandesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'retrait-commande', component: RetraitCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'facturation-commande', component: FacturationCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
-  { path: 'facturation-prestataire', component: FacturationPrestataireComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } }
+  { path: 'facturation-prestataire', component: FacturationPrestataireComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  { path: 'avis-plats', component: AvisPlatsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } }
 ];
 
 @NgModule({

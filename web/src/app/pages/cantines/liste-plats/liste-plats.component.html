@@ -259,6 +259,19 @@
                                              style="max-height: 100px; object-fit: cover;">
                                     </label>
                                 </div>
+                                <div class="mt-1">
+                                    <span *ngIf="img.is_principale" class="badge bg-success-subtle text-success">
+                                        <i class="ri-star-fill align-baseline me-1"></i>Principale
+                                    </span>
+                                    <button *ngIf="!img.is_principale && !imagesASupprimerIds.includes(img.id)"
+                                            type="button" class="btn btn-sm btn-subtle-primary"
+                                            [disabled]="imagePrincipaleEnCours !== null"
+                                            (click)="definirImagePrincipale(img)">
+                                        <span *ngIf="imagePrincipaleEnCours === img.id"
+                                              class="spinner-border spinner-border-sm me-1"></span>
+                                        Définir comme photo principale
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

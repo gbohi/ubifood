@@ -106,6 +106,13 @@ export const MENU: MenuItem[] = [
                 link: '/cantines/facturation-prestataire',
                 roles: GESTIONNAIRES,
                 parentId: 210
+            },
+            {
+                id: 2110,
+                label: 'MENUITEMS.CANTINES.LIST.AVIS',
+                link: '/cantines/avis-plats',
+                roles: GESTIONNAIRES,
+                parentId: 210
             }
         ]
     },/*

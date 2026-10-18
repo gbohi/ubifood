@@ -5,6 +5,7 @@ import { Component, OnInit, QueryList, ViewChild, ViewChildren, ElementRef, Dest
 import { DecimalPipe } from '@angular/common';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
+import { HttpClient } from '@angular/common/http';
 import { Subject, filter } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -81,6 +82,7 @@ export class ListePlatsComponent implements OnInit {
   uploadedFiles: any[] = [];
   imagesExistantes: any[] = [];
   imagesASupprimerIds: number[] = [];
+  imagePrincipaleEnCours: number | null = null;
 
   // ── Détails ─────────────────────────────────────────────────
   selectedPlat: PlatModel | null = null;
@@ -108,6 +110,7 @@ export class ListePlatsComponent implements OnInit {
    * est détruit, ce qui élimine les fuites mémoire.
    */
   private destroyRef = inject(DestroyRef);
+  private http = inject(HttpClient);
 
   constructor(
     private formBuilder: UntypedFormBuilder,
@@ -350,6 +353,34 @@ export class ListePlatsComponent implements OnInit {
     } else {
       this.imagesASupprimerIds = this.imagesASupprimerIds.filter(v => v !== id);
     }
+  }
+
+  /** Définit une image existante comme photo principale (appel immédiat, hors sauvegarde) */
+  definirImagePrincipale(img: { id: number }) {
+    const platId = this.platForm.get('id')?.value;
+    if (!platId || this.imagePrincipaleEnCours) return;
+    this.imagePrincipaleEnCours = img.id;
+    this.http.post<PlatModel>(
+      `${environment.apiUrl}/api/api/plats/${platId}/image-principale/`, { image_id: img.id }
+    ).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: plat => {
+        this.imagePrincipaleEnCours = null;
+        const images = plat?.images
+          ?? this.imagesExistantes.map(i => ({ ...i, is_principale: i.id === img.id }));
+        // Conserver l'ordre affiché, mettre à jour le badge
+        this.imagesExistantes = this.imagesExistantes.map(i => ({
+          ...i,
+          is_principale: images.find((n: any) => n.id === i.id)?.is_principale ?? false,
+        }));
+        this.plats = this.plats.map(p => p.id === platId ? { ...p, images: this.imagesExistantes } : p);
+        this.platList = [...this.plats];
+        this.toastService.success('Photo principale mise à jour.', 'Succès');
+      },
+      error: err => {
+        this.imagePrincipaleEnCours = null;
+        this.toastService.error(typeof err === 'string' ? err : 'Une erreur est survenue.', 'Erreur');
+      },
+    });
   }
 
   viewDetails(id: any) {
