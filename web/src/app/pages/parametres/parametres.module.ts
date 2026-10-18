@@ -43,6 +43,7 @@ import { CategoriesalarieComponent } from './categoriesalarie/categoriesalarie.c
 import { PrestataireComponent } from './prestataire/prestataire.component';
 import { PosteComponent } from './poste/poste.component';
 import { SocieteComponent } from './societe/societe.component';
+import { BannieresComponent } from './bannieres/bannieres.component';
 
 const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
   // Change this to your upload POST address:
@@ -54,6 +55,7 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
 @NgModule({
   declarations: [
     SocieteComponent,
+    BannieresComponent,
     AgenceComponent,
     EtatComponent,
     PrioriteComponent,

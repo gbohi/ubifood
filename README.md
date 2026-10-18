@@ -85,6 +85,16 @@ le web, le mobile et le tableau de bord affichent ce résultat.
 
 ---
 
+## Bannières de l'application mobile
+
+Les bannières qui défilent en haut de l'accueil mobile se gèrent sur le web,
+Paramètres → Bannières mobile (administrateurs) : image paysage
+(≈ 1200 × 520 px, PNG / JPEG / WebP, 5 Mo maximum), ordre d'affichage,
+activation et période facultative (ex. une fête). Sans bannière active,
+l'accueil n'en affiche aucune.
+
+---
+
 ## Backend (Django)
 
 ### Développement local

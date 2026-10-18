@@ -1265,3 +1265,41 @@ class ParametresSocieteSerializer(serializers.ModelSerializer):
             if supprimer and not nouveau_logo:
                 instance.logo = None
         return super().update(instance, validated_data)
+
+
+class BanniereSerializer(serializers.ModelSerializer):
+    """Bannière de l'accueil mobile (image paysage, 5 Mo maximum)."""
+    image_url = serializers.SerializerMethodField()
+    # Formulaire sans la case : bannière active (et non désactivée)
+    actif = serializers.BooleanField(default=True)
+    TAILLE_MAX = 5 * 1024 * 1024
+
+    class Meta:
+        model  = Banniere
+        fields = ['id', 'titre', 'image', 'image_url', 'ordre', 'actif',
+                  'date_debut', 'date_fin', 'updated_at']
+        read_only_fields = ['updated_at']
+        extra_kwargs = {'image': {'write_only': True}}
+
+    def get_image_url(self, obj):
+        return obj.image.url if obj.image else None
+
+    def validate_image(self, image):
+        if image and image.size > self.TAILLE_MAX:
+            raise serializers.ValidationError("Image trop volumineuse (5 Mo maximum).")
+        return image
+
+    def validate(self, attrs):
+        inst = self.instance
+        debut = attrs.get('date_debut', getattr(inst, 'date_debut', None))
+        fin = attrs.get('date_fin', getattr(inst, 'date_fin', None))
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin': "La date de fin doit être postérieure ou égale à la date de début."})
+        return attrs
+
+    def update(self, instance, validated_data):
+        # Nouvelle image : l'ancienne est supprimée du disque
+        if 'image' in validated_data and instance.image:
+            instance.image.delete(save=False)
+        return super().update(instance, validated_data)

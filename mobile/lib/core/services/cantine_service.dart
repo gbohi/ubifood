@@ -190,6 +190,15 @@ class LigneFacturation {
       );
 }
 
+class BanniereService {
+  /// Bannières à afficher aujourd'hui (actives et dans leur période).
+  Future<List<Banniere>> getBannieres() async {
+    final res = await apiClient.get('/bannieres/');
+    final list = res.data as List? ?? [];
+    return list.map((e) => Banniere.fromJson(e)).toList();
+  }
+}
+
 class FacturationService {
   /// Lignes de facturation de l'utilisateur connecté sur la période.
   Future<List<LigneFacturation>> mesLignes({
@@ -218,6 +227,7 @@ class FacturationService {
 final authService = AuthService();
 final menuService = MenuService();
 final commandeService = CommandeService();
+final banniereService = BanniereService();
 final retraitService = RetraitService();
 final facturationService = FacturationService();
 

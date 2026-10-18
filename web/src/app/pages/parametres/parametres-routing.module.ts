@@ -20,9 +20,17 @@ import { CategoriesalarieComponent } from './categoriesalarie/categoriesalarie.c
 import { PrestataireComponent } from './prestataire/prestataire.component';
 import { PosteComponent } from './poste/poste.component';
 import { SocieteComponent } from './societe/societe.component';
+import { BannieresComponent } from './bannieres/bannieres.component';
 
 
 const routes: Routes = [
+  {
+    // Bannières de l'accueil de l'application mobile
+    path: 'bannieres',
+    component: BannieresComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
+  },
   {
     // En-tête des factures PDF
     path: 'societe',

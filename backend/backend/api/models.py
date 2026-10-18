@@ -560,3 +560,31 @@ class ParametresSociete(models.Model):
 
     def __str__(self):
         return self.nom or 'Paramètres société'
+
+
+class Banniere(models.Model):
+    """
+    Bannières de l'écran d'accueil de l'application mobile, gérées par les
+    administrateurs (Paramètres → Bannières) : image, ordre d'affichage,
+    activation et période d'affichage facultative (ex. une fête).
+    """
+    titre      = models.CharField(max_length=150, help_text="Nom interne (non affiché)")
+    image      = models.ImageField(upload_to='bannieres/',
+                                   validators=[FileExtensionValidator(['png', 'jpg', 'jpeg', 'webp'])])
+    ordre      = models.PositiveSmallIntegerField(default=0)
+    actif      = models.BooleanField(default=True)
+    date_debut = models.DateField(null=True, blank=True)
+    date_fin   = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    user_created = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='+')
+    user_updated = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='+')
+
+    class Meta:
+        db_table = 'banniere'
+        ordering = ['ordre', 'id']
+
+    def __str__(self):
+        return self.titre

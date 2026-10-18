@@ -325,3 +325,22 @@ class AllergieModel {
   AllergieModel copyWith({String? libelle}) =>
       AllergieModel(id: id, libelle: libelle ?? this.libelle, userId: userId);
 }
+
+
+// ══════════════════════════════════════════════════════════════
+// BANNIÈRE (accueil, paramétrée dans l'administration web)
+// ══════════════════════════════════════════════════════════════
+
+class Banniere {
+  final int id;
+  final String titre;
+  final String? imageUrl;
+
+  const Banniere({required this.id, required this.titre, this.imageUrl});
+
+  factory Banniere.fromJson(Map<String, dynamic> j) => Banniere(
+        id: j['id'],
+        titre: j['titre'] ?? '',
+        imageUrl: _absoluteUrl(j['image_url'] as String?),
+      );
+}

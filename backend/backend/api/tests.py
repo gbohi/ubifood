@@ -926,3 +926,51 @@ class DashboardCantineTests(_FacturationBase):
         hebdo = r.data['evolution_hebdo']
         self.assertEqual([s['label'] for s in hebdo], ['S-3', 'S-2', 'S-1', 'Cette semaine'])
         self.assertEqual(hebdo[-1]['total'], 3)
+
+
+class BanniereTests(BaseAPITestCase):
+    """Bannières de l'accueil mobile, paramétrées par les administrateurs."""
+
+    @staticmethod
+    def image(nom='b.png'):
+        import struct, zlib
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        def bloc(t, d):
+            return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+        png = (b'\x89PNG\r\n\x1a\n' + bloc(b'IHDR', struct.pack('>IIBBBBB', 2, 1, 8, 2, 0, 0, 0))
+               + bloc(b'IDAT', zlib.compress(b'\x00' + b'\x10\x20\x30' * 2)) + bloc(b'IEND', b''))
+        return SimpleUploadedFile(nom, png, content_type='image/png')
+
+    def setUp(self):
+        from .models import Banniere
+        jour = timezone.localdate()
+        self.admin_c = self.client_pour(self.admin)
+        r = self.admin_c.post(f'{API}/bannieres/', {'titre': 'Bienvenue', 'image': self.image(), 'ordre': 2})
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertTrue(r.data['image_url'])
+        Banniere.objects.create(titre='Fête passée', image='bannieres/x.png',
+                                date_debut=jour - timedelta(days=10), date_fin=jour - timedelta(days=1))
+        Banniere.objects.create(titre='Désactivée', image='bannieres/y.png', actif=False)
+        Banniere.objects.create(titre='Promo', image='bannieres/z.png', ordre=1,
+                                date_debut=jour, date_fin=jour + timedelta(days=3))
+
+    def tearDown(self):
+        from .models import Banniere
+        for b in Banniere.objects.all():
+            b.delete()   # supprime aussi les fichiers créés
+
+    def test_employe_voit_les_bannieres_du_jour(self):
+        r = self.client_pour(self.employe).get(f'{API}/bannieres/')
+        self.assertEqual([b['titre'] for b in r.data], ['Promo', 'Bienvenue'])
+        self.assertEqual(self.client_pour(self.employe).get(f'{API}/bannieres/', {'toutes': 1}).status_code, 200)
+        self.assertEqual(len(self.client_pour(self.employe).get(f'{API}/bannieres/', {'toutes': 1}).data), 2)
+
+    def test_administrateur_gere_les_bannieres(self):
+        self.assertEqual(len(self.admin_c.get(f'{API}/bannieres/', {'toutes': 1}).data), 4)
+        r = self.client_pour(self.gestionnaire).post(f'{API}/bannieres/', {'titre': 'X', 'image': self.image()})
+        self.assertEqual(r.status_code, 403)
+        r = self.admin_c.post(f'{API}/bannieres/', {'titre': 'X', 'image': self.image(),
+                                                   'date_debut': '2026-05-02', 'date_fin': '2026-05-01'})
+        self.assertEqual(r.status_code, 400)
+        r = self.admin_c.post(f'{API}/bannieres/', {'titre': 'Sans image'})
+        self.assertEqual(r.status_code, 400)

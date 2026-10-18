@@ -1,0 +1,140 @@
+<app-breadcrumbs title="Bannières" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+
+<div class="card">
+  <div class="card-header d-flex align-items-center flex-wrap gap-2">
+    <div class="flex-grow-1">
+      <h5 class="mb-0"><i class="ph-images me-2"></i>Bannières de l'accueil mobile</h5>
+      <small class="text-muted">
+        Elles défilent en haut de l'écran d'accueil de l'application, dans l'ordre indiqué.
+        Format conseillé : image paysage d'environ 1200 × 520 px (PNG, JPEG ou WebP, 5 Mo maximum).
+      </small>
+    </div>
+    <button class="btn btn-primary" (click)="ouvrir(null)" [disabled]="formulaireOuvert">
+      <i class="ri-add-line align-baseline me-1"></i> Ajouter une bannière
+    </button>
+  </div>
+
+  <div class="card-body">
+
+    <!-- ── Formulaire ajout / modification ─────────────────── -->
+    @if (formulaireOuvert) {
+      <div class="border rounded p-3 mb-4 bg-light-subtle">
+        <h6 class="mb-3">{{ enEdition ? 'Modifier la bannière' : 'Nouvelle bannière' }}</h6>
+        <form [formGroup]="form" (ngSubmit)="enregistrer()">
+          <div class="row g-3">
+            <div class="col-lg-5">
+              <label class="form-label">Image <span class="text-danger">*</span></label>
+              <div class="rounded border bg-body-secondary overflow-hidden mb-2" style="height: 170px;">
+                @if (apercu || imageUrl(enEdition)) {
+                  <img [src]="apercu || imageUrl(enEdition)" alt="Aperçu" class="w-100 h-100" style="object-fit: cover;">
+                } @else {
+                  <div class="d-flex h-100 align-items-center justify-content-center text-muted">
+                    <span><i class="ph-image me-1"></i>Aucune image</span>
+                  </div>
+                }
+              </div>
+              <input type="file" class="form-control" id="banniere-image"
+                     accept="image/png,image/jpeg,image/webp" (change)="onImageChoisie($event)">
+              @if (erreurImage) { <small class="text-danger">{{ erreurImage }}</small> }
+            </div>
+            <div class="col-lg-7">
+              <div class="row g-3">
+                <div class="col-md-8">
+                  <label class="form-label">Titre (interne) <span class="text-danger">*</span></label>
+                  <input class="form-control" formControlName="titre" id="banniere-titre" placeholder="Ex. Fête du travail 2027"
+                         [class.is-invalid]="form.get('titre')?.touched && form.get('titre')?.invalid">
+                  <div class="invalid-feedback">Le titre est requis.</div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Ordre</label>
+                  <input type="number" min="0" class="form-control" formControlName="ordre">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Afficher à partir du</label>
+                  <input type="date" class="form-control" formControlName="date_debut">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Jusqu'au</label>
+                  <input type="date" class="form-control" formControlName="date_fin">
+                </div>
+                <div class="col-12">
+                  <small class="text-muted">Dates facultatives : sans date, la bannière s'affiche tant qu'elle est active.</small>
+                </div>
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="banniere-actif" formControlName="actif">
+                    <label class="form-check-label" for="banniere-actif">Active</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-light" (click)="fermer()">Annuler</button>
+            <button type="submit" class="btn btn-primary" id="banniere-enregistrer" [disabled]="isSaving">
+              @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+              Enregistrer
+            </button>
+          </div>
+        </form>
+      </div>
+    }
+
+    <!-- ── Liste ─────────────────────────────────────────────── -->
+    @if (isLoading) {
+      <div class="text-center py-5"><span class="spinner-border text-primary" role="status"></span></div>
+    } @else if (bannieres.length === 0) {
+      <div class="text-center text-muted py-5">
+        <i class="ph-images display-6 d-block mb-2"></i>
+        Aucune bannière : l'accueil de l'application n'en affiche aucune.
+      </div>
+    } @else {
+      <div class="row g-3">
+        @for (b of bannieres; track b.id) {
+          <div class="col-md-6 col-xl-4">
+            <div class="card h-100 mb-0 border" [class.opacity-50]="!estVisible(b)">
+              @if (imageUrl(b)) {
+                <img [src]="imageUrl(b)" class="card-img-top w-100" [alt]="b.titre" style="height: 160px; object-fit: cover;">
+              }
+              <div class="card-body">
+                <div class="d-flex align-items-start gap-2">
+                  <h6 class="mb-1 flex-grow-1">{{ b.titre }}</h6>
+                  <span class="badge bg-light text-body border">Ordre {{ b.ordre }}</span>
+                </div>
+                <div class="small text-muted mb-2">
+                  @if (b.date_debut || b.date_fin) {
+                    <i class="ph-calendar me-1"></i>
+                    {{ b.date_debut ? 'Du ' + formatDate(b.date_debut) : 'Jusqu\'' }}{{ b.date_fin ? (b.date_debut ? ' au ' : 'au ') + formatDate(b.date_fin) : '' }}
+                  } @else {
+                    Sans date de fin
+                  }
+                </div>
+                @if (estVisible(b)) {
+                  <span class="badge bg-success-subtle text-success">Affichée aujourd'hui</span>
+                } @else if (!b.actif) {
+                  <span class="badge bg-secondary-subtle text-secondary">Désactivée</span>
+                } @else {
+                  <span class="badge bg-warning-subtle text-warning">Hors période</span>
+                }
+              </div>
+              <div class="card-footer d-flex gap-2">
+                <button class="btn btn-sm btn-subtle-secondary" (click)="ouvrir(b)"><i class="ph-pencil me-1"></i>Modifier</button>
+                <button class="btn btn-sm btn-subtle-primary" (click)="basculerActif(b)">
+                  {{ b.actif ? 'Désactiver' : 'Activer' }}
+                </button>
+                <button class="btn btn-sm btn-subtle-danger ms-auto" (click)="aSupprimer = b"><i class="ph-trash"></i></button>
+              </div>
+              @if (aSupprimer?.id === b.id) {
+                <div class="card-footer bg-danger-subtle d-flex align-items-center gap-2">
+                  <small class="flex-grow-1">Supprimer cette bannière ?</small>
+                  <button class="btn btn-sm btn-light" (click)="aSupprimer = null">Non</button>
+                  <button class="btn btn-sm btn-danger" (click)="supprimer()">Oui, supprimer</button>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>

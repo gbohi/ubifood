@@ -182,3 +182,9 @@ def supprimer_fichier_image(sender, instance, **kwargs):
 def supprimer_fichier_document(sender, instance, **kwargs):
     if instance.document:
         instance.document.delete(save=False)
+
+
+@receiver(post_delete, sender='api.Banniere')
+def supprimer_fichier_banniere(sender, instance, **kwargs):
+    if instance.image:
+        instance.image.delete(save=False)

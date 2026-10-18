@@ -216,6 +216,13 @@ export const MENU: MenuItem[] = [
                 parentId: 175
             },
             {
+                id: 198,
+                label: 'MENUITEMS.PARAMETRES.LIST.BANNIERES',
+                link: '/parametres/bannieres',
+                roles: ADMINS,
+                parentId: 175
+            },
+            {
                 id: 176,
                 label: 'MENUITEMS.PARAMETRES.LIST.AGENCE',
                 link: '/parametres/agence',

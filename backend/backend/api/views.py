@@ -3001,3 +3001,26 @@ class ParametresSocieteView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save(user_updated=request.user)
         return Response(serializer.data)
+
+
+class BanniereViewSet(BaseViewSet):
+    """
+    GET    /api/api/bannieres/            bannières à afficher aujourd'hui (tout utilisateur connecté)
+    GET    /api/api/bannieres/?toutes=1   toutes les bannières (administrateurs, écran de gestion)
+    POST / PATCH / DELETE                 administrateurs (multipart : image)
+    """
+    serializer_class = BanniereSerializer
+    permission_classes = [ReadAuthenticatedWriteAdmin]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = None
+    filter_backends = []
+
+    def get_queryset(self):
+        qs = Banniere.objects.all()
+        if self.action != 'list' or (self.request.query_params.get('toutes') == '1'
+                                     and is_admin(self.request.user)):
+            return qs
+        jour = timezone.localdate()
+        return (qs.filter(actif=True)
+                  .filter(Q(date_debut__isnull=True) | Q(date_debut__lte=jour))
+                  .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=jour)))

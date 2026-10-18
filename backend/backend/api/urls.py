@@ -66,6 +66,7 @@ router.register(r'user-allergies',         UserAllergieViewSet, basename='useral
 router.register(r'facturation/clotures', ClotureMensuelleViewSet, basename='cloture-mensuelle')
 router.register(r'factures',             FactureMensuelleViewSet, basename='facture-mensuelle')
 router.register(r'factures-prestataires', FacturePrestataireViewSet, basename='facture-prestataire')
+router.register(r'bannieres',            BanniereViewSet, basename='banniere')
 
 urlpatterns = [
     path('api/', include(router.urls)),

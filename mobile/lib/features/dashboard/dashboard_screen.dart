@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
@@ -39,11 +38,12 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  final _bannerKey = GlobalKey<_BannerSliderState>();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MenuProvider>().loadMenus();
       context.read<CommandeProvider>().loadMesCommandes();
     });
   }
@@ -72,8 +72,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         notificationPredicate: (notification) => notification.depth == 0,
         onRefresh: () async {
           await Future.wait([
-            context.read<MenuProvider>().loadMenus(),
             context.read<CommandeProvider>().loadMesCommandes(),
+            _bannerKey.currentState?.charger() ?? Future.value(),
           ]);
         },
         child: CustomScrollView(slivers: [
@@ -208,24 +208,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _BannerSlider(),
-              const SizedBox(height: 20),
+              _BannerSlider(key: _bannerKey),
+              const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Menu du jour
-                    Consumer<MenuProvider>(builder: (_, menuProv, __) {
-                      if (menuProv.loading)
+                    // Mon repas du jour (commande du jour de l'agent)
+                    Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
+                      if (cmdProv.isLoading) {
                         return const ShimmerCard(height: 130);
-                      final menu = menuProv.menuDuJourPour(context
-                          .read<AuthProvider>()
-                          .user
-                          ?.derniereAgenceId);
-                      return menu != null
-                          ? _MenuDuJourCard(menu: menu)
-                          : _NoMenuCard();
+                      }
+                      final duJour = cmdProv.mesCommandes.where((c) =>
+                          c.statut != StatutCommande.annulee &&
+                          (c.menuDetail?.isToday ?? false));
+                      return _RepasDuJourCard(commande: duJour.firstOrNull);
                     }),
 
                     const SizedBox(height: 24),
@@ -420,30 +418,45 @@ class _DashboardNotificationBell extends StatelessWidget {
 // ══════════════════════════════════════════════════════════════
 
 class _BannerSlider extends StatefulWidget {
-  const _BannerSlider();
+  const _BannerSlider({super.key});
   @override
   State<_BannerSlider> createState() => _BannerSliderState();
 }
 
+/// Bannières paramétrées dans l'administration web (Paramètres → Bannières).
+/// Aucune bannière active : le bloc n'est pas affiché.
 class _BannerSliderState extends State<_BannerSlider> {
   final PageController _ctrl = PageController(viewportFraction: 0.92);
   int _current = 0;
   Timer? _timer;
-
-  // slide1.svg (« Bonne fête du travail, 1er mai 2026 ») est datée :
-  // à remettre seulement pour l'occasion.
-  static const _slides = [
-    'assets/images/slide2.svg',
-    'assets/images/slide3.svg',
-    'assets/images/slide4.svg',
-  ];
+  List<Banniere> _bannieres = [];
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+    charger();
+  }
+
+  Future<void> charger() async {
+    try {
+      final liste = await banniereService.getBannieres();
       if (!mounted) return;
-      final next = (_current + 1) % _slides.length;
+      setState(() {
+        _bannieres = liste.where((b) => b.imageUrl != null).toList();
+        _current = 0;
+      });
+      _demarrerDefilement();
+    } catch (_) {
+      // Pas de bannière en cas d'erreur réseau : l'accueil reste utilisable
+    }
+  }
+
+  void _demarrerDefilement() {
+    _timer?.cancel();
+    if (_bannieres.length < 2) return;
+    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted || !_ctrl.hasClients) return;
+      final next = (_current + 1) % _bannieres.length;
       _ctrl.animateToPage(next,
           duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
     });
@@ -458,12 +471,13 @@ class _BannerSliderState extends State<_BannerSlider> {
 
   @override
   Widget build(BuildContext context) {
+    if (_bannieres.isEmpty) return const SizedBox(height: 4);
     return Column(children: [
       SizedBox(
         height: 170,
         child: PageView.builder(
           controller: _ctrl,
-          itemCount: _slides.length,
+          itemCount: _bannieres.length,
           onPageChanged: (i) => setState(() => _current = i),
           itemBuilder: (_, i) => AnimatedScale(
             duration: const Duration(milliseconds: 300),
@@ -481,58 +495,83 @@ class _BannerSliderState extends State<_BannerSlider> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                child: SvgPicture.asset(_slides[i],
-                    fit: BoxFit.cover, width: double.infinity, height: 154),
+                child: Image.network(
+                  _bannieres[i].imageUrl!,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: 154,
+                  semanticLabel: _bannieres[i].titre,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: AppColors.primary,
+                    child: const Center(
+                        child: Icon(Icons.image_not_supported_outlined,
+                            color: Colors.white54)),
+                  ),
+                ),
               ),
             ),
           ),
         ),
       ),
-      const SizedBox(height: 4),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(
-          _slides.length,
-          (i) => AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            width: _current == i ? 20 : 6,
-            height: 6,
-            decoration: BoxDecoration(
-                color: _current == i
-                    ? AppColors.accent
-                    : AppColors.accent.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(3)),
+      if (_bannieres.length > 1) ...[
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            _bannieres.length,
+            (i) => AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: _current == i ? 20 : 6,
+              height: 6,
+              decoration: BoxDecoration(
+                  color: _current == i
+                      ? AppColors.accent
+                      : AppColors.accent.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(3)),
+            ),
           ),
         ),
-      ),
+      ],
     ]);
   }
 }
 
 // ══════════════════════════════════════════════════════════════
-// MENU DU JOUR CARD
+// MON REPAS DU JOUR (fond vert)
 // ══════════════════════════════════════════════════════════════
 
-class _MenuDuJourCard extends StatelessWidget {
-  final Menu menu;
-  const _MenuDuJourCard({required this.menu});
+class _RepasDuJourCard extends StatelessWidget {
+  final Commande? commande;
+  const _RepasDuJourCard({this.commande});
+
+  static const _vertFonce = Color(0xFF15803D);
+  static const _vert = Color(0xFF22A55A);
 
   @override
   Widget build(BuildContext context) {
+    final c = commande;
+    final retire = c?.statut == StatutCommande.retiree;
+    final plat = c?.platDetail;
+    final menu = c?.menuDetail;
+
     return GestureDetector(
-      onTap: () => MainShellNavigator.of(context)?.navigateTo(1),
+      // Sans commande : les menus ; avec commande : le QR code à présenter
+      onTap: () => c == null
+          ? MainShellNavigator.of(context)?.navigateTo(1)
+          : Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const QrCodeScreen())),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-              colors: [AppColors.primary, AppColors.primaryLight],
+              colors: [_vertFonce, _vert],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-                color: AppColors.primary.withOpacity(0.3),
+                color: _vert.withOpacity(0.35),
                 blurRadius: 20,
                 offset: const Offset(0, 8))
           ],
@@ -551,53 +590,122 @@ class _MenuDuJourCard extends StatelessWidget {
                       fontWeight: FontWeight.w600)),
             ),
             const Spacer(),
-            const Icon(Icons.arrow_forward_ios_rounded,
-                color: Colors.white, size: 14),
+            if (c != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20)),
+                child: Text(retire ? 'Retiré' : 'À retirer',
+                    style: const TextStyle(
+                        color: _vertFonce,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700)),
+              ),
           ]),
-          const SizedBox(height: 12),
-          const Text('Menu du jour',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text(
-              '${menu.menuPlats.length} plat(s) • ${menu.agenceNom} • ${menu.typeEquipeLibelle}',
-              style: TextStyle(
-                  color: Colors.white.withOpacity(0.8), fontSize: 13)),
-          if (menu.menuPlats.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-                height: 60,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: menu.menuPlats.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) {
-                    final plat = menu.menuPlats[i].plat;
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.restaurant_rounded,
-                                color: Colors.white, size: 16),
-                            const SizedBox(height: 4),
-                            Text(plat.nom,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
-                          ]),
-                    );
-                  },
-                )),
+          const SizedBox(height: 14),
+          if (c == null) ...[
+            Row(children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(16)),
+                child: const Icon(Icons.no_meals_rounded,
+                    color: Colors.white, size: 26),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Pas de repas réservé pour aujourd\'hui',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700)),
+                      SizedBox(height: 4),
+                      Text('Pensez à réserver vos prochains repas : '
+                          'les commandes ferment 48 h avant.',
+                          style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    ]),
+              ),
+            ]),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                    foregroundColor: _vertFonce,
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12))),
+                icon: const Icon(Icons.restaurant_menu_rounded, size: 16),
+                label: const Text('Voir les menus'),
+                onPressed: () => MainShellNavigator.of(context)?.navigateTo(1),
+              ),
+            ),
+          ] else ...[
+            Row(children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  color: Colors.white.withOpacity(0.18),
+                  child: plat?.imageUrl != null
+                      ? Image.network(plat!.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(
+                              Icons.restaurant_rounded,
+                              color: Colors.white,
+                              size: 28))
+                      : const Icon(Icons.restaurant_rounded,
+                          color: Colors.white, size: 28),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Mon repas du jour',
+                          style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      const SizedBox(height: 2),
+                      Text(plat?.nom ?? 'Repas commandé',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 4),
+                      Text(
+                          [menu?.agenceNom, menu?.typeEquipeLibelle]
+                              .where((e) => e != null && e.isNotEmpty)
+                              .join(' • '),
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12)),
+                    ]),
+              ),
+            ]),
+            const SizedBox(height: 14),
+            Row(children: [
+              Icon(retire ? Icons.check_circle_rounded : Icons.qr_code_rounded,
+                  color: Colors.white, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                    retire
+                        ? 'Repas retiré — bon appétit !'
+                        : 'Présentez votre QR code au comptoir de la cantine.',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500)),
+              ),
+            ]),
           ],
         ]),
       ),
@@ -707,46 +815,6 @@ class _ServiceDuJourCardState extends State<_ServiceDuJourCard> {
           ),
         );
       },
-    );
-  }
-}
-
-class _NoMenuCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-          color: isDark ? AppColors.darkCard : AppColors.lightCard,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder)),
-      child: Row(children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-              color: AppColors.warning.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(14)),
-          child: const Icon(Icons.no_meals_rounded,
-              color: AppColors.warning, size: 24),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text("Pas de menu aujourd'hui",
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 2),
-          Text('Consultez les menus à venir',
-              style: Theme.of(context).textTheme.bodySmall),
-        ])),
-        TextButton(
-          onPressed: () => MainShellNavigator.of(context)?.navigateTo(1),
-          child: const Text('Voir'),
-        ),
-      ]),
     );
   }
 }
