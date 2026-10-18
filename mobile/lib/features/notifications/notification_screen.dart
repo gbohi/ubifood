@@ -38,7 +38,8 @@ class NotificationItem {
         titre: j['titre'] ?? '',
         message: j['message'] ?? '',
         lu: j['lu'] ?? false,
-        createdAt: DateTime.parse(j['created_at']),
+        // Affichage à l'heure du téléphone
+        createdAt: DateTime.parse(j['created_at']).toLocal(),
         commandeId: j['commande_id'],
         menuId: j['menu_id'],
       );
@@ -63,6 +64,7 @@ class NotificationProvider extends ChangeNotifier {
   List<NotificationItem> _notifications = [];
   int _nonLues = 0;
   bool _loading = false;
+  bool _dejaCharge = false;
   Timer? _timer;
 
   List<NotificationItem> get notifications => _notifications;
@@ -76,9 +78,18 @@ class NotificationProvider extends ChangeNotifier {
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => charger());
   }
 
+  /// Déconnexion : arrêt du rafraîchissement et oubli des notifications
+  /// du compte (téléphone partagé).
   void stopPolling() {
     _timer?.cancel();
     _timer = null;
+    _dejaCharge = false;
+    if (_notifications.isNotEmpty || _nonLues != 0 || _loading) {
+      _notifications = [];
+      _nonLues = 0;
+      _loading = false;
+      notifyListeners();
+    }
   }
 
   @override
@@ -88,6 +99,12 @@ class NotificationProvider extends ChangeNotifier {
   }
 
   Future<void> charger() async {
+    // Premier chargement : indicateur de chargement plutôt que l'état vide
+    // « Vous êtes à jour ! » affiché avant l'arrivée des données.
+    if (!_dejaCharge && !_loading) {
+      _loading = true;
+      notifyListeners();
+    }
     try {
       final res = await apiClient.get('/notifications/mes-notifications/');
       final data = res.data;
@@ -96,17 +113,22 @@ class NotificationProvider extends ChangeNotifier {
       _notifications = list
           .map((e) => NotificationItem.fromJson(e as Map<String, dynamic>))
           .toList();
-      notifyListeners();
+      _dejaCharge = true;
     } catch (_) {}
+    _loading = false;
+    notifyListeners();
   }
 
   Future<void> marquerLu(int id) async {
     try {
       await apiClient.patch('/notifications/$id/marquer-lu/');
+      final etaitNonLue = _notifications.any((n) => n.id == id && !n.lu);
       _notifications = _notifications
           .map((n) => n.id == id ? n.copyWith(lu: true) : n)
           .toList();
-      _nonLues = _notifications.where((n) => !n.lu).length;
+      // Le compteur du serveur couvre plus que les 50 notifications
+      // chargées : on le décrémente au lieu de recompter la liste locale.
+      if (etaitNonLue && _nonLues > 0) _nonLues--;
       notifyListeners();
     } catch (_) {}
   }
@@ -120,13 +142,27 @@ class NotificationProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> supprimer(int id) async {
+  /// Suppression optimiste : l'élément disparaît tout de suite de la liste
+  /// (exigé par Dismissible) et revient si le serveur refuse.
+  Future<bool> supprimer(int id) async {
+    final index = _notifications.indexWhere((n) => n.id == id);
+    if (index < 0) return true;
+    final notif = _notifications[index];
+    _notifications = List.of(_notifications)..removeAt(index);
+    if (!notif.lu && _nonLues > 0) _nonLues--;
+    notifyListeners();
     try {
       await apiClient.delete('/notifications/$id/supprimer/');
-      _notifications.removeWhere((n) => n.id == id);
-      _nonLues = _notifications.where((n) => !n.lu).length;
-      notifyListeners();
-    } catch (_) {}
+      return true;
+    } catch (_) {
+      if (!_notifications.any((n) => n.id == id)) {
+        _notifications = List.of(_notifications)
+          ..insert(index.clamp(0, _notifications.length), notif);
+        if (!notif.lu) _nonLues++;
+        notifyListeners();
+      }
+      return false;
+    }
   }
 
   Future<void> toutSupprimer() async {
@@ -286,8 +322,21 @@ class _NotificationScreenState extends State<NotificationScreen> {
                         notif: notif,
                         onTap: () {
                           if (!notif.lu) prov.marquerLu(notif.id);
+                          // Notification liée à un menu : retour à l'écran
+                          // principal pour le consulter / commander.
+                          if (notif.menuId != null) {
+                            Navigator.of(context).popUntil((r) => r.isFirst);
+                          }
                         },
-                        onDismiss: () => prov.supprimer(notif.id),
+                        onDismiss: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          final ok = await prov.supprimer(notif.id);
+                          if (!ok) {
+                            messenger.showSnackBar(const SnackBar(
+                                content: Text(
+                                    'Suppression impossible, réessayez.')));
+                          }
+                        },
                       );
                     },
                   ),

@@ -8,6 +8,8 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../shared/models/models.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../core/api/api_client.dart';
+import '../../core/services/cantine_service.dart';
 
 class RetraitScreen extends StatefulWidget {
   const RetraitScreen({super.key});
@@ -17,24 +19,97 @@ class RetraitScreen extends StatefulWidget {
 
 class _RetraitScreenState extends State<RetraitScreen> {
   final _badgeCtrl = TextEditingController();
-  Menu? _menuSelectionne;
+
+  // Liste propre à l'écran : menus des 7 derniers jours jusqu'à aujourd'hui
+  // (le serveur refuse le retrait sur un menu futur). MenuProvider reste la
+  // liste partagée des menus à venir pour la commande.
+  List<Menu> _menus = [];
+  bool _menusLoading = true;
+  String? _menusErreur;
+  int? _menuId; // sélection par ID : pas d'identité d'objet après rechargement
   bool _scanMode = false;
+  bool _visible = true;
+
+  Menu? get _menuSelectionne {
+    for (final m in _menus) {
+      if (m.id == _menuId) return m;
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Liste commune à tous les écrans : toutes les agences ; le filtre
-      // « agence du gestionnaire » est appliqué à l'affichage ci-dessous.
-      context.read<MenuProvider>().loadMenus();
+      if (!mounted) return;
       context.read<RetraitProvider>().reset();
+      _chargerMenus();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // MainShell garde les onglets en vie (IndexedStack) : un onglet masqué a
+    // ses tickers désactivés. On coupe alors le scanner pour libérer la caméra.
+    final visible = TickerMode.of(context);
+    if (!visible && _visible) _scanMode = false;
+    _visible = visible;
   }
 
   @override
   void dispose() {
     _badgeCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _chargerMenus() async {
+    final user = context.read<AuthProvider>().user;
+    final isAdmin = user?.isAdmin ?? false;
+    final agenceId = isAdmin ? null : user?.derniereAgenceId;
+
+    if (!isAdmin && agenceId == null) {
+      setState(() {
+        _menusLoading = false;
+        _menusErreur = 'Aucune agence assignée à votre compte.';
+      });
+      return;
+    }
+
+    setState(() {
+      _menusLoading = true;
+      _menusErreur = null;
+    });
+    try {
+      final menus = await menuService.getMenusRetrait(agenceId: agenceId);
+      if (!mounted) return;
+      final ancien = _menuId;
+      setState(() {
+        _menus = menus;
+        _menusLoading = false;
+        if (_menuSelectionne == null) {
+          _menuId = _menuParDefaut(menus, user?.derniereAgenceId)?.id;
+        }
+      });
+      if (_menuId != ancien) context.read<RetraitProvider>().reset();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _menusLoading = false;
+        _menusErreur =
+            messageErreurApi(e) ?? 'Erreur de chargement des menus';
+      });
+    }
+  }
+
+  /// Menu du jour de l'agence de l'utilisateur, sinon le plus récent
+  /// (liste triée du plus récent au plus ancien).
+  Menu? _menuParDefaut(List<Menu> menus, int? agenceId) {
+    if (menus.isEmpty) return null;
+    for (final m in menus) {
+      if (m.isToday && (agenceId == null || m.agenceId == agenceId)) return m;
+    }
+    return menus.first;
   }
 
   @override
@@ -44,6 +119,11 @@ class _RetraitScreenState extends State<RetraitScreen> {
       appBar: AppBar(
         title: const Text('Scannez le QR code'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _menusLoading ? null : _chargerMenus,
+            tooltip: 'Actualiser les menus',
+          ),
           IconButton(
             icon: Icon(_scanMode
                 ? Icons.keyboard_rounded
@@ -59,18 +139,37 @@ class _RetraitScreenState extends State<RetraitScreen> {
           // ── Sélection menu ────────────────────────────────
           Text('Menu concerné', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 10),
-          Consumer2<MenuProvider, AuthProvider>(
-              builder: (_, menuProv, auth, __) {
-            if (menuProv.loading) return const ShimmerCard(height: 56);
+          Consumer<AuthProvider>(builder: (_, auth, __) {
+            if (_menusLoading) return const ShimmerCard(height: 56);
 
-            // Filtrer côté client aussi par sécurité
-            final agenceId = (auth.user?.isAdmin ?? false) ? null : auth.user?.derniereAgenceId;
+            final isAdmin = auth.user?.isAdmin ?? false;
             final agenceNom = auth.user?.derniereAgence ?? '';
-            final menus = agenceId != null
-                ? menuProv.menus.where((m) => m.agenceId == agenceId).toList()
-                : menuProv.menus;
 
-            if (menus.isEmpty) {
+            if (_menusErreur != null) {
+              return Container(
+                padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+                decoration: BoxDecoration(
+                  color: AppColors.errorLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.error_outline_rounded,
+                      color: AppColors.error, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(_menusErreur!,
+                        style: const TextStyle(color: AppColors.error)),
+                  ),
+                  TextButton(
+                    onPressed: _chargerMenus,
+                    child: const Text('Réessayer'),
+                  ),
+                ]),
+              );
+            }
+
+            if (_menus.isEmpty) {
               return Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -82,8 +181,13 @@ class _RetraitScreenState extends State<RetraitScreen> {
                   const Icon(Icons.warning_amber_rounded,
                       color: AppColors.warning, size: 18),
                   const SizedBox(width: 8),
-                  Text('Aucun menu disponible pour $agenceNom',
-                      style: const TextStyle(color: AppColors.warning)),
+                  Expanded(
+                    child: Text(
+                        isAdmin || agenceNom.isEmpty
+                            ? 'Aucun menu disponible'
+                            : 'Aucun menu disponible pour $agenceNom',
+                        style: const TextStyle(color: AppColors.warning)),
+                  ),
                 ]),
               );
             }
@@ -97,27 +201,32 @@ class _RetraitScreenState extends State<RetraitScreen> {
                         isDark ? AppColors.darkBorder : AppColors.lightBorder),
               ),
               child: DropdownButtonHideUnderline(
-                child: DropdownButton<Menu>(
-                  value: _menuSelectionne,
+                child: DropdownButton<int>(
+                  value: _menuSelectionne?.id,
                   isExpanded: true,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   borderRadius: BorderRadius.circular(12),
-                  hint: Text('Menu de $agenceNom'),
-                  items: menus.map((m) {
+                  hint: Text(isAdmin || agenceNom.isEmpty
+                      ? 'Choisissez un menu'
+                      : 'Menu de $agenceNom'),
+                  items: _menus.map((m) {
                     final date = DateTime.tryParse(m.dateMenu);
                     final dateStr = date != null
                         ? DateFormat('EEE dd/MM/yyyy', 'fr_FR').format(date)
                         : m.dateMenu;
-                    final label = m.isToday
-                        ? "Aujourd'hui — $dateStr • ${m.agenceNom}"
-                        : "$dateStr • ${m.agenceNom}";
-                    return DropdownMenuItem(
-                      value: m,
-                      child: Text(label, overflow: TextOverflow.ellipsis),
+                    final parts = [
+                      m.isToday ? "Aujourd'hui — $dateStr" : dateStr,
+                      if (isAdmin && m.agenceNom.isNotEmpty) m.agenceNom,
+                      if (m.typeEquipeLibelle.isNotEmpty) m.typeEquipeLibelle,
+                    ];
+                    return DropdownMenuItem<int>(
+                      value: m.id,
+                      child: Text(parts.join(' • '),
+                          overflow: TextOverflow.ellipsis),
                     );
                   }).toList(),
-                  onChanged: (m) {
-                    setState(() => _menuSelectionne = m);
+                  onChanged: (id) {
+                    setState(() => _menuId = id);
                     context.read<RetraitProvider>().reset();
                   },
                 ),
@@ -131,7 +240,7 @@ class _RetraitScreenState extends State<RetraitScreen> {
           Text('Matricule', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 10),
 
-          if (_scanMode)
+          if (_scanMode && _visible)
             _ScannerWidget(onScan: _onBadgeScan)
           else
             Row(children: [
@@ -149,7 +258,7 @@ class _RetraitScreenState extends State<RetraitScreen> {
               const SizedBox(width: 10),
               Consumer<RetraitProvider>(
                 builder: (_, rProv, __) => ElevatedButton(
-                  onPressed: _menuSelectionne == null ? null : _rechercher,
+                  onPressed: rProv.loading ? null : _rechercher,
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size(56, 56),
                     padding: EdgeInsets.zero,
@@ -183,8 +292,10 @@ class _RetraitScreenState extends State<RetraitScreen> {
                   const Icon(Icons.error_outline_rounded,
                       color: AppColors.error),
                   const SizedBox(width: 10),
-                  Text(rProv.error!,
-                      style: const TextStyle(color: AppColors.error)),
+                  Expanded(
+                    child: Text(rProv.error!,
+                        style: const TextStyle(color: AppColors.error)),
+                  ),
                 ]),
               );
             }
@@ -203,7 +314,6 @@ class _RetraitScreenState extends State<RetraitScreen> {
             final result = rProv.result!;
             return _ResultatCard(
               result: result,
-              menu: _menuSelectionne!,
               onValider: () => _validerRetrait(rProv, result),
               loading: rProv.loading,
             );
@@ -214,6 +324,7 @@ class _RetraitScreenState extends State<RetraitScreen> {
   }
 
   void _onBadgeScan(String value) {
+    // Scanner coupé après une lecture, jusqu'au prochain appui sur « Scanner »
     setState(() {
       _badgeCtrl.text = value;
       _scanMode = false;
@@ -222,15 +333,21 @@ class _RetraitScreenState extends State<RetraitScreen> {
   }
 
   void _rechercher() {
-    if (_menuSelectionne == null || _badgeCtrl.text.trim().isEmpty) return;
-    context.read<RetraitProvider>().rechercherParBadge(
-          _badgeCtrl.text.trim(),
-          _menuSelectionne!.id,
-        );
+    final badge = _badgeCtrl.text.trim();
+    if (badge.isEmpty) return;
+    final menu = _menuSelectionne;
+    if (menu == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Sélectionnez d'abord le menu concerné.")));
+      return;
+    }
+    context.read<RetraitProvider>().rechercherParBadge(badge, menu.id);
   }
 
   void _validerRetrait(RetraitProvider rProv, RechercheParBadgeResult result) {
-    rProv.validerRetrait(result.userId, _menuSelectionne!.id, result.badge);
+    final menu = _menuSelectionne;
+    if (menu == null) return;
+    rProv.validerRetrait(result.userId, menu.id, result.badge);
   }
 }
 
@@ -238,13 +355,11 @@ class _RetraitScreenState extends State<RetraitScreen> {
 
 class _ResultatCard extends StatelessWidget {
   final RechercheParBadgeResult result;
-  final Menu menu;
   final VoidCallback onValider;
   final bool loading;
 
   const _ResultatCard({
     required this.result,
-    required this.menu,
     required this.onValider,
     required this.loading,
   });
@@ -338,10 +453,12 @@ class _ResultatCard extends StatelessWidget {
                   Icon(Icons.warning_amber_rounded,
                       color: AppColors.warning, size: 18),
                   SizedBox(width: 8),
-                  Text('Aucune commande en attente',
-                      style: TextStyle(
-                          color: AppColors.warning,
-                          fontWeight: FontWeight.w500)),
+                  Expanded(
+                    child: Text('Aucune commande en attente',
+                        style: TextStyle(
+                            color: AppColors.warning,
+                            fontWeight: FontWeight.w500)),
+                  ),
                 ]),
               )
             else

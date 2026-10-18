@@ -22,9 +22,11 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
   bool _loading = true;
   String? _erreur;
 
+  // Période par défaut : le mois en cours (avant : tout l'historique)
   DateTime? _dateDebut;
   DateTime? _dateFin;
-  String? _statutFiltre;
+  int _requete = 0;
+  bool _visible = true;
 
   void charger() => _charger();
 
@@ -32,7 +34,34 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
   void initState() {
     super.initState();
     _tabs = TabController(length: 4, vsync: this);
+    _moisCourant();
     WidgetsBinding.instance.addPostFrameCallback((_) => _charger());
+  }
+
+  void _moisCourant() {
+    final now = DateTime.now();
+    _dateDebut = DateTime(now.year, now.month, 1);
+    _dateFin = DateTime(now.year, now.month + 1, 0);
+  }
+
+  bool get _estMoisCourant {
+    final now = DateTime.now();
+    return _dateDebut == DateTime(now.year, now.month, 1) &&
+        _dateFin == DateTime(now.year, now.month + 1, 0);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // L'IndexedStack de MainShell désactive les tickers des onglets masqués :
+    // au retour sur l'onglet (ex. après un retrait validé), on recharge.
+    final visible = TickerMode.of(context);
+    if (visible && !_visible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _charger();
+      });
+    }
+    _visible = visible;
   }
 
   @override
@@ -43,9 +72,13 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
 
   Future<void> _charger() async {
     final auth = context.read<AuthProvider>();
+    final isAdmin = auth.user?.isAdmin ?? false;
     final agenceId = auth.user?.derniereAgenceId;
+    final num = ++_requete;
 
-    if (agenceId == null) {
+    // Admin : toutes les agences (le serveur ne filtre pas) ;
+    // gestionnaire : le serveur limite à son agence.
+    if (!isAdmin && agenceId == null) {
       setState(() {
         _loading = false;
         _erreur = 'Aucune agence assignée à votre compte.';
@@ -59,14 +92,14 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
     });
     try {
       final params = <String, dynamic>{
-        'agence': agenceId,
-        'page_size': 500,
+        if (!isAdmin) 'agence': agenceId,
       };
-      if (_dateDebut != null)
+      if (_dateDebut != null) {
         params['date_debut'] = DateFormat('yyyy-MM-dd').format(_dateDebut!);
-      if (_dateFin != null)
+      }
+      if (_dateFin != null) {
         params['date_fin'] = DateFormat('yyyy-MM-dd').format(_dateFin!);
-      if (_statutFiltre != null) params['statut'] = _statutFiltre;
+      }
 
       final res =
           await apiClient.get('/commandes/par-agence-periode/', params: params);
@@ -81,6 +114,7 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
         list = [];
       }
 
+      if (!mounted || num != _requete) return;
       setState(() {
         _commandes = list
             .map((e) => Commande.fromJson(e as Map<String, dynamic>))
@@ -88,6 +122,7 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
         _loading = false;
       });
     } catch (e) {
+      if (!mounted || num != _requete) return;
       setState(() {
         _erreur = messageErreurApi(e) ?? 'Erreur de chargement des commandes';
         _loading = false;
@@ -102,6 +137,12 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondaire =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final user = context.watch<AuthProvider>().user;
+    final isAdmin = user?.isAdmin ?? false;
+    final agenceNom = user?.derniereAgence ?? '';
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -109,7 +150,7 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
         bottom: TabBar(
           controller: _tabs,
           labelColor: AppColors.accent,
-          unselectedLabelColor: AppColors.lightTextSecondary,
+          unselectedLabelColor: secondaire,
           indicatorColor: AppColors.accent,
           indicatorSize: TabBarIndicatorSize.label,
           // ✅ isScrollable = true → chaque tab prend la place qu'il lui faut
@@ -122,7 +163,7 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
             _TabAvecBadge('Retirées', _filtrerParStatut('retiree').length,
                 color: AppColors.success),
             _TabAvecBadge('Annulées', _filtrerParStatut('annulee').length,
-                color: AppColors.lightTextSecondary),
+                color: secondaire),
           ],
         ),
       ),
@@ -130,14 +171,39 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
         _FiltreDateBar(
           dateDebut: _dateDebut,
           dateFin: _dateFin,
+          moisCourant: _estMoisCourant,
           onFiltrer: (debut, fin) {
+            if (debut != null && fin != null && debut.isAfter(fin)) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text(
+                      'La date de début doit précéder la date de fin.')));
+              return;
+            }
             setState(() {
-              _dateDebut = debut;
-              _dateFin = fin;
+              if (debut == null && fin == null) {
+                _moisCourant();
+              } else {
+                _dateDebut = debut;
+                _dateFin = fin;
+              }
             });
             _charger();
           },
         ),
+        if (isAdmin || agenceNom.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(children: [
+              Icon(Icons.store_mall_directory_outlined,
+                  size: 14, color: secondaire),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(isAdmin ? 'Toutes les agences' : agenceNom,
+                    style: TextStyle(fontSize: 12, color: secondaire),
+                    overflow: TextOverflow.ellipsis),
+              ),
+            ]),
+          ),
         if (!_loading && _erreur == null) _StatsBar(commandes: _commandes),
         Expanded(
           child: _loading
@@ -212,18 +278,21 @@ class _TabAvecBadge extends StatelessWidget {
 class _FiltreDateBar extends StatelessWidget {
   final DateTime? dateDebut;
   final DateTime? dateFin;
+  final bool moisCourant;
   final void Function(DateTime?, DateTime?) onFiltrer;
 
   const _FiltreDateBar({
     required this.dateDebut,
     required this.dateFin,
+    required this.moisCourant,
     required this.onFiltrer,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hasFiltre = dateDebut != null || dateFin != null;
+    // Bouton de retour au mois en cours (période par défaut)
+    final hasFiltre = !moisCourant;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
@@ -273,7 +342,7 @@ class _FiltreDateBar extends StatelessWidget {
             icon: const Icon(Icons.close_rounded, size: 18),
             color: AppColors.error,
             onPressed: () => onFiltrer(null, null),
-            tooltip: 'Effacer les filtres',
+            tooltip: 'Revenir au mois en cours',
           ),
         ],
       ]),
@@ -290,29 +359,31 @@ class _DateBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondaire =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final couleurActive = isDark ? AppColors.accent : AppColors.primary;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color:
-              active ? AppColors.primary.withOpacity(0.08) : Colors.transparent,
+          color: active ? couleurActive.withOpacity(0.08) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-              color: active ? AppColors.primary : AppColors.lightBorder),
+              color: active
+                  ? couleurActive
+                  : (isDark ? AppColors.darkBorder : AppColors.lightBorder)),
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.calendar_today_rounded,
-              size: 12,
-              color: active ? AppColors.primary : AppColors.lightTextSecondary),
+              size: 12, color: active ? couleurActive : secondaire),
           const SizedBox(width: 6),
           Flexible(
               child: Text(label,
                   style: TextStyle(
                       fontSize: 12,
-                      color: active
-                          ? AppColors.primary
-                          : AppColors.lightTextSecondary,
+                      color: active ? couleurActive : secondaire,
                       fontWeight: active ? FontWeight.w600 : FontWeight.w400),
                   overflow: TextOverflow.ellipsis)),
         ]),
@@ -347,7 +418,12 @@ class _StatsBar extends StatelessWidget {
         const SizedBox(width: 6),
         _StatChip('$retirees', 'Retirées', AppColors.success),
         const SizedBox(width: 6),
-        _StatChip('$annulees', 'Annulées', AppColors.lightTextSecondary),
+        _StatChip(
+            '$annulees',
+            'Annulées',
+            Theme.of(context).brightness == Brightness.dark
+                ? AppColors.darkTextSecondary
+                : AppColors.lightTextSecondary),
       ]),
     );
   }
@@ -429,7 +505,9 @@ class _CommandeGestionCard extends StatelessWidget {
     final dateMenu = commande.menuDetail?.dateMenu != null
         ? DateTime.tryParse(commande.menuDetail!.dateMenu)
         : null;
-    final dateCmde = DateTime.tryParse(commande.dateCommande);
+    final dateCmde = DateTime.tryParse(commande.dateCommande)?.toLocal();
+    final secondaire =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -478,14 +556,13 @@ class _CommandeGestionCard extends StatelessWidget {
 
                 // Employé
                 Row(children: [
-                  const Icon(Icons.person_outline_rounded,
-                      size: 12, color: AppColors.lightTextSecondary),
+                  Icon(Icons.person_outline_rounded,
+                      size: 12, color: secondaire),
                   const SizedBox(width: 3),
                   Expanded(
                     child: Text(
                       commande.userNom.isNotEmpty ? commande.userNom : '—',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.lightTextSecondary),
+                      style: TextStyle(fontSize: 12, color: secondaire),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -494,8 +571,8 @@ class _CommandeGestionCard extends StatelessWidget {
 
                 // Date menu + heure
                 Row(children: [
-                  const Icon(Icons.calendar_today_rounded,
-                      size: 12, color: AppColors.lightTextSecondary),
+                  Icon(Icons.calendar_today_rounded,
+                      size: 12, color: secondaire),
                   const SizedBox(width: 3),
                   Flexible(
                     child: Text(
@@ -503,20 +580,18 @@ class _CommandeGestionCard extends StatelessWidget {
                           ? DateFormat('EEE dd/MM/yyyy', 'fr_FR')
                               .format(dateMenu)
                           : '—',
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.lightTextSecondary),
+                      style: TextStyle(fontSize: 11, color: secondaire),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (dateCmde != null) ...[
                     const SizedBox(width: 6),
-                    const Icon(Icons.access_time_rounded,
-                        size: 12, color: AppColors.lightTextSecondary),
+                    Icon(Icons.access_time_rounded,
+                        size: 12, color: secondaire),
                     const SizedBox(width: 3),
                     Text(
                       DateFormat('HH:mm').format(dateCmde),
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.lightTextSecondary),
+                      style: TextStyle(fontSize: 11, color: secondaire),
                     ),
                   ],
                 ]),
