@@ -223,7 +223,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Consumer<MenuProvider>(builder: (_, menuProv, __) {
                       if (menuProv.loading)
                         return const ShimmerCard(height: 130);
-                      final menu = menuProv.menuDuJour;
+                      final menu = menuProv.menuDuJourPour(context
+                          .read<AuthProvider>()
+                          .user
+                          ?.derniereAgenceId);
                       return menu != null
                           ? _MenuDuJourCard(menu: menu)
                           : _NoMenuCard();

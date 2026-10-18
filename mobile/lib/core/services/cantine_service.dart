@@ -61,6 +61,9 @@ class MenuService {
       'date_menu__gte': dateDebut ??
           '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}',
       'page_size': 30,
+      // Le backend trie par -date_menu par défaut : on demande l'ordre
+      // croissant pour ne pas perdre les menus les plus proches (aujourd'hui)
+      'ordering': 'date_menu',
     };
     if (dateFin != null) params['date_menu__lte'] = dateFin;
     if (agenceId != null) params['agence'] = agenceId;

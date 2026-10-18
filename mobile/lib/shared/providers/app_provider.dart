@@ -156,7 +156,18 @@ class MenuProvider extends ChangeNotifier {
   bool get loading => _loading;
   String? get error => _error;
 
-  Menu? get menuDuJour => _menus.where((m) => m.isToday).firstOrNull;
+  Menu? get menuDuJour => menuDuJourPour(null);
+
+  /// Menu du jour, en privilégiant celui de l'agence de l'utilisateur
+  /// (sinon le premier menu du jour trouvé).
+  Menu? menuDuJourPour(int? agenceId) {
+    final duJour = _menus.where((m) => m.isToday);
+    if (agenceId != null) {
+      final memeAgence = duJour.where((m) => m.agenceId == agenceId);
+      if (memeAgence.isNotEmpty) return memeAgence.first;
+    }
+    return duJour.firstOrNull;
+  }
 
   /// [agenceId] : agence de l'agent connecté → seuls les menus de son agence
   /// sont chargés (avant : tous les menus de toutes les agences, tronqués à 10).
@@ -248,7 +259,14 @@ class CommandeProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final c = await commandeService.commander(menuId: menuId, platId: platId);
-      _mesCommandes.insert(0, c);
+      // Le serveur peut renvoyer une commande existante (re-commande après
+      // annulation) : on remplace l'élément au lieu de créer un doublon
+      final idx = _mesCommandes.indexWhere((e) => e.id == c.id);
+      if (idx != -1) {
+        _mesCommandes[idx] = c;
+      } else {
+        _mesCommandes.insert(0, c);
+      }
       _successMessage = 'Commande passée avec succès !';
       _state = CommandeState.success;
       notifyListeners();

@@ -22,17 +22,19 @@ class _MenuScreenState extends State<MenuScreen> {
   bool _depasseDelai(Menu menu) {
     final dateMenu = DateTime.tryParse(menu.dateMenu);
     if (dateMenu == null) return true;
-    final deadline = DateTime(dateMenu.year, dateMenu.month, dateMenu.day)
+    // Même règle que le serveur (Africa/Abidjan = UTC+0) : J-2 à minuit UTC
+    final deadline = DateTime.utc(dateMenu.year, dateMenu.month, dateMenu.day)
         .subtract(const Duration(hours: 48));
-    return DateTime.now().isAfter(deadline);
+    return DateTime.now().toUtc().isAfter(deadline);
   }
 
   String _delaiMessage(Menu menu) {
     final dateMenu = DateTime.tryParse(menu.dateMenu);
     if (dateMenu == null) return '';
-    final deadline = DateTime(dateMenu.year, dateMenu.month, dateMenu.day)
+    // Même règle que le serveur (Africa/Abidjan = UTC+0) : J-2 à minuit UTC
+    final deadline = DateTime.utc(dateMenu.year, dateMenu.month, dateMenu.day)
         .subtract(const Duration(hours: 48));
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc();
     if (now.isAfter(deadline)) return 'Délai de commande dépassé';
     final diff = deadline.difference(now);
     if (diff.inHours < 1) return 'Ferme dans ${diff.inMinutes} min';
@@ -770,8 +772,9 @@ class _BoutonCommander extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           'Vous avez déjà commandé "$platCmde" '
-          'chez $agenceCmde ce jour.\n'
-          'Annulez cette commande pour en passer une autre.',
+          'chez $agenceCmde ce jour.'
+          // Conseil d'annulation seulement si elle est encore possible
+          '${commandeCeJour.statut == StatutCommande.enAttente && !depasseDelai ? '\nAnnulez cette commande pour en passer une autre.' : ''}',
           style: TextStyle(fontSize: 11, color: secColor),
           textAlign: TextAlign.center,
         ),
@@ -847,7 +850,7 @@ class _BoutonCommander extends StatelessWidget {
               ]),
               content: const Text(
                 'Voulez-vous annuler cette commande ?\n\n'
-                '⚠️ Toute annulation après 48h avant le menu est définitive.',
+                '⚠️ Aucune annulation n\'est possible moins de 48 h avant la date du menu.',
               ),
               actions: [
                 TextButton(
@@ -862,16 +865,19 @@ class _BoutonCommander extends StatelessWidget {
                   onPressed: () async {
                     Navigator.pop(context);
                     final ok = await cmdProv.annuler(commandeId);
-                    if (ok && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: const Text('Commande annulée'),
-                        backgroundColor: AppColors.warning,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        margin: const EdgeInsets.all(12),
-                      ));
-                    }
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(ok
+                          ? 'Commande annulée'
+                          : (cmdProv.error ??
+                              'Impossible d\'annuler la commande')),
+                      backgroundColor:
+                          ok ? AppColors.warning : AppColors.error,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      margin: const EdgeInsets.all(12),
+                    ));
                   },
                   child: const Text('Oui, annuler'),
                 ),

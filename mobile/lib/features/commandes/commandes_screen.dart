@@ -142,9 +142,10 @@ class _CommandeCard extends StatelessWidget {
         ? DateTime.tryParse(commande.menuDetail!.dateMenu)
         : null;
     if (dateMenu == null) return true;
-    final deadline = DateTime(dateMenu.year, dateMenu.month, dateMenu.day)
+    // Même règle que le serveur (Africa/Abidjan = UTC+0) : J-2 à minuit UTC
+    final deadline = DateTime.utc(dateMenu.year, dateMenu.month, dateMenu.day)
         .subtract(const Duration(hours: 48));
-    return DateTime.now().isAfter(deadline);
+    return DateTime.now().toUtc().isAfter(deadline);
   }
 
   String get _delaiMessage {
@@ -152,9 +153,10 @@ class _CommandeCard extends StatelessWidget {
         ? DateTime.tryParse(commande.menuDetail!.dateMenu)
         : null;
     if (dateMenu == null) return '';
-    final deadline = DateTime(dateMenu.year, dateMenu.month, dateMenu.day)
+    // Même règle que le serveur (Africa/Abidjan = UTC+0) : J-2 à minuit UTC
+    final deadline = DateTime.utc(dateMenu.year, dateMenu.month, dateMenu.day)
         .subtract(const Duration(hours: 48));
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc();
     if (now.isAfter(deadline)) return 'Délai d\'annulation dépassé';
     final diff = deadline.difference(now);
     if (diff.inHours < 1)
@@ -366,7 +368,7 @@ class _CommandeCard extends StatelessWidget {
                     SizedBox(width: 6),
                     Expanded(
                         child: Text(
-                            'Toute annulation après 48h avant le menu est définitive.',
+                            'Aucune annulation n\'est possible moins de 48 h avant la date du menu.',
                             style: TextStyle(
                                 fontSize: 12, color: AppColors.warning))),
                   ]),
