@@ -52,6 +52,10 @@ export interface MenulistModel {
 
   // ── UI uniquement ──────────────────────────────────────────
   state?: boolean;
+
+  // ── Dates limites calculées par le serveur (délais paramétrés) ──
+  date_limite_commande?: string;    // ISO 8601
+  date_limite_annulation?: string;  // ISO 8601
 }
 
 /**

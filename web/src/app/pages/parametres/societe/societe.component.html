@@ -4,7 +4,7 @@
   <div class="col-xl-9">
     <div class="card">
       <div class="card-header">
-        <h5 class="mb-0"><i class="ph-buildings me-2"></i>Société — en-tête des factures</h5>
+        <h5 class="mb-0"><i class="ph-buildings me-2"></i>Société — en-tête des factures et délais de la cantine</h5>
         <small class="text-muted">
           Ces informations apparaissent sur les factures PDF des prestataires. Elles peuvent
           être modifiées à tout moment ; les montants des factures, eux, restent figés.
@@ -64,6 +64,29 @@
                           placeholder="Ex. coordonnées bancaires, capital social… (3 lignes maximum sur la facture)"></textarea>
               </div>
 
+              <div class="col-12 mt-4">
+                <h6 class="mb-1"><i class="ph-clock me-1"></i>Cantine — délais</h6>
+                <small class="text-muted">
+                  En heures avant le début du jour du menu. 0 = jusqu'à la veille à minuit ;
+                  24 = jusqu'à l'avant-veille à minuit ; 48 = jusqu'à trois jours avant, à minuit.
+                  Maximum 720 (30 jours). Les deux délais sont indépendants.
+                </small>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Délai de commande (heures) <span class="text-danger">*</span></label>
+                <input type="number" min="0" max="720" step="1" class="form-control" formControlName="delai_commande_heures"
+                       [class.is-invalid]="form.get('delai_commande_heures')?.invalid">
+                <div class="invalid-feedback">Nombre entier entre 0 et 720.</div>
+                <small class="text-muted">{{ exempleDelai('delai_commande_heures') }}</small>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Délai d'annulation (heures) <span class="text-danger">*</span></label>
+                <input type="number" min="0" max="720" step="1" class="form-control" formControlName="delai_annulation_heures"
+                       [class.is-invalid]="form.get('delai_annulation_heures')?.invalid">
+                <div class="invalid-feedback">Nombre entier entre 0 et 720.</div>
+                <small class="text-muted">{{ exempleDelai('delai_annulation_heures') }}</small>
+              </div>
+
               <div class="col-12">
                 <label class="form-label">Logo (PNG ou JPEG, 2 Mo maximum)</label>
                 <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -89,7 +112,7 @@
               <small class="text-muted">
                 @if (derniereModification) { Dernière modification : {{ derniereModification | date:'dd/MM/yyyy HH:mm' }} }
               </small>
-              <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+              <button type="submit" class="btn btn-primary" [disabled]="isSaving || form.invalid">
                 @if (isSaving) { <span class="spinner-border spinner-border-sm me-1" role="status"></span> }
                 @else { <i class="ph-floppy-disk me-1"></i> }
                 Enregistrer

@@ -10,19 +10,10 @@ import '../../core/widgets/common_widgets.dart';
 import '../../core/services/cantine_service.dart';
 import '../avis/avis_widgets.dart';
 
-// Même règle que le serveur (Africa/Abidjan = UTC+0) : J-2 à minuit UTC
-DateTime? _deadline(Menu menu) {
-  final dateMenu = DateTime.tryParse(menu.dateMenu);
-  if (dateMenu == null) return null;
-  return DateTime.utc(dateMenu.year, dateMenu.month, dateMenu.day)
-      .subtract(const Duration(hours: 48));
-}
+// Date limite de commande calculée par le serveur (délai paramétré)
+DateTime? _deadline(Menu menu) => menu.dateLimiteCommande;
 
-bool _depasseDelai(Menu menu) {
-  final deadline = _deadline(menu);
-  if (deadline == null) return true;
-  return DateTime.now().toUtc().isAfter(deadline);
-}
+bool _depasseDelai(Menu menu) => menu.commandeFermee;
 
 String _delaiMessage(Menu menu) {
   final deadline = _deadline(menu);
@@ -780,6 +771,9 @@ class _BoutonCommander extends StatelessWidget {
                   c.statut == StatutCommande.retiree);
         }).firstOrNull;
 
+    // Délai d'annulation : distinct du délai de commande
+    final annulationFermee = menu.annulationFermee;
+
     final estCePlatCeMenu =
         commandeCeMenu != null && commandeCeMenu.platDetail?.id == plat.id;
     final autrePlatCeMenu = commandeCeMenu != null && !estCePlatCeMenu;
@@ -802,7 +796,7 @@ class _BoutonCommander extends StatelessWidget {
           color: AppColors.warning,
           bg: AppColors.warningLight,
         ),
-        if (!depasseDelai) ...[
+        if (!annulationFermee) ...[
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
@@ -824,10 +818,10 @@ class _BoutonCommander extends StatelessWidget {
             ),
           ),
         ],
-        if (depasseDelai)
+        if (annulationFermee)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text('Annulation impossible — délai de 48h dépassé',
+            child: Text('Annulation impossible — date limite dépassée',
                 style: const TextStyle(fontSize: 11, color: AppColors.error),
                 textAlign: TextAlign.center),
           ),
@@ -843,7 +837,7 @@ class _BoutonCommander extends StatelessWidget {
           bg: secBg,
         ),
         // Conseil d'annulation seulement si elle est encore possible
-        if (commandeCeMenu.statut == StatutCommande.enAttente && !depasseDelai) ...[
+        if (commandeCeMenu.statut == StatutCommande.enAttente && !annulationFermee) ...[
           const SizedBox(height: 6),
           Text(
             'Annulez "${commandeCeMenu.platDetail?.nom ?? 'votre commande'}" '
@@ -871,7 +865,7 @@ class _BoutonCommander extends StatelessWidget {
           'Vous avez déjà commandé "$platCmde" '
           'chez $agenceCmde ce jour.'
           // Conseil d'annulation seulement si elle est encore possible
-          '${commandeCeJour.statut == StatutCommande.enAttente && !depasseDelai ? '\nAnnulez cette commande pour en passer une autre.' : ''}',
+          '${commandeCeJour.statut == StatutCommande.enAttente && !annulationFermee ? '\nAnnulez cette commande pour en passer une autre.' : ''}',
           style: TextStyle(fontSize: 11, color: secColor),
           textAlign: TextAlign.center,
         ),
@@ -952,9 +946,9 @@ class _BoutonCommander extends StatelessWidget {
                 SizedBox(width: 8),
                 Text('Annuler ?'),
               ]),
-              content: const Text(
-                'Voulez-vous annuler cette commande ?\n\n'
-                '⚠️ Aucune annulation n\'est possible moins de 48 h avant la date du menu.',
+              content: Text(
+                'Voulez-vous annuler cette commande ?'
+                '${menu.dateLimiteAnnulation != null ? '\n\nAnnulation possible jusqu\'au ${libelleDateLimite(menu.dateLimiteAnnulation!)}.' : ''}',
               ),
               actions: [
                 TextButton(

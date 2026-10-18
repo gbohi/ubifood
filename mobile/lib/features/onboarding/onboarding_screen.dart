@@ -50,7 +50,7 @@ const _slides = [
     sousTitre: 'Découvrez',
     description:
         'Consultez les menus de la semaine, filtrez par agence et équipe. '
-        'Commandez en 2 clics avant le délai de 48h.',
+        'Commandez en 2 clics avant la date limite.',
     couleur: Color(0xFF092440),
     couleurAccent: Color(0xFF5BD988),
     type: _SlideType.menu,

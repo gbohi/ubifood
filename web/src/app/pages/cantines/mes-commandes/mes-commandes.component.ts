@@ -123,9 +123,9 @@ export class MesCommandesComponent implements OnInit {
     this.store.dispatch(resetCommandeError());
   }
 
-  // ── Délai 48h ─────────────────────────────────────────────
-  isDelaiOk(dateMenu: string): boolean {
-    return this.commandeService.isDelaiOk(dateMenu);
+  // ── Date limite d'annulation (paramétrée par l'administrateur) ──
+  annulationOuverte(c: CommandeModel): boolean {
+    return this.commandeService.annulationOuverte(c.menu_detail);
   }
 
   // ── Vue ───────────────────────────────────────────────────

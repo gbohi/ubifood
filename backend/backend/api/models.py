@@ -546,8 +546,8 @@ class ParametresSociete(models.Model):
                                           help_text="Ex. coordonnées bancaires, capital social…")
     logo               = models.ImageField(upload_to='societe/', blank=True, null=True,
                                            validators=[FileExtensionValidator(['png', 'jpg', 'jpeg'])])
-    # Cantine : délais en heures avant le début du jour du menu (minuit).
-    # Ex. 48 → au plus tard l'avant-veille à minuit ; 0 → jusqu'à la veille à minuit.
+    # Cantine : délais en heures avant le début du jour du menu (00:00).
+    # Ex. menu du mercredi : 0 → mardi à minuit ; 24 → lundi à minuit ; 48 → dimanche à minuit.
     delai_commande_heures   = models.PositiveIntegerField(
         'Délai de commande (heures)', default=48, validators=[MaxValueValidator(720)],
         help_text="Nombre d'heures avant le jour du menu où les commandes se ferment.")

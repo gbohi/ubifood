@@ -48,7 +48,7 @@ export class ListeCommandesComponent implements OnInit {
   menus:        MenulistModel[] = [];
   agences:      any[]           = [];
   equipes:      any[]           = [];
-  annulationEnCours: { menuId: number; platId: number; platNom: string } | null = null;
+  annulationEnCours: { menuId: number; platId: number; platNom: string; limite?: string } | null = null;
   @ViewChild('annulationModal', { static: false }) annulationModal?: ModalDirective;
   mesCommandes: CommandeModel[] = [];
 
@@ -211,9 +211,17 @@ export class ListeCommandesComponent implements OnInit {
     );
   }
 
-  // ── Délai 48h ────────────────────────────────────────────
-  isDelaiOk(dateMenu: string): boolean {
-    return this.commandeService.isDelaiOk(dateMenu);
+  // ── Dates limites (paramétrées par l'administrateur) ─────
+  commandeOuverte(menu: MenulistModel): boolean {
+    return this.commandeService.commandeOuverte(menu);
+  }
+
+  libelleLimite(limite?: string): string {
+    return this.commandeService.libelleLimite(limite);
+  }
+
+  annulationOuverte(menu: MenulistModel): boolean {
+    return this.commandeService.annulationOuverte(menu);
   }
 
   // ── Commander un plat ────────────────────────────────────
@@ -223,8 +231,8 @@ export class ListeCommandesComponent implements OnInit {
   }
 
   // ── Annuler une commande (après confirmation) ─────────────
-  demanderAnnulation(menuId: number, platId: number, platNom?: string): void {
-    this.annulationEnCours = { menuId, platId, platNom: platNom ?? '' };
+  demanderAnnulation(menuId: number, platId: number, platNom?: string, limite?: string): void {
+    this.annulationEnCours = { menuId, platId, platNom: platNom ?? '', limite };
     this.annulationModal?.show();
   }
 

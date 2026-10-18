@@ -198,7 +198,7 @@
 
                       <!-- Action — getDateMenu() évite TS2532 sur menu_detail?.date_menu -->
                       <td>
-                        @if (c.statut === 'en_attente' && getDateMenu(c) && isDelaiOk(getDateMenu(c))) {
+                        @if (c.statut === 'en_attente' && annulationOuverte(c)) {
                           <button class="btn btn-subtle-danger btn-sm"
                                   [disabled]="isSubmitting"
                                   (click)="annuler(c)">
@@ -207,9 +207,9 @@
                             }
                             <i class="ph-x me-1"></i>Annuler
                           </button>
-                        } @else if (c.statut === 'en_attente' && getDateMenu(c) && !isDelaiOk(getDateMenu(c))) {
+                        } @else if (c.statut === 'en_attente') {
                           <span class="text-danger small">
-                            <i class="ph-lock me-1"></i>Délai passé
+                            <i class="ph-lock me-1"></i>Date limite d'annulation dépassée
                           </span>
                         } @else {
                           <span class="text-muted small">—</span>
@@ -284,7 +284,7 @@
 
                   <!-- Bouton annuler — getDateMenu() évite TS2532 -->
                   @if (c.statut === 'en_attente') {
-                    @if (getDateMenu(c) && isDelaiOk(getDateMenu(c))) {
+                    @if (annulationOuverte(c)) {
                       <button class="btn btn-outline-danger btn-sm w-100 mt-1"
                               [disabled]="isSubmitting"
                               (click)="annuler(c)">
@@ -295,7 +295,7 @@
                       </button>
                     } @else {
                       <small class="text-danger d-block text-center mt-1">
-                        <i class="ph-lock me-1"></i>Délai passé — annulation impossible
+                        <i class="ph-lock me-1"></i>Date limite d'annulation dépassée
                       </small>
                     }
                   }

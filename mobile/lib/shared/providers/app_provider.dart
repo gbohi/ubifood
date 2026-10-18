@@ -399,9 +399,6 @@ class CommandeProvider extends ChangeNotifier {
     if (msg.contains('déjà une commande')) {
       return 'Vous avez déjà commandé pour ce jour';
     }
-    if (msg.contains('48h')) {
-      return 'Délai de commande dépassé (48h avant le menu)';
-    }
     return msg.isNotEmpty ? msg : 'Erreur lors de la commande';
   }
 }

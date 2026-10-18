@@ -52,6 +52,9 @@ export class SocieteComponent implements OnInit {
       identifiant_fiscal: ['', [Validators.maxLength(100)]],
       registre_commerce:  ['', [Validators.maxLength(100)]],
       pied_de_page:       [''],
+      // Cantine : heures avant le début du jour du menu (minuit)
+      delai_commande_heures:   [48, [Validators.required, Validators.min(0), Validators.max(720), Validators.pattern(/^\d+$/)]],
+      delai_annulation_heures: [48, [Validators.required, Validators.min(0), Validators.max(720), Validators.pattern(/^\d+$/)]],
     });
     this.http.get<any>(this.url)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -59,6 +62,24 @@ export class SocieteComponent implements OnInit {
         next: data => { this._appliquer(data); this.isLoading = false; },
         error: err => { this.erreur = typeof err === 'string' ? err : 'Chargement impossible'; this.isLoading = false; },
       });
+  }
+
+  /** Exemple lisible : « Exemple — menu du mercredi : jusqu'au dimanche à minuit. » */
+  exempleDelai(champ: 'delai_commande_heures' | 'delai_annulation_heures'): string {
+    const heures = Number(this.form?.get(champ)?.value);
+    if (!Number.isInteger(heures) || heures < 0 || heures > 720) return '';
+    const debutMenu = new Date(2026, 0, 7);  // un mercredi, à minuit
+    const limite = new Date(debutMenu.getTime() - heures * 3600 * 1000);
+    const jours = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    const hh = `${String(limite.getHours()).padStart(2, '0')}:${String(limite.getMinutes()).padStart(2, '0')}`;
+    if (heures > 6 * 24) {
+      return `Exemple — menu du mercredi : fermeture ${Math.floor(heures / 24)} jours${heures % 24 ? ` et ${heures % 24} h` : ''} avant.`;
+    }
+    // 00:00 se lit « minuit » du jour précédent (fin de journée)
+    const quand = hh === '00:00'
+      ? `${jours[(limite.getDay() + 6) % 7]} à minuit`
+      : `${jours[limite.getDay()]} à ${hh}`;
+    return `Exemple — menu du mercredi : jusqu'au ${quand}.`;
   }
 
   private _appliquer(data: any): void {
@@ -132,7 +153,7 @@ export class SocieteComponent implements OnInit {
         next: data => {
           this._appliquer(data);
           this.isSaving = false;
-          this.message = 'Paramètres enregistrés. Les prochaines factures téléchargées utiliseront ces informations.';
+          this.message = 'Paramètres enregistrés. Les délais s\'appliquent immédiatement ; les prochaines factures utiliseront ces informations.';
         },
         error: err => {
           this.isSaving = false;

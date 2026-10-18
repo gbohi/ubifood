@@ -632,8 +632,8 @@ class _RepasDuJourCard extends StatelessWidget {
                               fontSize: 17,
                               fontWeight: FontWeight.w700)),
                       SizedBox(height: 4),
-                      Text('Pensez à réserver vos prochains repas : '
-                          'les commandes ferment 48 h avant.',
+                      Text('Pensez à réserver vos prochains repas '
+                          'avant la date limite de commande.',
                           style: TextStyle(color: Colors.white70, fontSize: 12)),
                     ]),
               ),

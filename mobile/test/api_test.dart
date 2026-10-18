@@ -3,6 +3,7 @@ import 'package:cantine_app/core/services/cantine_service.dart';
 import 'package:cantine_app/shared/models/models.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 DioException _erreur(dynamic data, {int status = 400}) {
   final options = RequestOptions(path: '/commandes/');
@@ -139,6 +140,28 @@ void main() {
       expect(r.derniers.single.auteur, 'Fatou K.');
       expect(ResumeAvisPlat.fromJson({'note_moyenne': null, 'nb_avis': 0})
           .noteMoyenne, isNull);
+    });
+  });
+
+  group('Dates limites du menu', () {
+    test('délais de commande et d\'annulation distincts, venus du serveur', () async {
+      await initializeDateFormatting('fr_FR', null);
+      final passe = DateTime.now().toUtc().subtract(const Duration(hours: 1));
+      final futur = DateTime.now().toUtc().add(const Duration(days: 2));
+      final m = Menu.fromJson({
+        'id': 1, 'date_menu': '2030-01-09',
+        'date_limite_commande': futur.toIso8601String(),
+        'date_limite_annulation': passe.toIso8601String(),
+      });
+      expect(m.commandeFermee, isFalse);
+      expect(m.annulationFermee, isTrue);
+      // Ancien serveur sans dates limites : le serveur tranche
+      final ancien = Menu.fromJson({'id': 2, 'date_menu': '2030-01-09'});
+      expect(ancien.commandeFermee, isFalse);
+      expect(ancien.annulationFermee, isFalse);
+      // 00:00 se lit « minuit » du jour précédent
+      expect(libelleDateLimite(DateTime(2026, 1, 7)), 'mardi 6 janvier à minuit');
+      expect(libelleDateLimite(DateTime(2026, 1, 7, 10)), 'mercredi 7 janvier à 10:00');
     });
   });
 }

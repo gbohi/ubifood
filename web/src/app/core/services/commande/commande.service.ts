@@ -105,11 +105,31 @@ export class CommandeService {
     return this.http.get<{ results: RetraitModel[] }>(`${this.apiUrl}/retraits/`, { params });
   }
 
-  // ── Utilitaire : délai 48h ────────────────────────────────
-  isDelaiOk(dateMenu: string): boolean {
-    const menuDate = new Date(dateMenu);
-    menuDate.setHours(0, 0, 0, 0);
-    const deadline = new Date(menuDate.getTime() - 48 * 60 * 60 * 1000);
-    return new Date() < deadline;
+  // ── Dates limites (délais paramétrés dans Paramètres → Société) ──
+  // Le serveur calcule les dates limites et refuse de toute façon une
+  // demande tardive : sans date fournie, on laisse le serveur trancher.
+  commandeOuverte(menu?: { date_limite_commande?: string } | null): boolean {
+    return this.avant(menu?.date_limite_commande);
+  }
+
+  annulationOuverte(menu?: { date_limite_annulation?: string } | null): boolean {
+    return this.avant(menu?.date_limite_annulation);
+  }
+
+  /** « 18/10 à minuit » ou « 18/10 à 10:00 » (00:00 = minuit du jour précédent). */
+  libelleLimite(limite?: string): string {
+    if (!limite) return '';
+    let d = new Date(limite);
+    const deux = (n: number) => String(n).padStart(2, '0');
+    let heure = `${deux(d.getHours())}:${deux(d.getMinutes())}`;
+    if (heure === '00:00') {
+      d = new Date(d.getTime() - 86400000);
+      heure = 'minuit';
+    }
+    return `${deux(d.getDate())}/${deux(d.getMonth() + 1)} à ${heure}`;
+  }
+
+  private avant(limite?: string): boolean {
+    return !limite || new Date() < new Date(limite);
   }
 }

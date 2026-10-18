@@ -815,8 +815,12 @@ def date_limite_annulation(date_menu, parametres=None):
 
 
 def libelle_date_limite(dt):
-    """Ex. « samedi 16/10/2026 à 00:00 » (heure locale)."""
+    """Ex. « dimanche 04/01/2026 à minuit » ou « lundi 05/01/2026 à 10:00 » (heure locale)."""
     dt = timezone.localtime(dt)
+    if (dt.hour, dt.minute) == (0, 0):
+        # 00:00 se lit « minuit » du jour précédent (fin de journée)
+        veille = dt - timedelta(days=1)
+        return f"{_JOURS[veille.weekday()]} {veille:%d/%m/%Y} à minuit"
     return f"{_JOURS[dt.weekday()]} {dt:%d/%m/%Y} à {dt:%H:%M}"
 
 

@@ -175,32 +175,25 @@ class _CommandeCard extends StatelessWidget {
   final Commande commande;
   const _CommandeCard({required this.commande});
 
+  // Date limite d'annulation calculée par le serveur (délai paramétré)
   bool get _depasseDelai {
-    final dateMenu = commande.menuDetail?.dateMenu != null
-        ? DateTime.tryParse(commande.menuDetail!.dateMenu)
-        : null;
-    if (dateMenu == null) return true;
-    // Même règle que le serveur (Africa/Abidjan = UTC+0) : J-2 à minuit UTC
-    final deadline = DateTime.utc(dateMenu.year, dateMenu.month, dateMenu.day)
-        .subtract(const Duration(hours: 48));
-    return DateTime.now().toUtc().isAfter(deadline);
+    final menu = commande.menuDetail;
+    if (menu == null) return true;
+    return menu.annulationFermee;
   }
 
   String get _delaiMessage {
-    final dateMenu = commande.menuDetail?.dateMenu != null
-        ? DateTime.tryParse(commande.menuDetail!.dateMenu)
-        : null;
-    if (dateMenu == null) return '';
-    // Même règle que le serveur (Africa/Abidjan = UTC+0) : J-2 à minuit UTC
-    final deadline = DateTime.utc(dateMenu.year, dateMenu.month, dateMenu.day)
-        .subtract(const Duration(hours: 48));
+    final deadline = commande.menuDetail?.dateLimiteAnnulation;
+    if (deadline == null) return '';
     final now = DateTime.now().toUtc();
-    if (now.isAfter(deadline)) return 'Délai d\'annulation dépassé';
+    if (now.isAfter(deadline)) return 'Date limite d\'annulation dépassée';
     final diff = deadline.difference(now);
-    if (diff.inHours < 1)
+    if (diff.inHours < 1) {
       return 'Annulation possible encore ${diff.inMinutes} min';
-    if (diff.inHours < 24)
+    }
+    if (diff.inHours < 24) {
       return 'Annulation possible encore ${diff.inHours}h${diff.inMinutes.remainder(60).toString().padLeft(2, '0')}';
+    }
     return 'Annulation possible encore ${diff.inDays}j ${diff.inHours.remainder(24)}h';
   }
 
@@ -376,7 +369,7 @@ class _CommandeCard extends StatelessWidget {
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
-                              'Annulation impossible — délai de 48h dépassé',
+                              'Annulation impossible — date limite dépassée',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                   fontSize: 12,
@@ -414,14 +407,16 @@ class _CommandeCard extends StatelessWidget {
                     color: AppColors.warningLight,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Row(children: [
-                    Icon(Icons.info_outline_rounded,
+                  child: Row(children: [
+                    const Icon(Icons.info_outline_rounded,
                         color: AppColors.warning, size: 16),
-                    SizedBox(width: 6),
+                    const SizedBox(width: 6),
                     Expanded(
                         child: Text(
-                            'Aucune annulation n\'est possible moins de 48 h avant la date du menu.',
-                            style: TextStyle(
+                            commande.menuDetail?.dateLimiteAnnulation != null
+                                ? 'Annulation possible jusqu\'au ${libelleDateLimite(commande.menuDetail!.dateLimiteAnnulation!)}.'
+                                : 'Une fois la date limite passée, l\'annulation n\'est plus possible.',
+                            style: const TextStyle(
                                 fontSize: 12, color: AppColors.warning))),
                   ]),
                 ),

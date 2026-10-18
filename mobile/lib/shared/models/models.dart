@@ -1,6 +1,18 @@
 // lib/shared/models/models.dart
 
+import 'package:intl/intl.dart';
 import '../../core/config.dart';
+
+/// Date limite lisible en heure locale : « dimanche 4 janvier à minuit »,
+/// « lundi 5 janvier à 10:00 » (00:00 se lit « minuit » du jour précédent).
+String libelleDateLimite(DateTime limite) {
+  var d = limite.toLocal();
+  if (d.hour == 0 && d.minute == 0) {
+    d = d.subtract(const Duration(days: 1));
+    return '${DateFormat('EEEE d MMMM', 'fr_FR').format(d)} à minuit';
+  }
+  return '${DateFormat('EEEE d MMMM', 'fr_FR').format(d)} à ${DateFormat('HH:mm').format(d)}';
+}
 
 // ── Helper : rendre une URL absolue ──────────────────────────
 String? _absoluteUrl(String? url) {
@@ -149,6 +161,11 @@ class Menu {
   final String typeEquipeLibelle;
   final List<MenuPlat> menuPlats;
 
+  /// Dates limites calculées par le serveur à partir des délais paramétrés
+  /// par l'administrateur (Paramètres → Société). Absentes : le serveur tranche.
+  final DateTime? dateLimiteCommande;
+  final DateTime? dateLimiteAnnulation;
+
   const Menu({
     required this.id,
     required this.dateMenu,
@@ -157,7 +174,16 @@ class Menu {
     required this.typeEquipeId,
     required this.typeEquipeLibelle,
     required this.menuPlats,
+    this.dateLimiteCommande,
+    this.dateLimiteAnnulation,
   });
+
+  bool get commandeFermee =>
+      dateLimiteCommande != null && DateTime.now().isAfter(dateLimiteCommande!);
+
+  bool get annulationFermee =>
+      dateLimiteAnnulation != null &&
+      DateTime.now().isAfter(dateLimiteAnnulation!);
 
   /// « Aujourd'hui » au sens du serveur (Africa/Abidjan = UTC+0)
   bool get isToday {
@@ -177,6 +203,10 @@ class Menu {
         menuPlats: (j['menu_plats'] as List? ?? [])
             .map((e) => MenuPlat.fromJson(e))
             .toList(),
+        dateLimiteCommande:
+            DateTime.tryParse(j['date_limite_commande'] ?? '')?.toUtc(),
+        dateLimiteAnnulation:
+            DateTime.tryParse(j['date_limite_annulation'] ?? '')?.toUtc(),
       );
 }
 
