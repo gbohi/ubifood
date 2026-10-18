@@ -159,8 +159,9 @@ class Menu {
     required this.menuPlats,
   });
 
+  /// « Aujourd'hui » au sens du serveur (Africa/Abidjan = UTC+0)
   bool get isToday {
-    final today = DateTime.now();
+    final today = DateTime.now().toUtc();
     final d = DateTime.tryParse(dateMenu);
     if (d == null) return false;
     return d.year == today.year && d.month == today.month && d.day == today.day;

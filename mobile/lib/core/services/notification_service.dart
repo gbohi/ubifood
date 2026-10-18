@@ -233,14 +233,27 @@ class NotificationService {
     try {
       final token = await _fcm.getToken();
       if (token != null) {
-        // Passé en paramètre (encodé) et non concaténé dans l'URL
+        // Passé en paramètre (encodé) et non concaténé dans l'URL ;
+        // hors ligne, on n'attend pas plus de 5 s
         await apiClient
-            .delete('/device-tokens/supprimer/', params: {'token': token});
+            .delete('/device-tokens/supprimer/', params: {'token': token})
+            .timeout(const Duration(seconds: 5));
       }
-      await _fcm.deleteToken();
-      debugPrint('✅ Token FCM supprimé');
     } catch (e) {
-      debugPrint('⚠️ Erreur suppression token : $e');
+      debugPrint('⚠️ Token FCM non supprimé côté serveur : $e');
+    } finally {
+      // Dans tous les cas, l'appareil ne reçoit plus les notifications du compte
+      await oublierTokenLocal();
+    }
+  }
+
+  /// Supprime le token FCM de l'appareil (session expirée, déconnexion).
+  /// Le serveur ne peut plus joindre l'appareil avec l'ancien token.
+  Future<void> oublierTokenLocal() async {
+    try {
+      await _fcm.deleteToken();
+    } catch (e) {
+      debugPrint('⚠️ Erreur suppression token local : $e');
     }
   }
 }

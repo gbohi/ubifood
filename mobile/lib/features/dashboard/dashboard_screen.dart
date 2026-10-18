@@ -217,7 +217,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     // Mon repas du jour (commande du jour de l'agent)
                     Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
-                      if (cmdProv.isLoading) {
+                      if (cmdProv.listLoading) {
                         return const ShimmerCard(height: 130);
                       }
                       final duJour = cmdProv.mesCommandes.where((c) =>
@@ -244,7 +244,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
 
                     Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
-                      if (cmdProv.isLoading) {
+                      if (cmdProv.listLoading) {
                         return GridView.count(
                           crossAxisCount: 2,
                           shrinkWrap: true,
@@ -320,7 +320,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
 
                     Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
-                      if (cmdProv.isLoading) {
+                      if (cmdProv.listLoading) {
                         return Column(
                             children:
                                 List.generate(3, (_) => const ShimmerCard()));

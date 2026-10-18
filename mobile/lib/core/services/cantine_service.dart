@@ -11,7 +11,10 @@ import '../../shared/models/models.dart';
 
 class AuthService {
   Future<AuthUser> login(String username, String password) async {
-    final tokenRes = await Dio().post(AppConfig.tokenUrl, data: {
+    final tokenRes = await Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+    )).post(AppConfig.tokenUrl, data: {
       'username': username,
       'password': password,
     });
@@ -19,7 +22,13 @@ class AuthService {
       tokenRes.data['access'],
       tokenRes.data['refresh'],
     );
-    return me();
+    try {
+      return await me();
+    } catch (_) {
+      // Profil illisible : pas de demi-connexion au prochain lancement
+      await apiClient.clearTokens();
+      rethrow;
+    }
   }
 
   /// Profil de l'utilisateur connecté (sert aussi à restaurer la session).
@@ -48,7 +57,26 @@ class AuthService {
 // MENU SERVICE
 // ══════════════════════════════════════════════════════════════
 
+String _iso(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
 class MenuService {
+  /// Menus pour le retrait : servis aujourd'hui ou les jours précédents
+  /// (un menu futur ne peut pas être retiré), du plus récent au plus ancien.
+  Future<List<Menu>> getMenusRetrait({int? agenceId, int joursPasses = 7}) async {
+    final today = DateTime.now().toUtc();
+    final params = <String, dynamic>{
+      'date_menu__lte': _iso(today),
+      'date_menu__gte': _iso(today.subtract(Duration(days: joursPasses))),
+      'ordering': '-date_menu',
+      'page_size': 200,
+    };
+    if (agenceId != null) params['agence'] = agenceId;
+    final res = await apiClient.get('/menus/', params: params);
+    final results = res.data['results'] as List? ?? res.data as List? ?? [];
+    return results.map((e) => Menu.fromJson(e)).toList();
+  }
+
   /// Menus à venir (date >= aujourd'hui)
   Future<List<Menu>> getMenus({
     String? dateDebut,
@@ -56,17 +84,17 @@ class MenuService {
     int? agenceId,
     int? typeEquipeId,
   }) async {
-    final today = DateTime.now();
+    // Dates au sens du serveur (Africa/Abidjan = UTC+0)
+    final today = DateTime.now().toUtc();
     final params = <String, dynamic>{
-      'date_menu__gte': dateDebut ??
-          '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}',
-      // Toutes agences et équipes : assez de lignes pour les jours à venir
-      'page_size': 100,
+      'date_menu__gte': dateDebut ?? _iso(today),
+      // Trois semaines à venir, toutes agences et équipes
+      'date_menu__lte': dateFin ?? _iso(today.add(const Duration(days: 21))),
+      'page_size': 500,
       // Le backend trie par -date_menu par défaut : on demande l'ordre
       // croissant pour ne pas perdre les menus les plus proches (aujourd'hui)
       'ordering': 'date_menu',
     };
-    if (dateFin != null) params['date_menu__lte'] = dateFin;
     if (agenceId != null) params['agence'] = agenceId;
     if (typeEquipeId != null) params['typeequipe'] = typeEquipeId;
 

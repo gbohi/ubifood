@@ -100,9 +100,17 @@ class ApiClient {
 
   Future<bool> _faireRefresh() async {
     final refresh = await _storage.read(key: _kRefreshToken);
-    if (refresh == null) return false;
+    if (refresh == null) {
+      // Jeton d'accès sans refresh : la session ne peut pas être prolongée
+      await clearTokens();
+      onSessionExpiree?.call();
+      return false;
+    }
     try {
-      final response = await Dio().post(
+      final response = await Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+      )).post(
         AppConfig.refreshUrl,
         data: {'refresh': refresh},
       );

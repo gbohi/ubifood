@@ -70,7 +70,7 @@ class CantineApp extends StatelessWidget {
           // ✅ NavigatorKey global — réutilise l'instance existante
           // au lieu d'en créer une nouvelle quand on tape une notification
           navigatorKey: navigatorKey,
-          title: 'Cantine',
+          title: 'UbiFood',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
@@ -101,6 +101,8 @@ class _AuthGateState extends State<_AuthGate> {
     // ✅ Tap sur notification (background/terminée)
     // → utilise navigatorKey pour naviguer sans recréer l'app
     notificationService.onMessageTap = (message) {
+      // Pas d'écran de notifications sans utilisateur connecté
+      if (!context.read<AuthProvider>().isLoggedIn) return;
       navigatorKey.currentState?.push(
         MaterialPageRoute(builder: (_) => const NotificationScreen()),
       );
@@ -108,6 +110,7 @@ class _AuthGateState extends State<_AuthGate> {
   }
 
   bool _pollingActif = false;
+  bool _horsLigne = false;
 
   Future<void> _checkAuth() async {
     // restoreSession() recharge le profil si un jeton est stocké :
@@ -115,25 +118,48 @@ class _AuthGateState extends State<_AuthGate> {
     final results = await Future.wait([
       context.read<AuthProvider>().restoreSession(),
       onboardingDejaVu(),
-      Future.delayed(const Duration(milliseconds: 2600)),
+      Future.delayed(const Duration(milliseconds: 1500)),
     ]);
-    final hasToken = results[0] as bool;
+    final etat = results[0] as EtatSession;
     final onbDone = results[1] as bool;
 
-    if (hasToken) {
-      await notificationService.registerTokenAfterLogin();
+    if (etat == EtatSession.connecte) {
+      // Sans attendre : l'envoi du token FCM ne doit pas retarder l'accueil
+      notificationService.registerTokenAfterLogin();
     }
 
     if (!mounted) return;
     setState(() {
       _checking = false;
-      _showOnboarding = !onbDone && !hasToken;
+      _horsLigne = etat == EtatSession.horsLigne;
+      _showOnboarding = !onbDone && etat == EtatSession.deconnecte;
     });
+  }
+
+  /// Déconnexion ou session expirée : fermer les écrans ouverts par-dessus
+  /// et vider les données du compte (téléphone partagé).
+  void _apresDeconnexion() {
+    navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    context.read<NotificationProvider>().stopPolling();
+    context.read<MenuProvider>().reset();
+    context.read<CommandeProvider>().reset();
+    context.read<RetraitProvider>().reset();
+    context.read<FacturationProvider>().reset();
   }
 
   @override
   Widget build(BuildContext context) {
     if (_checking) return const SplashScreen();
+
+    if (_horsLigne) {
+      return _HorsLigneScreen(onReessayer: () {
+        setState(() {
+          _checking = true;
+          _horsLigne = false;
+        });
+        _checkAuth();
+      });
+    }
 
     if (_showOnboarding) {
       return OnboardingScreen(
@@ -149,12 +175,54 @@ class _AuthGateState extends State<_AuthGate> {
           _pollingActif = auth.isLoggedIn;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            final notifs = context.read<NotificationProvider>();
-            auth.isLoggedIn ? notifs.startPolling() : notifs.stopPolling();
+            if (auth.isLoggedIn) {
+              context.read<NotificationProvider>().startPolling();
+            } else {
+              _apresDeconnexion();
+            }
           });
         }
         return auth.isLoggedIn ? const MainShell() : const LoginScreen();
       },
+    );
+  }
+}
+
+
+/// Serveur injoignable au démarrage alors qu'une session existe :
+/// on propose de réessayer au lieu de déconnecter l'utilisateur.
+class _HorsLigneScreen extends StatelessWidget {
+  final VoidCallback onReessayer;
+  const _HorsLigneScreen({required this.onReessayer});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.wifi_off_rounded, size: 56, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text('Serveur injoignable',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                  'Vérifiez votre connexion internet puis réessayez. '
+                  'Vous restez connecté.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: onReessayer,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Réessayer'),
+              ),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/api/api_client.dart';
 import '../models/models.dart';
 import '../../core/services/cantine_service.dart';
-import '../../core/services/notification_service.dart'; // ✅ AJOUTÉ
+import '../../core/services/notification_service.dart';
 
 // ══════════════════════════════════════════════════════════════
 // THEME PROVIDER — avec persistance SharedPreferences
@@ -54,6 +54,9 @@ class ThemeProvider extends ChangeNotifier {
 // AUTH PROVIDER
 // ══════════════════════════════════════════════════════════════
 
+/// Résultat de la restauration de session au démarrage.
+enum EtatSession { connecte, deconnecte, horsLigne }
+
 class AuthProvider extends ChangeNotifier {
   AuthUser? _user;
   bool _loading = false;
@@ -71,6 +74,8 @@ class AuthProvider extends ChangeNotifier {
   AuthProvider() {
     // Refresh token refusé par le serveur → retour à l'écran de connexion
     apiClient.onSessionExpiree = () {
+      // L'appareil ne doit plus recevoir les notifications de ce compte
+      notificationService.oublierTokenLocal();
       if (_user != null) {
         _user = null;
         notifyListeners();
@@ -81,20 +86,23 @@ class AuthProvider extends ChangeNotifier {
   /// Au démarrage : si un jeton est stocké, recharge le profil.
   /// Avant, l'utilisateur retombait toujours sur l'écran de connexion
   /// au redémarrage de l'app malgré un jeton valide.
-  Future<bool> restoreSession() async {
-    if (!await authService.isLoggedIn()) return false;
+  /// Hors ligne (serveur injoignable) : les jetons sont conservés et
+  /// l'écran propose de réessayer, au lieu de renvoyer à la connexion.
+  Future<EtatSession> restoreSession() async {
+    if (!await authService.isLoggedIn()) return EtatSession.deconnecte;
     try {
       _user = await authService.me();
       notifyListeners();
-      return true;
+      return EtatSession.connecte;
     } on DioException catch (e) {
       final code = e.response?.statusCode;
       if (code == 401 || code == 403) {
         await authService.logout();
+        return EtatSession.deconnecte;
       }
-      return false;
+      return EtatSession.horsLigne;
     } catch (_) {
-      return false;
+      return EtatSession.horsLigne;
     }
   }
 
@@ -120,7 +128,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    // ✅ Supprimer le token FCM AVANT de déconnecter
+    // Supprimer le token FCM AVANT de déconnecter
     // (l'API client a encore le token JWT valide à ce stade)
     await notificationService.deleteToken();
     await authService.logout();
@@ -137,7 +145,7 @@ class AuthProvider extends ChangeNotifier {
       }
       if (e.response == null) return 'Impossible de contacter le serveur';
     }
-    return 'Une erreur est survenue';
+    return messageErreurApi(e) ?? 'Une erreur est survenue';
   }
 }
 
@@ -175,12 +183,16 @@ class MenuProvider extends ChangeNotifier {
     _loading = true;
     _error = null;
     notifyListeners();
+    final gen = _generation;
     try {
-      _menus = await menuService.getMenus(agenceId: agenceId);
+      final menus = await menuService.getMenus(agenceId: agenceId);
+      if (gen != _generation) return;
+      _menus = menus;
       _loading = false;
       notifyListeners();
     } catch (e) {
-      _error = 'Erreur chargement menus';
+      if (gen != _generation) return;
+      _error = messageErreurApi(e) ?? 'Impossible de charger les menus';
       _loading = false;
       notifyListeners();
     }
@@ -188,6 +200,18 @@ class MenuProvider extends ChangeNotifier {
 
   void selectMenu(Menu m) {
     _selected = m;
+    notifyListeners();
+  }
+
+  int _generation = 0;
+
+  /// Déconnexion : rien ne doit rester du compte précédent.
+  void reset() {
+    _generation++;
+    _menus = [];
+    _selected = null;
+    _loading = false;
+    _error = null;
     notifyListeners();
   }
 }
@@ -210,7 +234,17 @@ class CommandeProvider extends ChangeNotifier {
   CommandeState get state => _state;
   String? get error => _error;
   String? get successMessage => _successMessage;
+  /// Action en cours (commander / annuler)
   bool get isLoading => _state == CommandeState.loading;
+
+  /// Chargement de la liste (distinct des actions : annuler ne doit plus
+  /// remplacer tout l'écran par des squelettes)
+  bool _listLoading = false;
+  bool get listLoading => _listLoading;
+  String? _listError;
+  String? get listError => _listError;
+  int _generation = 0;
+  Future<void>? _chargementEnCours;
 
   int get totalCommandes => _mesCommandes.length;
 
@@ -226,37 +260,37 @@ class CommandeProvider extends ChangeNotifier {
   int get annulees =>
       _mesCommandes.where((c) => c.statut == StatutCommande.annulee).length;
 
-  Future<void> loadMesCommandes() async {
-    _state = CommandeState.loading;
+  /// Plusieurs écrans demandent la liste au démarrage : un seul appel.
+  Future<void> loadMesCommandes() =>
+      _chargementEnCours ??= _charger().whenComplete(() => _chargementEnCours = null);
+
+  Future<void> _charger() async {
+    final gen = _generation;
+    _listLoading = true;
+    _listError = null;
     notifyListeners();
     try {
-      _mesCommandes = await commandeService.getMesCommandes();
-      _state = CommandeState.idle;
-      notifyListeners();
+      final liste = await commandeService.getMesCommandes();
+      if (gen != _generation) return;
+      _mesCommandes = liste;
     } catch (e) {
-      _error = 'Erreur chargement commandes';
-      _state = CommandeState.error;
-      notifyListeners();
+      if (gen != _generation) return;
+      _listError = messageErreurApi(e) ?? 'Impossible de charger vos commandes';
     }
+    _listLoading = false;
+    notifyListeners();
   }
 
-  Future<void> loadCommandesAgence(
-      {String? dateDebut, String? dateFin, int? agenceId}) async {
-    _state = CommandeState.loading;
+  /// Déconnexion : rien ne doit rester du compte précédent.
+  void reset() {
+    _generation++;
+    _chargementEnCours = null;
+    _mesCommandes = [];
+    _commandesAgence = [];
+    _state = CommandeState.idle;
+    _error = _successMessage = _listError = null;
+    _listLoading = false;
     notifyListeners();
-    try {
-      _commandesAgence = await commandeService.getCommandesParAgencePeriode(
-        dateDebut: dateDebut,
-        dateFin: dateFin,
-        agenceId: agenceId,
-      );
-      _state = CommandeState.idle;
-      notifyListeners();
-    } catch (e) {
-      _error = 'Erreur chargement commandes';
-      _state = CommandeState.error;
-      notifyListeners();
-    }
   }
 
   Future<bool> commander({required int menuId, required int platId}) async {
@@ -287,6 +321,7 @@ class CommandeProvider extends ChangeNotifier {
 
   Future<bool> annuler(int commandeId) async {
     _state = CommandeState.loading;
+    _error = null;
     notifyListeners();
     try {
       final updated = await commandeService.annuler(commandeId);
@@ -340,23 +375,28 @@ class RetraitProvider extends ChangeNotifier {
   String? get error => _error;
   String? get successMessage => _successMessage;
 
+  int _recherche = 0;
+
   Future<void> rechercherParBadge(String badge, int menuId) async {
+    // Une recherche déjà en cours (double scan, double appui) est ignorée
+    if (_loading) return;
+    final num = ++_recherche;
     _loading = true;
     _error = null;
+    _successMessage = null;
     _result = null;
     notifyListeners();
     try {
-      _result =
+      final r =
           await retraitService.rechercheParBadge(badge: badge, menuId: menuId);
-      _loading = false;
-      notifyListeners();
+      if (num != _recherche) return;
+      _result = r;
     } catch (e) {
-      _error = e.toString().contains('404')
-          ? 'Badge "$badge" non trouvé'
-          : 'Erreur de recherche';
-      _loading = false;
-      notifyListeners();
+      if (num != _recherche) return;
+      _error = messageErreurApi(e) ?? 'Erreur de recherche';
     }
+    _loading = false;
+    notifyListeners();
   }
 
   Future<bool> validerRetrait(int userId, int menuId, String badge) async {
@@ -393,6 +433,7 @@ class RetraitProvider extends ChangeNotifier {
   }
 
   void reset() {
+    _recherche++;
     _result = _error = _successMessage = null;
     _loading = false;
     notifyListeners();
@@ -421,6 +462,7 @@ class FacturationProvider extends ChangeNotifier {
     _loading = true;
     _error = null;
     notifyListeners();
+    final gen = _generation;
     try {
       final now = DateTime.now();
       final debut = DateTime(now.year - 1, now.month, 1);
@@ -429,12 +471,26 @@ class FacturationProvider extends ChangeNotifier {
           '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
       final lignes = await facturationService.mesLignes(
           dateDebut: iso(debut), dateFin: iso(fin));
+      if (gen != _generation) return;
       _lignes = {for (final l in lignes) l.commandeId: l};
       _loaded = true;
     } catch (e) {
-      _error = 'Impossible de charger la facturation';
+      if (gen != _generation) return;
+      _error = messageErreurApi(e) ?? 'Impossible de charger la facturation';
     }
     _loading = false;
+    notifyListeners();
+  }
+
+  int _generation = 0;
+
+  /// Déconnexion : rien ne doit rester du compte précédent.
+  void reset() {
+    _generation++;
+    _lignes = {};
+    _loaded = false;
+    _loading = false;
+    _error = null;
     notifyListeners();
   }
 
@@ -479,19 +535,29 @@ class AllergieProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
-      _allergies = await allergieService.getMesAllergies(auth.id);
+      final liste = await allergieService.getMesAllergies(auth.id);
+      if (auth.id != _authUser?.id) return;
+      _allergies = liste;
       _loading = false;
       notifyListeners();
     } catch (e) {
-      _error = 'Impossible de charger les allergies';
+      _error = messageErreurApi(e) ?? 'Impossible de charger les allergies';
       _loading = false;
       notifyListeners();
     }
   }
 
+  bool _existeDeja(String libelle, {int? sauf}) => _allergies.any((a) =>
+      a.id != sauf && a.libelle.trim().toLowerCase() == libelle.trim().toLowerCase());
+
   Future<bool> ajouter(String libelle) async {
     final auth = _getAuth();
     if (auth == null) return false;
+    if (_existeDeja(libelle)) {
+      _error = 'Cette allergie est déjà enregistrée';
+      notifyListeners();
+      return false;
+    }
     _submitting = true;
     _error = null;
     notifyListeners();
@@ -502,7 +568,7 @@ class AllergieProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = 'Erreur lors de l\'ajout';
+      _error = messageErreurApi(e) ?? 'Erreur lors de l\'ajout';
       _submitting = false;
       notifyListeners();
       return false;
@@ -512,6 +578,11 @@ class AllergieProvider extends ChangeNotifier {
   Future<bool> modifier(int id, String libelle) async {
     final auth = _getAuth();
     if (auth == null) return false;
+    if (_existeDeja(libelle, sauf: id)) {
+      _error = 'Cette allergie est déjà enregistrée';
+      notifyListeners();
+      return false;
+    }
     _submitting = true;
     _error = null;
     notifyListeners();
@@ -523,7 +594,7 @@ class AllergieProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = 'Erreur lors de la modification';
+      _error = messageErreurApi(e) ?? 'Erreur lors de la modification';
       _submitting = false;
       notifyListeners();
       return false;
@@ -541,7 +612,7 @@ class AllergieProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = 'Erreur lors de la suppression';
+      _error = messageErreurApi(e) ?? 'Erreur lors de la suppression';
       _submitting = false;
       notifyListeners();
       return false;
@@ -549,6 +620,13 @@ class AllergieProvider extends ChangeNotifier {
   }
 
   AuthUser? _authUser;
-  void setAuthUser(AuthUser? user) => _authUser = user;
+  void setAuthUser(AuthUser? user) {
+    // Changement de compte : on ne garde pas les allergies du précédent
+    if (user?.id != _authUser?.id) {
+      _allergies = [];
+      _error = null;
+    }
+    _authUser = user;
+  }
   AuthUser? _getAuth() => _authUser;
 }
