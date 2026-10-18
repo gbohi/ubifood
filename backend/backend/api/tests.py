@@ -353,7 +353,10 @@ class DashboardTests(BaseAPITestCase):
         Commande.objects.create(user=self.employe, menu=menu, plat=self.plat1, statut='retiree')
 
         self.assertEqual(self.client_pour(self.employe).get(f'{API}/dashboard-cantine/').status_code, 403)
-        r = self.client_pour(self.gestionnaire).get(f'{API}/dashboard-cantine/')
+        # Période explicite : sans dates, le tableau de bord prend le mois en cours
+        hier = str(menu.date_menu)
+        r = self.client_pour(self.gestionnaire).get(f'{API}/dashboard-cantine/',
+                                                    {'date_debut': hier, 'date_fin': hier})
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['fact_employe']['total_montant'], 1500.0)
         self.assertEqual(r.data['kpis']['total_retirees'], 1)
