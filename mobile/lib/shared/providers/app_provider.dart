@@ -254,6 +254,10 @@ class CommandeProvider extends ChangeNotifier {
   /// Action en cours (commander / annuler)
   bool get isLoading => _state == CommandeState.loading;
 
+  /// Commande en cours d'annulation (seule sa carte affiche le chargement)
+  int? _commandeEnCours;
+  int? get commandeEnCours => _commandeEnCours;
+
   /// Chargement de la liste (distinct des actions : annuler ne doit plus
   /// remplacer tout l'écran par des squelettes)
   bool _listLoading = false;
@@ -305,6 +309,7 @@ class CommandeProvider extends ChangeNotifier {
     _mesCommandes = [];
     _commandesAgence = [];
     _state = CommandeState.idle;
+    _commandeEnCours = null;
     _error = _successMessage = _listError = null;
     _listLoading = false;
     notifyListeners();
@@ -338,6 +343,7 @@ class CommandeProvider extends ChangeNotifier {
 
   Future<bool> annuler(int commandeId) async {
     _state = CommandeState.loading;
+    _commandeEnCours = commandeId;
     _error = null;
     notifyListeners();
     try {
@@ -346,11 +352,13 @@ class CommandeProvider extends ChangeNotifier {
       if (idx != -1) _mesCommandes[idx] = updated;
       _successMessage = 'Commande annulée';
       _state = CommandeState.success;
+      _commandeEnCours = null;
       notifyListeners();
       return true;
     } catch (e) {
       _error = messageErreurApi(e) ?? 'Impossible d\'annuler la commande';
       _state = CommandeState.error;
+      _commandeEnCours = null;
       notifyListeners();
       return false;
     }

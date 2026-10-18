@@ -66,9 +66,8 @@ class _RetraitScreenState extends State<RetraitScreen> {
   Future<void> _chargerMenus() async {
     final user = context.read<AuthProvider>().user;
     final isAdmin = user?.isAdmin ?? false;
-    final agenceId = isAdmin ? null : user?.derniereAgenceId;
 
-    if (!isAdmin && agenceId == null) {
+    if (!isAdmin && user?.derniereAgenceId == null) {
       setState(() {
         _menusLoading = false;
         _menusErreur = 'Aucune agence assignée à votre compte.';
@@ -81,7 +80,7 @@ class _RetraitScreenState extends State<RetraitScreen> {
       _menusErreur = null;
     });
     try {
-      final menus = await menuService.getMenusRetrait(agenceId: agenceId);
+      final menus = await menuService.getMenusRetrait();
       if (!mounted) return;
       final ancien = _menuId;
       setState(() {

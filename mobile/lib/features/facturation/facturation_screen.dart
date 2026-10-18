@@ -141,12 +141,10 @@ class _FacturationScreenState extends State<FacturationScreen>
 /// Période chargée par FacturationProvider.charger() (12 mois passés,
 /// 3 mois à venir) : hors de cette période, les montants ne sont pas connus
 /// (avant : « Tarif non défini » / « N/D » affichés à tort).
-bool _dansPeriodeFacturation(Commande c) {
+bool _dansPeriodeFacturation(FacturationProvider fact, Commande c) {
   final d = DateTime.tryParse(c.menuDetail?.dateMenu ?? '');
   if (d == null) return false;
-  final now = DateTime.now();
-  return !d.isBefore(DateTime(now.year - 1, now.month, 1)) &&
-      !d.isAfter(DateTime(now.year, now.month + 4, 0));
+  return !d.isBefore(fact.debutPeriode) && !d.isAfter(fact.finPeriode);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -583,7 +581,7 @@ class _MontantRepas extends StatelessWidget {
       return Text('Non facturé',
           style: TextStyle(fontSize: 11, color: secColor));
     }
-    if (!_dansPeriodeFacturation(commande)) {
+    if (!_dansPeriodeFacturation(fact, commande)) {
       return Text('—', style: TextStyle(fontSize: 11, color: secColor));
     }
     final montant = fact.montant(commande);
@@ -622,7 +620,7 @@ class _RecapMensuelTab extends StatelessWidget {
     // Mois hors de la période de facturation chargée : montants inconnus
     final actives = commandes
         .where((c) =>
-            c.statut != StatutCommande.annulee && _dansPeriodeFacturation(c))
+            c.statut != StatutCommande.annulee && _dansPeriodeFacturation(tarifProvider, c))
         .toList();
     final Map<String, List<Commande>> grouped = {};
     for (final c in actives) {
