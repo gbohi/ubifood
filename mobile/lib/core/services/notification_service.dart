@@ -66,8 +66,10 @@ class NotificationService {
     // 4. Configurer les handlers de réception
     _setupHandlers();
 
-    // 5. Récupérer et envoyer le token au backend
-    await _saveToken();
+    // 5. Le token est envoyé au backend après restauration de la session ou
+    // connexion (registerTokenAfterLogin) : l'attendre ici retardait le
+    // premier affichage de l'app (jusqu'à 15 s hors ligne) et l'envoyait
+    // sans jeton JWT quand personne n'était connecté.
 
     // 6. Écouter les refresh de token
     _fcm.onTokenRefresh.listen(_sendTokenToBackend);
@@ -106,8 +108,12 @@ class NotificationService {
     await _localNotif.initialize(
       const InitializationSettings(android: androidInit, iOS: iosInit),
       onDidReceiveNotificationResponse: (details) {
-        // L'utilisateur a tapé sur une notification locale
+        // L'utilisateur a tapé sur une notification locale (reçue app
+        // ouverte) : même ouverture que pour une notification FCM
+        // (avant : le tap ne faisait rien).
         debugPrint('🔔 Tap notification locale : ${details.payload}');
+        onMessageTap?.call(RemoteMessage(
+            data: {if (details.payload != null) 'type': details.payload!}));
       },
     );
 
@@ -201,6 +207,10 @@ class NotificationService {
 
   Future<void> _sendTokenToBackend(String token) async {
     try {
+      // Personne n'est connecté (token FCM renouvelé après déconnexion) :
+      // l'appel finirait en 401 et déclencherait une « session expirée ».
+      if (!await apiClient.hasToken()) return;
+
       final platform = Platform.isAndroid
           ? 'android'
           : Platform.isIOS
@@ -231,7 +241,8 @@ class NotificationService {
 
   Future<void> deleteToken() async {
     try {
-      final token = await _fcm.getToken();
+      final token =
+          await _fcm.getToken().timeout(const Duration(seconds: 5));
       if (token != null) {
         // Passé en paramètre (encodé) et non concaténé dans l'URL ;
         // hors ligne, on n'attend pas plus de 5 s
@@ -251,7 +262,9 @@ class NotificationService {
   /// Le serveur ne peut plus joindre l'appareil avec l'ancien token.
   Future<void> oublierTokenLocal() async {
     try {
-      await _fcm.deleteToken();
+      // Hors ligne, la suppression peut ne jamais aboutir : la déconnexion
+      // ne doit pas rester bloquée
+      await _fcm.deleteToken().timeout(const Duration(seconds: 5));
     } catch (e) {
       debugPrint('⚠️ Erreur suppression token local : $e');
     }

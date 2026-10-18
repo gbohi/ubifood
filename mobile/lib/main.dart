@@ -28,7 +28,13 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  await notificationService.init();
+  // Un échec des notifications (permissions, services Google absents…)
+  // ne doit pas empêcher l'application de démarrer
+  try {
+    await notificationService.init();
+  } catch (e) {
+    debugPrint('⚠️ Notifications indisponibles : $e');
+  }
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -101,12 +107,34 @@ class _AuthGateState extends State<_AuthGate> {
     // ✅ Tap sur notification (background/terminée)
     // → utilise navigatorKey pour naviguer sans recréer l'app
     notificationService.onMessageTap = (message) {
-      // Pas d'écran de notifications sans utilisateur connecté
-      if (!context.read<AuthProvider>().isLoggedIn) return;
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => const NotificationScreen()),
-      );
+      if (!mounted) return;
+      // Pas encore connecté (app lancée par la notification : la session est
+      // en cours de restauration) → ouverture dès la connexion.
+      // Avant : le tap était ignoré et l'écran ne s'ouvrait jamais.
+      if (!context.read<AuthProvider>().isLoggedIn) {
+        _notifEnAttente = true;
+        return;
+      }
+      _ouvrirNotifications();
     };
+  }
+
+  /// Notification tapée avant que la session soit restaurée
+  bool _notifEnAttente = false;
+  bool _notifOuvertes = false;
+
+  void _ouvrirNotifications() {
+    _notifEnAttente = false;
+    // Déjà affiché : pas de second écran par-dessus
+    if (_notifOuvertes) return;
+    final nav = navigatorKey.currentState;
+    if (nav == null) return;
+    // La notification vient d'arriver : liste à jour sans attendre le polling
+    context.read<NotificationProvider>().charger();
+    _notifOuvertes = true;
+    nav
+        .push(MaterialPageRoute(builder: (_) => const NotificationScreen()))
+        .whenComplete(() => _notifOuvertes = false);
   }
 
   bool _pollingActif = false;
@@ -126,6 +154,10 @@ class _AuthGateState extends State<_AuthGate> {
     if (etat == EtatSession.connecte) {
       // Sans attendre : l'envoi du token FCM ne doit pas retarder l'accueil
       notificationService.registerTokenAfterLogin();
+    } else if (etat == EtatSession.deconnecte) {
+      // Plus de session : la notification tapée ne concerne pas le
+      // prochain compte qui se connectera
+      _notifEnAttente = false;
     }
 
     if (!mounted) return;
@@ -177,6 +209,7 @@ class _AuthGateState extends State<_AuthGate> {
             if (!mounted) return;
             if (auth.isLoggedIn) {
               context.read<NotificationProvider>().startPolling();
+              if (_notifEnAttente) _ouvrirNotifications();
             } else {
               _apresDeconnexion();
             }

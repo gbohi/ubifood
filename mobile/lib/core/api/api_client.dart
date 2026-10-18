@@ -17,11 +17,35 @@ const _kRefreshToken = 'refresh_token';
 /// il faut le lire ici.
 String? messageErreurApi(Object e) {
   if (e is! DioException) return null;
+
+  // Pas de réponse : réseau coupé ou serveur injoignable (avant : null, et
+  // chaque écran affichait un message générique sans rapport avec la cause).
+  if (e.response == null) {
+    switch (e.type) {
+      case DioExceptionType.cancel:
+        return null;
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+        return 'Le serveur met trop de temps à répondre. Réessayez.';
+      default:
+        return 'Impossible de contacter le serveur. '
+            'Vérifiez votre connexion internet.';
+    }
+  }
+
+  final code = e.response?.statusCode ?? 0;
+  if (code == 429) {
+    return 'Trop de tentatives. Réessayez dans quelques minutes.';
+  }
   final data = e.response?.data;
 
   String? premier(dynamic v) {
     if (v == null) return null;
-    if (v is String) return v;
+    // Page HTML (erreur nginx / Django en mode debug) : jamais affichée brute
+    if (v is String) {
+      final t = v.trim();
+      return t.isEmpty || t.startsWith('<') ? null : t;
+    }
     if (v is List && v.isNotEmpty) return premier(v.first);
     if (v is Map) {
       for (final cle in ['detail', 'error', 'message', 'non_field_errors']) {
@@ -36,7 +60,11 @@ String? messageErreurApi(Object e) {
     return null;
   }
 
-  return premier(data);
+  final message = premier(data);
+  if (message == null && code >= 500) {
+    return 'Le serveur rencontre un problème. Réessayez plus tard.';
+  }
+  return message;
 }
 
 class ApiClient {
@@ -116,6 +144,11 @@ class ApiClient {
       );
       await _storage.write(
           key: _kAccessToken, value: response.data['access'] as String);
+      // Rotation des refresh tokens (si activée côté serveur)
+      final nouveauRefresh = response.data['refresh'];
+      if (nouveauRefresh is String) {
+        await _storage.write(key: _kRefreshToken, value: nouveauRefresh);
+      }
       return true;
     } on DioException catch (e) {
       // Refresh refusé par le serveur (expiré / révoqué) → vraie déconnexion.
@@ -124,6 +157,10 @@ class ApiClient {
         await clearTokens();
         onSessionExpiree?.call();
       }
+      return false;
+    } catch (_) {
+      // Réponse inattendue : la requête d'origine échoue normalement
+      // (une exception ici bloquerait l'intercepteur).
       return false;
     }
   }

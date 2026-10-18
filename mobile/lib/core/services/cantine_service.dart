@@ -42,7 +42,10 @@ class AuthService {
     try {
       final refresh = await apiClient.getRefreshToken();
       if (refresh != null) {
-        await apiClient.post('/users/logout/', data: {'refresh': refresh});
+        // Hors ligne : on n'attend pas plus de 5 s pour déconnecter
+        await apiClient
+            .post('/users/logout/', data: {'refresh': refresh})
+            .timeout(const Duration(seconds: 5));
       }
     } catch (_) {
       // Hors ligne ou session déjà expirée : la déconnexion locale suffit.
@@ -70,6 +73,8 @@ class MenuService {
       'date_menu__gte': _iso(today.subtract(Duration(days: joursPasses))),
       'ordering': '-date_menu',
       'page_size': 200,
+      // Gestionnaire : uniquement les menus de ses agences (admin : tous)
+      'gerees': 1,
     };
     if (agenceId != null) params['agence'] = agenceId;
     final res = await apiClient.get('/menus/', params: params);

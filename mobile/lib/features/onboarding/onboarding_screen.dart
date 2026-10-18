@@ -129,9 +129,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
   }
 
+  bool _termine = false;
+
   Future<void> _terminer() async {
-    await marquerOnboardingVu();
-    widget.onTermine();
+    if (_termine) return;
+    _termine = true;
+    try {
+      await marquerOnboardingVu();
+    } catch (_) {
+      // Stockage indisponible : l'onboarding sera simplement revu
+    }
+    // Toujours passer à la connexion (avant : bloqué si l'écriture échouait)
+    if (mounted) widget.onTermine();
   }
 
   @override
@@ -278,49 +287,57 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           ),
 
                           // Bouton suivant / commencer
-                          GestureDetector(
-                            onTap: _suivant,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              width: _page == _slides.length - 1 ? 120 : 46,
-                              height: 46,
-                              decoration: BoxDecoration(
-                                color: slide.couleurAccent,
-                                borderRadius: BorderRadius.circular(23),
-                                boxShadow: [
-                                  BoxShadow(
-                                      color:
-                                          slide.couleurAccent.withOpacity(0.4),
-                                      blurRadius: 16,
-                                      offset: const Offset(0, 6))
-                                ],
-                              ),
-                              child: Center(
-                                child: _page == _slides.length - 1
-                                    ? Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8),
-                                        child: FittedBox(
-                                          fit: BoxFit.scaleDown,
-                                          child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text('Démarrer',
-                                                    style: TextStyle(
-                                                        fontSize: 13,
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                        color: slide.couleur)),
-                                                const SizedBox(width: 4),
-                                                Icon(
-                                                    Icons.arrow_forward_rounded,
-                                                    size: 14,
-                                                    color: slide.couleur),
-                                              ]),
-                                        ),
-                                      )
-                                    : Icon(Icons.arrow_forward_rounded,
-                                        size: 20, color: slide.couleur),
+                          Semantics(
+                            button: true,
+                            label: _page == _slides.length - 1
+                                ? 'Démarrer'
+                                : 'Suivant',
+                            child: GestureDetector(
+                              onTap: _suivant,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                width: _page == _slides.length - 1 ? 120 : 46,
+                                height: 46,
+                                decoration: BoxDecoration(
+                                  color: slide.couleurAccent,
+                                  borderRadius: BorderRadius.circular(23),
+                                  boxShadow: [
+                                    BoxShadow(
+                                        color: slide.couleurAccent
+                                            .withOpacity(0.4),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 6))
+                                  ],
+                                ),
+                                child: Center(
+                                  child: _page == _slides.length - 1
+                                      ? Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8),
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text('Démarrer',
+                                                      style: TextStyle(
+                                                          fontSize: 13,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          color:
+                                                              slide.couleur)),
+                                                  const SizedBox(width: 4),
+                                                  Icon(
+                                                      Icons
+                                                          .arrow_forward_rounded,
+                                                      size: 14,
+                                                      color: slide.couleur),
+                                                ]),
+                                          ),
+                                        )
+                                      : Icon(Icons.arrow_forward_rounded,
+                                          size: 20, color: slide.couleur),
+                                ),
                               ),
                             ),
                           ),

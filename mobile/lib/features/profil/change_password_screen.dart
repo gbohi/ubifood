@@ -87,6 +87,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 prefixIcon: const Icon(Icons.lock_rounded,
                     color: AppColors.accent, size: 20),
                 suffixIcon: IconButton(
+                  tooltip: _showAncien
+                      ? 'Masquer le mot de passe'
+                      : 'Afficher le mot de passe',
                   icon: Icon(
                       _showAncien
                           ? Icons.visibility_off_rounded
@@ -116,6 +119,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 prefixIcon: const Icon(Icons.lock_reset_rounded,
                     color: AppColors.accent, size: 20),
                 suffixIcon: IconButton(
+                  tooltip: _showNouveau
+                      ? 'Masquer le mot de passe'
+                      : 'Afficher le mot de passe',
                   icon: Icon(
                       _showNouveau
                           ? Icons.visibility_off_rounded
@@ -173,6 +179,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                             ? AppColors.success
                             : AppColors.error),
                   IconButton(
+                    tooltip: _showConfirm
+                        ? 'Masquer le mot de passe'
+                        : 'Afficher le mot de passe',
                     icon: Icon(
                         _showConfirm
                             ? Icons.visibility_off_rounded

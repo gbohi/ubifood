@@ -37,6 +37,30 @@ void main() {
           'Plat invalide');
     });
 
+    test('messages lisibles sans corps exploitable', () {
+      final options = RequestOptions(path: '/menus/');
+      expect(
+          messageErreurApi(DioException(
+              requestOptions: options,
+              type: DioExceptionType.connectionError)),
+          contains('Impossible de contacter le serveur'));
+      expect(
+          messageErreurApi(DioException(
+              requestOptions: options,
+              type: DioExceptionType.receiveTimeout)),
+          contains('trop de temps'));
+      // Page HTML d'erreur : jamais affichée brute
+      expect(
+          messageErreurApi(
+              _erreur('<html><body>502 Bad Gateway</body></html>', status: 502)),
+          'Le serveur rencontre un problème. Réessayez plus tard.');
+      expect(messageErreurApi(_erreur('<!DOCTYPE html>', status: 404)), isNull);
+      expect(
+          messageErreurApi(
+              _erreur({'detail': 'Request was throttled.'}, status: 429)),
+          'Trop de tentatives. Réessayez dans quelques minutes.');
+    });
+
     test('renvoie null hors erreur HTTP', () {
       expect(messageErreurApi(Exception('x')), isNull);
       expect(messageErreurApi(_erreur(null)), isNull);

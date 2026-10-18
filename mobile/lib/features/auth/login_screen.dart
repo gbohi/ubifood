@@ -52,8 +52,10 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
     final auth = context.read<AuthProvider>();
+    // Connexion déjà en cours (touche « Entrée » pendant le chargement)
+    if (auth.loading) return;
+    if (!_formKey.currentState!.validate()) return;
     await auth.login(_usernameCtrl.text.trim(), _passwordCtrl.text);
     // Navigation gérée automatiquement par Consumer<AuthProvider> dans main.dart
   }
@@ -159,6 +161,9 @@ class _LoginScreenState extends State<LoginScreen>
                               prefixIcon: const Icon(Icons.lock_outline_rounded,
                                   color: AppColors.primary),
                               suffixIcon: IconButton(
+                                tooltip: _obscure
+                                    ? 'Afficher le mot de passe'
+                                    : 'Masquer le mot de passe',
                                 icon: Icon(
                                   _obscure
                                       ? Icons.visibility_outlined
@@ -218,7 +223,9 @@ class _LoginScreenState extends State<LoginScreen>
                 const SizedBox(height: 24),
 
                 // ── Mot de passe oublié ───────────────────────
-                GestureDetector(
+                // InkWell : annoncé comme un bouton par les lecteurs d'écran
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
                   onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(

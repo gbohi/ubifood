@@ -47,7 +47,7 @@ class AppButton extends StatelessWidget {
               side: BorderSide(color: color ?? AppColors.primary),
               minimumSize: Size(width ?? double.infinity, 50),
             ),
-            child: _child(context),
+            child: _child(context, color ?? AppColors.primary),
           )
         : ElevatedButton(
             onPressed: loading ? null : onPressed,
@@ -56,17 +56,23 @@ class AppButton extends StatelessWidget {
               foregroundColor: effectiveFg,
               minimumSize: Size(width ?? double.infinity, 50),
             ),
-            child: _child(context),
+            child: _child(context, effectiveFg),
           );
     return btn;
   }
 
-  Widget _child(BuildContext context) {
+  Widget _child(BuildContext context, Color couleurIndicateur) {
     if (loading) {
-      return const SizedBox(
-        width: 22,
-        height: 22,
-        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+      // Couleur du texte du bouton : blanc sur un bouton contour (fond
+      // clair) rendait l'indicateur invisible
+      return Semantics(
+        label: '$label en cours',
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+              strokeWidth: 2, color: couleurIndicateur),
+        ),
       );
     }
     if (icon != null) {

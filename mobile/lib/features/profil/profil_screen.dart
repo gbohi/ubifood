@@ -69,7 +69,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    Text(user?.fullName ?? '—',
+                    Text(
+                        (user?.fullName.isNotEmpty ?? false)
+                            ? user!.fullName
+                            : (user?.username ?? '—'),
                         style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,
@@ -110,7 +113,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
             _InfoRow(
                 icon: Icons.email_outlined,
                 label: 'Email',
-                value: user?.email ?? '—'),
+                // Email vide renvoyé par l'API : tiret plutôt qu'une ligne vide
+                value: (user?.email.isNotEmpty ?? false) ? user!.email : '—'),
             if (user?.dernierService != null)
               _InfoRow(
                   icon: Icons.business_center_outlined,
@@ -313,6 +317,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
             icon: Icons.logout_rounded,
             outlined: true,
             color: AppColors.error,
+            // Déconnexion en cours (jusqu'à quelques secondes hors ligne)
+            loading: auth.loading,
             onPressed: () => _showLogoutDialog(context),
           ),
 

@@ -73,6 +73,7 @@ class QrCodeScreen extends StatelessWidget {
                   child: QrImageView(
                     data: username,
                     version: QrVersions.auto,
+                    semanticsLabel: 'QR code du badge $username',
                     size: qrSize,
                     backgroundColor: Colors.white,
                     eyeStyle: const QrEyeStyle(
@@ -89,7 +90,10 @@ class QrCodeScreen extends StatelessWidget {
                 const SizedBox(height: 20),
 
                 // ── Nom complet ───────────────────────────
-                Text(user?.fullName ?? '—',
+                Text(
+                    (user?.fullName.isNotEmpty ?? false)
+                        ? user!.fullName
+                        : '—',
                     style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w800,

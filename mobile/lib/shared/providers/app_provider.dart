@@ -107,6 +107,8 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> login(String username, String password) async {
+    // Appui répété (bouton + touche « Entrée ») : une seule connexion
+    if (_loading) return false;
     _loading = true;
     _error = null;
     notifyListeners();
@@ -114,7 +116,9 @@ class AuthProvider extends ChangeNotifier {
       _user = await authService.login(username, password);
 
       // ✅ Envoyer le token FCM au backend maintenant qu'on est authentifié
-      await notificationService.registerTokenAfterLogin();
+      // (sans attendre : la récupération du token peut être longue et
+      // bloquait l'écran de connexion sur le chargement)
+      notificationService.registerTokenAfterLogin();
 
       _loading = false;
       notifyListeners();
@@ -127,13 +131,26 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  bool _deconnexionEnCours = false;
+
   Future<void> logout() async {
-    // Supprimer le token FCM AVANT de déconnecter
-    // (l'API client a encore le token JWT valide à ce stade)
-    await notificationService.deleteToken();
-    await authService.logout();
-    _user = null;
+    // Double appui / double confirmation : une seule déconnexion
+    if (_deconnexionEnCours) return;
+    _deconnexionEnCours = true;
+    _loading = true;
     notifyListeners();
+    try {
+      // Supprimer le token FCM AVANT de déconnecter
+      // (l'API client a encore le token JWT valide à ce stade)
+      await notificationService.deleteToken();
+      await authService.logout();
+    } finally {
+      _deconnexionEnCours = false;
+      _loading = false;
+      _error = null;
+      _user = null;
+      notifyListeners();
+    }
   }
 
   String _parseError(dynamic e) {
@@ -421,7 +438,10 @@ class RetraitProvider extends ChangeNotifier {
   }
 
   Future<bool> validerRetrait(int userId, int menuId, String badge) async {
+    // Validation déjà en cours (double appui) : ignorée
+    if (_loading) return false;
     _loading = true;
+    _error = null;
     notifyListeners();
     try {
       await retraitService.enregistrerRetrait(
@@ -478,6 +498,18 @@ class FacturationProvider extends ChangeNotifier {
   bool get loaded => _loaded;
   String? get error => _error;
 
+  /// Période chargée : du 1er du mois il y a 12 mois au dernier jour
+  /// du 3e mois à venir (bornes incluses).
+  DateTime get debutPeriode {
+    final now = DateTime.now();
+    return DateTime(now.year - 1, now.month, 1);
+  }
+
+  DateTime get finPeriode {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month + 4, 0);
+  }
+
   /// Charge 12 mois d'historique et 3 mois à venir (commandes anticipées).
   Future<void> charger() async {
     _loading = true;
@@ -485,9 +517,8 @@ class FacturationProvider extends ChangeNotifier {
     notifyListeners();
     final gen = _generation;
     try {
-      final now = DateTime.now();
-      final debut = DateTime(now.year - 1, now.month, 1);
-      final fin = DateTime(now.year, now.month + 4, 0);
+      final debut = debutPeriode;
+      final fin = finPeriode;
       String iso(DateTime d) =>
           '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
       final lignes = await facturationService.mesLignes(
@@ -562,6 +593,8 @@ class AllergieProvider extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     } catch (e) {
+      // Réponse d'un compte précédent (déconnexion entre-temps) : ignorée
+      if (auth.id != _authUser?.id) return;
       _error = messageErreurApi(e) ?? 'Impossible de charger les allergies';
       _loading = false;
       notifyListeners();
@@ -646,6 +679,8 @@ class AllergieProvider extends ChangeNotifier {
     if (user?.id != _authUser?.id) {
       _allergies = [];
       _error = null;
+      // Chargement du compte précédent ignoré : ne pas rester « en cours »
+      _loading = false;
     }
     _authUser = user;
   }

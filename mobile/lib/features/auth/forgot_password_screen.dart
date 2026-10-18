@@ -104,6 +104,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
   // ── Étape 1 : Vérifier username ───────────────────────────
   Future<void> _verifierUsername() async {
+    // Envoi déjà en cours (touche « Entrée » pendant le chargement)
+    if (_loading) return;
     final username = _usernameCtrl.text.trim();
     if (username.isEmpty) {
       setState(() => _erreur = 'Veuillez saisir votre identifiant');
@@ -172,6 +174,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
   // ── Étape 2 : Vérifier code SMS ───────────────────────────
   Future<void> _verifierCode() async {
+    if (_loading) return;
     final code = _codeCtrl.text.trim();
     if (code.length != 6) {
       setState(() => _erreur = 'Le code doit contenir 6 chiffres');
@@ -201,6 +204,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
   // ── Étape 3 : Nouveau mot de passe ────────────────────────
   Future<void> _reinitialiser() async {
+    if (_loading) return;
     if (!_mdpValide) {
       setState(() => _erreur = 'Le mot de passe ne respecte pas les critères');
       return;
@@ -277,74 +281,86 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final size = MediaQuery.of(context).size;
 
-    return Scaffold(
-      body: Stack(children: [
-        // ── Fond gradient ──────────────────────────────────
-        Container(
-          decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
-          height: size.height * 0.4,
-        ),
+    // Bouton retour Android : étape précédente, comme la flèche de l'en-tête
+    // (avant : quittait tout le parcours depuis l'étape 2 ou 3)
+    return PopScope(
+      canPop: _etape == 1,
+      onPopInvoked: (didPop) {
+        if (!didPop && _etape > 1 && !_loading) _allerEtape(_etape - 1);
+      },
+      child: Scaffold(
+        body: Stack(children: [
+          // ── Fond gradient ──────────────────────────────────
+          Container(
+            decoration:
+                const BoxDecoration(gradient: AppColors.primaryGradient),
+            height: size.height * 0.4,
+          ),
 
-        SafeArea(
-            child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(children: [
-            const SizedBox(height: 24),
+          SafeArea(
+              child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(children: [
+              const SizedBox(height: 24),
 
-            // ── Header ───────────────────────────────────
-            Row(children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                    color: Colors.white, size: 20),
-                onPressed: () => _etape > 1
-                    ? _allerEtape(_etape - 1)
-                    : Navigator.pop(context),
-              ),
-              Expanded(
-                  child: Center(
-                child: SvgPicture.asset('assets/images/logo_white.svg',
-                    height: 36),
-              )),
-              const SizedBox(width: 40),
-            ]),
+              // ── Header ───────────────────────────────────
+              Row(children: [
+                IconButton(
+                  tooltip: 'Retour',
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                      color: Colors.white, size: 20),
+                  onPressed: () => _etape > 1
+                      ? _allerEtape(_etape - 1)
+                      : Navigator.pop(context),
+                ),
+                Expanded(
+                    child: Center(
+                  child: SvgPicture.asset('assets/images/logo_white.svg',
+                      height: 36),
+                )),
+                const SizedBox(width: 40),
+              ]),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-            // ── Indicateur étapes ─────────────────────────
-            _StepIndicator(etape: _etape),
+              // ── Indicateur étapes ─────────────────────────
+              _StepIndicator(etape: _etape),
 
-            const SizedBox(height: 28),
+              const SizedBox(height: 28),
 
-            // ── Carte principale ──────────────────────────
-            FadeTransition(
-              opacity: _fadeAnim,
-              child: SlideTransition(
-                position: _slideAnim,
-                child: Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkCard : AppColors.lightSurface,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                        color: isDark
-                            ? AppColors.darkBorder
-                            : AppColors.lightBorder),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
-                          blurRadius: 30,
-                          offset: const Offset(0, 10))
-                    ],
+              // ── Carte principale ──────────────────────────
+              FadeTransition(
+                opacity: _fadeAnim,
+                child: SlideTransition(
+                  position: _slideAnim,
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color:
+                          isDark ? AppColors.darkCard : AppColors.lightSurface,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                          color: isDark
+                              ? AppColors.darkBorder
+                              : AppColors.lightBorder),
+                      boxShadow: [
+                        BoxShadow(
+                            color:
+                                Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+                            blurRadius: 30,
+                            offset: const Offset(0, 10))
+                      ],
+                    ),
+                    child: _buildEtape(isDark),
                   ),
-                  child: _buildEtape(isDark),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 40),
-          ]),
-        )),
-      ]),
+              const SizedBox(height: 40),
+            ]),
+          )),
+        ]),
+      ),
     );
   }
 
@@ -676,6 +692,9 @@ class _EtapeNouveauMdp extends StatelessWidget {
           prefixIcon:
               const Icon(Icons.lock_reset_rounded, color: AppColors.accent),
           suffixIcon: IconButton(
+            tooltip: showNouveau
+                ? 'Masquer le mot de passe'
+                : 'Afficher le mot de passe',
             icon: Icon(
                 showNouveau
                     ? Icons.visibility_off_rounded
@@ -756,6 +775,9 @@ class _EtapeNouveauMdp extends StatelessWidget {
                       ? AppColors.success
                       : AppColors.error),
             IconButton(
+              tooltip: showConfirm
+                  ? 'Masquer le mot de passe'
+                  : 'Afficher le mot de passe',
               icon: Icon(
                   showConfirm
                       ? Icons.visibility_off_rounded
