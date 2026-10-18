@@ -1143,8 +1143,6 @@ class _PlatDetailSheetState extends State<_PlatDetailSheet> {
                         },
                       ),
 
-                      // ── Derniers avis ──────────────────────────
-                      _DerniersAvis(resume: _resume),
                     ],
                   ),
                 ),
@@ -1260,7 +1258,7 @@ class _PhotosCarouselState extends State<_PhotosCarousel> {
   }
 }
 
-// ── Note moyenne et derniers avis ──────────────────────────────
+// ── Note moyenne ──────────────────────────────
 
 class _NoteMoyenne extends StatelessWidget {
   final Future<ResumeAvisPlat> resume;
@@ -1285,76 +1283,6 @@ class _NoteMoyenne extends StatelessWidget {
                   .bodyMedium
                   ?.copyWith(fontWeight: FontWeight.w600)),
         ]);
-      },
-    );
-  }
-}
-
-class _DerniersAvis extends StatelessWidget {
-  final Future<ResumeAvisPlat> resume;
-  const _DerniersAvis({required this.resume});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return FutureBuilder<ResumeAvisPlat>(
-      future: resume,
-      builder: (_, snap) {
-        final derniers = snap.data?.derniers.take(5).toList() ?? const [];
-        if (derniers.isEmpty) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 24),
-            Text('Derniers avis',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 10),
-            ...derniers.map((a) {
-              final date = DateTime.tryParse(a.date);
-              return Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkCard : AppColors.lightBackground,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                      color:
-                          isDark ? AppColors.darkBorder : AppColors.lightBorder),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      EtoilesNote(note: a.note, size: 15),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          [
-                            if (a.auteur.isNotEmpty) a.auteur,
-                            if (date != null)
-                              DateFormat('d MMM yyyy', 'fr_FR').format(date),
-                          ].join(' · '),
-                          style: Theme.of(context).textTheme.bodySmall,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ]),
-                    if (a.commentaire.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(a.commentaire,
-                          style: Theme.of(context).textTheme.bodyMedium),
-                    ],
-                  ],
-                ),
-              );
-            }),
-          ],
-        );
       },
     );
   }
