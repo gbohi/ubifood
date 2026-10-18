@@ -2,7 +2,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { PosteService } from 'src/app/core/services/poste/poste.service';
 
@@ -27,6 +27,12 @@ import {
   fetchposteNoPaginateFailure,
 } from './poste.action';
 
+/** L'ErrorInterceptor transforme déjà l'erreur HTTP en message lisible (string). */
+function toMessage(error: unknown): string {
+  if (typeof error === 'string') return error;
+  return (error as any)?.message || 'Une erreur est survenue.';
+}
+
 @Injectable()
 export class PosteEffects {
 
@@ -38,10 +44,10 @@ export class PosteEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchposteData),
-      mergeMap(({ page }) =>
-        this.posteService.getAllPostes(page || 1).pipe(
+      switchMap(({ page, search }) =>  // dernière recherche/page gagne
+        this.posteService.getAllPostes(page || 1, search).pipe(
           map(response => fetchposteSuccess({ response })),
-          catchError(error => of(fetchposteFailure({ error: error.toString() })))
+          catchError(error => of(fetchposteFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -54,7 +60,7 @@ export class PosteEffects {
       mergeMap(() =>
         this.posteService.getListPostes().pipe(
           map(response => fetchposteNoPaginateSuccess({ response })),
-          catchError(error => of(fetchposteNoPaginateFailure({ error: error.toString() })))
+          catchError(error => of(fetchposteNoPaginateFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -67,7 +73,7 @@ export class PosteEffects {
       mergeMap(({ newData }) =>
         this.posteService.createPoste(newData).pipe(
           map(response => addposteDataSuccess({ newData: response })),
-          catchError(error => of(addposteDataFailure({ error: error.toString() })))
+          catchError(error => of(addposteDataFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -76,7 +82,11 @@ export class PosteEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addposteDataSuccess),
-      map(() => fetchposteData({ page: 1 }))
+      mergeMap(() =>
+        this.posteService.getCurrentPageInfo().pipe(
+          map(({ search }) => fetchposteData({ page: 1, search }))
+        )
+      )
     )
   );
 
@@ -87,7 +97,7 @@ export class PosteEffects {
       mergeMap(({ updatedData }) =>
         this.posteService.updatePoste(updatedData).pipe(
           map(() => updateposteDataSuccess({ updatedData })),
-          catchError(error => of(updateposteDataFailure({ error: error.toString() })))
+          catchError(error => of(updateposteDataFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -98,7 +108,7 @@ export class PosteEffects {
       ofType(updateposteDataSuccess),
       mergeMap(() =>
         this.posteService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchposteData({ page: currentPage }))
+          map(({ currentPage, search }) => fetchposteData({ page: currentPage, search }))
         )
       )
     )
@@ -111,7 +121,7 @@ export class PosteEffects {
       mergeMap(({ id }) =>
         this.posteService.deletePoste(id).pipe(
           map(() => deleteposteSuccess({ id })),
-          catchError(error => of(deleteposteFailure({ error: error.toString() })))
+          catchError(error => of(deleteposteFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -122,10 +132,10 @@ export class PosteEffects {
       ofType(deleteposteSuccess),
       mergeMap(() =>
         this.posteService.getCurrentPageInfo().pipe(
-          map(({ currentPage, totalItems, itemsPerPage }) => {
+          map(({ currentPage, totalItems, itemsPerPage, search }) => {
             const totalPages = Math.ceil((totalItems - 1) / itemsPerPage);
             const page = currentPage > totalPages ? Math.max(totalPages, 1) : currentPage;
-            return fetchposteData({ page });
+            return fetchposteData({ page, search });
           }),
           catchError(() => of(fetchposteData({ page: 1 })))
         )
@@ -149,7 +159,7 @@ export class PosteEffects {
 
         return this.posteService.deleteMultiplePoste(idArray).pipe(
           map(() => deletemultipleposteSuccess({ id })),
-          catchError(error => of(deletemultipleposteFailure({ error: error.toString() })))
+          catchError(error => of(deletemultipleposteFailure({ error: toMessage(error) })))
         );
       })
     )
@@ -161,10 +171,10 @@ export class PosteEffects {
       mergeMap(({ id }) => {
         const deletedCount = id.split(',').filter(s => s.trim() !== '').length;
         return this.posteService.getCurrentPageInfo().pipe(
-          map(({ currentPage, totalItems, itemsPerPage }) => {
+          map(({ currentPage, totalItems, itemsPerPage, search }) => {
             const totalPages = Math.ceil((totalItems - deletedCount) / itemsPerPage);
             const page = currentPage > totalPages ? Math.max(totalPages, 1) : currentPage;
-            return fetchposteData({ page });
+            return fetchposteData({ page, search });
           }),
           catchError(() => of(fetchposteData({ page: 1 })))
         );

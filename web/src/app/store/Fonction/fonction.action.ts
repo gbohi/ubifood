@@ -4,7 +4,7 @@ import { FonctionlistModel, ApiResponse } from './fonction.model';
 // fetch fonction data
 export const fetchfonctionData = createAction(
     '[Data] Fetch fonction Table Data',
-    props<{ page?: number }>()
+    props<{ page?: number; search?: string }>()
 );
 
 export const fetchfonctionSuccess = createAction(

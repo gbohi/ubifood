@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { EtatService } from 'src/app/core/services/etat/etat.service';
 
@@ -32,6 +32,12 @@ import {
   fetchetatNoPaginateFailure,
 } from './etat.action';
 
+/** L'ErrorInterceptor transforme déjà l'erreur HTTP en message lisible (string). */
+function toMessage(error: unknown): string {
+  if (typeof error === 'string') return error;
+  return (error as any)?.message || 'Une erreur est survenue.';
+}
+
 @Injectable()
 export class EtatEffects {
 
@@ -44,10 +50,10 @@ export class EtatEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchetatData),
-      mergeMap(({ page }) =>
-        this.etatService.getAllEtats(page || 1).pipe(
+      switchMap(({ page, search }) =>  // dernière recherche/page gagne
+        this.etatService.getAllEtats(page || 1, search).pipe(
           map(response => fetchetatSuccess({ response })),
-          catchError(error => of(fetchetatFailure({ error: error.toString() })))
+          catchError(error => of(fetchetatFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -60,7 +66,7 @@ export class EtatEffects {
       mergeMap(() =>
         this.etatService.getListEtat().pipe(
           map(response => fetchetatNoPaginateSuccess({ response })),
-          catchError(error => of(fetchetatNoPaginateFailure({ error: error.toString() })))
+          catchError(error => of(fetchetatNoPaginateFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -73,7 +79,7 @@ export class EtatEffects {
       mergeMap(({ newData }) =>
         this.etatService.createEtat(newData).pipe(
           map(response => addetatDataSuccess({ newData: response })),
-          catchError(error => of(addetatDataFailure({ error: error.toString() })))
+          catchError(error => of(addetatDataFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -83,7 +89,11 @@ export class EtatEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addetatDataSuccess),
-      map(() => fetchetatData({ page: 1 }))
+      mergeMap(() =>
+        this.etatService.getCurrentPageInfo().pipe(
+          map(({ search }) => fetchetatData({ page: 1, search }))
+        )
+      )
     )
   );
 
@@ -94,7 +104,7 @@ export class EtatEffects {
       mergeMap(({ updatedData }) =>
         this.etatService.updateEtat(updatedData).pipe(
           map(() => updateetatDataSuccess({ updatedData })),
-          catchError(error => of(updateetatDataFailure({ error: error.toString() })))
+          catchError(error => of(updateetatDataFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -106,7 +116,7 @@ export class EtatEffects {
       ofType(updateetatDataSuccess),
       mergeMap(() =>
         this.etatService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchetatData({ page: currentPage }))
+          map(({ currentPage, search }) => fetchetatData({ page: currentPage, search }))
         )
       )
     )
@@ -119,7 +129,7 @@ export class EtatEffects {
       mergeMap(({ id }) =>
         this.etatService.deleteEtat(id).pipe(
           map(() => deleteetatSuccess({ id })),
-          catchError(error => of(deleteetatFailure({ error: error.toString() })))
+          catchError(error => of(deleteetatFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -131,10 +141,10 @@ export class EtatEffects {
       ofType(deleteetatSuccess),
       mergeMap(() =>
         this.etatService.getCurrentPageInfo().pipe(
-          map(({ currentPage, totalItems, itemsPerPage }) => {
+          map(({ currentPage, totalItems, itemsPerPage, search }) => {
             const totalPages = Math.ceil((totalItems - 1) / itemsPerPage);
             const page = currentPage > totalPages ? Math.max(totalPages, 1) : currentPage;
-            return fetchetatData({ page });
+            return fetchetatData({ page, search });
           }),
           catchError(() => of(fetchetatData({ page: 1 })))
         )
@@ -158,7 +168,7 @@ export class EtatEffects {
 
         return this.etatService.deleteMultipleEtat(idArray).pipe(
           map(() => deletemultipleetatSuccess({ id })),
-          catchError(error => of(deletemultipleetatFailure({ error: error.toString() })))
+          catchError(error => of(deletemultipleetatFailure({ error: toMessage(error) })))
         );
       })
     )
@@ -171,10 +181,10 @@ export class EtatEffects {
       mergeMap(({ id }) => {
         const deletedCount = id.split(',').filter(s => s.trim() !== '').length;
         return this.etatService.getCurrentPageInfo().pipe(
-          map(({ currentPage, totalItems, itemsPerPage }) => {
+          map(({ currentPage, totalItems, itemsPerPage, search }) => {
             const totalPages = Math.ceil((totalItems - deletedCount) / itemsPerPage);
             const page = currentPage > totalPages ? Math.max(totalPages, 1) : currentPage;
-            return fetchetatData({ page });
+            return fetchetatData({ page, search });
           }),
           catchError(() => of(fetchetatData({ page: 1 })))
         );

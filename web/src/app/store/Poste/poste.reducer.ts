@@ -11,6 +11,10 @@ import {
   fetchposteSuccess,
   updateposteDataSuccess,
   fetchposteNoPaginateSuccess,
+  addposteDataFailure,
+  updateposteDataFailure,
+  deleteposteFailure,
+  deletemultipleposteFailure,
 } from './poste.action';
 
 export interface PosteState {
@@ -61,6 +65,8 @@ export const PosteReducer = createReducer(
   on(fetchposteNoPaginateSuccess, (state, { response }) => ({
     ...state, allPostes: response, loading: false
   })),
+  // Échecs des opérations : on garde l'état, on mémorise le message serveur
+  on(addposteDataFailure, updateposteDataFailure, deleteposteFailure, deletemultipleposteFailure, (state, { error }) => ({ ...state, error })),
 );
 
 export function reducer(state: PosteState | undefined, action: Action) {

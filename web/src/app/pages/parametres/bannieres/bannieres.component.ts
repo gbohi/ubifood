@@ -76,7 +76,9 @@ export class BannieresComponent implements OnInit {
 
   /** Affichée aujourd'hui sur l'application ? */
   estVisible(b: Banniere): boolean {
-    const jour = new Date().toISOString().slice(0, 10);
+    // Date locale (toISOString() donnerait la date UTC, décalée en soirée / début de journée)
+    const d = new Date();
+    const jour = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     return b.actif && (!b.date_debut || b.date_debut <= jour) && (!b.date_fin || b.date_fin >= jour);
   }
 

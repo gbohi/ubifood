@@ -13,6 +13,12 @@ import {
   fetchroleData, fetchroleSuccess, fetchroleFailure,
 } from './role.action';
 
+/** L'ErrorInterceptor transforme déjà l'erreur HTTP en message lisible (string). */
+function toMessage(error: unknown): string {
+  if (typeof error === 'string') return error;
+  return (error as any)?.message || 'Une erreur est survenue.';
+}
+
 @Injectable()
 export class RoleEffects {
 
@@ -26,7 +32,7 @@ export class RoleEffects {
       mergeMap(({ page }) =>
         this.roleService.getAllRoles(page || 1).pipe(
           map(response => fetchroleSuccess({ response })),
-          catchError(error => of(fetchroleFailure({ error: error.toString() })))
+          catchError(error => of(fetchroleFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -39,7 +45,7 @@ export class RoleEffects {
       mergeMap(({ newData }) =>
         this.roleService.createRole(newData).pipe(
           map(response => addroleDataSuccess({ newData: response })),
-          catchError(error => of(addroleDataFailure({ error: error.toString() })))
+          catchError(error => of(addroleDataFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -59,7 +65,7 @@ export class RoleEffects {
       mergeMap(({ updatedData }) =>
         this.roleService.updateRole(updatedData).pipe(
           map(() => updateroleDataSuccess({ updatedData })),
-          catchError(error => of(updateroleDataFailure({ error: error.toString() })))
+          catchError(error => of(updateroleDataFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -83,7 +89,7 @@ export class RoleEffects {
       mergeMap(({ id }) =>
         this.roleService.deleteRole(id).pipe(
           map(() => deleteroleSuccess({ id })),
-          catchError(error => of(deleteroleFailure({ error: error.toString() })))
+          catchError(error => of(deleteroleFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -120,7 +126,7 @@ export class RoleEffects {
 
         return this.roleService.deleteMultipleRole(idArray).pipe(
           map(() => deletemultipleroleSuccess({ id })),
-          catchError(error => of(deletemultipleroleFailure({ error: error.toString() })))
+          catchError(error => of(deletemultipleroleFailure({ error: toMessage(error) })))
         );
       })
     )

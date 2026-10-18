@@ -6,7 +6,7 @@ import { PosteModel, ApiResponse } from './poste.model';
 // ── Fetch paginé ──────────────────────────────────────────────
 export const fetchposteData = createAction(
   '[Poste] Fetch Data',
-  props<{ page?: number }>()
+  props<{ page?: number; search?: string }>()
 );
 export const fetchposteSuccess = createAction(
   '[Poste] Fetch Data Success',

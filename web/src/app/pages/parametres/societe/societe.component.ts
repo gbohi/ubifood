@@ -5,7 +5,7 @@
 // moment par un administrateur ; les factures téléchargées ensuite
 // utilisent les nouvelles valeurs (les montants, eux, restent figés).
 
-import { Component, OnInit, DestroyRef, inject } from '@angular/core';
+import { Component, OnInit, DestroyRef, ElementRef, ViewChild, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpClient } from '@angular/common/http';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
@@ -21,6 +21,8 @@ export class SocieteComponent implements OnInit {
     { label: 'Paramètres', active: false },
     { label: 'Société (en-tête des factures)', active: true },
   ];
+
+  @ViewChild('logoInput') logoInput?: ElementRef<HTMLInputElement>;
 
   form!: UntypedFormGroup;
   logoUrl: string | null = null;
@@ -66,6 +68,20 @@ export class SocieteComponent implements OnInit {
     this.nouveauLogo = null;
     this.apercuNouveauLogo = null;
     this.supprimerLogo = false;
+    this.reinitialiserChampFichier();
+  }
+
+  /** Vide le <input type="file"> pour pouvoir re-choisir le même fichier. */
+  private reinitialiserChampFichier(): void {
+    if (this.logoInput?.nativeElement) this.logoInput.nativeElement.value = '';
+  }
+
+  /** Choix invalide : on oublie le fichier et l'aperçu, et on vide le champ. */
+  private rejeterLogo(message: string): void {
+    this.erreur = message;
+    this.nouveauLogo = null;
+    this.apercuNouveauLogo = null;
+    this.reinitialiserChampFichier();
   }
 
   onLogoChoisi(event: Event): void {
@@ -73,17 +89,20 @@ export class SocieteComponent implements OnInit {
     this.erreur = null;
     if (!fichier) return;
     if (!['image/png', 'image/jpeg'].includes(fichier.type)) {
-      this.erreur = 'Le logo doit être une image PNG ou JPEG.';
+      this.rejeterLogo('Le logo doit être une image PNG ou JPEG.');
       return;
     }
     if (fichier.size > 2 * 1024 * 1024) {
-      this.erreur = 'Le logo ne doit pas dépasser 2 Mo.';
+      this.rejeterLogo('Le logo ne doit pas dépasser 2 Mo.');
       return;
     }
     this.nouveauLogo = fichier;
     this.supprimerLogo = false;
     const lecteur = new FileReader();
-    lecteur.onload = () => this.apercuNouveauLogo = lecteur.result as string;
+    lecteur.onload = () => {
+      // Ignore une lecture terminée après un autre choix / un retrait
+      if (this.nouveauLogo === fichier) this.apercuNouveauLogo = lecteur.result as string;
+    };
     lecteur.readAsDataURL(fichier);
   }
 
@@ -91,6 +110,7 @@ export class SocieteComponent implements OnInit {
     this.nouveauLogo = null;
     this.apercuNouveauLogo = null;
     this.supprimerLogo = true;
+    this.reinitialiserChampFichier();
   }
 
   enregistrer(): void {

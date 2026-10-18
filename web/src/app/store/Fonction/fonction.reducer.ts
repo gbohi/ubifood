@@ -7,7 +7,11 @@ import {
   fetchfonctionFailure, 
   fetchfonctionSuccess, 
   updatefonctionDataSuccess,
-  fetchfonctionNoPaginateSuccess
+  fetchfonctionNoPaginateSuccess,
+  addfonctionDataFailure,
+  updatefonctionDataFailure,
+  deletefonctionFailure,
+  deletemultiplefonctionFailure,
 } from './fonction.action';
 import { FonctionlistModel } from './fonction.model';
 
@@ -74,6 +78,8 @@ export const FonctionReducer = createReducer(
           loading: false
         };
       }),
+  // Échecs des opérations : on garde l'état, on mémorise le message serveur
+  on(addfonctionDataFailure, updatefonctionDataFailure, deletefonctionFailure, deletemultiplefonctionFailure, (state, { error }) => ({ ...state, error })),
 );
 
 // Selector

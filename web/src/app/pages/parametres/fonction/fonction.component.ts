@@ -1,19 +1,31 @@
 // src/app/pages/fonction/fonction.component.ts
 
-import { Component, OnInit, AfterViewInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, AfterViewInit, ViewChild, ElementRef, DestroyRef, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
 import { ModalDirective } from 'ngx-bootstrap/modal';
 import { Store } from '@ngrx/store';
+import { Actions, ofType } from '@ngrx/effects';
 import { PageChangedEvent } from 'ngx-bootstrap/pagination';
+import { Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
 
 import {
   addfonctionData,
+  addfonctionDataSuccess,
+  addfonctionDataFailure,
   deletefonctionData,
+  deletefonctionSuccess,
+  deletefonctionFailure,
   deletemultiplefonctionData,
+  deletemultiplefonctionSuccess,
+  deletemultiplefonctionFailure,
   fetchfonctionData,
   updatefonctionData,
+  updatefonctionDataSuccess,
+  updatefonctionDataFailure,
 } from 'src/app/store/Fonction/fonction.action';
 import {
   selectfonctionData,
@@ -30,31 +42,40 @@ import {
 })
 export class FonctionComponent implements OnInit, AfterViewInit {
 
+  private destroyRef = inject(DestroyRef);
+  private actions$   = inject(Actions);
+
   breadCrumbItems = [
-    { label: 'Fonction', active: false },
-    { label: 'Liste', active: true },
+    { label: 'Paramètres', active: false },
+    { label: 'Fonctions', active: true },
   ];
 
   fonctions:    any[] = [];
-  fonctionList: any[] = [];
   totalItems  = 0;
   currentPage = 1;
   isLoading   = true;
 
   fonctionForm!: UntypedFormGroup;
-  submitted     = false;
+  submitted      = false;
+  isEdit         = false;
+  saving         = false;
+  deleting       = false;
   masterSelected = false;
   term: any;
   checkedValGet: any[] = [];
-  selectedFonction: any = null;
+  selectedFonction: any   = null;
   deleteID: any;
   direction = 'asc';
 
+  /** Terme de recherche effectivement envoyé au serveur (?search=) */
+  private searchTerm = '';
+  private search$    = new Subject<string>();
+
   private lastActiveElement: HTMLElement | null = null;
 
-  @ViewChild('addFonction',       { static: false }) addFonction?:       ModalDirective;
+  @ViewChild('addFonction',           { static: false }) addFonction?:           ModalDirective;
   @ViewChild('deleteRecordModal', { static: false }) deleteRecordModal?: ModalDirective;
-  @ViewChild('viewFonction',      { static: false }) viewFonction?:      ModalDirective;
+  @ViewChild('viewFonction',          { static: false }) viewFonction?:          ModalDirective;
   @ViewChild('mainContainer',     { static: false }) mainContainer?:     ElementRef;
 
   constructor(
@@ -65,66 +86,116 @@ export class FonctionComponent implements OnInit, AfterViewInit {
 
   ngOnInit(): void {
     this.fonctionForm = this.fb.group({
-      id:      [''],
+      id:           [''],
       libelle: ['', [Validators.required]],
     });
 
-    this.store.select(selectLoading).subscribe(loading => {
+    this.store.select(selectLoading).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(loading => {
       this.isLoading = loading;
     });
 
-    this.store.select(selectTotalItems).subscribe(total => {
+    this.store.select(selectTotalItems).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(total => {
       this.totalItems = total ?? 0;
     });
 
-    this.store.select(selectCurrentPage).subscribe(page => {
+    this.store.select(selectCurrentPage).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(page => {
       this.currentPage = page ?? 1;
     });
 
-    this.store.select(selectfonctionData).subscribe(data => {
+    this.store.select(selectfonctionData).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(data => {
       if (data) {
-        this.fonctions    = data.map(item => ({ ...item, state: false }));
-        this.fonctionList = [...this.fonctions];
-        this.updateNoResultDisplay();
+        this.fonctions = data.map(item => ({ ...item, state: false }));
+        this.resetSelection();
       }
     });
+
+    // ── Recherche serveur (debounce 300 ms, retour page 1) ──
+    this.search$.pipe(
+      map(t => (t ?? '').toString().trim()),
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(t => {
+      this.searchTerm = t;
+      this.loadData(1);
+    });
+
+    // ── Réponses du serveur (ajout / modification) ─────────
+    this.actions$.pipe(ofType(addfonctionDataSuccess, updatefonctionDataSuccess), takeUntilDestroyed(this.destroyRef))
+      .subscribe(action => {
+        this.saving    = false;
+        this.submitted = false;
+        this.toastService.success(
+          action.type === addfonctionDataSuccess.type ? 'Fonction ajoutée avec succès !' : 'Fonction mise à jour avec succès !',
+          'Succès'
+        );
+        this.closeAddModal();
+      });
+
+    this.actions$.pipe(ofType(addfonctionDataFailure, updatefonctionDataFailure), takeUntilDestroyed(this.destroyRef))
+      .subscribe(({ error }) => {
+        // La modale reste ouverte avec les valeurs saisies
+        this.saving = false;
+        this.toastService.error(error || 'Enregistrement impossible.', 'Erreur');
+      });
+
+    // ── Réponses du serveur (suppression) ──────────────────
+    this.actions$.pipe(ofType(deletefonctionSuccess, deletemultiplefonctionSuccess), takeUntilDestroyed(this.destroyRef))
+      .subscribe(action => {
+        this.toastService.success(
+          action.type === deletefonctionSuccess.type ? 'Fonction supprimée avec succès !' : 'Fonctions supprimées avec succès !',
+          'Succès'
+        );
+        this.afterDeleteActions();
+      });
+
+    this.actions$.pipe(ofType(deletefonctionFailure, deletemultiplefonctionFailure), takeUntilDestroyed(this.destroyRef))
+      .subscribe(({ error }) => {
+        // La ligne reste affichée : on montre seulement l'erreur
+        this.deleting = false;
+        this.toastService.error(error || 'Suppression impossible.', 'Erreur');
+        this.closeDeleteModal();
+      });
 
     this.loadData(1);
   }
 
   ngAfterViewInit(): void {
-    this.addFonction?.onHidden.subscribe(() => {
+    this.addFonction?.onHidden.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.fonctionForm.reset();
-      this.setModalTitle('Ajouter une fonction');
-      this.setModalBtn('Ajouter');
+      this.submitted = false;
+      this.saving    = false;
+      this.isEdit    = false;
     });
 
-    this.deleteRecordModal?.onHidden.subscribe(() => {
+    this.deleteRecordModal?.onHidden.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.deleteID = null;
+      this.deleting = false;
     });
   }
 
   // ── Chargement ────────────────────────────────────────────
   loadData(page: number = 1): void {
-    this.store.dispatch(fetchfonctionData({ page }));
+    this.store.dispatch(fetchfonctionData({ page, search: this.searchTerm || undefined }));
+  }
+
+  private resetSelection(): void {
+    this.checkedValGet  = [];
+    this.masterSelected = false;
   }
 
   // ── Modal Ajouter ─────────────────────────────────────────
   openAddModal(): void {
     this.lastActiveElement = document.activeElement as HTMLElement;
     this.fonctionForm.reset();
-    this.setModalTitle('Ajouter une fonction');
-    this.setModalBtn('Ajouter');
+    this.submitted = false;
+    this.isEdit    = false;
     this.addFonction?.show();
   }
 
   closeAddModal(): void {
     this.lastActiveElement?.focus();
-    setTimeout(() => {
-      this.addFonction?.hide();
-      this.setModalTitle('Ajouter une fonction');
-      this.setModalBtn('Ajouter');
-    }, 10);
+    setTimeout(() => this.addFonction?.hide(), 10);
   }
 
   // ── Modal Édition ─────────────────────────────────────────
@@ -133,9 +204,10 @@ export class FonctionComponent implements OnInit, AfterViewInit {
     const editData = this.fonctions.find(p => p.id === id);
     if (!editData) return;
 
+    this.fonctionForm.reset();
     this.fonctionForm.patchValue(editData);
-    this.setModalTitle('Modifier la fonction');
-    this.setModalBtn('Mettre à jour');
+    this.submitted = false;
+    this.isEdit    = true;
     this.addFonction?.show();
   }
 
@@ -146,21 +218,18 @@ export class FonctionComponent implements OnInit, AfterViewInit {
       this.toastService.error('Veuillez vérifier les informations saisies.', 'Erreur');
       return;
     }
+    if (this.saving) return;
 
     const formValue = { ...this.fonctionForm.value };
+    this.saving = true;
 
     if (formValue.id) {
       this.store.dispatch(updatefonctionData({ updatedData: formValue }));
-      this.toastService.success('Fonction mise à jour avec succès !', 'Succès');
     } else {
       delete formValue.id;
       this.store.dispatch(addfonctionData({ newData: formValue }));
-      this.toastService.success('Fonction ajoutée avec succès !', 'Succès');
     }
-
-    this.submitted = false;
-    this.fonctionForm.reset();
-    this.closeAddModal();
+    // Toast + fermeture de la modale à la réponse du serveur (voir ngOnInit)
   }
 
   // ── Modal Suppression ─────────────────────────────────────
@@ -170,23 +239,38 @@ export class FonctionComponent implements OnInit, AfterViewInit {
     this.deleteRecordModal?.show();
   }
 
+  openBulkDelete(): void {
+    this.lastActiveElement = document.activeElement as HTMLElement;
+    this.deleteID = null;
+    this.deleteRecordModal?.show();
+  }
+
   closeDeleteModal(): void {
     this.lastActiveElement?.focus();
     setTimeout(() => this.deleteRecordModal?.hide(), 10);
   }
 
+  get deleteMessage(): string {
+    if (this.deleteID) {
+      const libelle = this.fonctions.find(e => e.id === this.deleteID)?.libelle;
+      return libelle ? `la fonction « ${libelle} »` : 'cette fonction';
+    }
+    const n = this.checkedValGet.length;
+    return n > 1 ? `ces ${n} fonctions` : 'cette fonction';
+  }
+
   confirmDelete(id?: any): void {
+    if (this.deleting) return;
+
     if (id) {
+      this.deleting = true;
       this.store.dispatch(deletefonctionData({ id: id.toString() }));
-      this.toastService.success('Fonction supprimée avec succès !', 'Succès');
-      this.afterDeleteActions();
       return;
     }
 
     if (this.checkedValGet?.length > 0) {
+      this.deleting = true;
       this.store.dispatch(deletemultiplefonctionData({ id: this.checkedValGet.join(',') }));
-      this.toastService.success('Fonctions supprimées avec succès !', 'Succès');
-      this.afterDeleteActions();
       return;
     }
 
@@ -196,9 +280,9 @@ export class FonctionComponent implements OnInit, AfterViewInit {
 
   private afterDeleteActions(): void {
     this.closeDeleteModal();
-    this.masterSelected = false;
-    this.deleteID       = null;
-    this.checkedValGet  = [];
+    this.deleting = false;
+    this.deleteID = null;
+    this.resetSelection();
   }
 
   // ── Modal Détails ─────────────────────────────────────────
@@ -234,8 +318,9 @@ export class FonctionComponent implements OnInit, AfterViewInit {
 
   private updateCheckedValues(): void {
     this.checkedValGet = this.fonctions
-      .filter(f => f.state === true)
-      .map(f => f.id);
+      .filter(e => e.state === true)
+      .map(e => e.id);
+    this.masterSelected = this.fonctions.length > 0 && this.checkedValGet.length === this.fonctions.length;
   }
 
   // ── Tri ───────────────────────────────────────────────────
@@ -251,38 +336,13 @@ export class FonctionComponent implements OnInit, AfterViewInit {
     return v1 < v2 ? -1 : v1 > v2 ? 1 : 0;
   }
 
-  // ── Recherche ─────────────────────────────────────────────
-  filterdata(): void {
-    if (this.term) {
-      this.fonctions = this.fonctionList.filter(el =>
-        el.libelle?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.id?.toString().includes(this.term)
-      );
-    } else {
-      this.loadData(this.currentPage);
-    }
-    this.updateNoResultDisplay();
+  // ── Recherche (côté serveur) ──────────────────────────────
+  filterdata(value?: string): void {
+    this.search$.next(value ?? this.term ?? '');
   }
 
-  updateNoResultDisplay(): void {
-    const el = document.querySelector('.noresult') as HTMLElement;
-    if (!el) return;
-    el.style.display = this.term && this.fonctions.length === 0 ? 'block' : 'none';
-  }
-
-  // ── Pagination ────────────────────────────────────────────
+  // ── Pagination (le terme de recherche est conservé) ───────
   pageChanged(event: PageChangedEvent): void {
     this.loadData(event.page);
-  }
-
-  // ── Helpers modal ─────────────────────────────────────────
-  private setModalTitle(title: string): void {
-    const el = document.querySelector('.modal-title') as HTMLElement;
-    if (el) el.innerHTML = title;
-  }
-
-  private setModalBtn(label: string): void {
-    const el = document.getElementById('add-btn') as HTMLElement;
-    if (el) el.innerHTML = label;
   }
 }

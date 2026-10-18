@@ -16,16 +16,19 @@ export class FonctionService {
   // Infos de pagination conservées en mémoire pour la gestion post-suppression
   private currentPage   = 1;
   private totalItems    = 0;
+  private currentSearch?: string;
   private itemsPerPage  = 10;
 
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllFonctions(page: number = 1): Observable<ApiResponse<FonctionlistModel>> {
+  getAllFonctions(page: number = 1, search?: string): Observable<ApiResponse<FonctionlistModel>> {
     this.currentPage = page;
+    this.currentSearch = search?.trim() || undefined;
+    const q = this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '';
     // ✅ Plus de getAuthHeaders() — le JWT est géré par l'intercepteur HTTP
     return this.http.get<ApiResponse<FonctionlistModel>>(
-      `${this.apiUrl}/fonctions/?page=${page}`
+      `${this.apiUrl}/fonctions/?page=${page}${q}`
     ).pipe(
       tap(response => {
         this.totalItems  = response.count;
@@ -73,11 +76,13 @@ export class FonctionService {
     currentPage:  number;
     totalItems:   number;
     itemsPerPage: number;
+    search?:      string;
   }> {
     return of({
       currentPage:  this.currentPage,
       totalItems:   this.totalItems,
       itemsPerPage: this.itemsPerPage,
+      search:       this.currentSearch,
     });
   }
 }

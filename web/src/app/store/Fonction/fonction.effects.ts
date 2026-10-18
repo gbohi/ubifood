@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { FonctionService } from 'src/app/core/services/fonction/fonction.service';
 
@@ -32,6 +32,12 @@ import {
   fetchfonctionNoPaginateFailure,
 } from './fonction.action';
 
+/** L'ErrorInterceptor transforme déjà l'erreur HTTP en message lisible (string). */
+function toMessage(error: unknown): string {
+  if (typeof error === 'string') return error;
+  return (error as any)?.message || 'Une erreur est survenue.';
+}
+
 @Injectable()
 export class FonctionEffects {
 
@@ -44,10 +50,10 @@ export class FonctionEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchfonctionData),
-      mergeMap(({ page }) =>
-        this.fonctionService.getAllFonctions(page || 1).pipe(
+      switchMap(({ page, search }) =>  // dernière recherche/page gagne
+        this.fonctionService.getAllFonctions(page || 1, search).pipe(
           map(response => fetchfonctionSuccess({ response })),
-          catchError(error => of(fetchfonctionFailure({ error: error.toString() })))
+          catchError(error => of(fetchfonctionFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -60,7 +66,7 @@ export class FonctionEffects {
       mergeMap(() =>
         this.fonctionService.getListFonctions().pipe(
           map(response => fetchfonctionNoPaginateSuccess({ response })),
-          catchError(error => of(fetchfonctionNoPaginateFailure({ error: error.toString() })))
+          catchError(error => of(fetchfonctionNoPaginateFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -73,7 +79,7 @@ export class FonctionEffects {
       mergeMap(({ newData }) =>
         this.fonctionService.createFonction(newData).pipe(
           map(response => addfonctionDataSuccess({ newData: response })),
-          catchError(error => of(addfonctionDataFailure({ error: error.toString() })))
+          catchError(error => of(addfonctionDataFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -83,7 +89,11 @@ export class FonctionEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addfonctionDataSuccess),
-      map(() => fetchfonctionData({ page: 1 }))
+      mergeMap(() =>
+        this.fonctionService.getCurrentPageInfo().pipe(
+          map(({ search }) => fetchfonctionData({ page: 1, search }))
+        )
+      )
     )
   );
 
@@ -94,7 +104,7 @@ export class FonctionEffects {
       mergeMap(({ updatedData }) =>
         this.fonctionService.updateFonction(updatedData).pipe(
           map(() => updatefonctionDataSuccess({ updatedData })),
-          catchError(error => of(updatefonctionDataFailure({ error: error.toString() })))
+          catchError(error => of(updatefonctionDataFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -106,7 +116,7 @@ export class FonctionEffects {
       ofType(updatefonctionDataSuccess),
       mergeMap(() =>
         this.fonctionService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchfonctionData({ page: currentPage }))
+          map(({ currentPage, search }) => fetchfonctionData({ page: currentPage, search }))
         )
       )
     )
@@ -119,7 +129,7 @@ export class FonctionEffects {
       mergeMap(({ id }) =>
         this.fonctionService.deleteFonction(id).pipe(
           map(() => deletefonctionSuccess({ id })),
-          catchError(error => of(deletefonctionFailure({ error: error.toString() })))
+          catchError(error => of(deletefonctionFailure({ error: toMessage(error) })))
         )
       )
     )
@@ -131,10 +141,10 @@ export class FonctionEffects {
       ofType(deletefonctionSuccess),
       mergeMap(() =>
         this.fonctionService.getCurrentPageInfo().pipe(
-          map(({ currentPage, totalItems, itemsPerPage }) => {
+          map(({ currentPage, totalItems, itemsPerPage, search }) => {
             const totalPages = Math.ceil((totalItems - 1) / itemsPerPage);
             const page = currentPage > totalPages ? Math.max(totalPages, 1) : currentPage;
-            return fetchfonctionData({ page });
+            return fetchfonctionData({ page, search });
           }),
           catchError(() => of(fetchfonctionData({ page: 1 })))
         )
@@ -158,7 +168,7 @@ export class FonctionEffects {
 
         return this.fonctionService.deleteMultipleFonction(idArray).pipe(
           map(() => deletemultiplefonctionSuccess({ id })),
-          catchError(error => of(deletemultiplefonctionFailure({ error: error.toString() })))
+          catchError(error => of(deletemultiplefonctionFailure({ error: toMessage(error) })))
         );
       })
     )
@@ -171,10 +181,10 @@ export class FonctionEffects {
       mergeMap(({ id }) => {
         const deletedCount = id.split(',').filter(s => s.trim() !== '').length;
         return this.fonctionService.getCurrentPageInfo().pipe(
-          map(({ currentPage, totalItems, itemsPerPage }) => {
+          map(({ currentPage, totalItems, itemsPerPage, search }) => {
             const totalPages = Math.ceil((totalItems - deletedCount) / itemsPerPage);
             const page = currentPage > totalPages ? Math.max(totalPages, 1) : currentPage;
-            return fetchfonctionData({ page });
+            return fetchfonctionData({ page, search });
           }),
           catchError(() => of(fetchfonctionData({ page: 1 })))
         );

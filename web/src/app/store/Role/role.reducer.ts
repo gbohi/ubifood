@@ -6,7 +6,11 @@ import {
   fetchroleData, 
   fetchroleFailure, 
   fetchroleSuccess, 
-  updateroleDataSuccess 
+  updateroleDataSuccess,
+  addroleDataFailure,
+  updateroleDataFailure,
+  deleteroleFailure,
+  deletemultipleroleFailure,
 } from './role.action';
 import { RolelistModel } from './role.model';
 
@@ -63,6 +67,8 @@ export const RoleReducer = createReducer(
   on(deletemultipleroleSuccess, (state, { id }) => {
     return { ...state, error: null };
   }),
+  // Échecs des opérations : on garde l'état, on mémorise le message serveur
+  on(addroleDataFailure, updateroleDataFailure, deleteroleFailure, deletemultipleroleFailure, (state, { error }) => ({ ...state, error })),
 );
 
 // Selector

@@ -1,19 +1,31 @@
 // src/app/pages/etat/etat.component.ts
 
-import { Component, OnInit, AfterViewInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, AfterViewInit, ViewChild, ElementRef, DestroyRef, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
 import { ModalDirective } from 'ngx-bootstrap/modal';
 import { Store } from '@ngrx/store';
+import { Actions, ofType } from '@ngrx/effects';
 import { PageChangedEvent } from 'ngx-bootstrap/pagination';
+import { Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
 
 import {
   addetatData,
+  addetatDataSuccess,
+  addetatDataFailure,
   deleteetatData,
+  deleteetatSuccess,
+  deleteetatFailure,
   deletemultipleetatData,
+  deletemultipleetatSuccess,
+  deletemultipleetatFailure,
   fetchetatData,
   updateetatData,
+  updateetatDataSuccess,
+  updateetatDataFailure,
 } from 'src/app/store/Etat/etat.action';
 import {
   selectetatData,
@@ -30,25 +42,34 @@ import {
 })
 export class EtatComponent implements OnInit, AfterViewInit {
 
+  private destroyRef = inject(DestroyRef);
+  private actions$   = inject(Actions);
+
   breadCrumbItems = [
-    { label: 'Référentiels', active: false },
+    { label: 'Paramètres', active: false },
     { label: 'États', active: true },
   ];
 
   etats:    any[] = [];
-  etatList: any[] = [];
   totalItems  = 0;
   currentPage = 1;
   isLoading   = true;
 
   etatForm!: UntypedFormGroup;
   submitted      = false;
+  isEdit         = false;
+  saving         = false;
+  deleting       = false;
   masterSelected = false;
   term: any;
   checkedValGet: any[] = [];
   selectedEtat: any   = null;
   deleteID: any;
   direction = 'asc';
+
+  /** Terme de recherche effectivement envoyé au serveur (?search=) */
+  private searchTerm = '';
+  private search$    = new Subject<string>();
 
   private lastActiveElement: HTMLElement | null = null;
 
@@ -69,62 +90,112 @@ export class EtatComponent implements OnInit, AfterViewInit {
       libelle_etat: ['', [Validators.required]],
     });
 
-    this.store.select(selectLoading).subscribe(loading => {
+    this.store.select(selectLoading).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(loading => {
       this.isLoading = loading;
     });
 
-    this.store.select(selectTotalItems).subscribe(total => {
+    this.store.select(selectTotalItems).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(total => {
       this.totalItems = total ?? 0;
     });
 
-    this.store.select(selectCurrentPage).subscribe(page => {
+    this.store.select(selectCurrentPage).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(page => {
       this.currentPage = page ?? 1;
     });
 
-    this.store.select(selectetatData).subscribe(data => {
+    this.store.select(selectetatData).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(data => {
       if (data) {
-        this.etats    = data.map(item => ({ ...item, state: false }));
-        this.etatList = [...this.etats];
-        this.updateNoResultDisplay();
+        this.etats = data.map(item => ({ ...item, state: false }));
+        this.resetSelection();
       }
     });
+
+    // ── Recherche serveur (debounce 300 ms, retour page 1) ──
+    this.search$.pipe(
+      map(t => (t ?? '').toString().trim()),
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(t => {
+      this.searchTerm = t;
+      this.loadData(1);
+    });
+
+    // ── Réponses du serveur (ajout / modification) ─────────
+    this.actions$.pipe(ofType(addetatDataSuccess, updateetatDataSuccess), takeUntilDestroyed(this.destroyRef))
+      .subscribe(action => {
+        this.saving    = false;
+        this.submitted = false;
+        this.toastService.success(
+          action.type === addetatDataSuccess.type ? 'État ajouté avec succès !' : 'État mis à jour avec succès !',
+          'Succès'
+        );
+        this.closeAddModal();
+      });
+
+    this.actions$.pipe(ofType(addetatDataFailure, updateetatDataFailure), takeUntilDestroyed(this.destroyRef))
+      .subscribe(({ error }) => {
+        // La modale reste ouverte avec les valeurs saisies
+        this.saving = false;
+        this.toastService.error(error || 'Enregistrement impossible.', 'Erreur');
+      });
+
+    // ── Réponses du serveur (suppression) ──────────────────
+    this.actions$.pipe(ofType(deleteetatSuccess, deletemultipleetatSuccess), takeUntilDestroyed(this.destroyRef))
+      .subscribe(action => {
+        this.toastService.success(
+          action.type === deleteetatSuccess.type ? 'État supprimé avec succès !' : 'États supprimés avec succès !',
+          'Succès'
+        );
+        this.afterDeleteActions();
+      });
+
+    this.actions$.pipe(ofType(deleteetatFailure, deletemultipleetatFailure), takeUntilDestroyed(this.destroyRef))
+      .subscribe(({ error }) => {
+        // La ligne reste affichée : on montre seulement l'erreur
+        this.deleting = false;
+        this.toastService.error(error || 'Suppression impossible.', 'Erreur');
+        this.closeDeleteModal();
+      });
 
     this.loadData(1);
   }
 
   ngAfterViewInit(): void {
-    this.addEtat?.onHidden.subscribe(() => {
+    this.addEtat?.onHidden.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.etatForm.reset();
-      this.setModalTitle('Ajouter un état');
-      this.setModalBtn('Ajouter');
+      this.submitted = false;
+      this.saving    = false;
+      this.isEdit    = false;
     });
 
-    this.deleteRecordModal?.onHidden.subscribe(() => {
+    this.deleteRecordModal?.onHidden.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.deleteID = null;
+      this.deleting = false;
     });
   }
 
   // ── Chargement ────────────────────────────────────────────
   loadData(page: number = 1): void {
-    this.store.dispatch(fetchetatData({ page }));
+    this.store.dispatch(fetchetatData({ page, search: this.searchTerm || undefined }));
+  }
+
+  private resetSelection(): void {
+    this.checkedValGet  = [];
+    this.masterSelected = false;
   }
 
   // ── Modal Ajouter ─────────────────────────────────────────
   openAddModal(): void {
     this.lastActiveElement = document.activeElement as HTMLElement;
     this.etatForm.reset();
-    this.setModalTitle('Ajouter un état');
-    this.setModalBtn('Ajouter');
+    this.submitted = false;
+    this.isEdit    = false;
     this.addEtat?.show();
   }
 
   closeAddModal(): void {
     this.lastActiveElement?.focus();
-    setTimeout(() => {
-      this.addEtat?.hide();
-      this.setModalTitle('Ajouter un état');
-      this.setModalBtn('Ajouter');
-    }, 10);
+    setTimeout(() => this.addEtat?.hide(), 10);
   }
 
   // ── Modal Édition ─────────────────────────────────────────
@@ -133,9 +204,10 @@ export class EtatComponent implements OnInit, AfterViewInit {
     const editData = this.etats.find(p => p.id === id);
     if (!editData) return;
 
+    this.etatForm.reset();
     this.etatForm.patchValue(editData);
-    this.setModalTitle('Modifier l\'état');
-    this.setModalBtn('Mettre à jour');
+    this.submitted = false;
+    this.isEdit    = true;
     this.addEtat?.show();
   }
 
@@ -146,21 +218,18 @@ export class EtatComponent implements OnInit, AfterViewInit {
       this.toastService.error('Veuillez vérifier les informations saisies.', 'Erreur');
       return;
     }
+    if (this.saving) return;
 
     const formValue = { ...this.etatForm.value };
+    this.saving = true;
 
     if (formValue.id) {
       this.store.dispatch(updateetatData({ updatedData: formValue }));
-      this.toastService.success('État mis à jour avec succès !', 'Succès');
     } else {
       delete formValue.id;
       this.store.dispatch(addetatData({ newData: formValue }));
-      this.toastService.success('État ajouté avec succès !', 'Succès');
     }
-
-    this.submitted = false;
-    this.etatForm.reset();
-    this.closeAddModal();
+    // Toast + fermeture de la modale à la réponse du serveur (voir ngOnInit)
   }
 
   // ── Modal Suppression ─────────────────────────────────────
@@ -170,23 +239,38 @@ export class EtatComponent implements OnInit, AfterViewInit {
     this.deleteRecordModal?.show();
   }
 
+  openBulkDelete(): void {
+    this.lastActiveElement = document.activeElement as HTMLElement;
+    this.deleteID = null;
+    this.deleteRecordModal?.show();
+  }
+
   closeDeleteModal(): void {
     this.lastActiveElement?.focus();
     setTimeout(() => this.deleteRecordModal?.hide(), 10);
   }
 
+  get deleteMessage(): string {
+    if (this.deleteID) {
+      const libelle = this.etats.find(e => e.id === this.deleteID)?.libelle_etat;
+      return libelle ? `l'état « ${libelle} »` : 'cet état';
+    }
+    const n = this.checkedValGet.length;
+    return n > 1 ? `ces ${n} états` : 'cet état';
+  }
+
   confirmDelete(id?: any): void {
+    if (this.deleting) return;
+
     if (id) {
+      this.deleting = true;
       this.store.dispatch(deleteetatData({ id: id.toString() }));
-      this.toastService.success('État supprimé avec succès !', 'Succès');
-      this.afterDeleteActions();
       return;
     }
 
     if (this.checkedValGet?.length > 0) {
+      this.deleting = true;
       this.store.dispatch(deletemultipleetatData({ id: this.checkedValGet.join(',') }));
-      this.toastService.success('États supprimés avec succès !', 'Succès');
-      this.afterDeleteActions();
       return;
     }
 
@@ -196,9 +280,9 @@ export class EtatComponent implements OnInit, AfterViewInit {
 
   private afterDeleteActions(): void {
     this.closeDeleteModal();
-    this.masterSelected = false;
-    this.deleteID       = null;
-    this.checkedValGet  = [];
+    this.deleting = false;
+    this.deleteID = null;
+    this.resetSelection();
   }
 
   // ── Modal Détails ─────────────────────────────────────────
@@ -236,6 +320,7 @@ export class EtatComponent implements OnInit, AfterViewInit {
     this.checkedValGet = this.etats
       .filter(e => e.state === true)
       .map(e => e.id);
+    this.masterSelected = this.etats.length > 0 && this.checkedValGet.length === this.etats.length;
   }
 
   // ── Tri ───────────────────────────────────────────────────
@@ -251,38 +336,13 @@ export class EtatComponent implements OnInit, AfterViewInit {
     return v1 < v2 ? -1 : v1 > v2 ? 1 : 0;
   }
 
-  // ── Recherche ─────────────────────────────────────────────
-  filterdata(): void {
-    if (this.term) {
-      this.etats = this.etatList.filter(el =>
-        el.libelle_etat?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.id?.toString().includes(this.term)
-      );
-    } else {
-      this.loadData(this.currentPage);
-    }
-    this.updateNoResultDisplay();
+  // ── Recherche (côté serveur) ──────────────────────────────
+  filterdata(value?: string): void {
+    this.search$.next(value ?? this.term ?? '');
   }
 
-  updateNoResultDisplay(): void {
-    const el = document.querySelector('.noresult') as HTMLElement;
-    if (!el) return;
-    el.style.display = this.term && this.etats.length === 0 ? 'block' : 'none';
-  }
-
-  // ── Pagination ────────────────────────────────────────────
+  // ── Pagination (le terme de recherche est conservé) ───────
   pageChanged(event: PageChangedEvent): void {
     this.loadData(event.page);
-  }
-
-  // ── Helpers modal ─────────────────────────────────────────
-  private setModalTitle(title: string): void {
-    const el = document.querySelector('.modal-title') as HTMLElement;
-    if (el) el.innerHTML = title;
-  }
-
-  private setModalBtn(label: string): void {
-    const el = document.getElementById('add-btn') as HTMLElement;
-    if (el) el.innerHTML = label;
   }
 }

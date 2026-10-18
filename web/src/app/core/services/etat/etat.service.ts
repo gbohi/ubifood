@@ -15,16 +15,19 @@ export class EtatService {
 
   private currentPage  = 1;
   private totalItems   = 0;
+  private currentSearch?: string;
   private itemsPerPage = 10;
 
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllEtats(page: number = 1): Observable<ApiResponse<EtatlistModel>> {
+  getAllEtats(page: number = 1, search?: string): Observable<ApiResponse<EtatlistModel>> {
     this.currentPage = page;
+    this.currentSearch = search?.trim() || undefined;
+    const q = this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '';
     // ✅ Plus de getAuthHeaders() — JWT géré par l'intercepteur
     return this.http.get<ApiResponse<EtatlistModel>>(
-      `${this.apiUrl}/etats/?page=${page}`
+      `${this.apiUrl}/etats/?page=${page}${q}`
     ).pipe(
       tap(response => {
         this.totalItems  = response.count;
@@ -70,11 +73,13 @@ export class EtatService {
     currentPage:  number;
     totalItems:   number;
     itemsPerPage: number;
+    search?:      string;
   }> {
     return of({
       currentPage:  this.currentPage,
       totalItems:   this.totalItems,
       itemsPerPage: this.itemsPerPage,
+      search:       this.currentSearch,
     });
   }
 }

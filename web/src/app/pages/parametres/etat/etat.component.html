@@ -14,9 +14,9 @@
             <div class="search-box">
               <input type="text"
                      class="form-control search"
-                     placeholder="Rechercher par libellé ou ID..."
+                     placeholder="Rechercher par libellé..."
                      [(ngModel)]="term"
-                     (keyup)="filterdata()">
+                     (ngModelChange)="filterdata($event)">
               <i class="ri-search-line search-icon"></i>
             </div>
           </div>
@@ -27,7 +27,7 @@
               <!-- ✅ @if au lieu de [class.d-none] -->
               @if (checkedValGet.length > 0) {
                 <button class="btn btn-subtle-danger"
-                        (click)="deleteRecordModal?.show()">
+                        (click)="openBulkDelete()">
                   <i class="ri-delete-bin-2-line"></i>
                   Supprimer ({{ checkedValGet.length }})
                 </button>
@@ -136,7 +136,7 @@
           }
 
           <!-- Aucun résultat de recherche -->
-          <div class="noresult" style="display: none;">
+          <div class="noresult" [style.display]="term && etats.length === 0 && !isLoading ? 'block' : 'none'">
             <div class="text-center py-4">
               <i class="ph-magnifying-glass fs-1 text-primary"></i>
               <h5 class="mt-2">Aucun résultat trouvé</h5>
@@ -161,7 +161,7 @@
               </div>
             </div>
             <div class="col-sm-auto mt-3 mt-sm-0">
-              <pagination
+              <pagination previousText="Précédent" nextText="Suivant"
                 class="pagination-wrap justify-content-center hstack gap-2"
                 [totalItems]="totalItems"
                 [itemsPerPage]="10"
@@ -187,7 +187,7 @@
     <div class="modal-content">
 
       <div class="modal-header">
-        <h5 class="modal-title">Ajouter un état</h5>
+        <h5 class="modal-title">{{ isEdit ? "Modifier l'état" : "Ajouter un état" }}</h5>
         <button type="button" class="btn-close" (click)="closeAddModal()"></button>
       </div>
 
@@ -225,8 +225,8 @@
             <button type="submit"
                     class="btn btn-primary"
                     id="add-btn"
-                    [disabled]="etatForm.invalid">
-              Ajouter
+                    [disabled]="etatForm.invalid || saving">
+              {{ isEdit ? 'Mettre à jour' : 'Ajouter' }}
             </button>
           </div>
         </div>
@@ -259,7 +259,7 @@
             <h4 class="mb-2">Êtes-vous sûr ?</h4>
             <p class="text-muted fs-md mx-3 mb-0">
               Voulez-vous vraiment supprimer
-              {{ checkedValGet.length > 1 ? 'ces états' : 'cet état' }} ?
+              {{ deleteMessage }} ?
             </p>
           </div>
         </div>
@@ -272,6 +272,7 @@
           </button>
           <button type="button"
                   class="btn w-sm btn-danger"
+                  [disabled]="deleting"
                   (click)="confirmDelete(deleteID)">
             Oui, supprimer
           </button>

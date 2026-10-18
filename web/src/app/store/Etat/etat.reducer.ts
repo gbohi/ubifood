@@ -7,7 +7,11 @@ import {
   fetchetatFailure, 
   fetchetatSuccess, 
   updateetatDataSuccess,
-  fetchetatNoPaginateSuccess 
+  fetchetatNoPaginateSuccess,
+  addetatDataFailure,
+  updateetatDataFailure,
+  deleteetatFailure,
+  deletemultipleetatFailure,
 } from './etat.action';
 import { EtatlistModel } from './etat.model';
 
@@ -74,7 +78,8 @@ export const EtatReducer = createReducer(
             loading: false
           };
         }),
-
+  // Échecs des opérations : on garde l'état, on mémorise le message serveur
+  on(addetatDataFailure, updateetatDataFailure, deleteetatFailure, deletemultipleetatFailure, (state, { error }) => ({ ...state, error })),
 );
 
 // Selector
