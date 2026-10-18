@@ -25,7 +25,7 @@ from django.db import transaction
 from rest_framework.generics import ListAPIView
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.db.models import Count, Q
+from django.db.models import Avg, Count, Q
 from django.shortcuts import get_object_or_404
 from decimal import ROUND_HALF_UP, Decimal
 from django.utils.timezone import now
@@ -1129,6 +1129,43 @@ class PlatViewSet(BaseViewSet):
     def get_queryset(self):
         return filtrer_agences_gerees(self.request, super().get_queryset(), 'agence_id')
 
+    @action(detail=True, methods=['post'], url_path='image-principale',
+            permission_classes=[IsGestionnaireRole])
+    def image_principale(self, request, pk=None):
+        """POST /plats/{id}/image-principale/ { image_id } : photo affichée en premier."""
+        plat = self.get_object()
+        geres = agences_gerees(request.user)
+        if geres is not None and plat.agence_id not in geres:
+            raise PermissionDenied("Ce plat n'est pas celui de votre agence.")
+        image = plat.images.filter(pk=request.data.get('image_id')).first()
+        if image is None:
+            raise ValidationError("Cette photo n'appartient pas au plat.")
+        with transaction.atomic():
+            plat.images.exclude(pk=image.pk).update(is_principale=False)
+            plat.images.filter(pk=image.pk).update(is_principale=True)
+        return Response(self.get_serializer(self.get_queryset().get(pk=plat.pk)).data)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def avis(self, request, pk=None):
+        """GET /plats/{id}/avis/ : note moyenne, nombre d'avis et derniers commentaires."""
+        plat = self.get_object()
+        qs = AvisPlat.objects.filter(plat=plat).select_related('user')
+        resume = qs.aggregate(moyenne=Avg('note'), nombre=Count('id'))
+
+        def auteur(u):
+            initiale = f"{(u.nom or '')[:1]}." if u.nom else ''
+            return f"{u.prenom or u.username} {initiale}".strip()
+
+        return Response({
+            'note_moyenne': round(resume['moyenne'], 1) if resume['moyenne'] else None,
+            'nb_avis': resume['nombre'],
+            'derniers': [
+                {'note': a.note, 'commentaire': a.commentaire, 'auteur': auteur(a.user),
+                 'date': a.created_at.date()}
+                for a in qs.exclude(commentaire='')[:5]
+            ],
+        })
+
     def verifier_suppression(self, instance):
         geres = agences_gerees(self.request.user)
         if geres is not None and instance.agence_id not in geres:
@@ -1321,7 +1358,8 @@ class CommandeViewSet(BaseViewSet):
     def _base_queryset(self):
         return (
             Commande.objects
-            .select_related('user', 'menu__agence', 'menu__typeequipe', 'plat__type_plat', 'plat__agence')
+            .select_related('user', 'menu__agence', 'menu__typeequipe', 'plat__type_plat',
+                            'plat__agence', 'avis')
             .prefetch_related('plat__images', 'user__useragence_set__agence')
             .order_by('-date_commande')
         )
@@ -3024,3 +3062,62 @@ class BanniereViewSet(BaseViewSet):
         return (qs.filter(actif=True)
                   .filter(Q(date_debut__isnull=True) | Q(date_debut__lte=jour))
                   .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=jour)))
+
+
+
+class AvisPlatViewSet(viewsets.ModelViewSet):
+    """
+    Avis sur les repas retirés.
+      Employé        : donne, modifie et voit SES avis.
+      Gestionnaire   : voit les avis des repas servis dans son agence.
+      Administrateur : voit tous les avis, peut en supprimer (modération).
+    GET /avis-plats/?plat=&note=&agence=&date_debut=&date_fin=
+    GET /avis-plats/statistiques/   moyenne et nombre d'avis par plat (mêmes filtres)
+    """
+    serializer_class = AvisPlatSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = AvisPlat.objects.select_related('user', 'plat', 'commande__menu__agence')
+        if not is_gestionnaire(user):
+            return qs.filter(user=user)
+        geres = agences_gerees(user)
+        if geres is not None:
+            qs = qs.filter(Q(commande__menu__agence_id__in=geres) | Q(user=user))
+        p = self.request.query_params
+        for param, champ in (('plat', 'plat_id'), ('note', 'note'), ('agence', 'commande__menu__agence_id')):
+            valeur = p.get(param)
+            if valeur:
+                if not str(valeur).isdigit():
+                    raise ValidationError(f"Paramètre {param} invalide.")
+                qs = qs.filter(**{champ: int(valeur)})
+        debut = _parse_date(p.get('date_debut'), None)
+        fin = _parse_date(p.get('date_fin'), None)
+        if debut:
+            qs = qs.filter(commande__menu__date_menu__gte=debut)
+        if fin:
+            qs = qs.filter(commande__menu__date_menu__lte=fin)
+        return qs
+
+    def perform_update(self, serializer):
+        if serializer.instance.user_id != self.request.user.id:
+            raise PermissionDenied("Vous ne pouvez modifier que vos propres avis.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.user_id != self.request.user.id and not is_admin(self.request.user):
+            raise PermissionDenied("Suppression réservée à l'auteur ou à un administrateur.")
+        instance.delete()
+
+    @action(detail=False, methods=['get'], permission_classes=[IsGestionnaireRole])
+    def statistiques(self, request):
+        lignes = (self.get_queryset().values('plat_id', 'plat__nom')
+                  .annotate(moyenne=Avg('note'), nombre=Count('id'))
+                  .order_by('-nombre', 'plat__nom'))
+        return Response([
+            {'plat_id': l['plat_id'], 'plat_nom': l['plat__nom'],
+             'note_moyenne': round(l['moyenne'], 1), 'nb_avis': l['nombre']}
+            for l in lignes
+        ])

@@ -974,3 +974,71 @@ class BanniereTests(BaseAPITestCase):
         self.assertEqual(r.status_code, 400)
         r = self.admin_c.post(f'{API}/bannieres/', {'titre': 'Sans image'})
         self.assertEqual(r.status_code, 400)
+
+
+class AvisEtPhotosTests(BaseAPITestCase):
+    """Avis sur les repas retirés et photo principale d'un plat."""
+
+    def setUp(self):
+        self.menu = self.creer_menu(jours=-1)
+        self.cmd = Commande.objects.create(user=self.employe, menu=self.menu, plat=self.plat1, statut='retiree')
+        self.attente = Commande.objects.create(user=self.employe, menu=self.creer_menu(jours=3), plat=self.plat2)
+        self.emp = self.client_pour(self.employe)
+
+    def test_noter_un_repas_retire(self):
+        r = self.emp.post(f'{API}/avis-plats/', {'commande_id': self.cmd.id, 'note': 4, 'commentaire': ' Très bon '})
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['commentaire'], 'Très bon')
+        # Une seule fois par repas, modifiable ensuite
+        self.assertEqual(self.emp.post(f'{API}/avis-plats/', {'commande_id': self.cmd.id, 'note': 5}).status_code, 400)
+        self.assertEqual(self.emp.patch(f'{API}/avis-plats/{r.data["id"]}/', {'note': 5}).data['note'], 5)
+        # L'avis apparaît sur la commande
+        cmd = [c for c in self.emp.get(f'{API}/commandes/mes-commandes/').data if c['id'] == self.cmd.id][0]
+        self.assertEqual(cmd['avis']['note'], 5)
+        # Résumé du plat
+        r = self.emp.get(f'{API}/plats/{self.plat1.id}/avis/')
+        self.assertEqual((r.data['note_moyenne'], r.data['nb_avis']), (5.0, 1))
+
+    def test_regles_des_avis(self):
+        self.assertEqual(self.emp.post(f'{API}/avis-plats/', {'commande_id': self.attente.id, 'note': 3}).status_code, 400)
+        self.assertEqual(self.emp.post(f'{API}/avis-plats/', {'commande_id': self.cmd.id, 'note': 6}).status_code, 400)
+        r = self.client_pour(self.employe2).post(f'{API}/avis-plats/', {'commande_id': self.cmd.id, 'note': 2})
+        self.assertEqual(r.status_code, 400)
+        avis_id = self.emp.post(f'{API}/avis-plats/', {'commande_id': self.cmd.id, 'note': 3}).data['id']
+        # Un autre agent ne le voit pas, ne peut ni le modifier ni le supprimer
+        autre = self.client_pour(self.employe2)
+        self.assertEqual(autre.get(f'{API}/avis-plats/').data['count'], 0)
+        self.assertEqual(autre.patch(f'{API}/avis-plats/{avis_id}/', {'note': 1}).status_code, 404)
+
+    def test_administrateur_voit_tous_les_avis(self):
+        from .models import AvisPlat
+        AvisPlat.objects.create(commande=self.cmd, user=self.employe, plat=self.plat1, note=4)
+        autre = Agence.objects.create(nom_agence='Yopougon')
+        m = Menu.objects.create(date_menu=timezone.localdate() - timedelta(days=1), agence=autre,
+                                typeequipe=self.typeequipe)
+        c2 = Commande.objects.create(user=self.employe2, menu=m, plat=self.plat1, statut='retiree')
+        AvisPlat.objects.create(commande=c2, user=self.employe2, plat=self.plat1, note=2, commentaire='Froid')
+        admin = self.client_pour(self.admin)
+        self.assertEqual(admin.get(f'{API}/avis-plats/').data['count'], 2)
+        self.assertEqual(admin.get(f'{API}/avis-plats/', {'note': 2}).data['count'], 1)
+        stats = admin.get(f'{API}/avis-plats/statistiques/').data
+        self.assertEqual((stats[0]['note_moyenne'], stats[0]['nb_avis']), (3.0, 2))
+        # Le gestionnaire du Siège ne voit que son agence
+        self.assertEqual(self.client_pour(self.gestionnaire).get(f'{API}/avis-plats/').data['count'], 1)
+        self.assertEqual(self.client_pour(self.employe).get(f'{API}/avis-plats/statistiques/').status_code, 403)
+        # Modération par l'administrateur
+        avis_id = admin.get(f'{API}/avis-plats/', {'note': 2}).data['results'][0]['id']
+        self.assertEqual(admin.delete(f'{API}/avis-plats/{avis_id}/').status_code, 204)
+
+    def test_photo_principale(self):
+        from .models import PlatImage
+        a = PlatImage.objects.create(plat=self.plat1, image='images_plats/a.png', is_principale=True)
+        b = PlatImage.objects.create(plat=self.plat1, image='images_plats/b.png')
+        gest = self.client_pour(self.gestionnaire)
+        r = gest.post(f'{API}/plats/{self.plat1.id}/image-principale/', {'image_id': b.id})
+        self.assertEqual(r.status_code, 200, r.data)
+        a.refresh_from_db(); b.refresh_from_db()
+        self.assertEqual((a.is_principale, b.is_principale), (False, True))
+        self.assertEqual(self.emp.post(f'{API}/plats/{self.plat1.id}/image-principale/', {'image_id': a.id}).status_code, 403)
+        autre = PlatImage.objects.create(plat=self.plat2, image='images_plats/c.png')
+        self.assertEqual(gest.post(f'{API}/plats/{self.plat1.id}/image-principale/', {'image_id': autre.id}).status_code, 400)

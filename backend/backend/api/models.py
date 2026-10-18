@@ -1,5 +1,5 @@
 from django.contrib.auth.models import AbstractUser
-from django.core.validators import FileExtensionValidator
+from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -588,3 +588,25 @@ class Banniere(models.Model):
 
     def __str__(self):
         return self.titre
+
+
+class AvisPlat(models.Model):
+    """
+    Avis d'un agent sur un repas qu'il a retiré : une note de 1 à 5 et un
+    commentaire facultatif, un seul avis par commande (modifiable).
+    """
+    commande    = models.OneToOneField(Commande, on_delete=models.CASCADE, related_name='avis')
+    user        = models.ForeignKey(User, on_delete=models.CASCADE, related_name='avis_plats')
+    plat        = models.ForeignKey(Plat, on_delete=models.CASCADE, related_name='avis')
+    note        = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)])
+    commentaire = models.TextField(blank=True, max_length=500)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'avis_plat'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.plat} : {self.note}/5"

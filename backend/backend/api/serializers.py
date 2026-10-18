@@ -810,9 +810,19 @@ class CommandeSerializer(serializers.ModelSerializer):
             'id', 'statut', 'date_commande', 'date_annulation',
             'plat_detail', 'menu_detail', 'user_nom', 'user_agence',
             'user_id', 'user_username',
-            'menu_id', 'plat_id',
+            'menu_id', 'plat_id', 'avis',
         ]
         read_only_fields = ['date_commande', 'date_annulation', 'statut']
+
+    avis = serializers.SerializerMethodField()
+
+    def get_avis(self, obj):
+        """Avis laissé sur ce repas (null tant qu'il n'est pas noté)."""
+        try:
+            a = obj.avis
+        except AvisPlat.DoesNotExist:
+            return None
+        return {'id': a.id, 'note': a.note, 'commentaire': a.commentaire}
 
     def get_user_nom(self, obj):
         return nom_complet(obj.user)
@@ -1303,3 +1313,58 @@ class BanniereSerializer(serializers.ModelSerializer):
         if 'image' in validated_data and instance.image:
             instance.image.delete(save=False)
         return super().update(instance, validated_data)
+
+
+
+class AvisPlatSerializer(serializers.ModelSerializer):
+    """
+    Création : { commande_id, note (1-5), commentaire? } sur une de SES
+    commandes retirées ; modification : note / commentaire.
+    """
+    commande_id = serializers.PrimaryKeyRelatedField(
+        queryset=Commande.objects.select_related('menu__agence', 'plat'),
+        source='commande', write_only=True)
+    plat_id    = serializers.ReadOnlyField(source='plat.id')
+    plat_nom   = serializers.ReadOnlyField(source='plat.nom')
+    user_nom   = serializers.SerializerMethodField()
+    agence_nom = serializers.ReadOnlyField(source='commande.menu.agence.nom_agence')
+    date_menu  = serializers.ReadOnlyField(source='commande.menu.date_menu')
+
+    class Meta:
+        model  = AvisPlat
+        fields = ['id', 'commande_id', 'note', 'commentaire', 'plat_id', 'plat_nom',
+                  'user_nom', 'agence_nom', 'date_menu', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_user_nom(self, obj):
+        return nom_complet(obj.user)
+
+    def validate_note(self, note):
+        if not 1 <= note <= 5:
+            raise serializers.ValidationError("La note va de 1 à 5.")
+        return note
+
+    def validate_commentaire(self, texte):
+        texte = (texte or '').strip()
+        if len(texte) > 500:
+            raise serializers.ValidationError("500 caractères maximum.")
+        return texte
+
+    def validate(self, attrs):
+        if self.instance is not None:
+            attrs.pop('commande', None)   # la commande d'un avis ne change pas
+            return attrs
+        commande = attrs['commande']
+        request = self.context['request']
+        if commande.user_id != request.user.id:
+            raise serializers.ValidationError("Vous ne pouvez noter que vos propres repas.")
+        if commande.statut != 'retiree':
+            raise serializers.ValidationError("Seul un repas retiré peut être noté.")
+        if AvisPlat.objects.filter(commande=commande).exists():
+            raise serializers.ValidationError(
+                "Vous avez déjà donné votre avis sur ce repas : modifiez-le.")
+        return attrs
+
+    def create(self, validated_data):
+        commande = validated_data['commande']
+        return AvisPlat.objects.create(user=commande.user, plat=commande.plat, **validated_data)
