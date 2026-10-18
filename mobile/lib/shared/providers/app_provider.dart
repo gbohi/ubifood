@@ -169,8 +169,8 @@ class MenuProvider extends ChangeNotifier {
     return duJour.firstOrNull;
   }
 
-  /// [agenceId] : agence de l'agent connecté → seuls les menus de son agence
-  /// sont chargés (avant : tous les menus de toutes les agences, tronqués à 10).
+  /// Menus à venir. Sans [agenceId] : toutes les agences (un agent peut
+  /// commander dans l'agence où il se trouve) ; chaque écran filtre ensuite.
   Future<void> loadMenus({int? agenceId}) async {
     _loading = true;
     _error = null;
@@ -213,6 +213,12 @@ class CommandeProvider extends ChangeNotifier {
   bool get isLoading => _state == CommandeState.loading;
 
   int get totalCommandes => _mesCommandes.length;
+
+  /// Commandes dont le menu tombe dans le mois de [jour] (accueil).
+  List<Commande> commandesDuMois(DateTime jour) => _mesCommandes.where((c) {
+        final d = DateTime.tryParse(c.menuDetail?.dateMenu ?? '');
+        return d != null && d.year == jour.year && d.month == jour.month;
+      }).toList();
   int get enAttente =>
       _mesCommandes.where((c) => c.statut == StatutCommande.enAttente).length;
   int get retirees =>

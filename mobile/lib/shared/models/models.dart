@@ -50,6 +50,17 @@ class AuthUser {
 
   String get fullName => '$nom $prenom'.trim();
 
+  /// Initiales (prénom puis nom), comme sur le web : « Fatou KONE » → « FK »
+  String get initiales {
+    final lettres = [prenom, nom]
+        .where((m) => m.trim().isNotEmpty)
+        .map((m) => m.trim()[0].toUpperCase())
+        .join();
+    return lettres.isNotEmpty
+        ? lettres
+        : (username.isNotEmpty ? username[0].toUpperCase() : 'U');
+  }
+
   bool get isAdmin => roles.contains('super_admin') || roles.contains('admin');
 
   /// Gestionnaire de cantine (les administrateurs ont aussi ces droits)

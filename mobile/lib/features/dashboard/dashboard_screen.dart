@@ -10,10 +10,11 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../shared/models/models.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../core/services/cantine_service.dart';
 import '../profil/qr_code_screen.dart';
 import '../commandes/commandes_screen.dart';
 import '../facturation/facturation_screen.dart';
-import '../notifications/notification_screen.dart'; // ✅ AJOUTÉ
+import '../notifications/notification_screen.dart';
 
 // ── InheritedWidget pour navigation depuis Dashboard ──────────
 class MainShellNavigator extends InheritedWidget {
@@ -42,8 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MenuProvider>().loadMenus(
-          agenceId: context.read<AuthProvider>().user?.derniereAgenceId);
+      context.read<MenuProvider>().loadMenus();
       context.read<CommandeProvider>().loadMesCommandes();
     });
   }
@@ -72,8 +72,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         notificationPredicate: (notification) => notification.depth == 0,
         onRefresh: () async {
           await Future.wait([
-            context.read<MenuProvider>().loadMenus(
-                agenceId: context.read<AuthProvider>().user?.derniereAgenceId),
+            context.read<MenuProvider>().loadMenus(),
             context.read<CommandeProvider>().loadMesCommandes(),
           ]);
         },
@@ -120,13 +119,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 border: Border.all(
                                     color: AppColors.accent.withOpacity(0.4))),
                             child: Center(
-                                child: Text(
-                                    auth.user?.nom.isNotEmpty == true
-                                        ? auth.user!.nom[0].toUpperCase()
-                                        : 'U',
+                                child: Text(auth.user?.initiales ?? 'U',
                                     style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: 16,
+                                        fontSize: 14,
                                         fontWeight: FontWeight.w700))),
                           ),
                           const SizedBox(width: 8),
@@ -234,9 +230,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                     const SizedBox(height: 24),
 
-                    // Stats commandes
+                    // Gestionnaire : service du jour dans son agence
+                    if (auth.isGestionnaire) ...[
+                      const _ServiceDuJourCard(),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // Stats commandes du mois (repas facturés = non annulés)
                     SectionHeader(
-                      title: 'Mes commandes',
+                      title:
+                          'Mes commandes — ${DateFormat('MMMM', 'fr_FR').format(DateTime.now())}',
                       action: 'Voir tout',
                       onAction: () => _goCommandes(context),
                     ),
@@ -255,6 +258,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               4, (_) => const ShimmerCard(height: 100)),
                         );
                       }
+                      final duMois = cmdProv.commandesDuMois(DateTime.now());
+                      int nb(StatutCommande s) =>
+                          duMois.where((c) => c.statut == s).length;
                       return GridView.count(
                         crossAxisCount: 2,
                         shrinkWrap: true,
@@ -264,29 +270,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         childAspectRatio: 1.5,
                         children: [
                           StatCard(
-                            label: 'Total',
-                            value: cmdProv.totalCommandes.toString(),
+                            label: 'Repas commandés',
+                            value: (duMois.length - nb(StatutCommande.annulee))
+                                .toString(),
                             icon: Icons.receipt_long_rounded,
                             color: AppColors.primary,
                             onTap: () => _goCommandes(context),
                           ),
                           StatCard(
                             label: 'En attente',
-                            value: cmdProv.enAttente.toString(),
+                            value: nb(StatutCommande.enAttente).toString(),
                             icon: Icons.schedule_rounded,
                             color: AppColors.warning,
                             onTap: () => _goCommandes(context),
                           ),
                           StatCard(
                             label: 'Retirées',
-                            value: cmdProv.retirees.toString(),
+                            value: nb(StatutCommande.retiree).toString(),
                             icon: Icons.check_circle_rounded,
                             color: AppColors.success,
                             onTap: () => _goCommandes(context),
                           ),
                           StatCard(
                             label: 'Annulées',
-                            value: cmdProv.annulees.toString(),
+                            value: nb(StatutCommande.annulee).toString(),
                             icon: Icons.cancel_rounded,
                             color: isDark
                                 ? AppColors.darkTextSecondary
@@ -423,8 +430,9 @@ class _BannerSliderState extends State<_BannerSlider> {
   int _current = 0;
   Timer? _timer;
 
+  // slide1.svg (« Bonne fête du travail, 1er mai 2026 ») est datée :
+  // à remettre seulement pour l'occasion.
   static const _slides = [
-    'assets/images/slide1.svg',
     'assets/images/slide2.svg',
     'assets/images/slide3.svg',
     'assets/images/slide4.svg',
@@ -597,6 +605,112 @@ class _MenuDuJourCard extends StatelessWidget {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// GESTIONNAIRE : SERVICE DU JOUR (commandes du jour de son agence ;
+// le serveur limite déjà le gestionnaire à son agence)
+// ══════════════════════════════════════════════════════════════
+
+class _ServiceDuJourCard extends StatefulWidget {
+  const _ServiceDuJourCard();
+  @override
+  State<_ServiceDuJourCard> createState() => _ServiceDuJourCardState();
+}
+
+class _ServiceDuJourCardState extends State<_ServiceDuJourCard> {
+  late Future<List<Commande>> _commandes;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  void _charger() {
+    final j = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    _commandes =
+        commandeService.getCommandesParAgencePeriode(dateDebut: j, dateFin: j);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final agence = (auth.user?.isAdmin ?? false)
+        ? 'Toutes les agences'
+        : (auth.user?.derniereAgence ?? 'Mon agence');
+
+    return FutureBuilder<List<Commande>>(
+      future: _commandes,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const ShimmerCard(height: 110);
+        }
+        final cmds = snap.data ?? [];
+        int nb(StatutCommande s) => cmds.where((c) => c.statut == s).length;
+        final aServir = nb(StatutCommande.enAttente);
+        final servis = nb(StatutCommande.retiree);
+
+        Widget chiffre(String valeur, String libelle, Color couleur) => Expanded(
+              child: Column(children: [
+                Text(valeur,
+                    style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: couleur)),
+                const SizedBox(height: 2),
+                Text(libelle, style: Theme.of(context).textTheme.bodySmall),
+              ]),
+            );
+
+        return GestureDetector(
+          onTap: () => MainShellNavigator.of(context)?.navigateTo(3),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: isDark ? AppColors.darkCard : AppColors.lightCard,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.storefront_rounded,
+                    color: AppColors.accent, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text("Service du jour — $agence",
+                      style: Theme.of(context).textTheme.titleSmall,
+                      overflow: TextOverflow.ellipsis),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  tooltip: 'Actualiser',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => setState(_charger),
+                ),
+              ]),
+              if (snap.hasError)
+                Text('Impossible de charger les commandes du jour.',
+                    style: Theme.of(context).textTheme.bodySmall)
+              else ...[
+                const SizedBox(height: 8),
+                Row(children: [
+                  chiffre('$aServir', 'À servir', AppColors.warning),
+                  chiffre('$servis', 'Servis', AppColors.success),
+                  chiffre('${aServir + servis}', 'Repas commandés',
+                      isDark ? AppColors.accent : AppColors.primary),
+                ]),
+                const SizedBox(height: 8),
+                Text('Touchez pour ouvrir le retrait',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ]),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _NoMenuCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -659,7 +773,7 @@ class _QuickActionsGrid extends StatelessWidget {
       ),
       _QuickAction(
         icon: Icons.receipt_long_rounded,
-        label: 'Commandes',
+        label: auth.isGestionnaire ? 'Mes repas' : 'Commandes',
         color: AppColors.success,
         onTap: () {
           if (auth.isGestionnaire) {
@@ -672,7 +786,7 @@ class _QuickActionsGrid extends StatelessWidget {
       ),
       _QuickAction(
         icon: Icons.account_balance_wallet_rounded,
-        label: 'Facturation',
+        label: 'Factures',
         color: AppColors.accent,
         onTap: () {
           if (auth.isGestionnaire) {
@@ -683,13 +797,20 @@ class _QuickActionsGrid extends StatelessWidget {
           }
         },
       ),
-      if (auth.isGestionnaire)
+      if (auth.isGestionnaire) ...[
+        _QuickAction(
+          icon: Icons.admin_panel_settings_rounded,
+          label: 'Gestion',
+          color: AppColors.primary,
+          onTap: () => MainShellNavigator.of(context)?.navigateTo(2),
+        ),
         _QuickAction(
           icon: Icons.qr_code_scanner_rounded,
           label: 'Retrait',
           color: AppColors.warning,
           onTap: () => MainShellNavigator.of(context)?.navigateTo(3),
         ),
+      ],
     ];
 
     return Row(

@@ -51,9 +51,9 @@ class _MenuScreenState extends State<MenuScreen> {
       final agenceId = auth.user?.derniereAgenceId;
       final agenceNom = auth.user?.derniereAgence;
 
-      // Charger les menus d'abord
-      await context.read<MenuProvider>().loadMenus(
-          agenceId: context.read<AuthProvider>().user?.derniereAgenceId);
+      // Menus de toutes les agences : un agent peut commander là où il se
+      // trouve ; son agence est seulement pré-sélectionnée dans le filtre.
+      await context.read<MenuProvider>().loadMenus();
       context.read<CommandeProvider>().loadMesCommandes();
 
       // ✅ Pré-sélectionner l'agence du user APRÈS le chargement
@@ -748,13 +748,16 @@ class _BoutonCommander extends StatelessWidget {
           color: secColor,
           bg: secBg,
         ),
-        const SizedBox(height: 6),
-        Text(
-          'Annulez "${commandeCeMenu.platDetail?.nom ?? 'votre commande'}" '
-          'pour choisir ce plat',
-          style: TextStyle(fontSize: 11, color: secColor),
-          textAlign: TextAlign.center,
-        ),
+        // Conseil d'annulation seulement si elle est encore possible
+        if (commandeCeMenu.statut == StatutCommande.enAttente && !depasseDelai) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Annulez "${commandeCeMenu.platDetail?.nom ?? 'votre commande'}" '
+            'pour choisir ce plat',
+            style: TextStyle(fontSize: 11, color: secColor),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ]);
     }
 

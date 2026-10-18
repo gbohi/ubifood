@@ -24,10 +24,9 @@ class _RetraitScreenState extends State<RetraitScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final auth = context.read<AuthProvider>();
-      // Gestionnaire : menus de son agence ; administrateur : toutes les agences
-      final agenceId = (auth.user?.isAdmin ?? false) ? null : auth.user?.derniereAgenceId;
-      context.read<MenuProvider>().loadMenus(agenceId: agenceId);
+      // Liste commune à tous les écrans : toutes les agences ; le filtre
+      // « agence du gestionnaire » est appliqué à l'affichage ci-dessous.
+      context.read<MenuProvider>().loadMenus();
       context.read<RetraitProvider>().reset();
     });
   }

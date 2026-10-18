@@ -134,11 +134,7 @@ class _MainShellState extends State<MainShell> {
                       icon: const Icon(Icons.refresh_rounded),
                       tooltip: 'Actualiser',
                       onPressed: () {
-                        context.read<MenuProvider>().loadMenus(
-                            agenceId: context
-                                .read<AuthProvider>()
-                                .user
-                                ?.derniereAgenceId);
+                        context.read<MenuProvider>().loadMenus();
                         context.read<CommandeProvider>().loadMesCommandes();
                       },
                     ),
