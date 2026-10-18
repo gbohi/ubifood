@@ -205,6 +205,35 @@ class CommandeTests(BaseAPITestCase):
             f'{API}/commandes/', {'menu_id': menu.id, 'plat_id': self.plat1.id})
         self.assertEqual(r.status_code, 400)
 
+    def test_delais_parametrables_et_distincts(self):
+        """Délai de commande et délai d'annulation se règlent séparément."""
+        client = self.client_pour(self.employe)
+        menu = self.creer_menu(jours=3)
+        # Commande ouverte jusqu'à 1 h avant le jour, annulation close 10 jours avant
+        r = self.client_pour(self.admin).patch(
+            f'{API}/parametres-societe/',
+            {'delai_commande_heures': 1, 'delai_annulation_heures': 240}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = client.post(f'{API}/commandes/', {'menu_id': menu.id, 'plat_id': self.plat1.id})
+        self.assertEqual(r.status_code, 201, r.data)
+        r = client.patch(f'{API}/commandes/{r.data["id"]}/annuler/')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('annulations pour ce menu', str(r.data))
+        # Les dates limites calculées par le serveur accompagnent le menu
+        r = client.get(f'{API}/menus/{menu.id}/')
+        self.assertIn('date_limite_commande', r.data)
+        self.assertIn('date_limite_annulation', r.data)
+        self.assertEqual(client.get(f'{API}/parametres-cantine/').data,
+                         {'delai_commande_heures': 1, 'delai_annulation_heures': 240})
+
+    def test_delai_modifiable_uniquement_par_admin(self):
+        r = self.client_pour(self.employe).patch(
+            f'{API}/parametres-societe/', {'delai_commande_heures': 0}, format='json')
+        self.assertEqual(r.status_code, 403)
+        r = self.client_pour(self.admin).patch(
+            f'{API}/parametres-societe/', {'delai_commande_heures': 10000}, format='json')
+        self.assertEqual(r.status_code, 400)
+
     def test_plat_hors_menu_refuse(self):
         menu = self.creer_menu(plats=[self.plat1])
         r = self.client_pour(self.employe).post(

@@ -137,6 +137,7 @@ def _notifier_menu(menu_id):
     from .fcm_service import envoyer_notification_groupe
     from .models import Menu, User, UserAgence
 
+    from .serializers import date_limite_commande, libelle_date_limite
     menu = Menu.objects.filter(pk=menu_id).first()
     if not menu:
         return
@@ -155,7 +156,8 @@ def _notifier_menu(menu_id):
     envoyer_notification_groupe(
         users=users,
         titre='🍽️ Nouveau menu disponible',
-        message=f'Le menu du {date_str} est disponible. Commandez au plus tard 48h avant !',
+        message=(f'Le menu du {date_str} est disponible. Commandez au plus tard le '
+                 f'{libelle_date_limite(date_limite_commande(menu.date_menu))}.'),
         type_notif='menu_disponible',
         menu_id=menu.id,
     )

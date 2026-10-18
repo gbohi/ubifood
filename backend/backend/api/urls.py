@@ -118,6 +118,7 @@ urlpatterns = [
     path('api/facturation/', FacturationView.as_view(), name='facturation'),
     path('api/facturation/prestataires/', FacturationPrestataireView.as_view(), name='facturation-prestataires'),
     path('api/parametres-societe/', ParametresSocieteView.as_view(), name='parametres-societe'),
+    path('api/parametres-cantine/', ParametresCantineView.as_view(), name='parametres-cantine'),
     path('api/allnopagin/plats/', AllPlatNopginListAPIView.as_view(), name='allnopagin-plat-list'),
     path('api/allnopagin/prestataires/', AllPrestataireNopginListAPIView.as_view(), name='allnopagin-prestataire-list'),
     path('api/allnopagin/entretienvehicules/', AllEntretienVehiculeNopginListAPIView.as_view(), name='allnopagin-entretienvehicule-list'),

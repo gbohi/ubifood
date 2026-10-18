@@ -694,6 +694,24 @@ class MenuSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['user_created', 'user_updated']
 
+    # Dates limites calculées par le serveur à partir des délais paramétrés :
+    # le web et le mobile les affichent sans recalculer.
+    date_limite_commande   = serializers.SerializerMethodField()
+    date_limite_annulation = serializers.SerializerMethodField()
+
+    def _parametres(self):
+        # Une seule lecture des paramètres par requête (listes, menus imbriqués)
+        ctx = self.context if isinstance(self.context, dict) else {}
+        if '_parametres_societe' not in ctx:
+            ctx['_parametres_societe'] = ParametresSociete.charger()
+        return ctx['_parametres_societe']
+
+    def get_date_limite_commande(self, obj):
+        return date_limite_commande(obj.date_menu, self._parametres()).isoformat()
+
+    def get_date_limite_annulation(self, obj):
+        return date_limite_annulation(obj.date_menu, self._parametres()).isoformat()
+
     def validate(self, attrs):
         from .facturation import ligne_active
         inst = self.instance
@@ -776,11 +794,30 @@ class MenuSerializer(serializers.ModelSerializer):
         return menu
 
 
-# ── Utilitaire partagé ────────────────────────────────────────────────────────
-def _get_deadline(date_menu):
-    """Retourne le datetime limite d'annulation/commande (J-2 à minuit)."""
-    deadline = datetime.combine(date_menu, time.min) - timedelta(hours=48)
-    return timezone.make_aware(deadline)
+# ── Délais de commande / d'annulation (Paramètres → Société) ─────────────────
+_JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+
+
+def _date_limite(date_menu, heures):
+    """Début du jour du menu (minuit, heure locale) moins `heures`."""
+    debut = timezone.make_aware(datetime.combine(date_menu, time.min))
+    return debut - timedelta(hours=heures)
+
+
+def date_limite_commande(date_menu, parametres=None):
+    p = parametres or ParametresSociete.charger()
+    return _date_limite(date_menu, p.delai_commande_heures)
+
+
+def date_limite_annulation(date_menu, parametres=None):
+    p = parametres or ParametresSociete.charger()
+    return _date_limite(date_menu, p.delai_annulation_heures)
+
+
+def libelle_date_limite(dt):
+    """Ex. « samedi 16/10/2026 à 00:00 » (heure locale)."""
+    dt = timezone.localtime(dt)
+    return f"{_JOURS[dt.weekday()]} {dt:%d/%m/%Y} à {dt:%H:%M}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -848,9 +885,11 @@ class CommandeSerializer(serializers.ModelSerializer):
                 )
 
         if menu and self.instance is None:
-            if timezone.now() > _get_deadline(menu.date_menu):
+            limite = date_limite_commande(menu.date_menu)
+            if timezone.now() > limite:
                 raise serializers.ValidationError(
-                    "Impossible de commander : le délai de 48h avant le menu est dépassé."
+                    "Impossible de commander : les commandes pour ce menu étaient "
+                    f"ouvertes jusqu'au {libelle_date_limite(limite)}."
                 )
             # Pas de contrôle d'agence : un agent peut commander dans l'agence
             # où il se trouve ce jour-là (déplacement, mission).
@@ -873,9 +912,11 @@ class CommandeAnnulationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Seule une commande en attente peut être annulée."
             )
-        if timezone.now() > _get_deadline(commande.menu.date_menu):
+        limite = date_limite_annulation(commande.menu.date_menu)
+        if timezone.now() > limite:
             raise serializers.ValidationError(
-                "Impossible d'annuler : le délai de 48h avant le menu est dépassé."
+                "Impossible d'annuler : les annulations pour ce menu étaient "
+                f"possibles jusqu'au {libelle_date_limite(limite)}."
             )
         return attrs
 
@@ -1255,7 +1296,8 @@ class ParametresSocieteSerializer(serializers.ModelSerializer):
         model  = ParametresSociete
         fields = ['nom', 'adresse', 'ville', 'telephone', 'email', 'site_web',
                   'identifiant_fiscal', 'registre_commerce', 'pied_de_page',
-                  'logo', 'logo_url', 'supprimer_logo', 'updated_at']
+                  'logo', 'logo_url', 'supprimer_logo',
+                  'delai_commande_heures', 'delai_annulation_heures', 'updated_at']
         read_only_fields = ['updated_at']
         extra_kwargs = {'logo': {'write_only': True, 'required': False}}
 
@@ -1368,3 +1410,10 @@ class AvisPlatSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         commande = validated_data['commande']
         return AvisPlat.objects.create(user=commande.user, plat=commande.plat, **validated_data)
+
+
+class ParametresCantineSerializer(serializers.ModelSerializer):
+    """Délais de la cantine, lisibles par tout utilisateur connecté."""
+    class Meta:
+        model  = ParametresSociete
+        fields = ['delai_commande_heures', 'delai_annulation_heures']

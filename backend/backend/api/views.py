@@ -3125,6 +3125,16 @@ class ParametresSocieteView(APIView):
         return Response(serializer.data)
 
 
+class ParametresCantineView(APIView):
+    """
+    GET /api/api/parametres-cantine/   délais de commande et d'annulation
+                                        (tout utilisateur connecté : web et mobile).
+    La modification se fait par PATCH /parametres-societe/ (administrateurs).
+    """
+    def get(self, request):
+        return Response(ParametresCantineSerializer(ParametresSociete.charger()).data)
+
+
 class BanniereViewSet(BaseViewSet):
     """
     GET    /api/api/bannieres/            bannières à afficher aujourd'hui (tout utilisateur connecté)
