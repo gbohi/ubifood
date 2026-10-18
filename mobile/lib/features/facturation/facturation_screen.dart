@@ -1,6 +1,5 @@
 // lib/features/facturation/facturation_screen.dart
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -138,6 +137,17 @@ class _FacturationScreenState extends State<FacturationScreen>
   }
 }
 
+/// Période chargée par FacturationProvider.charger() (12 mois passés,
+/// 3 mois à venir) : hors de cette période, les montants ne sont pas connus
+/// (avant : « Tarif non défini » / « N/D » affichés à tort).
+bool _dansPeriodeFacturation(Commande c) {
+  final d = DateTime.tryParse(c.menuDetail?.dateMenu ?? '');
+  if (d == null) return false;
+  final now = DateTime.now();
+  return !d.isBefore(DateTime(now.year - 1, now.month, 1)) &&
+      !d.isAfter(DateTime(now.year, now.month + 4, 0));
+}
+
 // ══════════════════════════════════════════════════════════════
 // ONGLET 1 — HISTORIQUE
 // ══════════════════════════════════════════════════════════════
@@ -168,8 +178,9 @@ class _HistoriqueTab extends StatelessWidget {
       if (dateDebut != null &&
           dateMenu != null &&
           dateMenu.isBefore(dateDebut!)) return false;
-      if (dateFin != null && dateMenu != null && dateMenu.isAfter(dateFin!))
+      if (dateFin != null && dateMenu != null && dateMenu.isAfter(dateFin!)) {
         return false;
+      }
       // Agence
       if (agenceFiltre != null && agenceFiltre!.isNotEmpty) {
         final agence = c.menuDetail?.agenceNom ?? '';
@@ -482,7 +493,7 @@ class _CommandeHistoriqueCard extends StatelessWidget {
     final dateMenu = commande.menuDetail?.dateMenu != null
         ? DateTime.tryParse(commande.menuDetail!.dateMenu)
         : null;
-    final dateCmde = DateTime.tryParse(commande.dateCommande);
+    final dateCmde = DateTime.tryParse(commande.dateCommande)?.toLocal();
     final secColor =
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
 
@@ -571,6 +582,9 @@ class _MontantRepas extends StatelessWidget {
       return Text('Non facturé',
           style: TextStyle(fontSize: 11, color: secColor));
     }
+    if (!_dansPeriodeFacturation(commande)) {
+      return Text('—', style: TextStyle(fontSize: 11, color: secColor));
+    }
     final montant = fact.montant(commande);
     if (montant == null) {
       return Text(fact.loaded ? 'Tarif non défini' : '…',
@@ -604,8 +618,11 @@ class _RecapMensuelTab extends StatelessWidget {
   });
 
   Map<String, List<Commande>> get _parMois {
-    final actives =
-        commandes.where((c) => c.statut != StatutCommande.annulee).toList();
+    // Mois hors de la période de facturation chargée : montants inconnus
+    final actives = commandes
+        .where((c) =>
+            c.statut != StatutCommande.annulee && _dansPeriodeFacturation(c))
+        .toList();
     final Map<String, List<Commande>> grouped = {};
     for (final c in actives) {
       final dateMenu = c.menuDetail?.dateMenu != null
@@ -701,8 +718,12 @@ class _MoisCardState extends State<_MoisCard> {
     return DateFormat('MMMM yyyy', 'fr_FR').format(d);
   }
 
-  String _fmt(double m) =>
-      m > 0 ? NumberFormat('#,##0', 'fr_FR').format(m) + ' FCFA' : 'N/D';
+  // « … » tant que les montants du serveur ne sont pas chargés (avant : N/D)
+  String _fmt(double m) => !widget.tarifProvider.loaded
+      ? '…'
+      : m > 0
+          ? '${NumberFormat('#,##0', 'fr_FR').format(m)} FCFA'
+          : 'N/D';
 
   @override
   Widget build(BuildContext context) {
@@ -770,9 +791,11 @@ class _MoisCardState extends State<_MoisCard> {
                 const SizedBox(height: 2),
                 // Mois clôturé : montant figé ; sinon calcul provisoire
                 Text(
-                    widget.tarifProvider.estCloture(widget.commandes)
-                        ? 'Facture clôturée'
-                        : 'Montant provisoire',
+                    !widget.tarifProvider.loaded
+                        ? 'Calcul en cours'
+                        : widget.tarifProvider.estCloture(widget.commandes)
+                            ? 'Facture clôturée'
+                            : 'Montant provisoire',
                     style: TextStyle(fontSize: 10, color: secColor)),
               ]),
             ]),
@@ -861,8 +884,13 @@ class _MoisCardState extends State<_MoisCard> {
                                   : '—',
                               style: Theme.of(context).textTheme.bodySmall),
                           const SizedBox(width: 4),
-                          Text('• ${c.menuDetail?.agenceNom ?? ''}',
-                              style: Theme.of(context).textTheme.bodySmall),
+                          // Flexible : nom d'agence long sur petit écran
+                          Flexible(
+                            child: Text('• ${c.menuDetail?.agenceNom ?? ''}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall),
+                          ),
                         ]),
                       ])),
                   const SizedBox(width: 8),
@@ -891,11 +919,15 @@ class _MoisCardState extends State<_MoisCard> {
             child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('TOTAL À PAYER CE MOIS',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: primaryText)),
+                  // Flexible : pas de débordement sur un écran de 320 px
+                  Flexible(
+                    child: Text('TOTAL À PAYER CE MOIS',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: primaryText)),
+                  ),
+                  const SizedBox(width: 8),
                   Text(_fmt(totalMois),
                       style: const TextStyle(
                           fontSize: 16,
@@ -909,6 +941,14 @@ class _MoisCardState extends State<_MoisCard> {
   }
 
   Future<void> _exporterPDF(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    // Sans les montants du serveur, le PDF n'afficherait que « N/D »
+    if (!widget.tarifProvider.loaded) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Montants en cours de chargement, réessayez.')));
+      return;
+    }
+    final cloture = widget.tarifProvider.estCloture(widget.commandes);
     final moisLabel = _moisLibelle[0].toUpperCase() + _moisLibelle.substring(1);
     final now = DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now());
     final auth = context.read<AuthProvider>();
@@ -967,6 +1007,13 @@ class _MoisCardState extends State<_MoisCard> {
                             fontWeight: pw.FontWeight.bold,
                             color: const PdfColor.fromInt(0xFF5BD988))),
                     pw.SizedBox(height: 4),
+                    pw.Text(
+                        cloture
+                            ? 'Mois clôturé : montants définitifs'
+                            : 'Mois non clôturé : montants provisoires',
+                        style: const pw.TextStyle(
+                            fontSize: 9, color: PdfColors.grey700)),
+                    pw.SizedBox(height: 2),
                     pw.Text('Généré le $now',
                         style: const pw.TextStyle(
                             fontSize: 9, color: PdfColors.grey600)),
@@ -1088,9 +1135,14 @@ class _MoisCardState extends State<_MoisCard> {
       ],
     ));
 
-    await Printing.layoutPdf(
-      onLayout: (_) async => pdf.save(),
-      name: 'facture_${widget.moisKey}.pdf',
-    );
+    try {
+      await Printing.layoutPdf(
+        onLayout: (_) async => pdf.save(),
+        name: 'facture_${widget.moisKey}.pdf',
+      );
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text("Impossible de générer ou d'imprimer le PDF.")));
+    }
   }
 }

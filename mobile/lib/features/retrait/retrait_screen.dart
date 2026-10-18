@@ -323,13 +323,18 @@ class _RetraitScreenState extends State<RetraitScreen> {
     );
   }
 
-  void _onBadgeScan(String value) {
+  /// Renvoie false si la lecture est ignorée : le scanner reste alors actif.
+  bool _onBadgeScan(String value) {
+    // Requête en cours (recherche ou validation) : on ne remplace pas le
+    // badge affiché, la prochaine lecture sera prise en compte.
+    if (context.read<RetraitProvider>().loading) return false;
     // Scanner coupé après une lecture, jusqu'au prochain appui sur « Scanner »
     setState(() {
       _badgeCtrl.text = value;
       _scanMode = false;
     });
     _rechercher();
+    return true;
   }
 
   void _rechercher() {
@@ -442,27 +447,34 @@ class _ResultatCard extends StatelessWidget {
             Text('Commande(s)', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 10),
 
-            if (result.commandes.isEmpty)
+            if (result.commandes.isEmpty ||
+                (!result.aRetire &&
+                    !result.commandes
+                        .any((c) => c.statut == StatutCommande.enAttente)))
               Container(
+                margin: EdgeInsets.only(
+                    bottom: result.commandes.isEmpty ? 0 : 10),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: AppColors.warningLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Row(children: [
-                  Icon(Icons.warning_amber_rounded,
+                child: Row(children: [
+                  const Icon(Icons.warning_amber_rounded,
                       color: AppColors.warning, size: 18),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text('Aucune commande en attente',
-                        style: TextStyle(
+                    child: Text(
+                        result.commandes.isEmpty
+                            ? 'Aucune commande pour ce menu'
+                            : 'Aucune commande en attente (commande annulée)',
+                        style: const TextStyle(
                             color: AppColors.warning,
                             fontWeight: FontWeight.w500)),
                   ),
                 ]),
-              )
-            else
-              ...result.commandes.map((c) => Container(
+              ),
+            ...result.commandes.map((c) => Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -570,7 +582,8 @@ class _SuccessCard extends StatelessWidget {
 // ── Scanner QR/Badge ───────────────────────────────────────────
 
 class _ScannerWidget extends StatefulWidget {
-  final ValueChanged<String> onScan;
+  /// Renvoie false si la lecture n'est pas prise en compte.
+  final bool Function(String) onScan;
   const _ScannerWidget({required this.onScan});
   @override
   State<_ScannerWidget> createState() => _ScannerWidgetState();
@@ -588,49 +601,70 @@ class _ScannerWidgetState extends State<_ScannerWidget> {
         border: Border.all(color: AppColors.primary, width: 2),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(children: [
-        MobileScanner(
-          onDetect: (capture) {
-            if (_scanned) return;
-            final barcode = capture.barcodes.firstOrNull;
-            if (barcode?.rawValue != null) {
-              _scanned = true;
-              widget.onScan(barcode!.rawValue!);
-            }
-          },
-        ),
-        // Overlay
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(
-                color: AppColors.primary.withOpacity(0.3), width: 40),
-          ),
-        ),
-        Center(
-            child: Container(
-          width: 160,
-          height: 160,
-          decoration: BoxDecoration(
-            border: Border.all(color: AppColors.primary, width: 3),
-            borderRadius: BorderRadius.circular(12),
-          ),
-        )),
-        Positioned(
-          bottom: 12,
-          left: 0,
-          right: 0,
+      child: MobileScanner(
+        onDetect: (capture) {
+          if (_scanned) return;
+          // QR code vide ou illisible : on continue de scanner
+          final valeur = capture.barcodes.firstOrNull?.rawValue?.trim() ?? '';
+          if (valeur.isEmpty) return;
+          _scanned = widget.onScan(valeur);
+        },
+        // Caméra refusée ou indisponible : message explicite (avant : icône seule)
+        errorBuilder: (context, erreur, _) => ColoredBox(
+          color: Colors.black,
           child: Center(
-              child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.no_photography_outlined,
+                    color: Colors.white, size: 36),
+                const SizedBox(height: 10),
+                Text(
+                  erreur.errorCode == MobileScannerErrorCode.permissionDenied
+                      ? "Accès à la caméra refusé. Autorisez-le dans les "
+                          "réglages du téléphone ou saisissez le badge."
+                      : 'Caméra indisponible. Saisissez le badge manuellement.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+              ]),
             ),
-            child: const Text('Pointez le badge vers la caméra',
-                style: TextStyle(color: Colors.white, fontSize: 12)),
-          )),
+          ),
         ),
-      ]),
+        // Cadre de visée : non affiché si la caméra est en erreur
+        overlay: Stack(children: [
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                  color: AppColors.primary.withOpacity(0.3), width: 40),
+            ),
+          ),
+          Center(
+              child: Container(
+            width: 160,
+            height: 160,
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.primary, width: 3),
+              borderRadius: BorderRadius.circular(12),
+            ),
+          )),
+          Positioned(
+            bottom: 12,
+            left: 0,
+            right: 0,
+            child: Center(
+                child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text('Pointez le badge vers la caméra',
+                  style: TextStyle(color: Colors.white, fontSize: 12)),
+            )),
+          ),
+        ]),
+      ),
     );
   }
 }

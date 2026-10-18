@@ -77,7 +77,8 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
     final num = ++_requete;
 
     // Admin : toutes les agences (le serveur ne filtre pas) ;
-    // gestionnaire : le serveur limite à son agence.
+    // gestionnaire : le serveur limite à SES agences (pas de paramètre agence,
+    // sinon un gestionnaire de plusieurs agences n'en voyait qu'une).
     if (!isAdmin && agenceId == null) {
       setState(() {
         _loading = false;
@@ -91,9 +92,7 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
       _erreur = null;
     });
     try {
-      final params = <String, dynamic>{
-        if (!isAdmin) 'agence': agenceId,
-      };
+      final params = <String, dynamic>{};
       if (_dateDebut != null) {
         params['date_debut'] = DateFormat('yyyy-MM-dd').format(_dateDebut!);
       }
@@ -215,17 +214,26 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
                   ? EmptyState(
                       icon: Icons.error_outline_rounded,
                       title: 'Erreur',
-                      subtitle: _erreur!)
+                      subtitle: _erreur!,
+                      action: ElevatedButton.icon(
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('Réessayer'),
+                        onPressed: _charger,
+                      ))
                   : TabBarView(
                       controller: _tabs,
                       children: [
-                        _ListeCommandes(commandes: _commandes),
                         _ListeCommandes(
-                            commandes: _filtrerParStatut('en_attente')),
+                            commandes: _commandes, onRefresh: _charger),
                         _ListeCommandes(
-                            commandes: _filtrerParStatut('retiree')),
+                            commandes: _filtrerParStatut('en_attente'),
+                            onRefresh: _charger),
                         _ListeCommandes(
-                            commandes: _filtrerParStatut('annulee')),
+                            commandes: _filtrerParStatut('retiree'),
+                            onRefresh: _charger),
+                        _ListeCommandes(
+                            commandes: _filtrerParStatut('annulee'),
+                            onRefresh: _charger),
                       ],
                     ),
         ),
@@ -471,22 +479,39 @@ class _StatChip extends StatelessWidget {
 
 class _ListeCommandes extends StatelessWidget {
   final List<Commande> commandes;
-  const _ListeCommandes({required this.commandes});
+  final Future<void> Function() onRefresh;
+  const _ListeCommandes({required this.commandes, required this.onRefresh});
 
   @override
   Widget build(BuildContext context) {
+    // Tirer pour actualiser (l'écran n'a pas de bouton d'actualisation)
     if (commandes.isEmpty) {
-      return EmptyState(
-        icon: Icons.receipt_long_outlined,
-        title: 'Aucune commande',
-        subtitle: 'Aucune commande pour cette période',
+      return RefreshIndicator(
+        onRefresh: onRefresh,
+        child: LayoutBuilder(
+          builder: (_, constraints) => SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: const EmptyState(
+                icon: Icons.receipt_long_outlined,
+                title: 'Aucune commande',
+                subtitle: 'Aucune commande pour cette période',
+              ),
+            ),
+          ),
+        ),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: commandes.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => _CommandeGestionCard(commande: commandes[i]),
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        itemCount: commandes.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (_, i) => _CommandeGestionCard(commande: commandes[i]),
+      ),
     );
   }
 }
