@@ -10,6 +10,10 @@ import {
   fetchtypebesoinSuccess,
   updatetypebesoinDataSuccess,
   fetchtypebesoinNoPaginateSuccess,
+  addtypebesoinDataFailure,
+  updatetypebesoinDataFailure,
+  deletetypebesoinFailure,
+  deletemultipletypebesoinFailure,
 } from './typebesoin.action';
 import { TypebesoinlistModel } from './typebesoin.model';
 
@@ -64,6 +68,11 @@ export const TypebesoinReducer = createReducer(
   on(updatetypebesoinDataSuccess,     (state) => ({ ...state, error: null })),
   on(deletetypebesoinSuccess,         (state) => ({ ...state, error: null })),
   on(deletemultipletypebesoinSuccess, (state) => ({ ...state, error: null })),
+
+  // Échecs ajout / modification / suppression : message lisible (ErrorInterceptor)
+
+  on(addtypebesoinDataFailure, updatetypebesoinDataFailure, deletetypebesoinFailure, deletemultipletypebesoinFailure, (state, { error }) => ({ ...state, error })),
+
 
   on(fetchtypebesoinNoPaginateSuccess, (state, { response }) => ({
     ...state,

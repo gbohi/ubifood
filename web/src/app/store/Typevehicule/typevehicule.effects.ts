@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { TypevehiculeService } from 'src/app/core/services/typevehicule/typevehicule.service';
 import {
@@ -33,11 +33,11 @@ export class TypevehiculeEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchtypevehiculeData),
-      mergeMap(({ page }) =>
-        this.typevehiculeService.getAllTypevehicules(page ?? 1).pipe(
+      switchMap(({ page, search }) =>
+        this.typevehiculeService.getAllTypevehicules(page ?? 1, search).pipe(
           map((response) => fetchtypevehiculeSuccess({ response })),
           catchError((error) =>
-            of(fetchtypevehiculeFailure({ error: error.toString() }))
+            of(fetchtypevehiculeFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -52,7 +52,7 @@ export class TypevehiculeEffects {
         this.typevehiculeService.getListTypevehicules().pipe(
           map((response) => fetchtypevehiculeNoPaginateSuccess({ response })),
           catchError((error) =>
-            of(fetchtypevehiculeNoPaginateFailure({ error: error.toString() }))
+            of(fetchtypevehiculeNoPaginateFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -67,7 +67,7 @@ export class TypevehiculeEffects {
         this.typevehiculeService.createTypevehicule(newData).pipe(
           map((response) => addtypevehiculeDataSuccess({ newData: response })),
           catchError((error) =>
-            of(addtypevehiculeDataFailure({ error: error.toString() }))
+            of(addtypevehiculeDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de l'ajout" }))
           )
         )
       )
@@ -78,7 +78,7 @@ export class TypevehiculeEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addtypevehiculeDataSuccess),
-      map(() => fetchtypevehiculeData({ page: 1 }))
+      map(() => fetchtypevehiculeData({ page: 1, search: this.typevehiculeService.getCurrentSearch() }))
     )
   );
 
@@ -90,7 +90,7 @@ export class TypevehiculeEffects {
         this.typevehiculeService.updateTypevehicule(updatedData).pipe(
           map(() => updatetypevehiculeDataSuccess({ updatedData })),
           catchError((error) =>
-            of(updatetypevehiculeDataFailure({ error: error.toString() }))
+            of(updatetypevehiculeDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de la mise à jour" }))
           )
         )
       )
@@ -103,7 +103,7 @@ export class TypevehiculeEffects {
       ofType(updatetypevehiculeDataSuccess),
       mergeMap(() =>
         this.typevehiculeService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchtypevehiculeData({ page: currentPage }))
+          map(({ currentPage }) => fetchtypevehiculeData({ page: currentPage, search: this.typevehiculeService.getCurrentSearch() }))
         )
       )
     )
@@ -117,7 +117,7 @@ export class TypevehiculeEffects {
         this.typevehiculeService.deleteTypevehicule(id).pipe(
           map(() => deletetypevehiculeSuccess({ id })),
           catchError((error) =>
-            of(deletetypevehiculeFailure({ error: error.toString() }))
+            of(deletetypevehiculeFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         )
       )
@@ -135,9 +135,9 @@ export class TypevehiculeEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchtypevehiculeData({ page: targetPage });
+            return fetchtypevehiculeData({ page: targetPage, search: this.typevehiculeService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchtypevehiculeData({ page: 1 })))
+          catchError(() => of(fetchtypevehiculeData({ page: 1, search: this.typevehiculeService.getCurrentSearch() })))
         )
       )
     )
@@ -166,7 +166,7 @@ export class TypevehiculeEffects {
         return this.typevehiculeService.deleteMultipleTypevehicule(idArray).pipe(
           map(() => deletemultipletypevehiculeSuccess({ id })),
           catchError((error) =>
-            of(deletemultipletypevehiculeFailure({ error: error.toString() }))
+            of(deletemultipletypevehiculeFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         );
       })
@@ -186,9 +186,9 @@ export class TypevehiculeEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchtypevehiculeData({ page: targetPage });
+            return fetchtypevehiculeData({ page: targetPage, search: this.typevehiculeService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchtypevehiculeData({ page: 1 })))
+          catchError(() => of(fetchtypevehiculeData({ page: 1, search: this.typevehiculeService.getCurrentSearch() })))
         );
       })
     )

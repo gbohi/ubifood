@@ -10,6 +10,10 @@ import {
   fetchagenceSuccess,
   updateagenceDataSuccess,
   fetchagenceNoPaginateSuccess,
+  addagenceDataFailure,
+  updateagenceDataFailure,
+  deleteagenceFailure,
+  deletemultipleagenceFailure,
 } from './agence.action';
 import { AgencelistModel } from './agence.model';
 
@@ -64,6 +68,11 @@ export const AgenceReducer = createReducer(
   on(updateagenceDataSuccess,      (state) => ({ ...state, error: null })),
   on(deleteagenceSuccess,          (state) => ({ ...state, error: null })),
   on(deletemultipleagenceSuccess,  (state) => ({ ...state, error: null })),
+
+  // Échecs ajout / modification / suppression : message lisible (ErrorInterceptor)
+
+  on(addagenceDataFailure, updateagenceDataFailure, deleteagenceFailure, deletemultipleagenceFailure, (state, { error }) => ({ ...state, error })),
+
 
   on(fetchagenceNoPaginateSuccess, (state, { response }) => ({
     ...state,

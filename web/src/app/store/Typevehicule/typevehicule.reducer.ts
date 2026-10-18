@@ -10,6 +10,10 @@ import {
   fetchtypevehiculeSuccess,
   updatetypevehiculeDataSuccess,
   fetchtypevehiculeNoPaginateSuccess,
+  addtypevehiculeDataFailure,
+  updatetypevehiculeDataFailure,
+  deletetypevehiculeFailure,
+  deletemultipletypevehiculeFailure,
 } from './typevehicule.action';
 import { TypevehiculelistModel } from './typevehicule.model';
 
@@ -64,6 +68,11 @@ export const TypevehiculeReducer = createReducer(
   on(updatetypevehiculeDataSuccess,     (state) => ({ ...state, error: null })),
   on(deletetypevehiculeSuccess,         (state) => ({ ...state, error: null })),
   on(deletemultipletypevehiculeSuccess, (state) => ({ ...state, error: null })),
+
+  // Échecs ajout / modification / suppression : message lisible (ErrorInterceptor)
+
+  on(addtypevehiculeDataFailure, updatetypevehiculeDataFailure, deletetypevehiculeFailure, deletemultipletypevehiculeFailure, (state, { error }) => ({ ...state, error })),
+
 
   on(fetchtypevehiculeNoPaginateSuccess, (state, { response }) => ({
     ...state,

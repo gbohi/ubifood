@@ -14,16 +14,19 @@ export class DepartementService {
   private currentPage  = 1;
   private totalItems   = 0;
   private itemsPerPage = 10;
+  private currentSearch = '';
 
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
   // ✅ URL /services/ au lieu de /services/
   // ✅ Plus de getAuthHeaders() — JWT géré par l'intercepteur
-  getAllDepartements(page: number = 1): Observable<ApiResponse<DepartementlistModel>> {
+  getAllDepartements(page: number = 1, search?: string): Observable<ApiResponse<DepartementlistModel>> {
     this.currentPage = page;
+    this.currentSearch = (search ?? '').trim();
     return this.http.get<ApiResponse<DepartementlistModel>>(
       `${this.apiUrl}/services/?page=${page}`
+        + (this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '')
     ).pipe(
       tap(response => {
         this.totalItems  = response.count;
@@ -71,6 +74,15 @@ export class DepartementService {
       body: { ids }
     });
   }
+
+  // ── Terme de recherche courant (conservé lors des rechargements) ──
+
+  getCurrentSearch(): string {
+
+    return this.currentSearch;
+
+  }
+
 
   // ── Info pagination courante ──────────────────────────────
   getCurrentPageInfo(): Observable<{

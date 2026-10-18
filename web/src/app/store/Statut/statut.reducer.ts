@@ -10,6 +10,10 @@ import {
   fetchstatutSuccess,
   updatestatutDataSuccess,
   fetchstatutNoPaginateSuccess,
+  addstatutDataFailure,
+  updatestatutDataFailure,
+  deletestatutFailure,
+  deletemultiplestatutFailure,
 } from './statut.action';
 import { StatutlistModel } from './statut.model';
 
@@ -64,6 +68,11 @@ export const StatutReducer = createReducer(
   on(updatestatutDataSuccess,     (state) => ({ ...state, error: null })),
   on(deletestatutSuccess,         (state) => ({ ...state, error: null })),
   on(deletemultiplestatutSuccess, (state) => ({ ...state, error: null })),
+
+  // Échecs ajout / modification / suppression : message lisible (ErrorInterceptor)
+
+  on(addstatutDataFailure, updatestatutDataFailure, deletestatutFailure, deletemultiplestatutFailure, (state, { error }) => ({ ...state, error })),
+
 
   on(fetchstatutNoPaginateSuccess, (state, { response }) => ({
     ...state,

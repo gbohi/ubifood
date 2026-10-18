@@ -17,15 +17,18 @@ export class AgenceService {
   private currentPage  = 1;
   private totalItems   = 0;
   private itemsPerPage = 10;
+  private currentSearch = '';
 
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllAgences(page: number = 1): Observable<ApiResponse<AgencelistModel>> {
+  getAllAgences(page: number = 1, search?: string): Observable<ApiResponse<AgencelistModel>> {
     this.currentPage = page;
+    this.currentSearch = (search ?? '').trim();
     // ✅ Plus de getAuthHeaders() — le JWT est géré par l'intercepteur HTTP
     return this.http.get<ApiResponse<AgencelistModel>>(
       `${this.apiUrl}/agences/?page=${page}`
+        + (this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '')
     ).pipe(
       tap(response => {
         this.totalItems   = response.count;
@@ -67,6 +70,15 @@ export class AgenceService {
       body: { ids }
     });
   }
+
+  // ── Terme de recherche courant (conservé lors des rechargements) ──
+
+  getCurrentSearch(): string {
+
+    return this.currentSearch;
+
+  }
+
 
   // ── Info pagination courante (utilisée post-suppression) ──
   getCurrentPageInfo(): Observable<{

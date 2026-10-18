@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { TypeplatService } from 'src/app/core/services/typeplat/typeplat.service';
 import {
@@ -33,11 +33,11 @@ export class TypeplatEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchtypeplatData),
-      mergeMap(({ page }) =>
-        this.typeplatService.getAllTypeplats(page ?? 1).pipe(
+      switchMap(({ page, search }) =>
+        this.typeplatService.getAllTypeplats(page ?? 1, search).pipe(
           map((response) => fetchtypeplatSuccess({ response })),
           catchError((error) =>
-            of(fetchtypeplatFailure({ error: error.toString() }))
+            of(fetchtypeplatFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -52,7 +52,7 @@ export class TypeplatEffects {
         this.typeplatService.getListTypeplats().pipe(
           map((response) => fetchtypeplatNoPaginateSuccess({ response })),
           catchError((error) =>
-            of(fetchtypeplatNoPaginateFailure({ error: error.toString() }))
+            of(fetchtypeplatNoPaginateFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -67,7 +67,7 @@ export class TypeplatEffects {
         this.typeplatService.createTypeplat(newData).pipe(
           map((response) => addtypeplatDataSuccess({ newData: response })),
           catchError((error) =>
-            of(addtypeplatDataFailure({ error: error.toString() }))
+            of(addtypeplatDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de l'ajout" }))
           )
         )
       )
@@ -78,7 +78,7 @@ export class TypeplatEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addtypeplatDataSuccess),
-      map(() => fetchtypeplatData({ page: 1 }))
+      map(() => fetchtypeplatData({ page: 1, search: this.typeplatService.getCurrentSearch() }))
     )
   );
 
@@ -90,7 +90,7 @@ export class TypeplatEffects {
         this.typeplatService.updateTypeplat(updatedData).pipe(
           map(() => updatetypeplatDataSuccess({ updatedData })),
           catchError((error) =>
-            of(updatetypeplatDataFailure({ error: error.toString() }))
+            of(updatetypeplatDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de la mise à jour" }))
           )
         )
       )
@@ -103,7 +103,7 @@ export class TypeplatEffects {
       ofType(updatetypeplatDataSuccess),
       mergeMap(() =>
         this.typeplatService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchtypeplatData({ page: currentPage }))
+          map(({ currentPage }) => fetchtypeplatData({ page: currentPage, search: this.typeplatService.getCurrentSearch() }))
         )
       )
     )
@@ -117,7 +117,7 @@ export class TypeplatEffects {
         this.typeplatService.deleteTypeplat(id).pipe(
           map(() => deletetypeplatSuccess({ id })),
           catchError((error) =>
-            of(deletetypeplatFailure({ error: error.toString() }))
+            of(deletetypeplatFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         )
       )
@@ -135,9 +135,9 @@ export class TypeplatEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchtypeplatData({ page: targetPage });
+            return fetchtypeplatData({ page: targetPage, search: this.typeplatService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchtypeplatData({ page: 1 })))
+          catchError(() => of(fetchtypeplatData({ page: 1, search: this.typeplatService.getCurrentSearch() })))
         )
       )
     )
@@ -166,7 +166,7 @@ export class TypeplatEffects {
         return this.typeplatService.deleteMultipleTypeplat(idArray).pipe(
           map(() => deletemultipletypeplatSuccess({ id })),
           catchError((error) =>
-            of(deletemultipletypeplatFailure({ error: error.toString() }))
+            of(deletemultipletypeplatFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         );
       })
@@ -186,9 +186,9 @@ export class TypeplatEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchtypeplatData({ page: targetPage });
+            return fetchtypeplatData({ page: targetPage, search: this.typeplatService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchtypeplatData({ page: 1 })))
+          catchError(() => of(fetchtypeplatData({ page: 1, search: this.typeplatService.getCurrentSearch() })))
         );
       })
     )

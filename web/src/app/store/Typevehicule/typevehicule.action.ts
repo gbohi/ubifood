@@ -6,7 +6,7 @@ import { TypevehiculelistModel, ApiResponse } from './typevehicule.model';
 // ── Fetch paginé ──────────────────────────────────────────────
 export const fetchtypevehiculeData = createAction(
   '[Data] Fetch typevehicule Table Data',
-  props<{ page?: number }>()
+  props<{ page?: number; search?: string }>()
 );
 export const fetchtypevehiculeSuccess = createAction(
   '[Data] Fetch typevehicule Data Success',

@@ -6,7 +6,7 @@ import { TypebesoinlistModel, ApiResponse } from './typebesoin.model';
 // ── Fetch paginé ──────────────────────────────────────────────
 export const fetchtypebesoinData = createAction(
   '[Data] Fetch typebesoin Table Data',
-  props<{ page?: number }>()
+  props<{ page?: number; search?: string }>()
 );
 export const fetchtypebesoinSuccess = createAction(
   '[Data] Fetch typebesoin Data Success',

@@ -10,6 +10,10 @@ import {
   fetchtypeplatSuccess,
   updatetypeplatDataSuccess,
   fetchtypeplatNoPaginateSuccess,
+  addtypeplatDataFailure,
+  updatetypeplatDataFailure,
+  deletetypeplatFailure,
+  deletemultipletypeplatFailure,
 } from './typeplat.action';
 import { TypeplatlistModel } from './typeplat.model';
 
@@ -64,6 +68,11 @@ export const TypeplatReducer = createReducer(
   on(updatetypeplatDataSuccess,     (state) => ({ ...state, error: null })),
   on(deletetypeplatSuccess,         (state) => ({ ...state, error: null })),
   on(deletemultipletypeplatSuccess, (state) => ({ ...state, error: null })),
+
+  // Échecs ajout / modification / suppression : message lisible (ErrorInterceptor)
+
+  on(addtypeplatDataFailure, updatetypeplatDataFailure, deletetypeplatFailure, deletemultipletypeplatFailure, (state, { error }) => ({ ...state, error })),
+
 
   on(fetchtypeplatNoPaginateSuccess, (state, { response }) => ({
     ...state,

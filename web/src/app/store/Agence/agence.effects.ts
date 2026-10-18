@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap, tap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap, tap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { AgenceService } from 'src/app/core/services/agence/agence.service';
 import {
@@ -33,11 +33,11 @@ export class AgenceEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchagenceData),
-      mergeMap(({ page }) =>
-        this.agenceService.getAllAgences(page ?? 1).pipe(
+      switchMap(({ page, search }) =>
+        this.agenceService.getAllAgences(page ?? 1, search).pipe(
           map((response) => fetchagenceSuccess({ response })),
           catchError((error) =>
-            of(fetchagenceFailure({ error: error.toString() }))
+            of(fetchagenceFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -52,7 +52,7 @@ export class AgenceEffects {
         this.agenceService.getListAgences().pipe(
           map((response) => fetchagenceNoPaginateSuccess({ response })),
           catchError((error) =>
-            of(fetchagenceNoPaginateFailure({ error: error.toString() }))
+            of(fetchagenceNoPaginateFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -67,7 +67,7 @@ export class AgenceEffects {
         this.agenceService.createAgence(newData).pipe(
           map((response) => addagenceDataSuccess({ newData: response })),
           catchError((error) =>
-            of(addagenceDataFailure({ error: error.toString() }))
+            of(addagenceDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de l'ajout" }))
           )
         )
       )
@@ -78,7 +78,7 @@ export class AgenceEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addagenceDataSuccess),
-      map(() => fetchagenceData({ page: 1 }))
+      map(() => fetchagenceData({ page: 1, search: this.agenceService.getCurrentSearch() }))
     )
   );
 
@@ -90,7 +90,7 @@ export class AgenceEffects {
         this.agenceService.updateAgence(updatedData).pipe(
           map(() => updateagenceDataSuccess({ updatedData })),
           catchError((error) =>
-            of(updateagenceDataFailure({ error: error.toString() }))
+            of(updateagenceDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de la mise à jour" }))
           )
         )
       )
@@ -103,7 +103,7 @@ export class AgenceEffects {
       ofType(updateagenceDataSuccess),
       mergeMap(() =>
         this.agenceService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchagenceData({ page: currentPage }))
+          map(({ currentPage }) => fetchagenceData({ page: currentPage, search: this.agenceService.getCurrentSearch() }))
         )
       )
     )
@@ -117,7 +117,7 @@ export class AgenceEffects {
         this.agenceService.deleteAgence(id).pipe(
           map(() => deleteagenceSuccess({ id })),
           catchError((error) =>
-            of(deleteagenceFailure({ error: error.toString() }))
+            of(deleteagenceFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         )
       )
@@ -135,9 +135,9 @@ export class AgenceEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchagenceData({ page: targetPage });
+            return fetchagenceData({ page: targetPage, search: this.agenceService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchagenceData({ page: 1 })))
+          catchError(() => of(fetchagenceData({ page: 1, search: this.agenceService.getCurrentSearch() })))
         )
       )
     )
@@ -164,7 +164,7 @@ export class AgenceEffects {
         return this.agenceService.deleteMultipleAgence(idArray).pipe(
           map(() => deletemultipleagenceSuccess({ id })),
           catchError((error) =>
-            of(deletemultipleagenceFailure({ error: error.toString() }))
+            of(deletemultipleagenceFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         );
       })
@@ -186,9 +186,9 @@ export class AgenceEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchagenceData({ page: targetPage });
+            return fetchagenceData({ page: targetPage, search: this.agenceService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchagenceData({ page: 1 })))
+          catchError(() => of(fetchagenceData({ page: 1, search: this.agenceService.getCurrentSearch() })))
         );
       })
     )

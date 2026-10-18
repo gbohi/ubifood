@@ -17,15 +17,18 @@ export class StatutService {
   private currentPage  = 1;
   private totalItems   = 0;
   private itemsPerPage = 10;
+  private currentSearch = '';
 
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllStatuts(page: number = 1): Observable<ApiResponse<StatutlistModel>> {
+  getAllStatuts(page: number = 1, search?: string): Observable<ApiResponse<StatutlistModel>> {
     this.currentPage = page;
+    this.currentSearch = (search ?? '').trim();
     // ✅ Plus de getAuthHeaders() — le JWT est géré par l'intercepteur HTTP
     return this.http.get<ApiResponse<StatutlistModel>>(
       `${this.apiUrl}/statuts/?page=${page}`
+        + (this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '')
     ).pipe(
       tap(response => {
         this.totalItems   = response.count;
@@ -77,6 +80,15 @@ export class StatutService {
       `${this.apiUrl}/statuts/bulk_delete/`, { body: { ids } }
     );
   }
+
+  // ── Terme de recherche courant (conservé lors des rechargements) ──
+
+  getCurrentSearch(): string {
+
+    return this.currentSearch;
+
+  }
+
 
   // ── Info pagination courante (utilisée post-suppression) ──
   getCurrentPageInfo(): Observable<{

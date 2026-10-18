@@ -10,6 +10,10 @@ import {
   fetchdepartementSuccess,
   updatedepartementDataSuccess,
   fetchdepartementNoPaginateSuccess,
+  adddepartementDataFailure,
+  updatedepartementDataFailure,
+  deletedepartementFailure,
+  deletemultipledepartementFailure,
 } from './departement.action';
 import { DepartementlistModel } from './departement.model';
 
@@ -59,6 +63,9 @@ export const DepartementReducer = createReducer(
   on(deletemultipledepartementSuccess, state => ({ ...state, error: null })),
 
   // ✅ Liste sans pagination
+  // Échecs ajout / modification / suppression : message lisible (ErrorInterceptor)
+  on(adddepartementDataFailure, updatedepartementDataFailure, deletedepartementFailure, deletemultipledepartementFailure, (state, { error }) => ({ ...state, error })),
+
   on(fetchdepartementNoPaginateSuccess, (state, { response }) => ({
     ...state, allDepartements: response, loading: false
   })),

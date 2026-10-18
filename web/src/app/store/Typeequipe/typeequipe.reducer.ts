@@ -10,6 +10,10 @@ import {
   fetchtypeequipeSuccess,
   updatetypeequipeDataSuccess,
   fetchtypeequipeNoPaginateSuccess,
+  addtypeequipeDataFailure,
+  updatetypeequipeDataFailure,
+  deletetypeequipeFailure,
+  deletemultipletypeequipeFailure,
 } from './typeequipe.action';
 import { TypeequipelistModel } from './typeequipe.model';
 
@@ -64,6 +68,11 @@ export const TypeequipeReducer = createReducer(
   on(updatetypeequipeDataSuccess,     (state) => ({ ...state, error: null })),
   on(deletetypeequipeSuccess,         (state) => ({ ...state, error: null })),
   on(deletemultipletypeequipeSuccess, (state) => ({ ...state, error: null })),
+
+  // Échecs ajout / modification / suppression : message lisible (ErrorInterceptor)
+
+  on(addtypeequipeDataFailure, updatetypeequipeDataFailure, deletetypeequipeFailure, deletemultipletypeequipeFailure, (state, { error }) => ({ ...state, error })),
+
 
   on(fetchtypeequipeNoPaginateSuccess, (state, { response }) => ({
     ...state,

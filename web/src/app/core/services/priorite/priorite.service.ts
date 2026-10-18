@@ -17,15 +17,18 @@ export class PrioriteService {
   private currentPage  = 1;
   private totalItems   = 0;
   private itemsPerPage = 10;
+  private currentSearch = '';
 
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllPriorites(page: number = 1): Observable<ApiResponse<PrioritelistModel>> {
+  getAllPriorites(page: number = 1, search?: string): Observable<ApiResponse<PrioritelistModel>> {
     this.currentPage = page;
+    this.currentSearch = (search ?? '').trim();
     // ✅ Plus de getAuthHeaders() — le JWT est géré par l'intercepteur HTTP
     return this.http.get<ApiResponse<PrioritelistModel>>(
       `${this.apiUrl}/priorites/?page=${page}`
+        + (this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '')
     ).pipe(
       tap(response => {
         this.totalItems   = response.count;
@@ -78,6 +81,15 @@ export class PrioriteService {
       `${this.apiUrl}/priorites/bulk_delete/`, { body: { ids } }
     );
   }
+
+  // ── Terme de recherche courant (conservé lors des rechargements) ──
+
+  getCurrentSearch(): string {
+
+    return this.currentSearch;
+
+  }
+
 
   // ── Info pagination courante (utilisée post-suppression) ──
   getCurrentPageInfo(): Observable<{

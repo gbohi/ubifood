@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { TypeequipeService } from 'src/app/core/services/typeequipe/typeequipe.service';
 import {
@@ -33,11 +33,11 @@ export class TypeequipeEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchtypeequipeData),
-      mergeMap(({ page }) =>
-        this.typeequipeService.getAllTypeequipes(page ?? 1).pipe(
+      switchMap(({ page, search }) =>
+        this.typeequipeService.getAllTypeequipes(page ?? 1, search).pipe(
           map((response) => fetchtypeequipeSuccess({ response })),
           catchError((error) =>
-            of(fetchtypeequipeFailure({ error: error.toString() }))
+            of(fetchtypeequipeFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -52,7 +52,7 @@ export class TypeequipeEffects {
         this.typeequipeService.getListTypeequipes().pipe(
           map((response) => fetchtypeequipeNoPaginateSuccess({ response })),
           catchError((error) =>
-            of(fetchtypeequipeNoPaginateFailure({ error: error.toString() }))
+            of(fetchtypeequipeNoPaginateFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -67,7 +67,7 @@ export class TypeequipeEffects {
         this.typeequipeService.createTypeequipe(newData).pipe(
           map((response) => addtypeequipeDataSuccess({ newData: response })),
           catchError((error) =>
-            of(addtypeequipeDataFailure({ error: error.toString() }))
+            of(addtypeequipeDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de l'ajout" }))
           )
         )
       )
@@ -78,7 +78,7 @@ export class TypeequipeEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addtypeequipeDataSuccess),
-      map(() => fetchtypeequipeData({ page: 1 }))
+      map(() => fetchtypeequipeData({ page: 1, search: this.typeequipeService.getCurrentSearch() }))
     )
   );
 
@@ -90,7 +90,7 @@ export class TypeequipeEffects {
         this.typeequipeService.updateTypeequipe(updatedData).pipe(
           map(() => updatetypeequipeDataSuccess({ updatedData })),
           catchError((error) =>
-            of(updatetypeequipeDataFailure({ error: error.toString() }))
+            of(updatetypeequipeDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de la mise à jour" }))
           )
         )
       )
@@ -103,7 +103,7 @@ export class TypeequipeEffects {
       ofType(updatetypeequipeDataSuccess),
       mergeMap(() =>
         this.typeequipeService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchtypeequipeData({ page: currentPage }))
+          map(({ currentPage }) => fetchtypeequipeData({ page: currentPage, search: this.typeequipeService.getCurrentSearch() }))
         )
       )
     )
@@ -117,7 +117,7 @@ export class TypeequipeEffects {
         this.typeequipeService.deleteTypeequipe(id).pipe(
           map(() => deletetypeequipeSuccess({ id })),
           catchError((error) =>
-            of(deletetypeequipeFailure({ error: error.toString() }))
+            of(deletetypeequipeFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         )
       )
@@ -135,9 +135,9 @@ export class TypeequipeEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchtypeequipeData({ page: targetPage });
+            return fetchtypeequipeData({ page: targetPage, search: this.typeequipeService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchtypeequipeData({ page: 1 })))
+          catchError(() => of(fetchtypeequipeData({ page: 1, search: this.typeequipeService.getCurrentSearch() })))
         )
       )
     )
@@ -166,7 +166,7 @@ export class TypeequipeEffects {
         return this.typeequipeService.deleteMultipleTypeequipe(idArray).pipe(
           map(() => deletemultipletypeequipeSuccess({ id })),
           catchError((error) =>
-            of(deletemultipletypeequipeFailure({ error: error.toString() }))
+            of(deletemultipletypeequipeFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         );
       })
@@ -186,9 +186,9 @@ export class TypeequipeEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchtypeequipeData({ page: targetPage });
+            return fetchtypeequipeData({ page: targetPage, search: this.typeequipeService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchtypeequipeData({ page: 1 })))
+          catchError(() => of(fetchtypeequipeData({ page: 1, search: this.typeequipeService.getCurrentSearch() })))
         );
       })
     )

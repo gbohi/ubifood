@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { StatutService } from 'src/app/core/services/statut/statut.service';
 import {
@@ -33,11 +33,11 @@ export class StatutEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchstatutData),
-      mergeMap(({ page }) =>
-        this.statutService.getAllStatuts(page ?? 1).pipe(
+      switchMap(({ page, search }) =>
+        this.statutService.getAllStatuts(page ?? 1, search).pipe(
           map((response) => fetchstatutSuccess({ response })),
           catchError((error) =>
-            of(fetchstatutFailure({ error: error.toString() }))
+            of(fetchstatutFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -52,7 +52,7 @@ export class StatutEffects {
         this.statutService.getListStatut().pipe(
           map((response) => fetchstatutNoPaginateSuccess({ response })),
           catchError((error) =>
-            of(fetchstatutNoPaginateFailure({ error: error.toString() }))
+            of(fetchstatutNoPaginateFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -67,7 +67,7 @@ export class StatutEffects {
         this.statutService.createStatut(newData).pipe(
           map((response) => addstatutDataSuccess({ newData: response })),
           catchError((error) =>
-            of(addstatutDataFailure({ error: error.toString() }))
+            of(addstatutDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de l'ajout" }))
           )
         )
       )
@@ -78,7 +78,7 @@ export class StatutEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addstatutDataSuccess),
-      map(() => fetchstatutData({ page: 1 }))
+      map(() => fetchstatutData({ page: 1, search: this.statutService.getCurrentSearch() }))
     )
   );
 
@@ -90,7 +90,7 @@ export class StatutEffects {
         this.statutService.updateStatut(updatedData).pipe(
           map(() => updatestatutDataSuccess({ updatedData })),
           catchError((error) =>
-            of(updatestatutDataFailure({ error: error.toString() }))
+            of(updatestatutDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de la mise à jour" }))
           )
         )
       )
@@ -103,7 +103,7 @@ export class StatutEffects {
       ofType(updatestatutDataSuccess),
       mergeMap(() =>
         this.statutService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchstatutData({ page: currentPage }))
+          map(({ currentPage }) => fetchstatutData({ page: currentPage, search: this.statutService.getCurrentSearch() }))
         )
       )
     )
@@ -117,7 +117,7 @@ export class StatutEffects {
         this.statutService.deleteStatut(id).pipe(
           map(() => deletestatutSuccess({ id })),
           catchError((error) =>
-            of(deletestatutFailure({ error: error.toString() }))
+            of(deletestatutFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         )
       )
@@ -135,9 +135,9 @@ export class StatutEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchstatutData({ page: targetPage });
+            return fetchstatutData({ page: targetPage, search: this.statutService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchstatutData({ page: 1 })))
+          catchError(() => of(fetchstatutData({ page: 1, search: this.statutService.getCurrentSearch() })))
         )
       )
     )
@@ -166,7 +166,7 @@ export class StatutEffects {
         return this.statutService.deleteMultipleStatut(idArray).pipe(
           map(() => deletemultiplestatutSuccess({ id })),
           catchError((error) =>
-            of(deletemultiplestatutFailure({ error: error.toString() }))
+            of(deletemultiplestatutFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         );
       })
@@ -186,9 +186,9 @@ export class StatutEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchstatutData({ page: targetPage });
+            return fetchstatutData({ page: targetPage, search: this.statutService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchstatutData({ page: 1 })))
+          catchError(() => of(fetchstatutData({ page: 1, search: this.statutService.getCurrentSearch() })))
         );
       })
     )

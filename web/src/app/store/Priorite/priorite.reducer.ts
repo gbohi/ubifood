@@ -10,6 +10,10 @@ import {
   fetchprioriteSuccess,
   updateprioriteDataSuccess,
   fetchprioriteNoPaginateSuccess,
+  addprioriteDataFailure,
+  updateprioriteDataFailure,
+  deleteprioriteFailure,
+  deletemultipleprioriteFailure,
 } from './priorite.action';
 import { PrioritelistModel } from './priorite.model';
 
@@ -64,6 +68,11 @@ export const PrioriteReducer = createReducer(
   on(updateprioriteDataSuccess,     (state) => ({ ...state, error: null })),
   on(deleteprioriteSuccess,         (state) => ({ ...state, error: null })),
   on(deletemultipleprioriteSuccess, (state) => ({ ...state, error: null })),
+
+  // Échecs ajout / modification / suppression : message lisible (ErrorInterceptor)
+
+  on(addprioriteDataFailure, updateprioriteDataFailure, deleteprioriteFailure, deletemultipleprioriteFailure, (state, { error }) => ({ ...state, error })),
+
 
   on(fetchprioriteNoPaginateSuccess, (state, { response }) => ({
     ...state,

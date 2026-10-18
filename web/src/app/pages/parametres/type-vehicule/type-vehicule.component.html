@@ -1,5 +1,5 @@
 <!-- Start Breadcrumbs -->
-<app-breadcrumbs title="Type véhicule List" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<app-breadcrumbs title="Types de véhicule" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
 <!-- End Breadcrumbs -->
 
 <div class="row">
@@ -9,16 +9,16 @@
                 <div class="row align-items-center gy-3">
                     <div class="col-lg-3 col-md-6 order-last order-md-first me-auto">
                         <div class="search-box">
-                            <input type="text" class="form-control search" placeholder="Rechercher par libellé ou ID..." [(ngModel)]="term" (keyup)="filterdata()">
+                            <input type="text" class="form-control search" placeholder="Rechercher par libellé..." [(ngModel)]="term" (ngModelChange)="onSearchChange($event)">
                             <i class="ri-search-line search-icon"></i>
                         </div>
                     </div>
                     <div class="col-md-auto col-6 text-end">
                         <div class="d-flex flex-wrap align-items-start gap-2">
-                            <button class="btn btn-subtle-danger" [class.d-none]="checkedValGet.length === 0" id="remove-actions" (click)="deleteRecordModal?.show()">
+                            <button class="btn btn-subtle-danger" [class.d-none]="checkedValGet.length === 0" id="remove-actions" (click)="removeSelected()">
                                 <i class="ri-delete-bin-2-line"></i> Supprimer ({{checkedValGet.length}})
                             </button>
-                            <button class="btn btn-secondary" (click)="addTypevehicule?.show()"><i class="bi bi-person-plus align-baseline me-1"></i> Ajouter un type véhicule</button>
+                            <button class="btn btn-secondary" (click)="openAddModal()"><i class="bi bi-plus-circle align-baseline me-1"></i> Ajouter un type de véhicule</button>
                         </div>
                     </div>
                 </div>
@@ -45,21 +45,21 @@
                             <tr id="l_{{data.id}}">
                                 <td>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" name="checkAll" value="{{data.id}}" [(ngModel)]="data.state" (change)="onCheckboxChange($event)" />
+                                        <input class="form-check-input" type="checkbox" name="checkAll" value="{{data.id}}" [(ngModel)]="data.state" (change)="onCheckboxChange()" />
                                         <label class="form-check-label"></label>
                                     </div>
                                 </td>
                                 <td class="typevehicule_id"><a href="javascript:void(0);" class="fw-medium link-primary">#{{data.id}}</a></td>
-                               
+
                                 <td class="libelle">{{data.libelle}}</td>
-                                
+
                                 <td>
                                     <ul class="d-flex gap-2 list-unstyled mb-0">
                                         <li>
                                             <a href="javascript:void(0);" (click)="viewDetails(data.id)" class="btn btn-subtle-primary btn-icon btn-sm"><i class="ph-eye"></i></a>
                                         </li>
                                         <li>
-                                            <a href="javascript:void(0);" (click)="editList($index)" class="btn btn-subtle-secondary btn-icon btn-sm edit-item-btn"><i class="ph-pencil"></i></a>
+                                            <a href="javascript:void(0);" (click)="editList(data.id)" class="btn btn-subtle-secondary btn-icon btn-sm edit-item-btn"><i class="ph-pencil"></i></a>
                                         </li>
                                         <li>
                                             <a href="javascript:void(0);" (click)="removeItem(data.id)" class="btn btn-subtle-danger btn-icon btn-sm remove-item-btn"><i class="ph-trash"></i></a>
@@ -68,13 +68,13 @@
                                 </td>
                             </tr>
                             }
-                            
+
                             <!-- Message si aucun résultat -->
-                            <tr *ngIf="typevehicules?.length === 0 && !term && !isLoading">
+                            <tr *ngIf="typevehicules.length === 0 && !term && !isLoading">
                                 <td colspan="4" class="text-center py-4">
                                     <i class="ph-file-x fs-1 text-primary"></i>
-                                    <h5 class="mt-2">Aucun type véhicule disponible</h5>
-                                    <p class="text-muted mb-0">Veuillez ajouter un type vehicule pour commencer.</p>
+                                    <h5 class="mt-2">Aucun type de véhicule disponible</h5>
+                                    <p class="text-muted mb-0">Veuillez ajouter un type de véhicule pour commencer.</p>
                                 </td>
                             </tr>
                         </tbody><!-- end tbody -->
@@ -86,11 +86,11 @@
                         </div>
                     </div>
 
-                    <div class="noresult" style="display: none;">
+                    <div class="noresult" *ngIf="term && typevehicules.length === 0 && !isLoading">
                         <div class="text-center py-4">
                             <i class="ph-magnifying-glass fs-1 text-primary"></i>
                             <h5 class="mt-2">Aucun résultat trouvé</h5>
-                            <p class="text-muted mb-0">Nous n'avons trouvé aucun type véhicule correspondant à votre recherche.</p>
+                            <p class="text-muted mb-0">Nous n'avons trouvé aucun type de véhicule correspondant à votre recherche.</p>
                         </div>
                     </div>
                 </div>
@@ -101,11 +101,13 @@
                         </div>
                     </div><!--end col-->
                     <div class="col-sm-auto mt-3 mt-sm-0">
-                        <pagination 
-                            class="pagination-wrap justify-content-center hstack gap-2" 
-                            [totalItems]="totalItems" 
-                            [itemsPerPage]="10" 
-                            [(ngModel)]="currentPage" 
+                        <pagination
+                            class="pagination-wrap justify-content-center hstack gap-2"
+                            [totalItems]="totalItems"
+                            [itemsPerPage]="10"
+                            previousText="Précédent"
+                            nextText="Suivant"
+                            [(ngModel)]="currentPage"
                             (pageChanged)="pageChanged($event)">
                         </pagination>
                     </div><!--end col-->
@@ -120,13 +122,12 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="addTypevehiculeModalLabel">Ajouter un type véhicule</h5>
+                <h5 class="modal-title" id="addTypevehiculeModalLabel">{{ isEdit ? "Modifier le type de véhicule" : "Ajouter un type de véhicule" }}</h5>
                 <button type="button" class="btn-close" (click)="closeAddModal()"></button>
             </div>
 
             <form (ngSubmit)="saveProperty()" [formGroup]="typevehiculeForm" class="tablelist-form" novalidate autocomplete="off">
                 <div class="modal-body">
-                    <div id="alert-error-msg" class="d-none alert alert-danger py-2"></div>
                     <input type="hidden" id="id-field" formControlName="id">
 
                     <div class="mb-3">
@@ -136,26 +137,25 @@
                             <small *ngIf="typevehiculeForm.get('libelle')?.errors?.['required']">Le libellé est requis</small>
                         </div>
                     </div>
-                    <input type="hidden" id="date-input">
                 </div>
                 <div class="modal-footer">
                     <div class="hstack gap-2 justify-content-end">
                         <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()"><i class="bi bi-x-lg align-baseline me-1"></i> Fermer</button>
-                        <button type="submit" class="btn btn-primary" id="add-btn" [disabled]="typevehiculeForm.invalid">Ajouter</button>
+                        <button type="submit" class="btn btn-primary" id="add-btn" [disabled]="typevehiculeForm.invalid || isSaving">{{ isEdit ? 'Mettre à jour' : 'Ajouter' }}</button>
                     </div>
                 </div>
             </form>
         </div>
         <!-- modal-content -->
     </div>
-</div><!--end add Property modal-->
+</div><!--end add modal-->
 
 <!-- deleteRecordModal -->
 <div bsModal #deleteRecordModal="bs-modal" id="deleteRecordModal" class="modal fade zoomIn" [config]="{backdrop: 'static', keyboard: false, ignoreBackdropClick: true}" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <button type="button" class="btn-close" id="deleteRecord-close" (click)="deleteRecordModal?.hide()"></button>
+                <button type="button" class="btn-close" id="deleteRecord-close" (click)="closeDeleteModal()"></button>
             </div>
             <div class="modal-body p-md-5">
                 <div class="text-center">
@@ -164,12 +164,12 @@
                     </div>
                     <div class="mt-4">
                         <h4 class="mb-2">Êtes-vous sûr ?</h4>
-                        <p class="text-muted fs-md mx-3 mb-0">Voulez-vous vraiment supprimer {{ (checkedValGet && checkedValGet.length > 1) ? 'ces types véhicules' : 'ce type véhicule' }} ?</p>
+                        <p class="text-muted fs-md mx-3 mb-0">{{ deleteMessage }}</p>
                     </div>
                 </div>
                 <div class="d-flex gap-2 justify-content-center mt-4 pt-2 mb-2">
-                    <button type="button" class="btn w-sm btn-light btn-hover" (click)="deleteRecordModal?.hide()">Annuler</button>
-                    <button type="button" class="btn w-sm btn-danger btn-hover" id="delete-record" (click)="confirmDelete(deleteID)">Oui, supprimer</button>
+                    <button type="button" class="btn w-sm btn-light btn-hover" (click)="closeDeleteModal()">Annuler</button>
+                    <button type="button" class="btn w-sm btn-danger btn-hover" id="delete-record" [disabled]="isDeleting" (click)="confirmDelete()">Oui, supprimer</button>
                 </div>
             </div>
         </div><!-- /.modal-content -->
@@ -177,24 +177,23 @@
 </div><!-- /deleteRecordModal -->
 
 <!-- Modal Détails -->
-<div bsModal #viewTypevehicule="bs-modal" class="modal fade" id="viewTypevehicule" 
+<div bsModal #viewTypevehicule="bs-modal" class="modal fade" id="viewTypevehicule"
      [config]="{backdrop: 'static', keyboard: false, ignoreBackdropClick: true}">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="viewTypevehiculeModalLabel">Détails du type véhicule</h5>
+                <h5 class="modal-title" id="viewTypevehiculeModalLabel">Détails du type de véhicule</h5>
                 <button type="button" class="btn-close" (click)="closeViewModal()"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
-                    <label class="form-label fw-medium">ID:</label>
+                    <label class="form-label fw-medium">ID :</label>
                     <p>{{selectedTypevehicule?.id}}</p>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-medium">Libellé:</label>
+                    <label class="form-label fw-medium">Libellé :</label>
                     <p>{{selectedTypevehicule?.libelle}}</p>
                 </div>
-                <!-- Ajoutez d'autres champs si nécessaire -->
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" (click)="closeViewModal()">Fermer</button>

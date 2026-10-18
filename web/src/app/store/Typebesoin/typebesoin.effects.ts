@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { TypebesoinService } from 'src/app/core/services/typebesoin/typebesoin.service';
 import {
@@ -33,11 +33,11 @@ export class TypebesoinEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchtypebesoinData),
-      mergeMap(({ page }) =>
-        this.typebesoinService.getAllTypebesoins(page ?? 1).pipe(
+      switchMap(({ page, search }) =>
+        this.typebesoinService.getAllTypebesoins(page ?? 1, search).pipe(
           map((response) => fetchtypebesoinSuccess({ response })),
           catchError((error) =>
-            of(fetchtypebesoinFailure({ error: error.toString() }))
+            of(fetchtypebesoinFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -52,7 +52,7 @@ export class TypebesoinEffects {
         this.typebesoinService.getListTypebesoins().pipe(
           map((response) => fetchtypebesoinNoPaginateSuccess({ response })),
           catchError((error) =>
-            of(fetchtypebesoinNoPaginateFailure({ error: error.toString() }))
+            of(fetchtypebesoinNoPaginateFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -67,7 +67,7 @@ export class TypebesoinEffects {
         this.typebesoinService.createTypebesoin(newData).pipe(
           map((response) => addtypebesoinDataSuccess({ newData: response })),
           catchError((error) =>
-            of(addtypebesoinDataFailure({ error: error.toString() }))
+            of(addtypebesoinDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de l'ajout" }))
           )
         )
       )
@@ -78,7 +78,7 @@ export class TypebesoinEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addtypebesoinDataSuccess),
-      map(() => fetchtypebesoinData({ page: 1 }))
+      map(() => fetchtypebesoinData({ page: 1, search: this.typebesoinService.getCurrentSearch() }))
     )
   );
 
@@ -90,7 +90,7 @@ export class TypebesoinEffects {
         this.typebesoinService.updateTypebesoin(updatedData).pipe(
           map(() => updatetypebesoinDataSuccess({ updatedData })),
           catchError((error) =>
-            of(updatetypebesoinDataFailure({ error: error.toString() }))
+            of(updatetypebesoinDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de la mise à jour" }))
           )
         )
       )
@@ -103,7 +103,7 @@ export class TypebesoinEffects {
       ofType(updatetypebesoinDataSuccess),
       mergeMap(() =>
         this.typebesoinService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchtypebesoinData({ page: currentPage }))
+          map(({ currentPage }) => fetchtypebesoinData({ page: currentPage, search: this.typebesoinService.getCurrentSearch() }))
         )
       )
     )
@@ -117,7 +117,7 @@ export class TypebesoinEffects {
         this.typebesoinService.deleteTypebesoin(id).pipe(
           map(() => deletetypebesoinSuccess({ id })),
           catchError((error) =>
-            of(deletetypebesoinFailure({ error: error.toString() }))
+            of(deletetypebesoinFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         )
       )
@@ -135,9 +135,9 @@ export class TypebesoinEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchtypebesoinData({ page: targetPage });
+            return fetchtypebesoinData({ page: targetPage, search: this.typebesoinService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchtypebesoinData({ page: 1 })))
+          catchError(() => of(fetchtypebesoinData({ page: 1, search: this.typebesoinService.getCurrentSearch() })))
         )
       )
     )
@@ -166,7 +166,7 @@ export class TypebesoinEffects {
         return this.typebesoinService.deleteMultipleTypebesoin(idArray).pipe(
           map(() => deletemultipletypebesoinSuccess({ id })),
           catchError((error) =>
-            of(deletemultipletypebesoinFailure({ error: error.toString() }))
+            of(deletemultipletypebesoinFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         );
       })
@@ -186,9 +186,9 @@ export class TypebesoinEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchtypebesoinData({ page: targetPage });
+            return fetchtypebesoinData({ page: targetPage, search: this.typebesoinService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchtypebesoinData({ page: 1 })))
+          catchError(() => of(fetchtypebesoinData({ page: 1, search: this.typebesoinService.getCurrentSearch() })))
         );
       })
     )

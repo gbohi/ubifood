@@ -6,7 +6,7 @@ import { TypeplatlistModel, ApiResponse } from './typeplat.model';
 // ── Fetch paginé ──────────────────────────────────────────────
 export const fetchtypeplatData = createAction(
   '[Data] Fetch typeplat Table Data',
-  props<{ page?: number }>()
+  props<{ page?: number; search?: string }>()
 );
 export const fetchtypeplatSuccess = createAction(
   '[Data] Fetch typeplat Data Success',

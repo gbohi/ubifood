@@ -2,7 +2,7 @@
 
 import { Injectable } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { PrioriteService } from 'src/app/core/services/priorite/priorite.service';
 import {
@@ -33,11 +33,11 @@ export class PrioriteEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchprioriteData),
-      mergeMap(({ page }) =>
-        this.prioriteService.getAllPriorites(page ?? 1).pipe(
+      switchMap(({ page, search }) =>
+        this.prioriteService.getAllPriorites(page ?? 1, search).pipe(
           map((response) => fetchprioriteSuccess({ response })),
           catchError((error) =>
-            of(fetchprioriteFailure({ error: error.toString() }))
+            of(fetchprioriteFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -52,7 +52,7 @@ export class PrioriteEffects {
         this.prioriteService.getListPriorites().pipe(
           map((response) => fetchprioriteNoPaginateSuccess({ response })),
           catchError((error) =>
-            of(fetchprioriteNoPaginateFailure({ error: error.toString() }))
+            of(fetchprioriteNoPaginateFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))
           )
         )
       )
@@ -67,7 +67,7 @@ export class PrioriteEffects {
         this.prioriteService.createPriorite(newData).pipe(
           map((response) => addprioriteDataSuccess({ newData: response })),
           catchError((error) =>
-            of(addprioriteDataFailure({ error: error.toString() }))
+            of(addprioriteDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de l'ajout" }))
           )
         )
       )
@@ -78,7 +78,7 @@ export class PrioriteEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(addprioriteDataSuccess),
-      map(() => fetchprioriteData({ page: 1 }))
+      map(() => fetchprioriteData({ page: 1, search: this.prioriteService.getCurrentSearch() }))
     )
   );
 
@@ -90,7 +90,7 @@ export class PrioriteEffects {
         this.prioriteService.updatePriorite(updatedData).pipe(
           map(() => updateprioriteDataSuccess({ updatedData })),
           catchError((error) =>
-            of(updateprioriteDataFailure({ error: error.toString() }))
+            of(updateprioriteDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de la mise à jour" }))
           )
         )
       )
@@ -103,7 +103,7 @@ export class PrioriteEffects {
       ofType(updateprioriteDataSuccess),
       mergeMap(() =>
         this.prioriteService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchprioriteData({ page: currentPage }))
+          map(({ currentPage }) => fetchprioriteData({ page: currentPage, search: this.prioriteService.getCurrentSearch() }))
         )
       )
     )
@@ -117,7 +117,7 @@ export class PrioriteEffects {
         this.prioriteService.deletePriorite(id).pipe(
           map(() => deleteprioriteSuccess({ id })),
           catchError((error) =>
-            of(deleteprioriteFailure({ error: error.toString() }))
+            of(deleteprioriteFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         )
       )
@@ -135,9 +135,9 @@ export class PrioriteEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchprioriteData({ page: targetPage });
+            return fetchprioriteData({ page: targetPage, search: this.prioriteService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchprioriteData({ page: 1 })))
+          catchError(() => of(fetchprioriteData({ page: 1, search: this.prioriteService.getCurrentSearch() })))
         )
       )
     )
@@ -166,7 +166,7 @@ export class PrioriteEffects {
         return this.prioriteService.deleteMultiplePriorite(idArray).pipe(
           map(() => deletemultipleprioriteSuccess({ id })),
           catchError((error) =>
-            of(deletemultipleprioriteFailure({ error: error.toString() }))
+            of(deletemultipleprioriteFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" }))
           )
         );
       })
@@ -186,9 +186,9 @@ export class PrioriteEffects {
             const targetPage = currentPage > totalPages
               ? Math.max(totalPages, 1)
               : currentPage;
-            return fetchprioriteData({ page: targetPage });
+            return fetchprioriteData({ page: targetPage, search: this.prioriteService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchprioriteData({ page: 1 })))
+          catchError(() => of(fetchprioriteData({ page: 1, search: this.prioriteService.getCurrentSearch() })))
         );
       })
     )

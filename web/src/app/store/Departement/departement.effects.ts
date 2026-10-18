@@ -2,7 +2,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { DepartementService } from 'src/app/core/services/departement/departement.service';
 
@@ -37,10 +37,10 @@ export class DepartementEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchdepartementData),
-      mergeMap(({ page }) =>
-        this.departementService.getAllDepartements(page || 1).pipe(
+      switchMap(({ page, search }) =>
+        this.departementService.getAllDepartements(page ?? 1, search).pipe(
           map(response => fetchdepartementSuccess({ response })),
-          catchError(error => of(fetchdepartementFailure({ error: error.toString() })))
+          catchError(error => of(fetchdepartementFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" })))
         )
       )
     )
@@ -53,7 +53,7 @@ export class DepartementEffects {
       mergeMap(() =>
         this.departementService.getListDepartements().pipe(
           map(response => fetchdepartementNoPaginateSuccess({ response })),
-          catchError(error => of(fetchdepartementNoPaginateFailure({ error: error.toString() })))
+          catchError(error => of(fetchdepartementNoPaginateFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" })))
         )
       )
     )
@@ -66,7 +66,7 @@ export class DepartementEffects {
       mergeMap(({ newData }) =>
         this.departementService.createDepartement(newData).pipe(
           map(response => adddepartementDataSuccess({ newData: response })),
-          catchError(error => of(adddepartementDataFailure({ error: error.toString() })))
+          catchError(error => of(adddepartementDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de l'ajout" })))
         )
       )
     )
@@ -75,7 +75,7 @@ export class DepartementEffects {
   addSuccess$ = createEffect(() =>
     this.actions$.pipe(
       ofType(adddepartementDataSuccess),
-      map(() => fetchdepartementData({ page: 1 }))
+      map(() => fetchdepartementData({ page: 1, search: this.departementService.getCurrentSearch() }))
     )
   );
 
@@ -86,7 +86,7 @@ export class DepartementEffects {
       mergeMap(({ updatedData }) =>
         this.departementService.updateDepartement(updatedData).pipe(
           map(() => updatedepartementDataSuccess({ updatedData })),
-          catchError(error => of(updatedepartementDataFailure({ error: error.toString() })))
+          catchError(error => of(updatedepartementDataFailure({ error: typeof error === 'string' ? error : "Erreur lors de la mise à jour" })))
         )
       )
     )
@@ -97,7 +97,7 @@ export class DepartementEffects {
       ofType(updatedepartementDataSuccess),
       mergeMap(() =>
         this.departementService.getCurrentPageInfo().pipe(
-          map(({ currentPage }) => fetchdepartementData({ page: currentPage }))
+          map(({ currentPage }) => fetchdepartementData({ page: currentPage, search: this.departementService.getCurrentSearch() }))
         )
       )
     )
@@ -110,7 +110,7 @@ export class DepartementEffects {
       mergeMap(({ id }) =>
         this.departementService.deleteDepartement(id).pipe(
           map(() => deletedepartementSuccess({ id })),
-          catchError(error => of(deletedepartementFailure({ error: error.toString() })))
+          catchError(error => of(deletedepartementFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" })))
         )
       )
     )
@@ -124,9 +124,9 @@ export class DepartementEffects {
           map(({ currentPage, totalItems, itemsPerPage }) => {
             const totalPages = Math.ceil((totalItems - 1) / itemsPerPage);
             const page = currentPage > totalPages ? Math.max(totalPages, 1) : currentPage;
-            return fetchdepartementData({ page });
+            return fetchdepartementData({ page, search: this.departementService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchdepartementData({ page: 1 })))
+          catchError(() => of(fetchdepartementData({ page: 1, search: this.departementService.getCurrentSearch() })))
         )
       )
     )
@@ -148,7 +148,7 @@ export class DepartementEffects {
 
         return this.departementService.deleteMultipleDepartement(idArray).pipe(
           map(() => deletemultipledepartementSuccess({ id })),
-          catchError(error => of(deletemultipledepartementFailure({ error: error.toString() })))
+          catchError(error => of(deletemultipledepartementFailure({ error: typeof error === 'string' ? error : "Erreur lors de la suppression" })))
         );
       })
     )
@@ -163,9 +163,9 @@ export class DepartementEffects {
           map(({ currentPage, totalItems, itemsPerPage }) => {
             const totalPages = Math.ceil((totalItems - deletedCount) / itemsPerPage);
             const page = currentPage > totalPages ? Math.max(totalPages, 1) : currentPage;
-            return fetchdepartementData({ page });
+            return fetchdepartementData({ page, search: this.departementService.getCurrentSearch() });
           }),
-          catchError(() => of(fetchdepartementData({ page: 1 })))
+          catchError(() => of(fetchdepartementData({ page: 1, search: this.departementService.getCurrentSearch() })))
         );
       })
     )
