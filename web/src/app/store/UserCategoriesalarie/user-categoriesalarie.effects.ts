@@ -18,7 +18,7 @@ export class UserCategoriesalarieEffects {
       switchMap(({ userId }) =>
         this.userCategoriesalarieService.getByUser(userId).pipe(
           map(items => A.fetchUserCategoriesalariesSuccess({ items })),
-          catchError(err => of(A.fetchUserCategoriesalariesFailure({ error: err?.error?.detail || 'Erreur chargement.' })))
+          catchError(err => of(A.fetchUserCategoriesalariesFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur chargement.' })))
         )
       )
     )
@@ -30,7 +30,7 @@ export class UserCategoriesalarieEffects {
       mergeMap(({ data }) =>
         this.userCategoriesalarieService.create(data).pipe(
           map(item => A.createUserCategoriesalarieSuccess({ item })),
-          catchError(err => of(A.createUserCategoriesalarieFailure({ error: err?.error?.detail || 'Erreur création.' })))
+          catchError(err => of(A.createUserCategoriesalarieFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur création.' })))
         )
       )
     )
@@ -42,7 +42,7 @@ export class UserCategoriesalarieEffects {
       mergeMap(({ id, data }) =>
         this.userCategoriesalarieService.update(id, data).pipe(
           map(item => A.updateUserCategoriesalarieSuccess({ item })),
-          catchError(err => of(A.updateUserCategoriesalarieFailure({ error: err?.error?.detail || 'Erreur mise à jour.' })))
+          catchError(err => of(A.updateUserCategoriesalarieFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur mise à jour.' })))
         )
       )
     )
@@ -54,7 +54,7 @@ export class UserCategoriesalarieEffects {
       mergeMap(({ id }) =>
         this.userCategoriesalarieService.delete(id).pipe(
           map(() => A.deleteUserCategoriesalarieSuccess({ id })),
-          catchError(err => of(A.deleteUserCategoriesalarieFailure({ error: err?.error?.detail || 'Erreur suppression.' })))
+          catchError(err => of(A.deleteUserCategoriesalarieFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur suppression.' })))
         )
       )
     )
@@ -67,7 +67,7 @@ export class UserCategoriesalarieEffects {
         if (items.length === 0) return of(A.saveUserCategoriesalariesBatchSuccess({ userId }));
         return forkJoin(items.map(i => this.userCategoriesalarieService.create({ ...i, user: userId }))).pipe(
           map(() => A.saveUserCategoriesalariesBatchSuccess({ userId })),
-          catchError(err => of(A.saveUserCategoriesalariesBatchFailure({ error: err?.error?.detail || 'Erreur batch.' })))
+          catchError(err => of(A.saveUserCategoriesalariesBatchFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur batch.' })))
         );
       })
     )

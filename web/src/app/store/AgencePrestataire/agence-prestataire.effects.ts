@@ -22,7 +22,7 @@ export class AgencePrestataireEffects {
         this.agencePrestataireService.getByPrestataire(prestataireId).pipe(
           map(agences => AgencePrestataireActions.fetchAgencePrestataireSuccess({ agences })),
           catchError(err => of(AgencePrestataireActions.fetchAgencePrestataireFailure({
-            error: err?.error?.detail || 'Erreur lors du chargement des agences.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors du chargement des agences.'
           })))
         )
       )
@@ -37,7 +37,7 @@ export class AgencePrestataireEffects {
         this.agencePrestataireService.create(data).pipe(
           map(agence => AgencePrestataireActions.createAgencePrestataireSuccess({ agence })),
           catchError(err => of(AgencePrestataireActions.createAgencePrestataireFailure({
-            error: err?.error?.detail || 'Erreur lors de la création.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la création.'
           })))
         )
       )
@@ -52,7 +52,7 @@ export class AgencePrestataireEffects {
         this.agencePrestataireService.update(id, data).pipe(
           map(agence => AgencePrestataireActions.updateAgencePrestataireSuccess({ agence })),
           catchError(err => of(AgencePrestataireActions.updateAgencePrestataireFailure({
-            error: err?.error?.detail || 'Erreur lors de la mise à jour.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la mise à jour.'
           })))
         )
       )
@@ -67,7 +67,7 @@ export class AgencePrestataireEffects {
         this.agencePrestataireService.delete(id).pipe(
           map(() => AgencePrestataireActions.deleteAgencePrestataireSuccess({ id })),
           catchError(err => of(AgencePrestataireActions.deleteAgencePrestataireFailure({
-            error: err?.error?.detail || 'Erreur lors de la suppression.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la suppression.'
           })))
         )
       )
@@ -93,7 +93,7 @@ export class AgencePrestataireEffects {
         return forkJoin(requests).pipe(
           map(() => AgencePrestataireActions.saveAgencePrestatairesBatchSuccess({ prestataireId })),
           catchError(err => of(AgencePrestataireActions.saveAgencePrestatairesBatchFailure({
-            error: err?.error?.detail || 'Erreur lors de la sauvegarde des agences.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la sauvegarde des agences.'
           })))
         );
       })

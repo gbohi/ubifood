@@ -75,7 +75,7 @@ export const resetRechercheParBadge = createAction('[Commande] Reset Recherche P
 // ── Charger liste paginée (admin) ────────────────────────────
 export const fetchCommandes = createAction(
   '[Commande] Fetch List',
-  props<{ page?: number; menu?: number; statut?: string; agence?: number }>()
+  props<{ page?: number; menu?: number; statut?: string; agence?: number; date_gte?: string; date_lte?: string }>()
 );
 export const fetchCommandesSuccess = createAction(
   '[Commande] Fetch List Success',

@@ -159,16 +159,17 @@ export const commandeReducer = createReducer(
     isSubmitting:   false,
     successMessage: 'Retrait enregistré. Commandes passées à "Retirée".',
     // Mettre à jour rechercheParBadge si l'agent est le même
+    // Les commandes en attente de l'agent servi passent à « Retirée »
     rechercheParBadge: state.rechercheParBadge?.user_id === userId
-      ? { ...state.rechercheParBadge, a_retire: true }
+      ? {
+          ...state.rechercheParBadge,
+          a_retire: true,
+          commandes: (state.rechercheParBadge.commandes ?? []).map((c: any) =>
+            c.menu_detail?.id === menuId && c.statut === 'en_attente' ? { ...c, statut: 'retiree' as const } : c),
+        }
       : state.rechercheParBadge,
     commandesParMenu: state.commandesParMenu.map(g =>
       g.user_id === userId ? { ...g, a_retire: true } : g
-    ),
-    mesCommandes: state.mesCommandes.map(c =>
-      c.menu_detail?.id === menuId && c.statut === 'en_attente'
-        ? { ...c, statut: 'retiree' as const }
-        : c
     ),
   })),
   on(CommandeActions.createRetraitFailure, (state, { error }) => ({

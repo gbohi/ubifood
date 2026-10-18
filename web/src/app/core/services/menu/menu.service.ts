@@ -1,7 +1,7 @@
 // src/app/core/services/menu/menu.service.ts
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Observable, throwError, of, forkJoin, EMPTY } from 'rxjs';
+import { Observable, throwError, of } from 'rxjs';
 import { catchError, switchMap, tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { MenulistModel, ApiResponse, ApiError } from 'src/app/store/Menu/menu.model';
@@ -42,94 +42,19 @@ export class MenuService {
       );
   }
 
-  // ── Création d'un menu avec ses plats ─────────────────────────
-  /**
-   * Le workflow Django est :
-   *   1. POST /menus/         → crée le Menu (retourne l'objet avec son ID)
-   *   2. POST /menu-plats/ x N → crée un MenuPlat par plat sélectionné
-   *
-   * On envoie { date_menu, agence, typeequipe, plat_ids[] } depuis le composant.
-   * Le service sépare les champs Menu des plat_ids.
-   */
+  // ── Création / mise à jour d'un menu avec ses plats ─────────
+  // Le serveur enregistre le menu et ses plats (plat_ids) en une seule
+  // opération : pas de menu à moitié enregistré si une requête échoue.
+
   createMenu(data: any): Observable<MenulistModel> {
-    const { plat_ids, ...menuData } = data;
-
-    return this.http.post<MenulistModel>(`${this.apiUrl}/menus/`, menuData).pipe(
-      switchMap((menu) => {
-        // Si aucun plat sélectionné, on retourne le menu directement
-        if (!plat_ids || plat_ids.length === 0) {
-          return of(menu);
-        }
-
-        // Créer un MenuPlat par plat sélectionné (en parallèle avec forkJoin)
-        const menuPlatRequests = plat_ids.map((platId: number) =>
-          this.http.post(`${this.apiUrl}/menu-plats/`, {
-            menu: menu.id,
-            plat_id: platId   // ← corrigé : plat_id (write_only dans MenuPlatSerializer)
-          })
-        );
-
-        return forkJoin(menuPlatRequests).pipe(
-          switchMap(() => of(menu)) // Retourne le menu après création des MenuPlats
-        );
-      }),
-      catchError(this.handleError)
-    );
+    return this.http.post<MenulistModel>(`${this.apiUrl}/menus/`, data)
+      .pipe(catchError(this.handleError));
   }
 
-  // ── Mise à jour d'un menu avec ses plats ──────────────────────
-  /**
-   * Workflow :
-   *   1. PATCH /menus/{id}/           → met à jour les champs du Menu
-   *   2. Supprime tous les anciens MenuPlat du menu
-   *   3. Recrée les MenuPlat selon la nouvelle sélection
-   */
   updateMenu(data: any): Observable<MenulistModel> {
-    const { id, plat_ids, ...menuData } = data;
-
-    return this.http.patch<MenulistModel>(`${this.apiUrl}/menus/${id}/`, menuData).pipe(
-      switchMap((menu) => {
-        if (!plat_ids) {
-          // Pas de changement des plats — retourner directement
-          return of(menu);
-        }
-
-        // Récupérer les MenuPlat existants pour ce menu
-        return this.http.get<ApiResponse<any>>(`${this.apiUrl}/menu-plats/?menu=${id}`).pipe(
-          switchMap((response) => {
-            const existing = response.results;
-
-            // Supprimer tous les anciens MenuPlat
-            const deleteRequests = existing.length > 0
-              ? existing.map((mp: any) =>
-                  this.http.delete(`${this.apiUrl}/menu-plats/${mp.id}/`)
-                )
-              : [of(null)];
-
-            return forkJoin(deleteRequests).pipe(
-              switchMap(() => {
-                // Recréer les nouveaux MenuPlat
-                if (!plat_ids || plat_ids.length === 0) {
-                  return of(menu);
-                }
-
-                const createRequests = plat_ids.map((platId: number) =>
-                  this.http.post(`${this.apiUrl}/menu-plats/`, {
-                    menu: id,
-                    plat_id: platId   // ← corrigé : plat_id
-                  })
-                );
-
-                return forkJoin(createRequests).pipe(
-                  switchMap(() => of(menu))
-                );
-              })
-            );
-          })
-        );
-      }),
-      catchError(this.handleError)
-    );
+    const { id, ...menuData } = data;
+    return this.http.patch<MenulistModel>(`${this.apiUrl}/menus/${id}/`, menuData)
+      .pipe(catchError(this.handleError));
   }
 
   // ── Suppression simple ────────────────────────────────────────
@@ -159,23 +84,12 @@ export class MenuService {
 
   // ── Gestion d'erreurs ─────────────────────────────────────────
 
-  private handleError(error: HttpErrorResponse) {
+  private handleError(error: HttpErrorResponse | string) {
+    // L'ErrorInterceptor a déjà converti l'erreur en message lisible
     const apiError: ApiError = {
-      status: error.status,
-      message: 'Une erreur est survenue',
+      status: typeof error === 'string' ? 0 : error.status,
+      message: typeof error === 'string' ? error : (error.message || 'Une erreur est survenue'),
     };
-
-    if (error.error instanceof ErrorEvent) {
-      apiError.message = `Erreur réseau : ${error.error.message}`;
-    } else {
-      apiError.message = error.message;
-      if (error.error && typeof error.error === 'object') {
-        if (error.error.message) apiError.message = error.error.message;
-        if (error.error.errors)  apiError.errors  = error.error.errors;
-      }
-    }
-
-    console.error('Erreur API Menu :', apiError);
     return throwError(() => apiError);
   }
 }

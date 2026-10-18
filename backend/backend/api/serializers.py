@@ -33,6 +33,45 @@ def agence_actuelle(user, a_date=None):
     return ligne.agence
 
 
+class _PeriodeMixin:
+    """
+    Lignes d'historique d'un agent (service, agence, poste, catégorie) :
+      - la date de fin ne peut pas précéder la date de début ;
+      - si `periode_exclusive`, deux lignes du même agent ne peuvent pas se
+        chevaucher (un agent n'a qu'une agence / une catégorie salarié à la
+        fois : la facturation et les menus en dépendent).
+    """
+    periode_exclusive = False
+    libelle_periode = 'ligne'
+    # Champ qui identifie « le même propriétaire » pour le chevauchement
+    cle_periode = 'user'
+    proprietaire = "de l'agent"
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        inst = getattr(self, 'instance', None)
+        debut = attrs.get('date_debut', getattr(inst, 'date_debut', None))
+        fin = attrs.get('date_fin', getattr(inst, 'date_fin', None))
+        cle = self.cle_periode
+        proprio = attrs.get(cle, getattr(inst, cle, None))
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin': "La date de fin doit être postérieure ou égale à la date de début."})
+        if self.periode_exclusive and proprio and debut:
+            autres = self.Meta.model.objects.filter(**{cle: proprio})
+            if inst is not None:
+                autres = autres.exclude(pk=inst.pk)
+            # Chevauchement : [debut, fin] ∩ [a.debut, a.fin] ≠ ∅ (fin vide = en cours)
+            autres = autres.filter(Q(date_fin__isnull=True) | Q(date_fin__gte=debut))
+            if fin:
+                autres = autres.filter(date_debut__lte=fin)
+            if autres.exists():
+                raise serializers.ValidationError(
+                    f"Cette période chevauche une autre {self.libelle_periode} {self.proprietaire} : "
+                    "renseignez la date de fin de la précédente avant d'en ajouter une nouvelle.")
+        return attrs
+
+
 # ============================================================
 # VALIDATION MOT DE PASSE PERSONNALISÉE
 # ============================================================
@@ -115,7 +154,20 @@ class FonctionSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class PlatPrestataireSerializer(serializers.ModelSerializer):
+class _TarifMixin(_PeriodeMixin):
+    """Tarif à périodes : montant positif, pas deux tarifs en vigueur le même jour."""
+    periode_exclusive = True
+    libelle_periode = 'période de tarif'
+
+    def validate_montant(self, montant):
+        if montant is not None and montant < 0:
+            raise serializers.ValidationError("Le montant ne peut pas être négatif.")
+        return montant
+
+
+class PlatPrestataireSerializer(_TarifMixin, serializers.ModelSerializer):
+    cle_periode = 'prestataire'
+    proprietaire = 'du prestataire'
     statut_libelle = serializers.ReadOnlyField(source='statut.libelle_statut')
 
     class Meta:
@@ -123,7 +175,12 @@ class PlatPrestataireSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class AgencePrestataireSerializer(serializers.ModelSerializer):
+class AgencePrestataireSerializer(_PeriodeMixin, serializers.ModelSerializer):
+    # Une agence n'est servie que par un prestataire à la fois (facturation)
+    periode_exclusive = True
+    cle_periode = 'agence'
+    libelle_periode = 'période de rattachement à un prestataire'
+    proprietaire = "de l'agence"
     statut_libelle = serializers.ReadOnlyField(source='statut.libelle_statut')
     agence_libelle = serializers.ReadOnlyField(source='agence.nom_agence')
 
@@ -146,7 +203,9 @@ class PrestataireSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class PlatCategoriesalarieSerializer(serializers.ModelSerializer):
+class PlatCategoriesalarieSerializer(_TarifMixin, serializers.ModelSerializer):
+    cle_periode = 'categoriesalarie'
+    proprietaire = 'de la catégorie'
     statut_libelle = serializers.ReadOnlyField(source='statut.libelle_statut')
 
     class Meta:
@@ -186,41 +245,6 @@ class UserAllergieSerializer(serializers.ModelSerializer):
         # Renseigné par la vue (l'utilisateur connecté pour un employé)
         extra_kwargs = {'user': {'required': False}}
         read_only_fields = ['user_created', 'user_updated']
-
-
-class _PeriodeMixin:
-    """
-    Lignes d'historique d'un agent (service, agence, poste, catégorie) :
-      - la date de fin ne peut pas précéder la date de début ;
-      - si `periode_exclusive`, deux lignes du même agent ne peuvent pas se
-        chevaucher (un agent n'a qu'une agence / une catégorie salarié à la
-        fois : la facturation et les menus en dépendent).
-    """
-    periode_exclusive = False
-    libelle_periode = 'ligne'
-
-    def validate(self, attrs):
-        attrs = super().validate(attrs)
-        inst = getattr(self, 'instance', None)
-        debut = attrs.get('date_debut', getattr(inst, 'date_debut', None))
-        fin = attrs.get('date_fin', getattr(inst, 'date_fin', None))
-        user = attrs.get('user', getattr(inst, 'user', None))
-        if debut and fin and fin < debut:
-            raise serializers.ValidationError(
-                {'date_fin': "La date de fin doit être postérieure ou égale à la date de début."})
-        if self.periode_exclusive and user and debut:
-            autres = self.Meta.model.objects.filter(user=user)
-            if inst is not None:
-                autres = autres.exclude(pk=inst.pk)
-            # Chevauchement : [debut, fin] ∩ [a.debut, a.fin] ≠ ∅ (fin vide = en cours)
-            autres = autres.filter(Q(date_fin__isnull=True) | Q(date_fin__gte=debut))
-            if fin:
-                autres = autres.filter(date_debut__lte=fin)
-            if autres.exists():
-                raise serializers.ValidationError(
-                    f"Cette période chevauche une autre {self.libelle_periode} de l'agent : "
-                    "renseignez la date de fin de la précédente avant d'en ajouter une nouvelle.")
-        return attrs
 
 
 class UserServiceSerializer(_PeriodeMixin, serializers.ModelSerializer):
@@ -578,54 +602,20 @@ class PlatSerializer(serializers.ModelSerializer):
     class Meta:
         model = Plat
         fields = '__all__'
+        read_only_fields = ['user_created', 'user_updated']
 
 
 class PlatImageUploadSerializer(serializers.ModelSerializer):
+    TAILLE_MAX = 5 * 1024 * 1024
+
     class Meta:
         model = PlatImage
         fields = ['image', 'is_principale']
 
-
-class PlatUploadSerializer(serializers.ModelSerializer):
-    images = PlatImageUploadSerializer(many=True, write_only=True)
-
-    class Meta:
-        model = Plat
-        fields = ['nom', 'description', 'type_plat', 'agence', 'images']
-
-    def create(self, validated_data):
-        images_data = validated_data.pop('images', [])
-        request = self.context.get('request')
-        plat = Plat.objects.create(
-            user_created=request.user,
-            user_updated=request.user,
-            **validated_data
-        )
-        for img_data in images_data:
-            PlatImage.objects.create(plat=plat, **img_data)
-        return plat
-
-
-class PlatCreateWithImagesSerializer(serializers.ModelSerializer):
-    images = serializers.ListField(
-        child=serializers.FileField(), write_only=True, required=False
-    )
-
-    class Meta:
-        model = Plat
-        fields = ['id', 'nom', 'description', 'type_plat', 'agence', 'images']
-
-    def create(self, validated_data):
-        images_data = validated_data.pop('images', [])
-        request = self.context.get('request')
-        plat = Plat.objects.create(
-            user_created=request.user,
-            user_updated=request.user,
-            **validated_data
-        )
-        for i, image in enumerate(images_data):
-            PlatImage.objects.create(plat=plat, image=image, is_principale=(i == 0))
-        return plat
+    def validate_image(self, image):
+        if image and image.size > self.TAILLE_MAX:
+            raise serializers.ValidationError("Image trop volumineuse (5 Mo maximum).")
+        return image
 
 
 class MenuPlatSerializer(serializers.ModelSerializer):
@@ -643,6 +633,31 @@ class MenuPlatSerializer(serializers.ModelSerializer):
     class Meta:
         model = MenuPlat
         fields = '__all__'
+        read_only_fields = ['user_created', 'user_updated']
+
+    def validate(self, attrs):
+        menu = attrs.get('menu', getattr(self.instance, 'menu', None))
+        plat = attrs.get('plat', getattr(self.instance, 'plat', None))
+        verifier_mois_ouvert(menu.date_menu)
+        doublon = MenuPlat.objects.filter(menu=menu, plat=plat)
+        if self.instance is not None:
+            doublon = doublon.exclude(pk=self.instance.pk)
+        if doublon.exists():
+            raise serializers.ValidationError("Ce plat figure déjà dans le menu.")
+        return attrs
+
+
+def verifier_mois_ouvert(d):
+    """Refuse toute modification touchant un mois dont la facturation est clôturée."""
+    if ClotureMensuelle.objects.filter(annee=d.year, mois=d.month).exists():
+        raise serializers.ValidationError(
+            f"Le mois {d.month:02d}/{d.year} est clôturé : sa facturation est figée.")
+
+
+def commandes_actives(menu, plat=None):
+    """Commandes non annulées d'un menu (éventuellement d'un seul plat)."""
+    qs = Commande.objects.filter(menu=menu).exclude(statut='annulee')
+    return qs.filter(plat=plat) if plat is not None else qs
 
 
 class MenuSerializer(serializers.ModelSerializer):
@@ -651,10 +666,91 @@ class MenuSerializer(serializers.ModelSerializer):
     typeequipe_id      = serializers.ReadOnlyField(source='typeequipe.id')
     typeequipe_libelle = serializers.ReadOnlyField(source='typeequipe.libelle')
     menu_plats         = MenuPlatSerializer(many=True, read_only=True)
+    # Plats du menu, enregistrés avec lui en une seule opération
+    plat_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Plat.objects.all(), many=True, write_only=True, required=False)
 
     class Meta:
         model = Menu
         fields = '__all__'
+        read_only_fields = ['user_created', 'user_updated']
+
+    def validate(self, attrs):
+        from .facturation import ligne_active
+        inst = self.instance
+        date_menu  = attrs.get('date_menu', getattr(inst, 'date_menu', None))
+        agence     = attrs.get('agence', getattr(inst, 'agence', None))
+        typeequipe = attrs.get('typeequipe', getattr(inst, 'typeequipe', None))
+        plat_ids   = attrs.get('plat_ids')
+
+        if inst is None and not plat_ids:
+            raise serializers.ValidationError({'plat_ids': "Sélectionnez au moins un plat."})
+        if plat_ids is not None and inst is not None and not plat_ids:
+            raise serializers.ValidationError({'plat_ids': "Un menu doit contenir au moins un plat."})
+
+        verifier_mois_ouvert(date_menu)
+        if inst is not None:
+            verifier_mois_ouvert(inst.date_menu)
+            change_cle = (date_menu != inst.date_menu or agence != inst.agence
+                          or typeequipe != inst.typeequipe)
+            if change_cle and commandes_actives(inst).exists():
+                raise serializers.ValidationError(
+                    "Des agents ont déjà commandé sur ce menu : sa date, son agence et son "
+                    "équipe ne peuvent plus être modifiées.")
+            if plat_ids is not None:
+                retires = set(inst.menu_plats.values_list('plat_id', flat=True)) - {p.id for p in plat_ids}
+                commandes = commandes_actives(inst).filter(plat_id__in=retires)
+                if commandes.exists():
+                    noms = ', '.join(sorted({c.plat.nom for c in commandes.select_related('plat')}))
+                    raise serializers.ValidationError(
+                        {'plat_ids': f"Impossible de retirer un plat déjà commandé : {noms}."})
+
+        doublon = Menu.objects.filter(date_menu=date_menu, agence=agence, typeequipe=typeequipe)
+        if inst is not None:
+            doublon = doublon.exclude(pk=inst.pk)
+        if doublon.exists():
+            raise serializers.ValidationError(
+                f"Un menu existe déjà le {date_menu:%d/%m/%Y} pour {agence.nom_agence} "
+                f"({typeequipe.libelle}).")
+
+        # Sans prestataire ni tarif à cette date, les repas ne pourraient pas
+        # être facturés (la clôture du mois serait bloquée).
+        rattachement = ligne_active(AgencePrestataire.objects.filter(agence=agence), date_menu)
+        if rattachement is None:
+            raise serializers.ValidationError(
+                f"Aucun prestataire n'est rattaché à l'agence {agence.nom_agence} "
+                f"le {date_menu:%d/%m/%Y} (Paramètres → Prestataires).")
+        if ligne_active(PlatPrestataire.objects.filter(prestataire=rattachement.prestataire), date_menu) is None:
+            raise serializers.ValidationError(
+                f"Le prestataire {rattachement.prestataire.libelle} n'a pas de tarif "
+                f"en vigueur le {date_menu:%d/%m/%Y} (Paramètres → Prestataires).")
+        return attrs
+
+    def _enregistrer_plats(self, menu, plats):
+        voulus = {p.id for p in plats}
+        menu.menu_plats.exclude(plat_id__in=voulus).delete()
+        existants = set(menu.menu_plats.values_list('plat_id', flat=True))
+        MenuPlat.objects.bulk_create([
+            MenuPlat(menu=menu, plat_id=pid, user_created=menu.user_updated, user_updated=menu.user_updated)
+            for pid in voulus - existants
+        ])
+
+    def create(self, validated_data):
+        from django.db import transaction
+        plats = validated_data.pop('plat_ids', [])
+        with transaction.atomic():
+            menu = super().create(validated_data)
+            self._enregistrer_plats(menu, plats)
+        return menu
+
+    def update(self, instance, validated_data):
+        from django.db import transaction
+        plats = validated_data.pop('plat_ids', None)
+        with transaction.atomic():
+            menu = super().update(instance, validated_data)
+            if plats is not None:
+                self._enregistrer_plats(menu, plats)
+        return menu
 
 
 # ── Utilitaire partagé ────────────────────────────────────────────────────────
@@ -723,6 +819,18 @@ class CommandeSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Impossible de commander : le délai de 48h avant le menu est dépassé."
                 )
+            request = self.context.get('request')
+            if request is not None:
+                jour = timezone.make_aware(datetime.combine(menu.date_menu, time(12)))
+                agence = agence_actuelle(request.user, jour)
+                if agence is None or agence.pk != menu.agence_id:
+                    raise serializers.ValidationError(
+                        "Ce menu est celui d'une autre agence : vous ne pouvez commander "
+                        "que les menus de votre agence."
+                    )
+
+        if menu and self.instance is not None and menu != self.instance.menu:
+            verifier_mois_ouvert(menu.date_menu)
 
         return attrs
 
@@ -782,8 +890,17 @@ class RetraitSerializer(serializers.ModelSerializer):
         return nom_complet(obj.user)
 
     def validate(self, attrs):
+        if self.instance is not None:
+            # Seul le badge peut être corrigé : l'agent et le menu restent ceux du retrait
+            attrs.pop('user', None)
+            attrs.pop('menu', None)
+            return attrs
         user = attrs.get('user')
         menu = attrs.get('menu')
+        if menu.date_menu > timezone.localdate():
+            raise serializers.ValidationError(
+                f"Le menu du {menu.date_menu:%d/%m/%Y} n'est pas encore servi : retrait impossible.")
+        verifier_mois_ouvert(menu.date_menu)
         if Retrait.objects.filter(user=user, menu=menu).exists():
             raise serializers.ValidationError(
                 "Un retrait a déjà été enregistré pour cet agent et ce menu."

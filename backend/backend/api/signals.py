@@ -163,7 +163,8 @@ def _notifier_menu(menu_id):
 
 @receiver(post_save, sender='api.Menu')
 def notifier_menu_disponible(sender, instance, created, **kwargs):
-    if created:
+    # Pas de notification pour un menu déjà passé
+    if created and instance.date_menu >= timezone.localdate():
         _en_arriere_plan(_notifier_menu, instance.pk)
 
 

@@ -22,7 +22,7 @@ export class PlatPrestataireEffects {
         this.platPrestataireService.getByPrestataire(prestataireId).pipe(
           map(tarifs => PlatPrestataireActions.fetchPlatPrestataireSuccess({ tarifs })),
           catchError(err => of(PlatPrestataireActions.fetchPlatPrestataireFailure({
-            error: err?.error?.detail || 'Erreur lors du chargement des tarifs.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors du chargement des tarifs.'
           })))
         )
       )
@@ -37,7 +37,7 @@ export class PlatPrestataireEffects {
         this.platPrestataireService.create(data).pipe(
           map(tarif => PlatPrestataireActions.createPlatPrestataireSuccess({ tarif })),
           catchError(err => of(PlatPrestataireActions.createPlatPrestataireFailure({
-            error: err?.error?.detail || 'Erreur lors de la création du tarif.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la création du tarif.'
           })))
         )
       )
@@ -52,7 +52,7 @@ export class PlatPrestataireEffects {
         this.platPrestataireService.update(id, data).pipe(
           map(tarif => PlatPrestataireActions.updatePlatPrestataireSuccess({ tarif })),
           catchError(err => of(PlatPrestataireActions.updatePlatPrestataireFailure({
-            error: err?.error?.detail || 'Erreur lors de la mise à jour du tarif.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la mise à jour du tarif.'
           })))
         )
       )
@@ -67,7 +67,7 @@ export class PlatPrestataireEffects {
         this.platPrestataireService.delete(id).pipe(
           map(() => PlatPrestataireActions.deletePlatPrestataireSuccess({ id })),
           catchError(err => of(PlatPrestataireActions.deletePlatPrestataireFailure({
-            error: err?.error?.detail || 'Erreur lors de la suppression du tarif.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la suppression du tarif.'
           })))
         )
       )
@@ -93,7 +93,7 @@ export class PlatPrestataireEffects {
         return forkJoin(requests).pipe(
           map(() => PlatPrestataireActions.savePlatPrestatairesBatchSuccess({ prestataireId })),
           catchError(err => of(PlatPrestataireActions.savePlatPrestatairesBatchFailure({
-            error: err?.error?.detail || 'Erreur lors de la sauvegarde des tarifs.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la sauvegarde des tarifs.'
           })))
         );
       })

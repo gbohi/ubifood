@@ -22,7 +22,7 @@ export class PlatCategoriesalarieEffects {
         this.platCategoriesalarieService.getByCategoriesalarie(categoriesalarieId).pipe(
           map(tarifs => PlatCategoriesalarieActions.fetchPlatCategoriesalarieSuccess({ tarifs })),
           catchError(err => of(PlatCategoriesalarieActions.fetchPlatCategoriesalarieFailure({
-            error: err?.error?.detail || 'Erreur lors du chargement des tarifs.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors du chargement des tarifs.'
           })))
         )
       )
@@ -37,7 +37,7 @@ export class PlatCategoriesalarieEffects {
         this.platCategoriesalarieService.create(data).pipe(
           map(tarif => PlatCategoriesalarieActions.createPlatCategoriesalarieSuccess({ tarif })),
           catchError(err => of(PlatCategoriesalarieActions.createPlatCategoriesalarieFailure({
-            error: err?.error?.detail || 'Erreur lors de la création du tarif.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la création du tarif.'
           })))
         )
       )
@@ -52,7 +52,7 @@ export class PlatCategoriesalarieEffects {
         this.platCategoriesalarieService.update(id, data).pipe(
           map(tarif => PlatCategoriesalarieActions.updatePlatCategoriesalarieSuccess({ tarif })),
           catchError(err => of(PlatCategoriesalarieActions.updatePlatCategoriesalarieFailure({
-            error: err?.error?.detail || 'Erreur lors de la mise à jour du tarif.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la mise à jour du tarif.'
           })))
         )
       )
@@ -67,7 +67,7 @@ export class PlatCategoriesalarieEffects {
         this.platCategoriesalarieService.delete(id).pipe(
           map(() => PlatCategoriesalarieActions.deletePlatCategoriesalarieSuccess({ id })),
           catchError(err => of(PlatCategoriesalarieActions.deletePlatCategoriesalarieFailure({
-            error: err?.error?.detail || 'Erreur lors de la suppression du tarif.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la suppression du tarif.'
           })))
         )
       )
@@ -97,7 +97,7 @@ export class PlatCategoriesalarieEffects {
             categoriesalarieId
           })),
           catchError(err => of(PlatCategoriesalarieActions.savePlatCategoriesalariesBatchFailure({
-            error: err?.error?.detail || 'Erreur lors de la sauvegarde des tarifs.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors de la sauvegarde des tarifs.'
           })))
         );
       })

@@ -18,7 +18,7 @@ export class UserPosteEffects {
       switchMap(({ userId }) =>
         this.userPosteService.getByUser(userId).pipe(
           map(items => A.fetchUserPostesSuccess({ items })),
-          catchError(err => of(A.fetchUserPostesFailure({ error: err?.error?.detail || 'Erreur chargement.' })))
+          catchError(err => of(A.fetchUserPostesFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur chargement.' })))
         )
       )
     )
@@ -30,7 +30,7 @@ export class UserPosteEffects {
       mergeMap(({ data }) =>
         this.userPosteService.create(data).pipe(
           map(item => A.createUserPosteSuccess({ item })),
-          catchError(err => of(A.createUserPosteFailure({ error: err?.error?.detail || 'Erreur création.' })))
+          catchError(err => of(A.createUserPosteFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur création.' })))
         )
       )
     )
@@ -42,7 +42,7 @@ export class UserPosteEffects {
       mergeMap(({ id, data }) =>
         this.userPosteService.update(id, data).pipe(
           map(item => A.updateUserPosteSuccess({ item })),
-          catchError(err => of(A.updateUserPosteFailure({ error: err?.error?.detail || 'Erreur mise à jour.' })))
+          catchError(err => of(A.updateUserPosteFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur mise à jour.' })))
         )
       )
     )
@@ -54,7 +54,7 @@ export class UserPosteEffects {
       mergeMap(({ id }) =>
         this.userPosteService.delete(id).pipe(
           map(() => A.deleteUserPosteSuccess({ id })),
-          catchError(err => of(A.deleteUserPosteFailure({ error: err?.error?.detail || 'Erreur suppression.' })))
+          catchError(err => of(A.deleteUserPosteFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur suppression.' })))
         )
       )
     )
@@ -67,7 +67,7 @@ export class UserPosteEffects {
         if (items.length === 0) return of(A.saveUserPostesBatchSuccess({ userId }));
         return forkJoin(items.map(i => this.userPosteService.create({ ...i, user: userId }))).pipe(
           map(() => A.saveUserPostesBatchSuccess({ userId })),
-          catchError(err => of(A.saveUserPostesBatchFailure({ error: err?.error?.detail || 'Erreur batch.' })))
+          catchError(err => of(A.saveUserPostesBatchFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur batch.' })))
         );
       })
     )

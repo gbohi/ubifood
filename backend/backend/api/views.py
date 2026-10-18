@@ -57,6 +57,20 @@ class BaseViewSet(viewsets.ModelViewSet):
     """
     permission_classes = [ReadAuthenticatedWriteAdmin]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    # Droits de la suppression multiple (administrateurs par défaut)
+    bulk_delete_permission_classes = [IsAdminRole]
+
+    def get_permissions(self):
+        if self.action == 'bulk_delete':
+            return [p() for p in self.bulk_delete_permission_classes]
+        return super().get_permissions()
+
+    def verifier_suppression(self, instance):
+        """Lève une ValidationError si `instance` ne doit pas être supprimée."""
+
+    def perform_destroy(self, instance):
+        self.verifier_suppression(instance)
+        instance.delete()
 
     def perform_create(self, serializer):
         serializer.save(
@@ -67,7 +81,7 @@ class BaseViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         serializer.save(user_updated=self.request.user)
 
-    @action(detail=False, methods=['delete'], permission_classes=[IsAdminRole])
+    @action(detail=False, methods=['delete'])
     def bulk_delete(self, request):
         ids = request.data.get('ids', [])
 
@@ -92,7 +106,10 @@ class BaseViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        deleted_count, _ = queryset.delete()
+        with transaction.atomic():
+            for instance in queryset:
+                self.verifier_suppression(instance)
+            deleted_count, _ = queryset.delete()
 
         return Response({
             "message": f"{deleted_count} élément(s) supprimé(s) avec succès",
@@ -797,6 +814,7 @@ class AgencePrestataireViewSet(BaseViewSet):
 
 
 class PlatCategoriesalarieViewSet(BaseViewSet):
+    permission_classes = [ReadGestionnaireWriteAdmin]
     queryset = PlatCategoriesalarie.objects.all().order_by('-date_debut')
     serializer_class = PlatCategoriesalarieSerializer
     filterset_fields = ['categoriesalarie', 'statut']
@@ -1067,6 +1085,11 @@ class TypePlatViewSet(BaseViewSet):
     queryset = TypePlat.objects.all().order_by('id')
     serializer_class = TypePlatSerializer
 
+    def verifier_suppression(self, instance):
+        if Plat.objects.filter(type_plat=instance).exists():
+            raise ValidationError(
+                f"Le type « {instance.libelle} » est utilisé par des plats : supprimez ou modifiez ces plats d'abord.")
+
 
 class TypeEquipeViewSet(BaseViewSet):
     permission_classes = [ReadAuthenticatedWriteGestionnaire]
@@ -1100,6 +1123,13 @@ class PlatViewSet(BaseViewSet):
     filterset_fields = ['type_plat']
     search_fields = ['nom', 'description']
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    bulk_delete_permission_classes = [IsGestionnaireRole]
+
+    def verifier_suppression(self, instance):
+        # Supprimer un plat effacerait les menus et commandes qui le contiennent
+        if MenuPlat.objects.filter(plat=instance).exists() or Commande.objects.filter(plat=instance).exists():
+            raise ValidationError(
+                f"Le plat « {instance.nom} » figure dans des menus ou des commandes : il ne peut pas être supprimé.")
 
     @staticmethod
     def _valider_images(fichiers):
@@ -1142,6 +1172,10 @@ class PlatViewSet(BaseViewSet):
                 img.delete()
             for image in new_images:
                 PlatImage.objects.create(plat=plat, image=image)
+            # Toujours une image principale s'il reste des images
+            images = plat.images.order_by('id')
+            if images.exists() and not images.filter(is_principale=True).exists():
+                images.filter(pk=images.first().pk).update(is_principale=True)
             self.perform_update(serializer)
 
         output_serializer = self.get_serializer(plat)
@@ -1152,36 +1186,6 @@ class PlatImageViewSet(BaseViewSet):
     permission_classes = [ReadAuthenticatedWriteGestionnaire]
     queryset = PlatImage.objects.all().order_by('id')
     serializer_class = PlatImageSerializer
-
-
-class PlatCreateView(APIView):
-    parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [IsGestionnaireRole]
-
-    def post(self, request, *args, **kwargs):
-        serializer = PlatCreateWithImagesSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            plat = serializer.save(user_created=request.user, user_updated=request.user)
-            return Response({'message': 'Plat enregistré', 'id': plat.id}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class PlatUploadAPIView(APIView):
-    parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [IsGestionnaireRole]
-
-    def post(self, request, *args, **kwargs):
-        fichiers = request.FILES.getlist('images[]')
-        data = request.data.copy()
-        data.setlist('images', [])
-        for fichier in fichiers:
-            data.appendlist('images', {'image': fichier, 'is_principale': False})
-
-        serializer = PlatUploadSerializer(data=data, context={'request': request})
-        if serializer.is_valid():
-            plat = serializer.save()
-            return Response({'message': 'Plat créé avec succès', 'plat_id': plat.id}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class MenuViewSet(BaseViewSet):
@@ -1202,6 +1206,15 @@ class MenuViewSet(BaseViewSet):
         'agence':     ['exact'],
         'typeequipe': ['exact'],
     }
+    ordering_fields = ['date_menu', 'created_at']
+    bulk_delete_permission_classes = [IsGestionnaireRole]
+
+    def verifier_suppression(self, instance):
+        # La suppression d'un menu effacerait ses commandes et ses retraits
+        verifier_mois_ouvert(instance.date_menu)
+        if commandes_actives(instance).exists():
+            raise ValidationError(
+                f"Le menu du {instance.date_menu:%d/%m/%Y} a déjà des commandes : il ne peut pas être supprimé.")
 
 
 class MenuPlatViewSet(BaseViewSet):
@@ -1209,6 +1222,12 @@ class MenuPlatViewSet(BaseViewSet):
     queryset = MenuPlat.objects.select_related('plat').all().order_by('id')
     serializer_class = MenuPlatSerializer
     filterset_fields = ['menu']
+
+    def verifier_suppression(self, instance):
+        verifier_mois_ouvert(instance.menu.date_menu)
+        if commandes_actives(instance.menu, instance.plat).exists():
+            raise ValidationError(
+                f"Le plat « {instance.plat.nom} » a déjà été commandé sur ce menu : il ne peut pas en être retiré.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1248,9 +1267,8 @@ class CommandeViewSet(BaseViewSet):
         self._verifier_non_facturee(serializer.instance)
         super().perform_update(serializer)
 
-    def perform_destroy(self, instance):
+    def verifier_suppression(self, instance):
         self._verifier_non_facturee(instance)
-        instance.delete()
 
     def _base_queryset(self):
         return (
@@ -1309,11 +1327,14 @@ class CommandeViewSet(BaseViewSet):
     def annuler(self, request, pk=None):
         commande   = self.get_object()
         self._verifier_non_facturee(commande)
-        serializer = CommandeAnnulationSerializer(
-            commande, data={}, partial=True, context={'request': request}
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save(user_updated=request.user)
+        with transaction.atomic():
+            # Verrou : un retrait simultané ne peut pas être écrasé par l'annulation
+            commande = Commande.objects.select_for_update().get(pk=commande.pk)
+            serializer = CommandeAnnulationSerializer(
+                commande, data={}, partial=True, context={'request': request}
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save(user_updated=request.user)
         return Response(
             CommandeSerializer(commande, context={'request': request}).data,
             status=status.HTTP_200_OK
@@ -1731,6 +1752,17 @@ class RetraitViewSet(BaseViewSet):
             .select_related('user', 'menu__agence', 'menu__typeequipe')
             .order_by('-date_retrait')
         )
+
+    def verifier_suppression(self, instance):
+        verifier_mois_ouvert(instance.menu.date_menu)
+
+    def perform_destroy(self, instance):
+        # Annuler un retrait remet les commandes de l'agent « en attente »
+        self.verifier_suppression(instance)
+        with transaction.atomic():
+            Commande.objects.filter(user=instance.user, menu=instance.menu, statut='retiree') \
+                .update(statut='en_attente', updated_at=timezone.now())
+            instance.delete()
 
 
 # ============================================================

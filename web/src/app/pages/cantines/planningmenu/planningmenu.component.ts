@@ -365,6 +365,8 @@ export class PlanningMenuComponent implements OnInit {
   }
 
   private toDateStr(d: Date): string {
-    return d.toISOString().split('T')[0];
+    // Date locale : toISOString passerait en UTC et pourrait reculer d'un jour
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   }
 }

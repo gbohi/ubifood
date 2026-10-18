@@ -228,7 +228,7 @@ export class RetraitCommandeComponent implements OnInit, OnDestroy {
       const url = images[0].url ?? images[0].image;
       return url.startsWith('http') ? url : `${this.imgBase}${url}`;
     }
-    return `https://placehold.co/60x60?text=?`;
+    return 'assets/images/plat-sans-image.svg';
   }
 
   getMenuSelectionne(): any {

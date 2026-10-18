@@ -2,7 +2,8 @@
 import {
   Component, OnInit, ViewChild, ElementRef, DestroyRef, inject
 } from '@angular/core';
-import { DecimalPipe, DatePipe } from '@angular/common';
+import { DecimalPipe, DatePipe, formatDate } from '@angular/common';
+import { Actions, ofType } from '@ngrx/effects';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { ToastrService } from 'ngx-toastr';
@@ -18,6 +19,9 @@ import {
   updatemenuData,
   deletemenuData,
   deletemultiplemenuData,
+  addmenuDataSuccess, updatemenuDataSuccess,
+  deletemenuSuccess, deletemultiplemenuSuccess,
+  deletemenuFailure, deletemultiplemenuFailure,
 } from 'src/app/store/Menu/menu.action';
 
 import {
@@ -25,7 +29,6 @@ import {
   selectTotalItems,
   selectLoading,
   selectCurrentPage,
-  selectSuccessMessage,
   selectErrorMessage,
 } from 'src/app/store/Menu/menu-selector';
 
@@ -102,6 +105,7 @@ export class ListeMenusComponent implements OnInit {
 
   // ── DestroyRef ───────────────────────────────────────────────
   private destroyRef = inject(DestroyRef);
+  private actions$ = inject(Actions);
 
   constructor(
     private formBuilder: UntypedFormBuilder,
@@ -157,14 +161,30 @@ export class ListeMenusComponent implements OnInit {
 
     // ── Feedback UI ──────────────────────────────────────────────
 
-    this.store.select(selectSuccessMessage).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      filter((msg): msg is string => !!msg)
-    ).subscribe(msg => {
-      this.toastService.success(msg, 'Succès');
+    // La fenêtre ne se ferme qu'une fois l'enregistrement confirmé par le serveur
+    this.actions$.pipe(
+      ofType(addmenuDataSuccess, updatemenuDataSuccess),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(action => {
+      this.toastService.success(action.type === addmenuDataSuccess.type
+        ? 'Menu créé avec succès !' : 'Menu mis à jour avec succès !', 'Succès');
       this.resetForm();
       this.closeAddModal();
     });
+
+    this.actions$.pipe(
+      ofType(deletemenuSuccess, deletemultiplemenuSuccess),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(action => {
+      this.toastService.success(action.type === deletemenuSuccess.type
+        ? 'Menu supprimé.' : 'Menus supprimés.', 'Succès');
+      this.afterDeleteActions();
+    });
+
+    this.actions$.pipe(
+      ofType(deletemenuFailure, deletemultiplemenuFailure),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => this.closeDeleteModal());
 
     this.store.select(selectErrorMessage).pipe(
       takeUntilDestroyed(this.destroyRef),
@@ -251,7 +271,8 @@ export class ListeMenusComponent implements OnInit {
 
     let dateMenu = this.menuForm.get('date_menu')?.value;
     if (dateMenu instanceof Date) {
-      dateMenu = dateMenu.toISOString().split('T')[0];
+      // Date locale (toISOString passerait en UTC et pourrait reculer d'un jour)
+      dateMenu = formatDate(dateMenu, 'yyyy-MM-dd', 'en-US');
     }
 
     const payload = {
@@ -348,12 +369,10 @@ export class ListeMenusComponent implements OnInit {
   confirmDelete(id?: any): void {
     if (id) {
       this.store.dispatch(deletemenuData({ id: id.toString() }));
-      this.afterDeleteActions();
       return;
     }
     if (this.checkedValGet?.length > 0) {
       this.store.dispatch(deletemultiplemenuData({ id: this.checkedValGet.join(',') }));
-      this.afterDeleteActions();
       return;
     }
     this.toastService.error('Aucun menu sélectionné pour suppression.', 'Erreur');

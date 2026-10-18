@@ -18,7 +18,7 @@ export class UserAllergieEffects {
       switchMap(({ userId }) =>
         this.userAllergieService.getByUser(userId).pipe(
           map(items => A.fetchUserAllergiesSuccess({ items })),
-          catchError(err => of(A.fetchUserAllergiesFailure({ error: err?.error?.detail || 'Erreur chargement.' })))
+          catchError(err => of(A.fetchUserAllergiesFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur chargement.' })))
         )
       )
     )
@@ -30,7 +30,7 @@ export class UserAllergieEffects {
       mergeMap(({ data }) =>
         this.userAllergieService.create(data).pipe(
           map(item => A.createUserAllergieSuccess({ item })),
-          catchError(err => of(A.createUserAllergieFailure({ error: err?.error?.detail || 'Erreur création.' })))
+          catchError(err => of(A.createUserAllergieFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur création.' })))
         )
       )
     )
@@ -42,7 +42,7 @@ export class UserAllergieEffects {
       mergeMap(({ id, data }) =>
         this.userAllergieService.update(id, data).pipe(
           map(item => A.updateUserAllergieSuccess({ item })),
-          catchError(err => of(A.updateUserAllergieFailure({ error: err?.error?.detail || 'Erreur mise à jour.' })))
+          catchError(err => of(A.updateUserAllergieFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur mise à jour.' })))
         )
       )
     )
@@ -54,7 +54,7 @@ export class UserAllergieEffects {
       mergeMap(({ id }) =>
         this.userAllergieService.delete(id).pipe(
           map(() => A.deleteUserAllergieSuccess({ id })),
-          catchError(err => of(A.deleteUserAllergieFailure({ error: err?.error?.detail || 'Erreur suppression.' })))
+          catchError(err => of(A.deleteUserAllergieFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur suppression.' })))
         )
       )
     )
@@ -67,7 +67,7 @@ export class UserAllergieEffects {
         if (items.length === 0) return of(A.saveUserAllergiesBatchSuccess({ userId }));
         return forkJoin(items.map(i => this.userAllergieService.create({ ...i, user: userId }))).pipe(
           map(() => A.saveUserAllergiesBatchSuccess({ userId })),
-          catchError(err => of(A.saveUserAllergiesBatchFailure({ error: err?.error?.detail || 'Erreur batch.' })))
+          catchError(err => of(A.saveUserAllergiesBatchFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur batch.' })))
         );
       })
     )

@@ -22,7 +22,7 @@ export class CommandeEffects {
         this.commandeService.getMesCommandes({ statut, date_gte }).pipe(
           map(commandes => CommandeActions.fetchMesCommandesSuccess({ commandes })),
           catchError(err => of(CommandeActions.fetchMesCommandesFailure({
-            error: err?.error?.detail || 'Erreur lors du chargement des commandes.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors du chargement des commandes.'
           })))
         )
       )
@@ -37,7 +37,7 @@ export class CommandeEffects {
         this.commandeService.getCommandesParMenu(menuId).pipe(
           map(grouped => CommandeActions.fetchCommandesParMenuSuccess({ grouped })),
           catchError(err => of(CommandeActions.fetchCommandesParMenuFailure({
-            error: err?.error?.detail || 'Erreur lors du chargement.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors du chargement.'
           })))
         )
       )
@@ -54,7 +54,7 @@ export class CommandeEffects {
         }).pipe(
           map(commandes => CommandeActions.fetchCommandesParAgencePeriodeSuccess({ commandes })),
           catchError(err => {
-            const e = err?.error;
+            const e = typeof err === 'string' ? err : err?.error;
             const msg =
               e?.detail
               || (Array.isArray(e) ? e[0] : null)
@@ -76,7 +76,7 @@ export class CommandeEffects {
         this.commandeService.rechercheParBadge(badge, menuId).pipe(
           map(result => CommandeActions.rechercheParBadgeSuccess({ result })),
           catchError(err => {
-            const e = err?.error;
+            const e = typeof err === 'string' ? err : err?.error;
             const msg =
               e?.detail
               || (Array.isArray(e) ? e[0] : null)
@@ -94,11 +94,11 @@ export class CommandeEffects {
   fetchCommandes$ = createEffect(() =>
     this.actions$.pipe(
       ofType(CommandeActions.fetchCommandes),
-      switchMap(({ page, menu, statut, agence }) =>
-        this.commandeService.getCommandes({ page, menu, statut, agence }).pipe(
+      switchMap(({ page, menu, statut, agence, date_gte, date_lte }) =>
+        this.commandeService.getCommandes({ page, menu, statut, agence, date_gte, date_lte }).pipe(
           map(data => CommandeActions.fetchCommandesSuccess({ data })),
           catchError(err => of(CommandeActions.fetchCommandesFailure({
-            error: err?.error?.detail || 'Erreur lors du chargement.'
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur lors du chargement.'
           })))
         )
       )
@@ -113,7 +113,7 @@ export class CommandeEffects {
         this.commandeService.createCommande(payload).pipe(
           map(commande => CommandeActions.createCommandeSuccess({ commande })),
           catchError(err => {
-            const e = err?.error;
+            const e = typeof err === 'string' ? err : err?.error;
             const msg =
               e?.non_field_errors?.[0]
               || e?.detail
@@ -136,7 +136,7 @@ export class CommandeEffects {
         this.commandeService.annulerCommande(id).pipe(
           map(commande => CommandeActions.annulerCommandeSuccess({ commande })),
           catchError(err => {
-            const e = err?.error;
+            const e = typeof err === 'string' ? err : err?.error;
             const msg =
               e?.non_field_errors?.[0]
               || e?.detail
@@ -161,7 +161,7 @@ export class CommandeEffects {
         }).pipe(
           map(() => CommandeActions.createRetraitSuccess({ menuId, userId })),
           catchError(err => {
-            const e = err?.error;
+            const e = typeof err === 'string' ? err : err?.error;
             const msg =
               e?.non_field_errors?.[0]
               || e?.detail

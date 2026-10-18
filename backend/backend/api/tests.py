@@ -67,6 +67,15 @@ class BaseAPITestCase(TestCase):
             MenuPlat.objects.create(menu=menu, plat=plat)
         return menu
 
+    def rattacher_prestataire(self):
+        """Prestataire et tarif pour l'agence : nécessaires pour créer un menu."""
+        debut = timezone.now() - timedelta(days=400)
+        self.traiteur = Prestataire.objects.create(libelle='Traiteur', statut=self.statut, date_debut=debut)
+        AgencePrestataire.objects.create(prestataire=self.traiteur, agence=self.agence,
+                                         statut=self.statut, date_debut=debut)
+        PlatPrestataire.objects.create(prestataire=self.traiteur, montant=Decimal('900'),
+                                       statut=self.statut, date_debut=debut)
+
     def client_pour(self, user=None):
         client = APIClient()
         if user:
@@ -124,10 +133,12 @@ class DroitsParRoleTests(BaseAPITestCase):
             self.client_pour(self.admin).post(f'{API}/agences/', {'nom_agence': 'X'}).status_code, 201)
 
     def test_menus_ecriture_gestionnaire(self):
+        self.rattacher_prestataire()
         data = {'date_menu': str(timezone.localdate()), 'agence': self.agence.id,
-                'typeequipe': self.typeequipe.id}
+                'typeequipe': self.typeequipe.id, 'plat_ids': [self.plat1.id]}
         self.assertEqual(self.client_pour(self.employe).post(f'{API}/menus/', data).status_code, 403)
-        self.assertEqual(self.client_pour(self.gestionnaire).post(f'{API}/menus/', data).status_code, 201)
+        r = self.client_pour(self.gestionnaire).post(f'{API}/menus/', data)
+        self.assertEqual(r.status_code, 201, r.data)
 
     def test_endpoints_sensibles_fermes_aux_anonymes(self):
         anonyme = self.client_pour()
@@ -225,7 +236,7 @@ class CommandeTests(BaseAPITestCase):
 class RetraitTests(BaseAPITestCase):
 
     def test_retrait_reserve_au_gestionnaire(self):
-        menu = self.creer_menu()
+        menu = self.creer_menu(jours=0)
         cmd = Commande.objects.create(user=self.employe, menu=menu, plat=self.plat1)
         data = {'user_id': self.employe.id, 'menu_id': menu.id, 'badge_matricule': 'emp1'}
 
@@ -235,6 +246,98 @@ class RetraitTests(BaseAPITestCase):
         cmd.refresh_from_db()
         self.assertEqual(cmd.statut, 'retiree')
         self.assertEqual(self.client_pour(self.gestionnaire).post(f'{API}/retraits/', data).status_code, 400)
+
+
+class CantineReglesTests(BaseAPITestCase):
+    """Intégrité des menus, plats, commandes et retraits."""
+
+    def setUp(self):
+        self.rattacher_prestataire()
+        self.gest = self.client_pour(self.gestionnaire)
+
+    def data_menu(self, jours=5, **extra):
+        data = {'date_menu': str(timezone.localdate() + timedelta(days=jours)), 'agence': self.agence.id,
+                'typeequipe': self.typeequipe.id, 'plat_ids': [self.plat1.id, self.plat2.id]}
+        data.update(extra)
+        return data
+
+    def test_creation_menu_avec_ses_plats(self):
+        r = self.gest.post(f'{API}/menus/', self.data_menu(), format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(MenuPlat.objects.filter(menu_id=r.data['id']).count(), 2)
+
+    def test_menu_sans_plat_ou_en_double_refuse(self):
+        self.assertEqual(self.gest.post(f'{API}/menus/', self.data_menu(plat_ids=[]), format='json').status_code, 400)
+        self.assertEqual(self.gest.post(f'{API}/menus/', self.data_menu(), format='json').status_code, 201)
+        r = self.gest.post(f'{API}/menus/', self.data_menu(), format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('existe déjà', str(r.data))
+
+    def test_menu_sans_prestataire_refuse(self):
+        AgencePrestataire.objects.all().delete()
+        r = self.gest.post(f'{API}/menus/', self.data_menu(), format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('prestataire', str(r.data))
+
+    def test_menu_commande_protege(self):
+        menu = self.creer_menu()
+        Commande.objects.create(user=self.employe, menu=menu, plat=self.plat1)
+        self.assertEqual(self.gest.delete(f'{API}/menus/{menu.id}/').status_code, 400)
+        self.assertEqual(self.gest.delete(f'{API}/menus/bulk_delete/', {'ids': [menu.id]},
+                                          format='json').status_code, 400)
+        r = self.gest.patch(f'{API}/menus/{menu.id}/', {'plat_ids': [self.plat2.id]}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('Garba', str(r.data))
+        nouvelle_date = str(menu.date_menu + timedelta(days=1))
+        self.assertEqual(self.gest.patch(f'{API}/menus/{menu.id}/', {'date_menu': nouvelle_date},
+                                         format='json').status_code, 400)
+        self.assertEqual(self.gest.delete(f'{API}/plats/{self.plat1.id}/').status_code, 400)
+        self.assertTrue(Commande.objects.filter(menu=menu).exists())
+
+    def test_suppression_multiple_par_le_gestionnaire(self):
+        menu = self.creer_menu()
+        r = self.gest.delete(f'{API}/menus/bulk_delete/', {'ids': [menu.id]}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
+    def test_mois_cloture_fige_les_menus(self):
+        from .models import ClotureMensuelle
+        menu = self.creer_menu(jours=-40)
+        ClotureMensuelle.objects.create(annee=menu.date_menu.year, mois=menu.date_menu.month)
+        self.assertEqual(self.gest.delete(f'{API}/menus/{menu.id}/').status_code, 400)
+
+    def test_commande_menu_autre_agence_refusee(self):
+        autre = Agence.objects.create(nom_agence='Yopougon')
+        menu = Menu.objects.create(date_menu=timezone.localdate() + timedelta(days=5),
+                                   agence=autre, typeequipe=self.typeequipe)
+        MenuPlat.objects.create(menu=menu, plat=self.plat1)
+        r = self.client_pour(self.employe).post(f'{API}/commandes/', {'menu_id': menu.id, 'plat_id': self.plat1.id})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('autre agence', str(r.data))
+
+    def test_retrait_menu_futur_refuse_et_annulation_retrait(self):
+        futur = self.creer_menu()
+        Commande.objects.create(user=self.employe, menu=futur, plat=self.plat1)
+        data = {'user_id': self.employe.id, 'menu_id': futur.id, 'badge_matricule': 'emp1'}
+        self.assertEqual(self.gest.post(f'{API}/retraits/', data).status_code, 400)
+
+        menu = self.creer_menu(jours=0)
+        cmd = Commande.objects.create(user=self.employe, menu=menu, plat=self.plat1)
+        data['menu_id'] = menu.id
+        retrait_id = self.gest.post(f'{API}/retraits/', data).data['id']
+        self.assertEqual(self.client_pour(self.admin).delete(f'{API}/retraits/{retrait_id}/').status_code, 204)
+        cmd.refresh_from_db()
+        self.assertEqual(cmd.statut, 'en_attente')
+
+    def test_tarifs_valides(self):
+        admin = self.client_pour(self.admin)
+        base = {'prestataire': self.traiteur.id, 'statut': self.statut.id}
+        r = admin.post(f'{API}/plat-prestataires/', {**base, 'montant': '-5', 'date_debut': '2030-01-01T00:00:00Z'})
+        self.assertEqual(r.status_code, 400)
+        # Le tarif en cours (sans date de fin) chevauche toute nouvelle période
+        r = admin.post(f'{API}/plat-prestataires/', {**base, 'montant': '1000', 'date_debut': '2030-01-01T00:00:00Z'})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('chevauche', str(r.data))
+        self.assertEqual(self.client_pour(self.employe).get(f'{API}/plat-categoriesalaries/').status_code, 403)
 
 
 class DashboardTests(BaseAPITestCase):

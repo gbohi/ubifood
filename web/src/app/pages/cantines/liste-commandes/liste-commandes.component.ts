@@ -25,6 +25,7 @@ import {
   selectCommandeSuccess,
 } from 'src/app/store/Commande/commande-selector';
 import { CommandeService } from 'src/app/core/services/commande/commande.service';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 import { MenulistModel } from 'src/app/store/Menu/menu.model';
 import { CommandeModel } from 'src/app/store/Commande/commande.model';
 import { DatePipe, DecimalPipe } from '@angular/common';
@@ -64,6 +65,7 @@ export class ListeCommandesComponent implements OnInit {
     private store: Store,
     private fb: UntypedFormBuilder,
     public commandeService: CommandeService,
+    private tokenStorage: TokenStorageService,
   ) {}
 
   ngOnInit(): void {
@@ -75,7 +77,8 @@ export class ListeCommandesComponent implements OnInit {
     this.filterForm = this.fb.group({
       date_debut: [today],
       date_fin:   [''],
-      agence:     [''],
+      // Par défaut l'agence de l'utilisateur : il ne peut commander que ses menus
+      agence:     [this.agenceUtilisateur() ?? ''],
     });
 
     this.store.dispatch(fetchagenceNoPaginateData());
@@ -112,6 +115,16 @@ export class ListeCommandesComponent implements OnInit {
     this.store.select(selectCommandeSuccess)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(s => this.successMessage = s);
+  }
+
+  /** Agence de rattachement en cours de l'utilisateur connecté (fiche /users/me/) */
+  private agenceUtilisateur(): number | null {
+    const today = new Date().toISOString().split('T')[0];
+    const lignes: any[] = this.tokenStorage.getUser()?.user_agences ?? [];
+    const active = lignes.find(l =>
+      String(l.date_debut).slice(0, 10) <= today && (!l.date_fin || String(l.date_fin).slice(0, 10) >= today));
+    const id = active?.agence_id ?? active?.agence;
+    return id ? Number(id) : null;
   }
 
   // ── Filtrage des menus ───────────────────────────────────
@@ -232,6 +245,6 @@ export class ListeCommandesComponent implements OnInit {
       const url = plat.images[0].url ?? plat.images[0].image;
       return url.startsWith('http') ? url : `${this.imgBase}${url}`;
     }
-    return 'https://placehold.co/300x140?text=Pas+d\'image';
+    return 'assets/images/plat-sans-image.svg';
   }
 }

@@ -18,7 +18,7 @@ export class UserAgenceEffects {
       switchMap(({ userId }) =>
         this.userAgenceService.getByUser(userId).pipe(
           map(items => A.fetchUserAgencesSuccess({ items })),
-          catchError(err => of(A.fetchUserAgencesFailure({ error: err?.error?.detail || 'Erreur chargement.' })))
+          catchError(err => of(A.fetchUserAgencesFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur chargement.' })))
         )
       )
     )
@@ -30,7 +30,7 @@ export class UserAgenceEffects {
       mergeMap(({ data }) =>
         this.userAgenceService.create(data).pipe(
           map(item => A.createUserAgenceSuccess({ item })),
-          catchError(err => of(A.createUserAgenceFailure({ error: err?.error?.detail || 'Erreur création.' })))
+          catchError(err => of(A.createUserAgenceFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur création.' })))
         )
       )
     )
@@ -42,7 +42,7 @@ export class UserAgenceEffects {
       mergeMap(({ id, data }) =>
         this.userAgenceService.update(id, data).pipe(
           map(item => A.updateUserAgenceSuccess({ item })),
-          catchError(err => of(A.updateUserAgenceFailure({ error: err?.error?.detail || 'Erreur mise à jour.' })))
+          catchError(err => of(A.updateUserAgenceFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur mise à jour.' })))
         )
       )
     )
@@ -54,7 +54,7 @@ export class UserAgenceEffects {
       mergeMap(({ id }) =>
         this.userAgenceService.delete(id).pipe(
           map(() => A.deleteUserAgenceSuccess({ id })),
-          catchError(err => of(A.deleteUserAgenceFailure({ error: err?.error?.detail || 'Erreur suppression.' })))
+          catchError(err => of(A.deleteUserAgenceFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur suppression.' })))
         )
       )
     )
@@ -67,7 +67,7 @@ export class UserAgenceEffects {
         if (items.length === 0) return of(A.saveUserAgencesBatchSuccess({ userId }));
         return forkJoin(items.map(i => this.userAgenceService.create({ ...i, user: userId }))).pipe(
           map(() => A.saveUserAgencesBatchSuccess({ userId })),
-          catchError(err => of(A.saveUserAgencesBatchFailure({ error: err?.error?.detail || 'Erreur batch.' })))
+          catchError(err => of(A.saveUserAgencesBatchFailure({ error: (typeof err === 'string' ? err : err?.error?.detail) || 'Erreur batch.' })))
         );
       })
     )
