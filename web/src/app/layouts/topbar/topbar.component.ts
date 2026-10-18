@@ -12,6 +12,7 @@ import { notification } from './data';
 import { RootReducerState } from 'src/app/store';
 import { Store } from '@ngrx/store';
 import { changeMode } from 'src/app/store/layouts/layout-action';
+import { logout } from 'src/app/store/Authentication/authentication.actions';
 import { getLayoutmode } from 'src/app/store/layouts/layout-selector';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 
@@ -380,12 +381,8 @@ export class TopbarComponent {
    * Logout the user
    */
   logout() {
-    this.authService.logout();
-    // if (environment.defaultauth === 'firebase') {
-    //   this.authService.logout();
-    // } else {
-    //   this.authFackservice.logout();
-    // }
-    this.router.navigate(['/auth/login']);
+    // L'effet logout$ révoque la session côté serveur, vide le stockage
+    // local et renvoie vers la page de connexion
+    this.store.dispatch(logout());
   }
 }

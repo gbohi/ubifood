@@ -10,6 +10,12 @@ class ThrottledTokenObtainPairView(TokenObtainPairView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'login'
 
+
+class ThrottledTokenRefreshView(TokenRefreshView):
+    """Renouvellement du jeton, lui aussi limité."""
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'token_refresh'
+
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
 router.register(r'agences', AgenceViewSet)
@@ -72,7 +78,7 @@ router.register(r'avis-plats',           AvisPlatViewSet, basename='avis-plat')
 urlpatterns = [
     path('api/', include(router.urls)),
     path('api/token/', ThrottledTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/refresh/', ThrottledTokenRefreshView.as_view(), name='token_refresh'),
     # Listes sans pagination (utilisateur connecté requis)
     path('api/public/typebesoins/', PublicTypeBesoinListAPIView.as_view(), name='public-typebesoin-list'),
     path('api/public/priorites/', PublicPrioriteListAPIView.as_view(), name='public-priorite-list'),

@@ -9,39 +9,38 @@ import {
 } from '@angular/common/http';
 import { Observable, throwError, BehaviorSubject } from 'rxjs';
 import { catchError, filter, switchMap, take } from 'rxjs/operators';
+import { Router } from '@angular/router';
 import { TokenStorageService } from '../services/token-storage.service';
 import { AuthenticationService } from '../services/auth.service';
 
 /**
- * AuthInterceptor — injection du token JWT + refresh automatique
+ * AuthInterceptor — injection du jeton JWT et renouvellement automatique.
  *
- * AVANT (première version générée) : sur tout 401, déconnexion immédiate.
- * → Résultat : à chaque expiration du access token, l'utilisateur était
- *   renvoyé vers /auth/login alors que le refresh token était encore valide.
- *
- * APRÈS : mécanique de refresh correcte en 4 étapes :
- *   1. Injecter le access token sur chaque requête sortante
- *   2. Si 401 → tenter un refresh via /token/refresh/
- *   3. Si le refresh réussit → relancer la requête originale avec le nouveau token
- *   4. Si le refresh échoue (refresh token expiré) → déconnexion réelle
- *
- * isRefreshing + refreshTokenSubject évitent les appels multiples simultanés :
- * si 3 requêtes reçoivent un 401 en même temps, une seule demande de refresh
- * est envoyée, et les 2 autres attendent le nouveau token avant de repartir.
+ *   1. Le jeton d'accès est ajouté à chaque requête sortante.
+ *   2. Sur un 401, un seul appel à /token/refresh/ est fait, même si
+ *      plusieurs requêtes échouent en même temps ; les autres attendent.
+ *   3. Renouvellement réussi : les requêtes repartent avec le nouveau jeton.
+ *   4. Échec (session expirée) : les requêtes en attente échouent aussi,
+ *      le stockage est vidé et l'utilisateur est renvoyé à la connexion,
+ *      avec l'adresse de la page en cours pour y revenir ensuite.
  */
+const SESSION_EXPIREE = 'Votre session a expiré. Veuillez vous reconnecter.';
+
 @Injectable()
 export class AuthInterceptor implements HttpInterceptor {
 
   private isRefreshing = false;
-  private refreshTokenSubject: BehaviorSubject<string | null> = new BehaviorSubject<string | null>(null);
+  // null : renouvellement en cours ; '' : échec ; sinon le nouveau jeton
+  private refreshTokenSubject = new BehaviorSubject<string | null>(null);
 
   constructor(
     private tokenStorage: TokenStorageService,
-    private authService: AuthenticationService
+    private authService: AuthenticationService,
+    private router: Router,
   ) {}
 
   intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    // Ne pas injecter le token sur les requêtes de login/refresh elles-mêmes
+    // Pas de jeton sur les requêtes de connexion / renouvellement elles-mêmes
     if (this.isAuthRequest(request)) {
       return next.handle(request);
     }
@@ -53,7 +52,7 @@ export class AuthInterceptor implements HttpInterceptor {
 
     return next.handle(request).pipe(
       catchError((error: HttpErrorResponse) => {
-        if (error.status === 401 && !this.isAuthRequest(request)) {
+        if (error.status === 401 && token) {
           return this.handle401Error(request, next);
         }
         return throwError(() => error);
@@ -61,48 +60,44 @@ export class AuthInterceptor implements HttpInterceptor {
     );
   }
 
-  /**
-   * Tente de rafraîchir le token puis relance la requête originale.
-   * Gère les appels concurrents : toutes les requêtes en attente
-   * reprennent dès que le nouveau token est disponible.
-   */
   private handle401Error(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
     if (!this.isRefreshing) {
       this.isRefreshing = true;
       this.refreshTokenSubject.next(null);
 
-      const refreshToken = this.tokenStorage.getRefreshToken();
-
-      if (!refreshToken) {
-        // Pas de refresh token → session vraiment expirée
-        this.isRefreshing = false;
-        this.authService.logout();
-        return throwError(() => new Error('Session expirée'));
+      if (!this.tokenStorage.getRefreshToken()) {
+        return this.sessionExpiree();
       }
 
       return this.authService.refreshToken().pipe(
         switchMap((tokens) => {
           this.isRefreshing = false;
           this.refreshTokenSubject.next(tokens.access);
-          // Relancer la requête originale avec le nouveau token
           return next.handle(this.addToken(request, tokens.access));
         }),
-        catchError((refreshError) => {
-          // Le refresh token est lui aussi expiré → vraie déconnexion
-          this.isRefreshing = false;
-          this.authService.logout();
-          return throwError(() => refreshError);
-        })
-      );
-
-    } else {
-      // Un refresh est déjà en cours → attendre le nouveau token
-      return this.refreshTokenSubject.pipe(
-        filter((token): token is string => token !== null),
-        take(1),
-        switchMap((token) => next.handle(this.addToken(request, token)))
+        catchError(() => this.sessionExpiree())
       );
     }
+
+    // Un renouvellement est déjà en cours : attendre son résultat
+    return this.refreshTokenSubject.pipe(
+      filter((token): token is string => token !== null),
+      take(1),
+      switchMap((token) => token
+        ? next.handle(this.addToken(request, token))
+        : throwError(() => SESSION_EXPIREE))
+    );
+  }
+
+  /** Fin de session : libère les requêtes en attente et renvoie à la connexion. */
+  private sessionExpiree(): Observable<never> {
+    this.isRefreshing = false;
+    this.refreshTokenSubject.next('');
+    this.authService.logout();
+    if (!this.router.url.startsWith('/auth/')) {
+      this.router.navigate(['/auth/login'], { queryParams: { returnUrl: this.router.url } });
+    }
+    return throwError(() => SESSION_EXPIREE);
   }
 
   private addToken(request: HttpRequest<any>, token: string): HttpRequest<any> {
@@ -114,15 +109,9 @@ export class AuthInterceptor implements HttpInterceptor {
     });
   }
 
-  /**
-   * Identifie les requêtes d'authentification qui ne doivent pas
-   * recevoir de token ni déclencher un refresh en cas de 401.
-   */
+  /** Requêtes de connexion et de renouvellement (adresse exacte, pas « device-tokens »). */
   private isAuthRequest(request: HttpRequest<any>): boolean {
-    return request.url.includes('/token/') || request.url.includes('/token/refresh/');
+    const chemin = request.url.split('?')[0];
+    return chemin.endsWith('/api/token/') || chemin.endsWith('/api/token/refresh/');
   }
 }
-
-export const authInterceptorProviders = [
-  { provide: 'HTTP_INTERCEPTORS', useClass: AuthInterceptor, multi: true }
-];

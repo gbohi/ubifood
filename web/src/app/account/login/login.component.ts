@@ -35,16 +35,17 @@ export class LoginComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    // Déjà connecté → aller à l'accueil directement
-    if (this.tokenStorage.getAccessToken()) {
-      this.router.navigate(['/']);
-      return;
-    }
-
+    // Formulaire créé d'abord : le gabarit en a besoin même en cas de redirection
     this.loginForm = this.formBuilder.group({
       username: ['', [Validators.required]],
       password: ['', [Validators.required]],
     });
+
+    // Déjà connecté → aller à la page demandée (ou à l'accueil)
+    if (this.tokenStorage.getAccessToken()) {
+      this.router.navigateByUrl(this.destinationApresConnexion());
+      return;
+    }
 
     // Erreur de connexion → afficher le message
     this.actions$.pipe(
@@ -64,12 +65,18 @@ export class LoginComponent implements OnInit {
       // Token JWT disponible à ce stade → l'envoi au backend fonctionnera
       this.webNotif.requestPermissionAndSaveToken();
 
-      const returnUrl = this.route.snapshot.queryParams['returnUrl'];
-      const destination = (returnUrl && !returnUrl.includes('/auth/login'))
-        ? returnUrl
-        : '/';
-      this.router.navigate([destination]);
+      this.router.navigateByUrl(this.destinationApresConnexion());
     });
+  }
+
+  /**
+   * Page demandée avant la connexion : uniquement une adresse interne
+   * (« /… » mais pas « //… », qui pointerait vers un autre site).
+   */
+  private destinationApresConnexion(): string {
+    const url: string = this.route.snapshot.queryParams['returnUrl'] || '';
+    const interne = url.startsWith('/') && !url.startsWith('//') && !url.startsWith('/auth/');
+    return interne ? url : '/';
   }
 
   get f() { return this.loginForm.controls; }

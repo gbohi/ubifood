@@ -42,22 +42,6 @@ export class AuthenticationEffects {
     )
   );
 
-  loginSuccess$ = createEffect(
-    () =>
-      this.actions$.pipe(
-        ofType(loginSuccess),
-        tap(() => {
-          /**
-           * Redirection vers '/' après connexion réussie.
-           * AuthGuard laisse passer car le token est en localStorage.
-           * LayoutComponent + PagesModule sont chargés.
-           */
-          this.router.navigate(['/']);
-        })
-      ),
-    { dispatch: false }
-  );
-
   logout$ = createEffect(() =>
     this.actions$.pipe(
       ofType(logout),
@@ -65,11 +49,6 @@ export class AuthenticationEffects {
       exhaustMap(() => this.authService.revoquerSession()),
       tap(() => {
         this.authService.logout();
-        /**
-         * CORRIGÉ : '/login' → '/auth/login'
-         * AccountModule chargé sous '/auth' dans app-routing.module.ts.
-         * LoginComponent accessible sur '/auth/login'.
-         */
         this.router.navigate(['/auth/login']);
       }),
       map(() => logoutSuccess())

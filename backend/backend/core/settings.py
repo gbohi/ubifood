@@ -188,6 +188,7 @@ REST_FRAMEWORK = {
         # Mot de passe oublié / vérification du code : par adresse IP
         'password_reset': '10/hour',
         'login':          '20/min',
+        'token_refresh':  '60/min',
     },
 }
 

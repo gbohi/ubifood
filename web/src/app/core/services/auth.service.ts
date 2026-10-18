@@ -80,8 +80,13 @@ export class AuthenticationService {
         return this.getUserProfile();
       }),
       catchError((error) => {
-        const errorMessage = error.error?.detail || 'Échec de la connexion';
-        return throwError(() => errorMessage);
+        // Profil illisible après l'obtention des jetons : pas de demi-session
+        this.tokenStorage.signOut();
+        // L'ErrorInterceptor a déjà traduit l'erreur (identifiants, 429, serveur injoignable)
+        const message = typeof error === 'string'
+          ? error
+          : (error?.error?.detail || 'Échec de la connexion');
+        return throwError(() => message);
       })
     );
   }
