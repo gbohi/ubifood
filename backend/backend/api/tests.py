@@ -687,8 +687,9 @@ class FacturationTests(_FacturationBase):
 
         r = self.client_pour(self.gestionnaire).get(f'{API}/factures-prestataires/')
         self.assertEqual(r.data['count'], 1)
+        # Refus clair (400) : le prestataire a des factures et des tarifs
         self.assertEqual(self.client_pour(self.admin).delete(
-            f'{API}/prestataires/{self.traiteur.id}/').status_code, 403)
+            f'{API}/prestataires/{self.traiteur.id}/').status_code, 400)
 
     def test_tableau_de_bord_prestataire_meme_regle(self):
         self.commander(self.employe, self.date(2026, 8, 20))                     # 900
@@ -1042,3 +1043,31 @@ class AvisEtPhotosTests(BaseAPITestCase):
         self.assertEqual(self.emp.post(f'{API}/plats/{self.plat1.id}/image-principale/', {'image_id': a.id}).status_code, 403)
         autre = PlatImage.objects.create(plat=self.plat2, image='images_plats/c.png')
         self.assertEqual(gest.post(f'{API}/plats/{self.plat1.id}/image-principale/', {'image_id': autre.id}).status_code, 400)
+
+
+class ReferentielsTests(BaseAPITestCase):
+    """Suppression protégée et libellés uniques des référentiels."""
+
+    def test_statut_utilise_non_supprimable(self):
+        r = self.client_pour(self.admin).delete(f'{API}/statuts/{self.statut.id}/')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('utilisateurs', str(r.data))
+        self.assertTrue(User.objects.filter(pk=self.employe.pk).exists())
+
+    def test_agence_et_type_equipe_utilises(self):
+        menu = self.creer_menu()
+        admin = self.client_pour(self.admin)
+        self.assertEqual(admin.delete(f'{API}/agences/{self.agence.id}/').status_code, 400)
+        r = self.client_pour(self.gestionnaire).delete(f'{API}/typeequipes/bulk_delete/',
+                                                      {'ids': [self.typeequipe.id]}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertTrue(Menu.objects.filter(pk=menu.pk).exists())
+
+    def test_ligne_libre_supprimable_et_libelle_unique(self):
+        admin = self.client_pour(self.admin)
+        r = admin.post(f'{API}/agences/', {'nom_agence': '  Plateau '})
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['nom_agence'], 'Plateau')
+        self.assertEqual(admin.post(f'{API}/agences/', {'nom_agence': 'plateau'}).status_code, 400)
+        self.assertEqual(admin.post(f'{API}/agences/', {'nom_agence': '   '}).status_code, 400)
+        self.assertEqual(admin.delete(f'{API}/agences/{r.data["id"]}/').status_code, 204)

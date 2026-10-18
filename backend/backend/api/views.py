@@ -50,6 +50,40 @@ from . import facturation as fact
 # BASE VIEWSET — hérité par tous les autres ViewSets
 # ============================================================
 
+_NOMS_LIES = {
+    'User': 'des utilisateurs', 'UserAgence': 'des affectations d\'agents',
+    'UserService': 'des affectations d\'agents', 'UserPoste': 'des postes d\'agents',
+    'UserCategoriesalarie': 'des catégories d\'agents', 'Menu': 'des menus', 'MenuPlat': 'des menus',
+    'Plat': 'des plats', 'Commande': 'des commandes', 'Retrait': 'des retraits',
+    'Besoin': 'des besoins', 'Vehicule': 'des véhicules', 'Poste': 'des postes',
+    'AgencePrestataire': 'des rattachements agence / prestataire',
+    'PlatPrestataire': 'des tarifs', 'PlatCategoriesalarie': 'des tarifs',
+    'FactureMensuelle': 'des factures', 'FacturePrestataire': 'des factures',
+}
+
+
+def refuser_si_utilise(instance, champ_libelle=None):
+    """
+    Refuse la suppression d'une ligne de référentiel encore utilisée : la
+    base supprimerait en cascade tout ce qui y est rattaché.
+    """
+    from django.db.models.deletion import Collector, ProtectedError, RestrictedError
+    nom = getattr(instance, champ_libelle, None) if champ_libelle else None
+    nom = f"« {nom} »" if nom else "Cet élément"
+    collecteur = Collector(using=instance._state.db or 'default')
+    try:
+        collecteur.collect([instance])
+    except (ProtectedError, RestrictedError):
+        raise ValidationError(f"{nom} est utilisé : il ne peut pas être supprimé.")
+    lies = {m for m, objets in collecteur.data.items() if m is not type(instance) and objets}
+    lies |= {qs.model for qs in collecteur.fast_deletes if qs.exists()}
+    lies = {m for m in lies if not m._meta.auto_created}
+    if lies:
+        libelles = sorted({_NOMS_LIES.get(m.__name__, str(m._meta.verbose_name_plural)) for m in lies})
+        raise ValidationError(
+            f"{nom} est utilisé par {', '.join(libelles)} : il ne peut pas être supprimé.")
+
+
 class BaseViewSet(viewsets.ModelViewSet):
     """
     Par défaut : lecture pour tout utilisateur connecté, écriture réservée
@@ -60,6 +94,11 @@ class BaseViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     # Droits de la suppression multiple (administrateurs par défaut)
     bulk_delete_permission_classes = [IsAdminRole]
+    # Référentiels : une ligne encore utilisée ne peut pas être supprimée
+    # (la suppression effacerait en cascade utilisateurs, menus, commandes…)
+    proteger_references = False
+    # Champ libellé : deux lignes ne peuvent pas porter le même (casse ignorée)
+    champ_libelle = None
 
     def get_permissions(self):
         if self.action == 'bulk_delete':
@@ -68,18 +107,39 @@ class BaseViewSet(viewsets.ModelViewSet):
 
     def verifier_suppression(self, instance):
         """Lève une ValidationError si `instance` ne doit pas être supprimée."""
+        if self.proteger_references:
+            refuser_si_utilise(instance, self.champ_libelle)
 
     def perform_destroy(self, instance):
         self.verifier_suppression(instance)
         instance.delete()
 
+    def _verifier_libelle(self, serializer):
+        champ = self.champ_libelle
+        if not champ or champ not in serializer.validated_data:
+            return
+        valeur = (serializer.validated_data[champ] or '').strip()
+        if not valeur:
+            raise ValidationError({champ: "Ce champ ne peut pas être vide."})
+        serializer.validated_data[champ] = valeur
+        doublons = serializer.Meta.model.objects.filter(**{f'{champ}__iexact': valeur})
+        if serializer.instance is not None:
+            doublons = doublons.exclude(pk=serializer.instance.pk)
+        if doublons.exists():
+            raise ValidationError({champ: f"« {valeur} » existe déjà."})
+
     def perform_create(self, serializer):
+        self._verifier_libelle(serializer)
+        # Les champs d'audit viennent toujours de l'utilisateur connecté
+        serializer.validated_data.pop('user_created', None)
         serializer.save(
             user_created=self.request.user,
             user_updated=self.request.user
         )
 
     def perform_update(self, serializer):
+        self._verifier_libelle(serializer)
+        serializer.validated_data.pop('user_created', None)
         serializer.save(user_updated=self.request.user)
 
     @action(detail=False, methods=['delete'])
@@ -685,6 +745,8 @@ class GroupViewSet(viewsets.ModelViewSet):
 # ============================================================
 
 class AgenceViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'nom_agence'
     queryset = Agence.objects.all().order_by('id')
     serializer_class = AgenceSerializer
     filterset_fields = ['nom_agence']
@@ -700,11 +762,17 @@ class AllAgenceNopginListAPIView(ListAPIView):
 
 
 class EtatViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'libelle_etat'
+    search_fields = ['libelle_etat']
     queryset = Etat.objects.all().order_by('id')
     serializer_class = EtatSerializer
 
 
 class StatutViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'libelle_statut'
+    search_fields = ['libelle_statut']
     queryset = Statut.objects.all().order_by('id')
     serializer_class = StatutSerializer
 
@@ -724,16 +792,25 @@ class PublicEtatListAPIView(ListAPIView):
 
 
 class ServiceViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'libelle_service'
+    search_fields = ['libelle_service']
     queryset = Service.objects.all().order_by('id')
     serializer_class = ServiceSerializer
 
 
 class TypeBesoinViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'libelle'
+    search_fields = ['libelle']
     queryset = TypeBesoin.objects.all().order_by('id')
     serializer_class = TypeBesoinSerializer
 
 
 class PrioriteViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'libelle'
+    search_fields = ['libelle']
     queryset = Priorite.objects.all().order_by('id')
     serializer_class = PrioriteSerializer
 
@@ -759,6 +836,8 @@ class UserAgenceViewSet(_UserLinkViewSet):
 
 
 class FonctionViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'libelle'
     queryset = Fonction.objects.all().order_by('id')
     serializer_class = FonctionSerializer
     filterset_fields = ['libelle']
@@ -767,6 +846,8 @@ class FonctionViewSet(BaseViewSet):
 
 
 class CategoriesalarieViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'libelle'
     queryset = Categoriesalarie.objects.all().order_by('id')
     serializer_class = CategoriesalarieSerializer
     filterset_fields = ['libelle']
@@ -775,6 +856,8 @@ class CategoriesalarieViewSet(BaseViewSet):
 
 
 class PrestataireViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'libelle'
     permission_classes = [ReadGestionnaireWriteAdmin]
     queryset = Prestataire.objects.all().order_by('id')
     serializer_class = PrestataireSerializer
@@ -782,20 +865,8 @@ class PrestataireViewSet(BaseViewSet):
     search_fields = ['libelle']
     ordering_fields = ['libelle', 'created_at']
 
-    def perform_destroy(self, instance):
-        if instance.factures_mensuelles.exists():
-            raise PermissionDenied(
-                "Ce prestataire a des factures clôturées : il ne peut pas être supprimé.")
-        instance.delete()
-
-    @action(detail=False, methods=['delete'], permission_classes=[IsAdminRole])
-    def bulk_delete(self, request):
-        ids = request.data.get('ids', [])
-        if Prestataire.objects.filter(id__in=ids, factures_mensuelles__isnull=False).exists():
-            return Response(
-                {"error": "Certains prestataires ont des factures clôturées : ils ne peuvent pas être supprimés."},
-                status=status.HTTP_400_BAD_REQUEST)
-        return super().bulk_delete(request)
+    # Factures, tarifs et rattachements d'agence : suppression refusée
+    # (vérification générique de BaseViewSet)
 
 
 class PlatPrestataireViewSet(BaseViewSet):
@@ -823,6 +894,8 @@ class PlatCategoriesalarieViewSet(BaseViewSet):
 
 
 class PosteViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'libelle'
     queryset = Poste.objects.select_related('fonction', 'service').all().order_by('id')
     serializer_class = PosteSerializer
     filterset_fields = ['libelle', 'fonction', 'service']
@@ -1082,17 +1155,21 @@ class BesoinCreateView(APIView):
 # ============================================================
 
 class TypePlatViewSet(BaseViewSet):
+    proteger_references = True
+    bulk_delete_permission_classes = [IsGestionnaireRole]
+    champ_libelle = 'libelle'
+    search_fields = ['libelle']
     permission_classes = [ReadAuthenticatedWriteGestionnaire]
     queryset = TypePlat.objects.all().order_by('id')
     serializer_class = TypePlatSerializer
 
-    def verifier_suppression(self, instance):
-        if Plat.objects.filter(type_plat=instance).exists():
-            raise ValidationError(
-                f"Le type « {instance.libelle} » est utilisé par des plats : supprimez ou modifiez ces plats d'abord.")
 
 
 class TypeEquipeViewSet(BaseViewSet):
+    proteger_references = True
+    bulk_delete_permission_classes = [IsGestionnaireRole]
+    champ_libelle = 'libelle'
+    search_fields = ['libelle']
     permission_classes = [ReadAuthenticatedWriteGestionnaire]
     queryset = TypeEquipe.objects.all().order_by('id')
     serializer_class = TypeEquipeSerializer
@@ -1957,6 +2034,9 @@ class GenererAPB128View(APIView):
 # ============================================================
 
 class TypeVehiculeViewSet(BaseViewSet):
+    proteger_references = True
+    champ_libelle = 'libelle'
+    search_fields = ['libelle']
     permission_classes = [IsAdminRole]
     queryset = TypeVehicule.objects.all().order_by('id')
     serializer_class = TypeVehiculeSerializer
