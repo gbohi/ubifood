@@ -19,7 +19,8 @@ import { FacturationPrestataireComponent } from './facturation-prestataire/factu
 const routes: Routes = [
   { path: 'liste-plats', component: ListePlatsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'liste-menus', component: ListeMenusComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
-  { path: 'liste-commandes', component: ListeCommandesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  // Ouvert à tous : chacun commande ses repas (comme sur l'application mobile)
+  { path: 'liste-commandes', component: ListeCommandesComponent },
   { path: 'planning-menus', component: PlanningMenuComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'mes-commandes', component: MesCommandesComponent },
   { path: 'gestion-commandes', component: GestionCommandesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },

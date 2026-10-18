@@ -25,7 +25,8 @@ from django.db import transaction
 from rest_framework.generics import ListAPIView
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.db.models import Count
+from django.db.models import Count, Q
+from django.shortcuts import get_object_or_404
 from decimal import ROUND_HALF_UP, Decimal
 from django.utils.timezone import now
 from django.utils import timezone
@@ -1234,6 +1235,29 @@ class MenuPlatViewSet(BaseViewSet):
 # COMMANDE
 # ─────────────────────────────────────────────────────────────────────────────
 
+def agences_gerees(user):
+    """
+    Agences dont l'utilisateur gère les commandes et les retraits :
+    None pour un administrateur (toutes), sinon les agences auxquelles le
+    gestionnaire est rattaché aujourd'hui (ensemble vide s'il n'en a aucune).
+    """
+    if is_admin(user):
+        return None
+    maintenant = timezone.now()
+    return set(
+        UserAgence.objects.filter(user=user, date_debut__lte=maintenant)
+        .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=maintenant))
+        .values_list('agence_id', flat=True)
+    )
+
+
+def verifier_menu_gere(user, menu):
+    """Un gestionnaire n'agit que sur les menus de son agence."""
+    geres = agences_gerees(user)
+    if geres is not None and menu.agence_id not in geres:
+        raise PermissionDenied("Ce menu n'est pas celui de votre agence.")
+
+
 class CommandeViewSet(BaseViewSet):
     """
     Employé    : passe, consulte et annule SES commandes.
@@ -1278,11 +1302,20 @@ class CommandeViewSet(BaseViewSet):
             .order_by('-date_commande')
         )
 
+    def _dans_mes_agences(self, qs):
+        """Commandes visibles par un gestionnaire : celles de ses agences."""
+        geres = agences_gerees(self.request.user)
+        return qs if geres is None else qs.filter(menu__agence_id__in=geres)
+
     def get_queryset(self):
         qs = self._base_queryset()
-        if is_gestionnaire(self.request.user):
+        user = self.request.user
+        if is_admin(user):
             return qs
-        return qs.filter(user=self.request.user)
+        if is_gestionnaire(user):
+            # Ses agences, plus ses propres commandes (il commande aussi)
+            return qs.filter(Q(pk__in=self._dans_mes_agences(qs).values('pk')) | Q(user=user))
+        return qs.filter(user=user)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -1354,6 +1387,7 @@ class CommandeViewSet(BaseViewSet):
         if not menu_id or not str(menu_id).isdigit():
             return Response({'detail': 'Paramètre menu requis.'}, status=400)
 
+        verifier_menu_gere(request.user, get_object_or_404(Menu, pk=menu_id))
         commandes = self._base_queryset().filter(menu_id=menu_id)
         ont_retire = set(
             Retrait.objects.filter(menu_id=menu_id).values_list('user_id', flat=True)
@@ -1382,7 +1416,7 @@ class CommandeViewSet(BaseViewSet):
         typeequipe = request.query_params.get('typeequipe')
         statut     = request.query_params.get('statut')
 
-        qs = self._base_queryset()
+        qs = self._dans_mes_agences(self._base_queryset())
         try:
             if date_debut:  qs = qs.filter(menu__date_menu__gte=date_debut)
             if date_fin:    qs = qs.filter(menu__date_menu__lte=date_fin)
@@ -1405,6 +1439,7 @@ class CommandeViewSet(BaseViewSet):
         if not menu_id or not str(menu_id).isdigit():
             return Response({'detail': 'Menu requis.'}, status=400)
 
+        verifier_menu_gere(request.user, get_object_or_404(Menu, pk=menu_id))
         try:
             user = User.objects.get(username=badge)
         except User.DoesNotExist:
@@ -1456,6 +1491,11 @@ class DashboardCantineView(APIView):
         agences_ids = [
             int(x) for x in agences_str.split(',') if x.strip().isdigit()
         ] if agences_str else []
+        # Un gestionnaire ne voit que ses agences
+        geres = agences_gerees(request.user)
+        if geres is not None:
+            agences_ids = [a for a in agences_ids if a in geres] if agences_ids else list(geres)
+            agences_ids = agences_ids or [0]   # aucune agence : aucun résultat
 
         equipes_ids = [
             int(x) for x in equipes_str.split(',') if x.strip().isdigit()
@@ -1724,11 +1764,17 @@ class RetraitViewSet(BaseViewSet):
         return super().get_permissions()
 
     def get_queryset(self):
-        return (
+        qs = (
             Retrait.objects
             .select_related('user', 'menu__agence', 'menu__typeequipe')
             .order_by('-date_retrait')
         )
+        geres = agences_gerees(self.request.user)
+        return qs if geres is None else qs.filter(menu__agence_id__in=geres)
+
+    def perform_create(self, serializer):
+        verifier_menu_gere(self.request.user, serializer.validated_data['menu'])
+        super().perform_create(serializer)
 
     def verifier_suppression(self, instance):
         verifier_mois_ouvert(instance.menu.date_menu)

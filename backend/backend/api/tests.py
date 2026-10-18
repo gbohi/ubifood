@@ -48,6 +48,9 @@ class BaseAPITestCase(TestCase):
 
         UserAgence.objects.create(user=cls.employe, agence=cls.agence, statut=cls.statut,
                                   date_debut=timezone.now() - timedelta(days=30))
+        # Le gestionnaire gère l'agence du Siège
+        UserAgence.objects.create(user=cls.gestionnaire, agence=cls.agence, statut=cls.statut,
+                                  date_debut=timezone.now() - timedelta(days=30))
 
     @classmethod
     def creer_user(cls, username, role, contact=''):
@@ -305,14 +308,56 @@ class CantineReglesTests(BaseAPITestCase):
         ClotureMensuelle.objects.create(annee=menu.date_menu.year, mois=menu.date_menu.month)
         self.assertEqual(self.gest.delete(f'{API}/menus/{menu.id}/').status_code, 400)
 
-    def test_commande_menu_autre_agence_refusee(self):
+    def menu_yopougon(self, jours=5):
         autre = Agence.objects.create(nom_agence='Yopougon')
-        menu = Menu.objects.create(date_menu=timezone.localdate() + timedelta(days=5),
+        menu = Menu.objects.create(date_menu=timezone.localdate() + timedelta(days=jours),
                                    agence=autre, typeequipe=self.typeequipe)
         MenuPlat.objects.create(menu=menu, plat=self.plat1)
+        return menu
+
+    def test_commande_dans_une_autre_agence_autorisee(self):
+        # Un agent en déplacement commande dans l'agence où il se trouve
+        menu = self.menu_yopougon()
         r = self.client_pour(self.employe).post(f'{API}/commandes/', {'menu_id': menu.id, 'plat_id': self.plat1.id})
-        self.assertEqual(r.status_code, 400)
-        self.assertIn('autre agence', str(r.data))
+        self.assertEqual(r.status_code, 201, r.data)
+
+    def test_gestionnaire_limite_a_son_agence(self):
+        yop = self.menu_yopougon(jours=0)
+        siege = self.creer_menu(jours=0)
+        cmd_yop = Commande.objects.create(user=self.employe, menu=yop, plat=self.plat1)
+        Commande.objects.create(user=self.employe2, menu=siege, plat=self.plat1)
+
+        # Voir
+        ids = {c['id'] for c in self.gest.get(f'{API}/commandes/', {'page_size': 100}).data['results']}
+        self.assertNotIn(cmd_yop.id, ids)
+        self.assertEqual(len(ids), 1)
+        r = self.gest.get(f'{API}/commandes/par-agence-periode/')
+        self.assertEqual({c['id'] for c in r.data}, ids)
+        self.assertEqual(self.gest.get(f'{API}/commandes/par-menu/', {'menu': yop.id}).status_code, 403)
+        self.assertEqual(self.gest.get(f'{API}/commandes/recherche-par-badge/',
+                                       {'badge': 'emp1', 'menu': yop.id}).status_code, 403)
+        # Valider (retrait)
+        r = self.gest.post(f'{API}/retraits/', {'user_id': self.employe.id, 'menu_id': yop.id, 'badge_matricule': 'emp1'})
+        self.assertEqual(r.status_code, 403)
+        # Supprimer / annuler
+        self.assertEqual(self.gest.patch(f'{API}/commandes/{cmd_yop.id}/annuler/').status_code, 404)
+        # Tableau de bord : seulement le Siège
+        jour = str(timezone.localdate())
+        r = self.gest.get(f'{API}/dashboard-cantine/', {'date_debut': jour, 'date_fin': jour})
+        self.assertEqual(r.data['kpis']['total_commandes'], 1)
+
+        # L'administrateur voit toutes les agences
+        admin = self.client_pour(self.admin)
+        self.assertEqual(admin.get(f'{API}/commandes/', {'page_size': 100}).data['count'], 2)
+        r = admin.post(f'{API}/retraits/', {'user_id': self.employe.id, 'menu_id': yop.id, 'badge_matricule': 'emp1'})
+        self.assertEqual(r.status_code, 201, r.data)
+
+    def test_gestionnaire_voit_ses_propres_commandes_ailleurs(self):
+        yop = self.menu_yopougon()
+        cmd = Commande.objects.create(user=self.gestionnaire, menu=yop, plat=self.plat1)
+        ids = {c['id'] for c in self.gest.get(f'{API}/commandes/mes-commandes/').data}
+        self.assertIn(cmd.id, ids)
+        self.assertEqual(self.gest.patch(f'{API}/commandes/{cmd.id}/annuler/').status_code, 200)
 
     def test_retrait_menu_futur_refuse_et_annulation_retrait(self):
         futur = self.creer_menu()

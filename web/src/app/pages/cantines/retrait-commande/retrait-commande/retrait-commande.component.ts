@@ -1,5 +1,7 @@
 // src/app/pages/cantine/retrait-commande/retrait-commande.component.ts
 
+import { agencesGerees, filtrerAgencesGerees } from 'src/app/core/helpers/roles';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 import { Component, OnInit, OnDestroy, DestroyRef, inject, ElementRef, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
@@ -35,6 +37,8 @@ import { environment } from 'src/environments/environment';
   styleUrl: './retrait-commande.component.scss',
 })
 export class RetraitCommandeComponent implements OnInit, OnDestroy {
+  // Un gestionnaire ne gère que les agences auxquelles il est rattaché
+  private userConnecte = inject(TokenStorageService).getUser();
 
   breadCrumbItems = [
     { label: 'Cantine', active: false },
@@ -81,12 +85,15 @@ export class RetraitCommandeComponent implements OnInit, OnDestroy {
     this.store.dispatch(fetchagenceNoPaginateData());
     this.store.select(selectAllAgenceWithoutPagination)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(a => this.agences = a ?? []);
+      .subscribe(a => this.agences = filtrerAgencesGerees(a ?? [], this.userConnecte));
 
     this.store.dispatch(fetchmenuNoPaginateData());
     this.store.select(selectAllMenuWithoutPagination)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(m => this.menus = m ?? []);
+      .subscribe(m => {
+        const gerees = agencesGerees(this.userConnecte);
+        this.menus = (m ?? []).filter((x: any) => gerees === null || gerees.includes(Number(x.agence)));
+      });
 
     this.store.dispatch(fetchtypeequipeNoPaginateData());
     this.store.select(selectAllTypeequipeWithoutPagination)

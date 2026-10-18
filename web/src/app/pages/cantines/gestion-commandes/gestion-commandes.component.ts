@@ -1,5 +1,7 @@
 // src/app/pages/cantine/gestion-commandes/gestion-commandes.component.ts
 
+import { agencesGerees, filtrerAgencesGerees } from 'src/app/core/helpers/roles';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 import { Component, OnInit, OnDestroy, DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
@@ -43,6 +45,8 @@ import autoTable from 'jspdf-autotable';
   styleUrl: './gestion-commandes.component.scss',
 })
 export class GestionCommandesComponent implements OnInit, OnDestroy {
+  // Un gestionnaire ne gère que les agences auxquelles il est rattaché
+  private userConnecte = inject(TokenStorageService).getUser();
 
   breadCrumbItems = [
     { label: 'Cantine', active: false },
@@ -104,7 +108,7 @@ export class GestionCommandesComponent implements OnInit, OnDestroy {
     this.store.dispatch(fetchagenceNoPaginateData());
     this.store.select(selectAllAgenceWithoutPagination)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(a => this.agences = a ?? []);
+      .subscribe(a => this.agences = filtrerAgencesGerees(a ?? [], this.userConnecte));
 
     this.store.dispatch(fetchtypeequipeNoPaginateData());
     this.store.select(selectAllTypeequipeWithoutPagination)

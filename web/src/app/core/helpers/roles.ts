@@ -49,3 +49,22 @@ export function filtrerMenu<T extends { roles?: string[]; subItems?: any; isTitl
   return visibles.filter((item, i) =>
     !item.isTitle || (i + 1 < visibles.length && !visibles[i + 1].isTitle));
 }
+
+/**
+ * Agences gérées : null pour un administrateur (toutes), sinon les agences
+ * de rattachement en cours du gestionnaire (même règle que le serveur).
+ */
+export function agencesGerees(user: any): number[] | null {
+  if (aUnRole(user, ADMINS)) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  return (user?.user_agences ?? [])
+    .filter((l: any) => String(l.date_debut).slice(0, 10) <= today
+      && (!l.date_fin || String(l.date_fin).slice(0, 10) >= today))
+    .map((l: any) => Number(l.agence_id ?? l.agence));
+}
+
+/** Liste d'agences réduite à celles que l'utilisateur gère */
+export function filtrerAgencesGerees<T extends { id?: any }>(agences: T[], user: any): T[] {
+  const gerees = agencesGerees(user);
+  return gerees === null ? agences : agences.filter(a => gerees.includes(Number(a.id)));
+}

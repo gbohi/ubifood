@@ -1,6 +1,8 @@
 // src/app/pages/dashboard-cantine/dashboard-cantine.component.ts
 
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { agencesGerees, filtrerAgencesGerees } from 'src/app/core/helpers/roles';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { Observable, Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -45,6 +47,8 @@ import {
   styleUrls: ['./dashboard-cantine.component.scss'],
 })
 export class DashboardCantineComponent implements OnInit, OnDestroy {
+  // Un gestionnaire ne gère que les agences auxquelles il est rattaché
+  private userConnecte = inject(TokenStorageService).getUser();
 
   breadCrumbItems: Array<{}> = [];
 
@@ -147,7 +151,7 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
 
     this.store.select(selectAllAgenceWithoutPagination)
       .pipe(takeUntil(this._destroy$))
-      .subscribe(data => { if (data) this.agences = data; });
+      .subscribe(data => { if (data) this.agences = filtrerAgencesGerees(data, this.userConnecte); });
 
     this.store.select(selectAllTypeequipeWithoutPagination)
       .pipe(takeUntil(this._destroy$))

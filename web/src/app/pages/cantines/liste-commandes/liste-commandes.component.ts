@@ -1,6 +1,9 @@
 // src/app/pages/cantine/liste-commandes/liste-commandes.component.ts
 
-import { Component, OnInit, DestroyRef, inject } from '@angular/core';
+import { Component, OnInit, DestroyRef, inject, ViewChild } from '@angular/core';
+import { ModalDirective } from 'ngx-bootstrap/modal';
+import { selectAllTypeequipeWithoutPagination } from 'src/app/store/Typeequipe/typeequipe-selector';
+import { fetchtypeequipeNoPaginateData } from 'src/app/store/Typeequipe/typeequipe.action';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
 import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
@@ -44,6 +47,9 @@ export class ListeCommandesComponent implements OnInit {
 
   menus:        MenulistModel[] = [];
   agences:      any[]           = [];
+  equipes:      any[]           = [];
+  annulationEnCours: { menuId: number; platId: number; platNom: string } | null = null;
+  @ViewChild('annulationModal', { static: false }) annulationModal?: ModalDirective;
   mesCommandes: CommandeModel[] = [];
 
   isLoadingMenus     = false;
@@ -79,7 +85,13 @@ export class ListeCommandesComponent implements OnInit {
       date_fin:   [''],
       // Par défaut l'agence de l'utilisateur : il ne peut commander que ses menus
       agence:     [this.agenceUtilisateur() ?? ''],
+      typeequipe: [''],
     });
+
+    this.store.dispatch(fetchtypeequipeNoPaginateData());
+    this.store.select(selectAllTypeequipeWithoutPagination)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(e => this.equipes = e ?? []);
 
     this.store.dispatch(fetchagenceNoPaginateData());
     this.store.select(selectAllAgenceWithoutPagination)
@@ -129,13 +141,14 @@ export class ListeCommandesComponent implements OnInit {
 
   // ── Filtrage des menus ───────────────────────────────────
   get menusFiltres(): MenulistModel[] {
-    const { date_debut, date_fin, agence } = this.filterForm.value;
+    const { date_debut, date_fin, agence, typeequipe } = this.filterForm.value;
     return this.menus.filter(m => {
       if (date_debut && m.date_menu < date_debut) return false;
       if (date_fin   && m.date_menu > date_fin)   return false;
       if (agence     && m.agence !== +agence)      return false;
+      if (typeequipe && m.typeequipe !== +typeequipe) return false;
       return true;
-    });
+    }).sort((a, b) => (a.date_menu ?? '').localeCompare(b.date_menu ?? ''));
   }
 
   // ── Plats du menu ────────────────────────────────────────
@@ -209,9 +222,18 @@ export class ListeCommandesComponent implements OnInit {
     this.store.dispatch(createCommande({ payload: { menu_id: menuId, plat_id: platId } }));
   }
 
-  // ── Annuler une commande ──────────────────────────────────
-  annuler(menuId: number, platId: number): void {
-    const commande = this.getCommande(menuId, platId);
+  // ── Annuler une commande (après confirmation) ─────────────
+  demanderAnnulation(menuId: number, platId: number, platNom?: string): void {
+    this.annulationEnCours = { menuId, platId, platNom: platNom ?? '' };
+    this.annulationModal?.show();
+  }
+
+  confirmerAnnulation(): void {
+    const a = this.annulationEnCours;
+    this.annulationModal?.hide();
+    this.annulationEnCours = null;
+    if (!a) return;
+    const commande = this.getCommande(a.menuId, a.platId);
     if (!commande) return;
     this.store.dispatch(resetCommandeError());
     this.store.dispatch(annulerCommande({ id: commande.id }));
@@ -230,7 +252,7 @@ export class ListeCommandesComponent implements OnInit {
 
   resetFilters(): void {
     const today = new Date().toISOString().split('T')[0];
-    this.filterForm.reset({ date_debut: today, date_fin: '', agence: '' });
+    this.filterForm.reset({ date_debut: today, date_fin: '', agence: this.agenceUtilisateur() ?? '', typeequipe: '' });
   }
 
   /** Vérifie si l'agent a au moins un plat retiré dans ce menu */

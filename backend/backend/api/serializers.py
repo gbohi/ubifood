@@ -819,15 +819,8 @@ class CommandeSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Impossible de commander : le délai de 48h avant le menu est dépassé."
                 )
-            request = self.context.get('request')
-            if request is not None:
-                jour = timezone.make_aware(datetime.combine(menu.date_menu, time(12)))
-                agence = agence_actuelle(request.user, jour)
-                if agence is None or agence.pk != menu.agence_id:
-                    raise serializers.ValidationError(
-                        "Ce menu est celui d'une autre agence : vous ne pouvez commander "
-                        "que les menus de votre agence."
-                    )
+            # Pas de contrôle d'agence : un agent peut commander dans l'agence
+            # où il se trouve ce jour-là (déplacement, mission).
 
         if menu and self.instance is not None and menu != self.instance.menu:
             verifier_mois_ouvert(menu.date_menu)

@@ -64,7 +64,6 @@ export const MENU: MenuItem[] = [
                 id: 213,
                 label: 'MENUITEMS.CANTINES.LIST.COMMANDE',
                 link: '/cantines/liste-commandes',
-                roles: GESTIONNAIRES,
                 parentId: 210
             },
             {

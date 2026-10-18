@@ -25,8 +25,8 @@ class _RetraitScreenState extends State<RetraitScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = context.read<AuthProvider>();
-      final agenceId = auth.user?.derniereAgenceId;
-      // Charger uniquement les menus de l'agence du gestionnaire
+      // Gestionnaire : menus de son agence ; administrateur : toutes les agences
+      final agenceId = (auth.user?.isAdmin ?? false) ? null : auth.user?.derniereAgenceId;
       context.read<MenuProvider>().loadMenus(agenceId: agenceId);
       context.read<RetraitProvider>().reset();
     });
@@ -65,7 +65,7 @@ class _RetraitScreenState extends State<RetraitScreen> {
             if (menuProv.loading) return const ShimmerCard(height: 56);
 
             // Filtrer côté client aussi par sécurité
-            final agenceId = auth.user?.derniereAgenceId;
+            final agenceId = (auth.user?.isAdmin ?? false) ? null : auth.user?.derniereAgenceId;
             final agenceNom = auth.user?.derniereAgence ?? '';
             final menus = agenceId != null
                 ? menuProv.menus.where((m) => m.agenceId == agenceId).toList()

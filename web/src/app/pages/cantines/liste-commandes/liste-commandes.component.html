@@ -1,5 +1,5 @@
 <!-- src/app/pages/cantine/liste-commandes/liste-commandes.component.html -->
-<app-breadcrumbs title="Vue de liste" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<app-breadcrumbs title="Commander" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
 
 <div class="row">
   <div class="col-12">
@@ -23,11 +23,11 @@
       <div class="card-body">
         <form [formGroup]="filterForm">
           <div class="row g-3 align-items-end">
-            <div class="col-md-3">
+            <div class="col-md-2">
               <label class="form-label">Date début</label>
               <input type="date" class="form-control form-control-sm" formControlName="date_debut">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
               <label class="form-label">Date fin</label>
               <input type="date" class="form-control form-control-sm" formControlName="date_fin">
             </div>
@@ -41,6 +41,15 @@
               </select>
             </div>
             <div class="col-md-3">
+              <label class="form-label">Équipe</label>
+              <select class="form-select form-select-sm" formControlName="typeequipe">
+                <option value="">Toutes les équipes</option>
+                @for (e of equipes; track e.id) {
+                  <option [value]="e.id">{{ e.libelle }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-2">
               <button class="btn btn-subtle-secondary btn-sm w-100"
                       type="button"
                       (click)="resetFilters()">
@@ -197,7 +206,7 @@
                         <!-- Plat commandé (en_attente) → peut annuler -->
                         <button class="btn btn-outline-danger btn-sm w-100"
                                 [disabled]="!isDelaiOk(menu.date_menu!) || isSubmitting"
-                                (click)="annuler(menu.id!, plat.id!)">
+                                (click)="demanderAnnulation(menu.id!, plat.id!, plat.nom)">
                           @if (isSubmitting) {
                             <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                           }
@@ -228,5 +237,23 @@
 
     }
 
+  </div>
+</div>
+
+<!-- ── Confirmation d'annulation (comme sur l'application mobile) ── -->
+<div bsModal #annulationModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4 text-center">
+        <i class="ph-warning-circle text-warning display-5"></i>
+        <h5 class="mt-3">Annuler ?</h5>
+        <p class="text-muted mb-1">Votre commande « {{ annulationEnCours?.platNom }} » sera annulée.</p>
+        <p class="text-muted small mb-4">Aucune annulation n'est possible moins de 48 h avant la date du menu.</p>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn btn-light" (click)="annulationModal.hide()">Non, garder</button>
+          <button type="button" class="btn btn-danger" id="confirmer-annulation" (click)="confirmerAnnulation()">Oui, annuler</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
