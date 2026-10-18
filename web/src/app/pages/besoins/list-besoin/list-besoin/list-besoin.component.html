@@ -1,6 +1,6 @@
 
 <!-- Start Breadcrumbs -->
-<app-breadcrumbs title="Vue de liste" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<app-breadcrumbs title="Besoins" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
 <!-- End Breadcrumbs -->
 
 <!-- ── Statistiques ─────────────────────────────────────── -->
@@ -25,7 +25,7 @@
                     </div>
                   </div>
                   <div class="flex-grow-1">
-                    <p class="text-muted mb-0">{{ data.etat }}</p>
+                    <p class="text-muted mb-0">{{ data.etat || 'Sans état' }}</p>
                   </div>
                 </div>
                 <h3 class="mb-0">
@@ -33,6 +33,8 @@
                 </h3>
               </div>
             </div>
+          } @empty {
+            <div class="col-12 text-muted">Aucune statistique disponible.</div>
           }
         </div>
       </div>
@@ -45,20 +47,15 @@
         <div class="d-flex mb-4 pb-1">
           <div class="flex-grow-1">
             <h6 class="card-title">
-              Total Non clôturés
-              <i class="bi bi-exclamation-circle align-baseline ms-1 fs-sm" tooltip="Total non clôturé"></i>
+              Besoins non clôturés
+              <i class="bi bi-exclamation-circle align-baseline ms-1 fs-sm" tooltip="Hors besoins clôturés et annulés"></i>
             </h6>
             <p class="text-muted mb-0">
-              <b>{{ statistiques?.total_non_cloture }}</b> Besoins non clôturés
+              <b>{{ statistiques?.total_non_cloture ?? 0 }}</b> sur {{ statistiques?.total_besoin ?? 0 }} besoins
             </p>
           </div>
-          <div class="flex-shrink-0">
-            <a routerLink="#" class="link-effect">
-              Voir la liste<i class="bi bi-arrow-right align-baseline ms-1"></i>
-            </a>
-          </div>
         </div>
-        <div tooltip="Besoins non clôturés">
+        <div tooltip="Part des besoins non clôturés">
           <progressbar [value]="getPourcentageNonCloture()" [striped]="true" [animate]="true"></progressbar>
         </div>
       </div>
@@ -75,14 +72,14 @@
           <div class="col-lg-3 me-auto">
             <h6 class="card-title mb-0">Liste des besoins</h6>
           </div>
-          <div class="col-xl-2 col-md-3">
+          <div class="col-xl-3 col-md-4">
             <div class="search-box">
               <input
                 type="text"
                 class="form-control search"
-                placeholder="Rechercher par titre ou ID..."
+                placeholder="Rechercher par référence, titre, description..."
                 [(ngModel)]="term"
-                (keyup)="filterdata()"
+                (ngModelChange)="onSearchChange($event)"
               />
               <i class="ri-search-line search-icon"></i>
             </div>
@@ -92,11 +89,11 @@
               <button
                 class="btn btn-subtle-danger"
                 [class.d-none]="checkedValGet.length === 0"
-                (click)="deleteRecordModal?.show()"
+                (click)="removeSelected()"
               >
                 <i class="ri-delete-bin-2-line"></i> Supprimer ({{ checkedValGet.length }})
               </button>
-              <button class="btn btn-primary" (click)="addBesoin?.show()">
+              <button class="btn btn-primary" (click)="openAddModal()">
                 <i class="bi bi-plus-circle align-baseline me-1"></i> Ajouter un besoin
               </button>
             </div>
@@ -115,26 +112,26 @@
                       class="form-check-input"
                       type="checkbox"
                       id="checkAll"
-                      [(ngModel)]="masterSelected"
+                      [checked]="masterSelected"
                       (change)="checkUncheckAll($event)"
                     />
                     <label class="form-check-label" for="checkAll"></label>
                   </div>
                 </th>
-                <th (click)="onSort('id')"          class="sort cursor-pointer">N°</th>
-                <th (click)="onSort('reference')"   class="sort cursor-pointer">Référence</th>
-                <th (click)="onSort('created_at')"  class="sort cursor-pointer">Date création</th>
-                <th (click)="onSort('titre')"        class="sort cursor-pointer">Titre</th>
-                <!-- ✅ priorite_libelle vient directement du sérialiseur Django -->
+                <th>N°</th>
+                <th (click)="onSort('reference')"        class="sort cursor-pointer">Référence</th>
+                <th (click)="onSort('created_at')"       class="sort cursor-pointer">Date de création</th>
+                <th (click)="onSort('titre')"            class="sort cursor-pointer">Titre</th>
+                <th (click)="onSort('typebesoin_libelle')" class="sort cursor-pointer">Type</th>
                 <th (click)="onSort('priorite_libelle')" class="sort cursor-pointer">Priorité</th>
                 <th (click)="onSort('etat_libelle')"     class="sort cursor-pointer">État</th>
-                <th (click)="onSort('user_username')"    class="sort cursor-pointer">Demandeur</th>
-                <th>Action</th>
+                <th (click)="onSort('user_nom')"         class="sort cursor-pointer">Demandeur</th>
+                <th>Actions</th>
               </tr>
             </thead>
-            <tbody class="list form-check-all" id="invoice-list-data">
+            <tbody class="list form-check-all">
               @for (data of besoins; track data.id; let idx = $index) {
-                <tr id="l_{{ data.id }}">
+                <tr>
                   <td>
                     <div class="form-check">
                       <input
@@ -143,42 +140,42 @@
                         name="checkAll"
                         [value]="data.id"
                         [(ngModel)]="data.state"
-                        (change)="onCheckboxChange($event)"
+                        (change)="onCheckboxChange()"
                       />
                       <label class="form-check-label"></label>
                     </div>
                   </td>
-                  <td class="besoin_id">
-                    <a href="javascript:void(0);" class="fw-medium link-primary">{{ idx + 1 }}</a>
+                  <td>{{ (currentPage - 1) * 10 + idx + 1 }}</td>
+                  <td>
+                    <a href="javascript:void(0);" (click)="viewDetails(data.id)" class="fw-medium link-primary">{{ data.reference }}</a>
                   </td>
-                  <td>{{ data.reference }}</td>
                   <td>{{ data.created_at | date: 'dd/MM/yyyy HH:mm' }}</td>
                   <td>{{ data.titre }}</td>
-                  <!-- ✅ Champs plats retournés par BesoinSerializer -->
+                  <td>{{ data.typebesoin_libelle }}</td>
                   <td>{{ data.priorite_libelle }}</td>
                   <td>
                     <span class="badge" [ngClass]="getBadgeClass(data.etat_libelle)">
                       {{ data.etat_libelle }}
                     </span>
                   </td>
-                  <td>{{ data.user_username }} {{ data.user_nom }}</td>
+                  <td>{{ data.user_prenom }} {{ data.user_nom }}</td>
                   <td>
                     <ul class="d-flex gap-2 list-unstyled mb-0">
                       <li>
                         <a href="javascript:void(0);" (click)="viewDetails(data.id)"
-                          class="btn btn-subtle-primary btn-icon btn-sm">
+                          class="btn btn-subtle-primary btn-icon btn-sm" title="Détails">
                           <i class="ph-eye"></i>
                         </a>
                       </li>
                       <li>
-                        <a href="javascript:void(0);" (click)="editList($index)"
-                          class="btn btn-subtle-secondary btn-icon btn-sm">
+                        <a href="javascript:void(0);" (click)="editList(data.id)"
+                          class="btn btn-subtle-secondary btn-icon btn-sm" title="Modifier">
                           <i class="ph-pencil"></i>
                         </a>
                       </li>
                       <li>
                         <a href="javascript:void(0);" (click)="removeItem(data.id)"
-                          class="btn btn-subtle-danger btn-icon btn-sm">
+                          class="btn btn-subtle-danger btn-icon btn-sm" title="Supprimer">
                           <i class="ph-trash"></i>
                         </a>
                       </li>
@@ -187,29 +184,31 @@
                 </tr>
               }
 
-              <tr *ngIf="besoins?.length === 0 && !term && !isLoading">
-                <td colspan="9" class="text-center py-4">
-                  <i class="ph-file-x fs-1 text-primary"></i>
-                  <h5 class="mt-2">Aucun besoin disponible</h5>
-                  <p class="text-muted mb-0">Veuillez ajouter un besoin pour commencer.</p>
-                </td>
-              </tr>
+              @if (besoins.length === 0 && !isLoading) {
+                <tr>
+                  <td colspan="10" class="text-center py-4">
+                    @if (term) {
+                      <i class="ph-magnifying-glass fs-1 text-primary"></i>
+                      <h5 class="mt-2">Aucun résultat trouvé</h5>
+                      <p class="text-muted mb-0">Aucun besoin ne correspond à votre recherche.</p>
+                    } @else {
+                      <i class="ph-file-x fs-1 text-primary"></i>
+                      <h5 class="mt-2">Aucun besoin disponible</h5>
+                      <p class="text-muted mb-0">Veuillez ajouter un besoin pour commencer.</p>
+                    }
+                  </td>
+                </tr>
+              }
             </tbody>
           </table>
 
-          <div id="elmLoader" *ngIf="isLoading" class="text-center py-3">
-            <div class="spinner-border text-primary avatar-sm" role="status">
-              <span class="visually-hidden">Chargement...</span>
+          @if (isLoading) {
+            <div class="text-center py-3">
+              <div class="spinner-border text-primary avatar-sm" role="status">
+                <span class="visually-hidden">Chargement...</span>
+              </div>
             </div>
-          </div>
-
-          <div class="noresult" style="display: none;">
-            <div class="text-center py-4">
-              <i class="ph-magnifying-glass fs-1 text-primary"></i>
-              <h5 class="mt-2">Aucun résultat trouvé</h5>
-              <p class="text-muted mb-0">Aucun besoin ne correspond à votre recherche.</p>
-            </div>
-          </div>
+          }
         </div>
 
         <div [ngClass]="besoins.length === 0 ? 'd-none' : ''" class="row mt-3 align-items-center">
@@ -227,6 +226,8 @@
               class="pagination-wrap justify-content-center hstack gap-2"
               [totalItems]="totalItems"
               [itemsPerPage]="10"
+              previousText="Précédent"
+              nextText="Suivant"
               [(ngModel)]="currentPage"
               (pageChanged)="pageChanged($event)"
             ></pagination>
@@ -243,7 +244,7 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Ajouter un besoin</h5>
+        <h5 class="modal-title">{{ isEdit ? 'Modifier le besoin' : 'Ajouter un besoin' }}</h5>
         <button type="button" class="btn-close" (click)="closeAddModal()"></button>
       </div>
 
@@ -253,52 +254,134 @@
 
           <div class="mb-3">
             <label class="form-label">Titre <span class="text-danger">*</span></label>
-            <input type="text" class="form-control" formControlName="titre" placeholder="Titre du besoin" />
+            <input type="text" class="form-control" formControlName="titre" placeholder="Titre du besoin" maxlength="255" />
             <div *ngIf="besoinForm.get('titre')?.invalid && besoinForm.get('titre')?.touched" class="text-danger mt-1">
               <small>Le titre est requis</small>
             </div>
           </div>
 
-         <div class="mb-3">
+          <div class="mb-3">
             <label class="form-label">Demandeur <span class="text-danger">*</span></label>
             <select class="form-select" formControlName="user">
-              <option value="">-- Sélectionner --</option>
+              <option [ngValue]="null">-- Sélectionner --</option>
               @for (u of users; track u.id) {
-                <option [value]="u.id">{{ u.username }} — {{ u.nom }}</option>
+                <option [ngValue]="u.id">{{ u.prenom }} {{ u.nom }} ({{ u.username }})</option>
               }
             </select>
+            <div *ngIf="besoinForm.get('user')?.invalid && besoinForm.get('user')?.touched" class="text-danger mt-1">
+              <small>Le demandeur est requis</small>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-lg-6">
+              <div class="mb-3">
+                <label class="form-label">Type de besoin <span class="text-danger">*</span></label>
+                <select class="form-select" formControlName="typebesoin">
+                  <option [ngValue]="null">-- Sélectionner --</option>
+                  @for (t of typebesoins; track t.id) {
+                    <option [ngValue]="t.id">{{ t.libelle }}</option>
+                  }
+                </select>
+                <div *ngIf="besoinForm.get('typebesoin')?.invalid && besoinForm.get('typebesoin')?.touched" class="text-danger mt-1">
+                  <small>Le type est requis</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="mb-3">
+                <label class="form-label">Priorité <span class="text-danger">*</span></label>
+                <select class="form-select" formControlName="priorite">
+                  <option [ngValue]="null">-- Sélectionner --</option>
+                  @for (p of priorites; track p.id) {
+                    <option [ngValue]="p.id">{{ p.libelle }}</option>
+                  }
+                </select>
+                <div *ngIf="besoinForm.get('priorite')?.invalid && besoinForm.get('priorite')?.touched" class="text-danger mt-1">
+                  <small>La priorité est requise</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-12">
+              <div class="mb-3">
+                <label class="form-label">État <span class="text-danger">*</span></label>
+                <select class="form-select" formControlName="etat">
+                  <option [ngValue]="null">-- Sélectionner --</option>
+                  @for (e of etatlistes; track e.id) {
+                    <option [ngValue]="e.id">{{ e.libelle_etat }}</option>
+                  }
+                </select>
+                <div *ngIf="besoinForm.get('etat')?.invalid && besoinForm.get('etat')?.touched" class="text-danger mt-1">
+                  <small>L'état est requis</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="mb-3">
+                <label class="form-label">Date de début <span class="text-danger">*</span></label>
+                <input type="datetime-local" class="form-control" formControlName="date_debut" />
+                <div *ngIf="besoinForm.get('date_debut')?.invalid && besoinForm.get('date_debut')?.touched" class="text-danger mt-1">
+                  <small>La date de début est requise</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="mb-3">
+                <label class="form-label">Date de fin <span class="text-danger">*</span></label>
+                <input type="datetime-local" class="form-control" formControlName="date_fin" />
+                <div *ngIf="besoinForm.get('date_fin')?.invalid && besoinForm.get('date_fin')?.touched" class="text-danger mt-1">
+                  <small>La date de fin est requise</small>
+                </div>
+                <div *ngIf="besoinForm.hasError('datesIncoherentes') && besoinForm.get('date_fin')?.touched" class="text-danger mt-1">
+                  <small>La date de fin doit être postérieure à la date de début</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-12">
+              <div class="mb-3">
+                <label class="form-label">Description <span class="text-danger">*</span></label>
+                <textarea class="form-control" rows="3" formControlName="description"
+                  placeholder="Décrivez le besoin..."></textarea>
+                <div *ngIf="besoinForm.get('description')?.invalid && besoinForm.get('description')?.touched" class="text-danger mt-1">
+                  <small>La description est requise</small>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-12">
+              <div class="mb-3">
+                <label class="form-label">Commentaire</label>
+                <textarea class="form-control" rows="2" formControlName="commentaire"
+                  placeholder="Commentaire optionnel..."></textarea>
+              </div>
+            </div>
           </div>
 
           <div class="mb-3">
-            <label class="form-label">Pièces jointes (PDF, images, Word...)</label>
+            <label class="form-label">Pièces jointes (PDF, DOCX, JPG, PNG)</label>
 
-            <!--
-              autoProcessQueue: false → fichiers stockés dans rawFiles[]
-              Envoyés via FormData sous la clé documents[]
-              Django : request.FILES.getlist('documents[]')
-            -->
+            <!-- Fichiers conservés dans rawFiles[] puis envoyés sous la clé documents[] -->
             <dropzone
+              #dropzoneAjout
               class="dropzone"
               [config]="dropzoneConfig"
-              [message]="'Déposer vos fichiers ici ou cliquer pour sélectionner (PDF, images, DOCX)'"
+              [message]="'Déposer vos fichiers ici ou cliquer pour sélectionner'"
               (addedFile)="onFileAdded($event)"
-              (success)="onUploadSuccess($event)"
             ></dropzone>
 
-            <!-- ✅ Nouveaux fichiers sélectionnés (avant envoi) -->
-            @if (uploadedFiles.length > 0) {
+            <!-- Nouveaux fichiers sélectionnés (avant envoi) -->
+            @if (rawFiles.length > 0) {
               <div class="mt-2">
                 <small class="text-muted">Nouveaux fichiers à ajouter :</small>
                 <ul class="list-unstyled mb-0 mt-1">
-                  @for (file of uploadedFiles; track $index) {
+                  @for (file of rawFiles; track $index) {
                     <li class="mt-1">
                       <div class="border rounded p-2 d-flex align-items-center gap-2 bg-light">
-                        <span>{{ file.type?.startsWith('image/') ? '🖼️' : '📄' }}</span>
+                        <i class="bi" [ngClass]="file.type.startsWith('image/') ? 'bi-file-earmark-image' : 'bi-file-earmark-text'"></i>
                         <div class="flex-grow-1">
                           <span class="fw-medium">{{ file.name }}</span>
-                          <small class="text-muted ms-2">{{ (file.size / 1024).toFixed(1) }} Ko</small>
+                          <small class="text-muted ms-2">{{ (file.size / 1024) | number: '1.1-1' }} Ko</small>
                         </div>
-                        <button type="button" (click)="removeFile(file)" class="btn btn-sm btn-outline-danger">
+                        <button type="button" (click)="removeFile(file)" class="btn btn-sm btn-outline-danger" title="Retirer">
                           <i class="bi bi-x"></i>
                         </button>
                       </div>
@@ -308,7 +391,7 @@
               </div>
             }
 
-            <!-- ✅ Documents existants (en mode modification) -->
+            <!-- Documents existants (mode modification) -->
             @if (existingDocuments.length > 0) {
               <div class="mt-3">
                 <small class="text-muted fw-medium">Documents existants :</small>
@@ -316,17 +399,16 @@
                   @for (doc of existingDocuments; track doc.id) {
                     <li class="mt-1">
                       <div class="border rounded p-2 d-flex align-items-center gap-2">
-                        <span>{{ isImage(doc.document) ? '🖼️' : '📄' }}</span>
+                        <i class="bi" [ngClass]="isImage(doc.document) ? 'bi-file-earmark-image' : 'bi-file-earmark-text'"></i>
                         <div class="flex-grow-1">
-                          <a [href]="getFullUrl(doc.document)" target="_blank" class="text-decoration-none">
+                          <a [href]="getFullUrl(doc.document)" target="_blank" rel="noopener" class="text-decoration-none">
                             {{ getFileName(doc.document) }}
                           </a>
                         </div>
-                        <!-- Marquer pour suppression — sera supprimé à la sauvegarde -->
                         <button
                           type="button"
                           class="btn btn-sm btn-outline-danger"
-                          (click)="markDocumentForDeletion(doc.id)"
+                          (click)="markDocumentForDeletion(doc)"
                           title="Supprimer ce document"
                         >
                           <i class="bi bi-trash"></i>
@@ -338,85 +420,16 @@
               </div>
             }
 
-            <!-- ✅ Documents marqués pour suppression (avec possibilité d'annuler) -->
-            @if (docsToDelete.length > 0) {
-              <div class="mt-2 alert alert-warning py-2">
-                <small>
+            <!-- Documents marqués pour suppression (annulable) -->
+            @if (removedDocuments.length > 0) {
+              <div class="mt-2 alert alert-warning py-2 d-flex align-items-center gap-2">
+                <small class="flex-grow-1">
                   <i class="bi bi-exclamation-triangle me-1"></i>
-                  {{ docsToDelete.length }} document(s) seront supprimés à la sauvegarde.
+                  {{ removedDocuments.length }} document(s) seront supprimés à l'enregistrement.
                 </small>
+                <button type="button" class="btn btn-sm btn-light" (click)="restoreDocuments()">Annuler</button>
               </div>
             }
-          </div>
-
-
-
-          <div class="row">
-            <div class="col-lg-6">
-              <div class="mb-3">
-                <label class="form-label">Type de besoin <span class="text-danger">*</span></label>
-                <select class="form-select" formControlName="typebesoin">
-                  <option value="">-- Sélectionner --</option>
-                  @for (t of typebesoins; track t.id) {
-                    <option [value]="t.id">{{ t.libelle }}</option>
-                  }
-                </select>
-              </div>
-            </div>
-            <div class="col-lg-6">
-              <div class="mb-3">
-                <label class="form-label">Priorité <span class="text-danger">*</span></label>
-                <select class="form-select" formControlName="priorite">
-                  <option value="">-- Sélectionner --</option>
-                  @for (p of priorites; track p.id) {
-                    <option [value]="p.id">{{ p.libelle }}</option>
-                  }
-                </select>
-              </div>
-            </div>
-            <div class="col-lg-6">
-              <div class="mb-3">
-                <label class="form-label">État <span class="text-danger">*</span></label>
-                <select class="form-select" formControlName="etat">
-                  <option value="">-- Sélectionner --</option>
-                  @for (e of etatlistes; track e.id) {
-                    <option [value]="e.id">{{ e.libelle_etat }}</option>
-                  }
-                </select>
-              </div>
-            </div>
-            <div class="col-lg-6">
-              <div class="mb-3">
-                <label class="form-label">Date début <span class="text-danger">*</span></label>
-                <input type="datetime-local" class="form-control" formControlName="date_debut" />
-                <div *ngIf="besoinForm.get('date_debut')?.invalid && besoinForm.get('date_debut')?.touched" class="text-danger mt-1">
-                  <small>La date de début est requise</small>
-                </div>
-              </div>
-            </div>
-            <div class="col-lg-6">
-              <div class="mb-3">
-                <label class="form-label">Date fin <span class="text-danger">*</span></label>
-                <input type="datetime-local" class="form-control" formControlName="date_fin" />
-                <div *ngIf="besoinForm.get('date_fin')?.invalid && besoinForm.get('date_fin')?.touched" class="text-danger mt-1">
-                  <small>La date de fin est requise</small>
-                </div>
-              </div>
-            </div>
-            <div class="col-lg-12">
-              <div class="mb-3">
-                <label class="form-label">Description <span class="text-danger">*</span></label>
-                <textarea class="form-control" rows="3" formControlName="description"
-                  placeholder="Décrivez le besoin..."></textarea>
-              </div>
-            </div>
-            <div class="col-lg-12">
-              <div class="mb-3">
-                <label class="form-label">Commentaire</label>
-                <textarea class="form-control" rows="2" formControlName="commentaire"
-                  placeholder="Commentaire optionnel..."></textarea>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -425,8 +438,11 @@
             <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()">
               <i class="bi bi-x-lg me-1"></i> Fermer
             </button>
-            <button type="submit" class="btn btn-primary" id="add-btn" [disabled]="besoinForm.invalid">
-              Ajouter
+            <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+              @if (isSaving) {
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+              }
+              {{ isEdit ? 'Mettre à jour' : 'Ajouter' }}
             </button>
           </div>
         </div>
@@ -441,7 +457,7 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <button type="button" class="btn-close" (click)="deleteRecordModal?.hide()"></button>
+        <button type="button" class="btn-close" (click)="closeDeleteModal()"></button>
       </div>
       <div class="modal-body p-md-5">
         <div class="text-center">
@@ -449,16 +465,13 @@
             <i class="bi bi-trash display-5"></i>
           </div>
           <div class="mt-4">
-            <h4 class="mb-2">Êtes-vous sûr ?</h4>
-            <p class="text-muted fs-md mx-3 mb-0">
-              Voulez-vous vraiment supprimer
-              {{ checkedValGet && checkedValGet.length > 1 ? 'ces besoins' : 'ce besoin' }} ?
-            </p>
+            <h4 class="mb-2">Confirmer la suppression</h4>
+            <p class="text-muted fs-md mx-3 mb-0">{{ deleteMessage }}</p>
           </div>
         </div>
         <div class="d-flex gap-2 justify-content-center mt-4 pt-2 mb-2">
-          <button type="button" class="btn w-sm btn-light" (click)="deleteRecordModal?.hide()">Annuler</button>
-          <button type="button" class="btn w-sm btn-danger" (click)="confirmDelete(deleteID)">
+          <button type="button" class="btn w-sm btn-light" (click)="closeDeleteModal()">Annuler</button>
+          <button type="button" class="btn w-sm btn-danger" [disabled]="isDeleting" (click)="confirmDelete()">
             Oui, supprimer
           </button>
         </div>
@@ -483,8 +496,8 @@
             <p class="mb-0">{{ selectedBesoin?.reference }}</p>
           </div>
           <div class="col-md-6 mb-3">
-            <label class="form-label fw-medium">Date création :</label>
-            <p class="mb-0">{{ selectedBesoin?.created_at | date: 'dd/MM/yyyy HH:mm:ss' }}</p>
+            <label class="form-label fw-medium">Date de création :</label>
+            <p class="mb-0">{{ selectedBesoin?.created_at | date: 'dd/MM/yyyy HH:mm' }}</p>
           </div>
           <div class="col-md-12 mb-3">
             <label class="form-label fw-medium">Titre :</label>
@@ -492,9 +505,14 @@
           </div>
           <div class="col-md-12 mb-3">
             <label class="form-label fw-medium">Description :</label>
-            <p class="mb-0">{{ selectedBesoin?.description }}</p>
+            <p class="mb-0" style="white-space: pre-line;">{{ selectedBesoin?.description }}</p>
           </div>
-          <!-- ✅ Champs plats du BesoinSerializer -->
+          @if (selectedBesoin?.commentaire) {
+            <div class="col-md-12 mb-3">
+              <label class="form-label fw-medium">Commentaire :</label>
+              <p class="mb-0" style="white-space: pre-line;">{{ selectedBesoin?.commentaire }}</p>
+            </div>
+          }
           <div class="col-md-6 mb-3">
             <label class="form-label fw-medium">Type :</label>
             <p class="mb-0">{{ selectedBesoin?.typebesoin_libelle }}</p>
@@ -504,12 +522,12 @@
             <p class="mb-0">{{ selectedBesoin?.priorite_libelle }}</p>
           </div>
           <div class="col-md-6 mb-3">
-            <label class="form-label fw-medium">Date début :</label>
-            <p class="mb-0">{{ selectedBesoin?.date_debut | date: 'dd/MM/yyyy' }}</p>
+            <label class="form-label fw-medium">Date de début :</label>
+            <p class="mb-0">{{ selectedBesoin?.date_debut | date: 'dd/MM/yyyy HH:mm' }}</p>
           </div>
           <div class="col-md-6 mb-3">
-            <label class="form-label fw-medium">Date fin :</label>
-            <p class="mb-0">{{ selectedBesoin?.date_fin | date: 'dd/MM/yyyy' }}</p>
+            <label class="form-label fw-medium">Date de fin :</label>
+            <p class="mb-0">{{ selectedBesoin?.date_fin | date: 'dd/MM/yyyy HH:mm' }}</p>
           </div>
           <div class="col-md-6 mb-3">
             <label class="form-label fw-medium">État :</label>
@@ -521,59 +539,101 @@
           </div>
           <div class="col-md-6 mb-3">
             <label class="form-label fw-medium">Demandeur :</label>
-            <p class="mb-0">{{ selectedBesoin?.user_username }} {{ selectedBesoin?.user_nom }}</p>
+            <p class="mb-0">{{ selectedBesoin?.user_prenom }} {{ selectedBesoin?.user_nom }} ({{ selectedBesoin?.user_username }})</p>
           </div>
         </div>
 
-        <!-- Documents attachés avec suppression -->
-        <div *ngIf="selectedBesoin?.documents && selectedBesoin?.documents.length > 0" class="mt-3">
-          <p class="fw-medium mb-2">Documents attachés :</p>
-          <div class="row">
-            <div *ngFor="let doc of selectedBesoin?.documents" class="col-md-4 mb-3">
-              <div class="border rounded p-2">
-                <ng-container *ngIf="isImage(doc.document); else fileLink">
-                  <a [href]="getFullUrl(doc.document)" target="_blank">
-                    <img
-                      [src]="getFullUrl(doc.document)"
-                      class="img-fluid img-thumbnail d-block mb-2"
-                      alt="Document image"
-                      style="max-height: 150px; object-fit: cover; width: 100%;"
-                    />
-                  </a>
-                </ng-container>
-                <ng-template #fileLink>
-                  <a [href]="getFullUrl(doc.document)" target="_blank" class="d-block mb-2">
-                    📄 {{ getFileName(doc.document) }}
-                  </a>
-                </ng-template>
-                <!-- ✅ Bouton suppression document depuis modal détails -->
-                <button
-                  type="button"
-                  class="btn btn-sm btn-outline-danger w-100"
-                  (click)="deleteDocumentFromDetail(selectedBesoin.id, doc.id)"
-                >
-                  <i class="bi bi-trash me-1"></i> Supprimer
-                </button>
-              </div>
-            </div>
+        <!-- ── Services affectés ─────────────────────────── -->
+        <div class="mt-2">
+          <p class="fw-medium mb-2">Services affectés :</p>
+          @if (selectedBesoin?.services?.length) {
+            <ul class="list-unstyled mb-2">
+              @for (bs of selectedBesoin.services; track bs.id) {
+                <li class="d-flex align-items-center gap-2 border rounded p-2 mb-1">
+                  <span class="flex-grow-1">{{ libelleService(bs) }}</span>
+                  <small class="text-muted">{{ bs.date_creation | date: 'dd/MM/yyyy' }}</small>
+                  <button type="button" class="btn btn-sm btn-outline-danger" [disabled]="isSavingService"
+                    (click)="removeService(bs)" title="Retirer ce service">
+                    <i class="bi bi-x"></i>
+                  </button>
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="text-muted mb-2">Aucun service affecté.</p>
+          }
+          <div class="d-flex gap-2">
+            <select class="form-select" [(ngModel)]="selectedServiceId" [ngModelOptions]="{ standalone: true }">
+              <option [ngValue]="null">-- Choisir un service --</option>
+              @for (s of servicesDisponibles; track s.id) {
+                <option [ngValue]="s.id">{{ s.libelle_service }}</option>
+              }
+            </select>
+            <button type="button" class="btn btn-primary text-nowrap"
+              [disabled]="selectedServiceId == null || isSavingService" (click)="assignService()">
+              <i class="bi bi-plus-lg me-1"></i> Affecter
+            </button>
           </div>
         </div>
-        <!-- ✅ Zone d'ajout de nouveaux documents depuis modal détails -->
+
+        <!-- ── Documents attachés ───────────────────────── -->
+        @if (selectedBesoin?.documents?.length) {
+          <div class="mt-4">
+            <p class="fw-medium mb-2">Documents attachés :</p>
+            <div class="row">
+              @for (doc of selectedBesoin.documents; track doc.id) {
+                <div class="col-md-4 mb-3">
+                  <div class="border rounded p-2">
+                    @if (isImage(doc.document)) {
+                      <a [href]="getFullUrl(doc.document)" target="_blank" rel="noopener">
+                        <img
+                          [src]="getFullUrl(doc.document)"
+                          class="img-fluid img-thumbnail d-block mb-2"
+                          [alt]="getFileName(doc.document)"
+                          style="max-height: 150px; object-fit: cover; width: 100%;"
+                        />
+                      </a>
+                    } @else {
+                      <a [href]="getFullUrl(doc.document)" target="_blank" rel="noopener" class="d-block mb-2 text-break">
+                        <i class="bi bi-file-earmark-text me-1"></i>{{ getFileName(doc.document) }}
+                      </a>
+                    }
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-danger w-100"
+                      (click)="deleteDocumentFromDetail(doc.id)"
+                    >
+                      <i class="bi bi-trash me-1"></i> Supprimer
+                    </button>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- ── Ajout de documents ───────────────────────── -->
         <div class="mt-3">
-          <p class="fw-medium mb-2">Ajouter des documents :</p>
+          <p class="fw-medium mb-2">Ajouter des documents (PDF, DOCX, JPG, PNG) :</p>
           <dropzone
+            #dropzoneDetail
             class="dropzone"
             [config]="dropzoneConfigDetail"
             [message]="'Déposer des fichiers ici ou cliquer pour sélectionner'"
             (addedFile)="onDetailFileAdded($event)"
           ></dropzone>
           @if (detailRawFiles.length > 0) {
-            <div class="mt-2 d-flex gap-2 align-items-center">
+            <ul class="list-unstyled mt-2 mb-1">
+              @for (file of detailRawFiles; track $index) {
+                <li><small>{{ file.name }}</small></li>
+              }
+            </ul>
+            <div class="d-flex gap-2 align-items-center">
               <small class="text-muted">{{ detailRawFiles.length }} fichier(s) sélectionné(s)</small>
-              <button type="button" class="btn btn-sm btn-primary" (click)="uploadDocumentsToDetail()">
+              <button type="button" class="btn btn-sm btn-primary" [disabled]="isUploadingDetail" (click)="uploadDocumentsToDetail()">
                 <i class="bi bi-upload me-1"></i> Envoyer
               </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="detailRawFiles = []">
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="clearDetailFiles()">
                 Annuler
               </button>
             </div>

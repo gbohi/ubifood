@@ -1124,3 +1124,43 @@ class ConnexionTests(TestCase):
         r = APIClient().post('/api/api/token/', {'username': 'm001', 'password': 'faux'}, format='json')
         self.assertEqual(r.status_code, 401)
         self.assertEqual(r.data['detail'], 'Matricule ou mot de passe incorrect, ou compte désactivé.')
+
+
+class BesoinsTests(BaseAPITestCase):
+    def setUp(self):
+        super().setUp()
+        from .models import Etat, Priorite, Service, TypeBesoin
+        self.admin_client = self.client_pour(self.admin)
+        self.type = TypeBesoin.objects.create(libelle='Matériel')
+        self.etat = Etat.objects.create(libelle_etat='En attente')
+        self.prio = Priorite.objects.create(libelle='Haute')
+        self.service = Service.objects.create(libelle_service='Informatique')
+
+    def donnees(self, **kw):
+        d = {'titre': 'Écran', 'description': 'Écran cassé', 'typebesoin': self.type.id,
+             'etat': self.etat.id, 'priorite': self.prio.id,
+             'date_debut': '2026-10-20T08:00:00Z', 'date_fin': '2026-10-25T08:00:00Z'}
+        d.update(kw)
+        return d
+
+    def test_date_fin_avant_debut_refusee(self):
+        r = self.admin_client.post(f'{API}/besoins/', self.donnees(date_fin='2026-10-19T08:00:00Z'))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('date de fin', str(r.data))
+
+    def test_departement_affecte_une_seule_fois(self):
+        besoin = self.admin_client.post(f'{API}/besoins/', self.donnees()).data
+        url = f'{API}/besoin-services/'
+        self.assertEqual(self.admin_client.post(url, {'besoin': besoin['id'], 'service': self.service.id}).status_code, 201)
+        r = self.admin_client.post(url, {'besoin': besoin['id'], 'service': self.service.id})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('déjà affecté', str(r.data))
+
+    def test_document_type_interdit_refuse_sans_creer_le_besoin(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .models import Besoin
+        fichier = SimpleUploadedFile('virus.exe', b'MZ', content_type='application/octet-stream')
+        r = self.admin_client.post('/api/besoins/creer/', {**self.donnees(), 'documents[]': [fichier]},
+                                   format='multipart')
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(Besoin.objects.exists())

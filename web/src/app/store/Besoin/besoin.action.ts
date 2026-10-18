@@ -46,19 +46,6 @@ export const addbesoinDataFailure = createAction(
   props<{ error: string }>()
 );
 
-// ── Ajouter (sans authentification — FormData) ────────────────
-export const addNoAuthbesoinData = createAction(
-  '[Data] Add besoinData NoAuth',
-  props<{ newData: BesoinlistModel | FormData }>()
-);
-export const addNoAuthbesoinDataSuccess = createAction(
-  '[Data] Add besoinData NoAuth Success',
-  props<{ newData: BesoinlistModel | FormData }>()
-);
-export const addNoAuthbesoinDataFailure = createAction(
-  '[Data] Add besoinData NoAuth Failure',
-  props<{ error: string }>()
-);
 
 // ── Modifier ──────────────────────────────────────────────────
 export const updatebesoinData = createAction(

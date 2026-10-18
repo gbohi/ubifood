@@ -13,7 +13,6 @@ import { AccountRoutingModule } from './account-routing.module';
 // Component
 import { LoginComponent } from './login/login.component';
 import { MotDePasseOublieComponent } from './mot-de-passe-oublie/mot-de-passe-oublie.component';
-import { SignalerUneAnomalieComponent } from './signaler-une-anomalie/signaler-une-anomalie.component';
 
 const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
   // Change this to your upload POST address:
@@ -25,8 +24,7 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
 @NgModule({
   declarations: [
     LoginComponent,
-    MotDePasseOublieComponent,
-    SignalerUneAnomalieComponent
+    MotDePasseOublieComponent
   ],
   imports: [
     CommonModule,

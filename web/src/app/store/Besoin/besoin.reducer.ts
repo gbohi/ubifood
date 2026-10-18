@@ -3,7 +3,6 @@
 import { Action, createReducer, on } from '@ngrx/store';
 import {
   addbesoinDataSuccess,
-  addNoAuthbesoinDataSuccess,
   deletebesoinSuccess,
   deletemultiplebesoinSuccess,
   fetchbesoinData,
@@ -68,7 +67,6 @@ export const BesoinReducer = createReducer(
   })),
 
   on(addbesoinDataSuccess,       (state) => ({ ...state, error: null })),
-  on(addNoAuthbesoinDataSuccess, (state) => ({ ...state, error: null })),
   on(updatebesoinDataSuccess,    (state) => ({ ...state, error: null })),
   on(deletebesoinSuccess,        (state) => ({ ...state, error: null })),
   on(deletemultiplebesoinSuccess,(state) => ({ ...state, error: null })),

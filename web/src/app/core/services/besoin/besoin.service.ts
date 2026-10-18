@@ -109,11 +109,6 @@ export class BesoinService {
     );
   }
 
-  // ── Créer depuis « Signaler une anomalie » (même endpoint) ─
-  createNoAuthBesoin(formData: FormData): Observable<any> {
-    return this.createBesoinWithDocuments(formData);
-  }
-
   // ── Mettre à jour ─────────────────────────────────────────
   updateBesoin(
     besoin: BesoinlistModel

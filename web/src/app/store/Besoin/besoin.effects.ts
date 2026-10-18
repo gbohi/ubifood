@@ -1,7 +1,7 @@
 // src/app/store/Besoin/besoin.effects.ts
 
 import { Injectable } from '@angular/core';
-import { of } from 'rxjs';
+import { Observable, of } from 'rxjs';
 import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { BesoinService } from 'src/app/core/services/besoin/besoin.service';
@@ -9,9 +9,6 @@ import {
   addbesoinData,
   addbesoinDataFailure,
   addbesoinDataSuccess,
-  addNoAuthbesoinData,
-  addNoAuthbesoinDataFailure,
-  addNoAuthbesoinDataSuccess,
   deletebesoinData,
   deletebesoinFailure,
   deletebesoinSuccess,
@@ -81,8 +78,8 @@ export class BesoinEffects {
       ofType(addbesoinData),
       mergeMap(({ newData }) =>
         (newData instanceof FormData
-          ? this.besoinService.createBesoinWithDocuments(newData)
-          : this.besoinService.createBesoin(newData)
+          ? this.besoinService.createBesoinWithDocuments(newData) as Observable<any>
+          : this.besoinService.createBesoin(newData) as Observable<any>
         ).pipe(
           map((response) => addbesoinDataSuccess({ newData: response })),
           catchError((error) =>
@@ -98,21 +95,6 @@ export class BesoinEffects {
     this.actions$.pipe(
       ofType(addbesoinDataSuccess),
       map(() => fetchbesoinData({ page: 1, search: this.besoinService.getCurrentSearch() }))
-    )
-  );
-
-  // ── Ajouter (« Signaler une anomalie » — FormData) ──────────
-  addNoAuthData$ = createEffect(() =>
-    this.actions$.pipe(
-      ofType(addNoAuthbesoinData),
-      mergeMap(({ newData }) =>
-        this.besoinService.createNoAuthBesoin(newData as FormData).pipe(
-          map((response) => addNoAuthbesoinDataSuccess({ newData: response })),
-          catchError((error) =>
-            of(addNoAuthbesoinDataFailure({ error: message(error, "Erreur lors de l'ajout du besoin") }))
-          )
-        )
-      )
     )
   );
 

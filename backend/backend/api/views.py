@@ -1036,12 +1036,9 @@ class BesoinViewSet(BaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        created = []
-        for file in files:
-            doc = BesoinDocument.objects.create(besoin=besoin, document=file)
-            created.append(BesoinDocumentSerializer(doc).data)
-
-        return Response(created, status=status.HTTP_201_CREATED)
+        with transaction.atomic():
+            docs = enregistrer_documents_besoin(besoin, files)
+        return Response(BesoinDocumentSerializer(docs, many=True).data, status=status.HTTP_201_CREATED)
 
     # ── ✅ Supprimer un document rattaché à un besoin ─────────
     # DELETE /api/api/besoins/{id}/supprimer-document/?document_id=<id>

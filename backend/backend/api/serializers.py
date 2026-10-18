@@ -497,6 +497,20 @@ class BesoinServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = BesoinService
         fields = '__all__'
+        # Date d'affectation : renseignée par le serveur si absente
+        extra_kwargs = {'date_creation': {'required': False}}
+
+    def validate(self, attrs):
+        besoin  = attrs.get('besoin', getattr(self.instance, 'besoin', None))
+        service = attrs.get('service', getattr(self.instance, 'service', None))
+        doublon = BesoinService.objects.filter(besoin=besoin, service=service)
+        if self.instance is not None:
+            doublon = doublon.exclude(pk=self.instance.pk)
+        if besoin and service and doublon.exists():
+            raise serializers.ValidationError("Ce département est déjà affecté à ce besoin.")
+        if self.instance is None and not attrs.get('date_creation'):
+            attrs['date_creation'] = timezone.now()
+        return attrs
 
 
 class BesoinDocumentSerializer(serializers.ModelSerializer):
@@ -509,6 +523,22 @@ class BesoinDocumentUploadSerializer(serializers.ModelSerializer):
     class Meta:
         model  = BesoinDocument
         fields = ['document']
+
+
+def _verifier_dates_besoin(serializer, attrs):
+    debut = attrs.get('date_debut', getattr(serializer.instance, 'date_debut', None))
+    fin   = attrs.get('date_fin', getattr(serializer.instance, 'date_fin', None))
+    if debut and fin and fin < debut:
+        raise serializers.ValidationError(
+            {'date_fin': "La date de fin doit être postérieure à la date de début."})
+    return attrs
+
+
+def enregistrer_documents_besoin(besoin, fichiers):
+    """Contrôle chaque fichier (extension, comme le modèle) avant de l'attacher."""
+    for f in fichiers:
+        BesoinDocumentUploadSerializer(data={'document': f}).is_valid(raise_exception=True)
+    return [BesoinDocument.objects.create(besoin=besoin, document=f) for f in fichiers]
 
 
 class BesoinSerializer(serializers.ModelSerializer):
@@ -534,6 +564,9 @@ class BesoinSerializer(serializers.ModelSerializer):
         extra_kwargs = {'user': {'required': False}}
         read_only_fields = ['reference', 'user_created', 'user_updated']
 
+    def validate(self, attrs):
+        return _verifier_dates_besoin(self, attrs)
+
 
 class BesoinWithDocumentsSerializer(serializers.ModelSerializer):
     """
@@ -550,15 +583,17 @@ class BesoinWithDocumentsSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {'user': {'required': False}}
 
+    def validate(self, attrs):
+        return _verifier_dates_besoin(self, attrs)
+
     def create(self, validated_data):
-        # ✅ La référence est générée par Besoin.save() : UBS-{annee}-{pk:06d}
-        besoin = Besoin.objects.create(**validated_data)
-
-        # Attacher les documents envoyés sous la clé documents[]
-        files = self.context['request'].FILES.getlist('documents[]')
-        for file in files:
-            BesoinDocument.objects.create(besoin=besoin, document=file)
-
+        from django.db import transaction
+        # Tout ou rien : un fichier refusé n'enregistre pas le besoin
+        with transaction.atomic():
+            # La référence est générée par Besoin.save() : UBS-{annee}-{pk:06d}
+            besoin = Besoin.objects.create(**validated_data)
+            # Documents envoyés sous la clé documents[]
+            enregistrer_documents_besoin(besoin, self.context['request'].FILES.getlist('documents[]'))
         return besoin
 
 # ============================================================
