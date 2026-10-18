@@ -79,10 +79,24 @@ class _CommandesScreenState extends State<CommandesScreen>
         ),
       ),
       body: Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
-        if (cmdProv.isLoading) {
+        // Squelettes uniquement au premier chargement (liste vide) :
+        // une action (annulation) ne remplace jamais la liste.
+        if (cmdProv.listLoading && cmdProv.mesCommandes.isEmpty) {
           return ListView(
               padding: const EdgeInsets.all(16),
               children: List.generate(4, (_) => const ShimmerCard()));
+        }
+        if (cmdProv.listError != null && cmdProv.mesCommandes.isEmpty) {
+          return EmptyState(
+            icon: Icons.cloud_off_rounded,
+            title: 'Chargement impossible',
+            subtitle: cmdProv.listError,
+            action: ElevatedButton.icon(
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Réessayer'),
+              onPressed: () => cmdProv.loadMesCommandes(),
+            ),
+          );
         }
         return TabBarView(
           controller: _tabs,
@@ -111,20 +125,40 @@ class _CommandesList extends StatelessWidget {
   final List<Commande> commandes;
   const _CommandesList({required this.commandes});
 
+  Future<void> _recharger(BuildContext context) => Future.wait([
+        context.read<CommandeProvider>().loadMesCommandes(),
+        context.read<FacturationProvider>().charger(),
+      ]);
+
   @override
   Widget build(BuildContext context) {
     if (commandes.isEmpty) {
-      return EmptyState(
-        icon: Icons.receipt_long_outlined,
-        title: 'Aucune commande',
-        subtitle: 'Aucune commande dans cette catégorie',
+      return RefreshIndicator(
+        onRefresh: () => _recharger(context),
+        child: LayoutBuilder(
+          builder: (_, constraints) => SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: const EmptyState(
+                icon: Icons.receipt_long_outlined,
+                title: 'Aucune commande',
+                subtitle: 'Aucune commande dans cette catégorie',
+              ),
+            ),
+          ),
+        ),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: commandes.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, i) => _CommandeCard(commande: commandes[i]),
+    return RefreshIndicator(
+      onRefresh: () => _recharger(context),
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        itemCount: commandes.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (_, i) => _CommandeCard(commande: commandes[i]),
+      ),
     );
   }
 }
@@ -250,8 +284,9 @@ class _CommandeCard extends StatelessWidget {
                 value: commande.menuDetail!.typeEquipeLibelle,
               ),
 
-            // ── Badge délai ───────────────────────────────────
-            if (commande.statut == StatutCommande.enAttente) ...[
+            // ── Badge délai (le dépassement est indiqué par le bouton) ──
+            if (commande.statut == StatutCommande.enAttente &&
+                peutAnnuler) ...[
               const SizedBox(height: 10),
               Container(
                 width: double.infinity,
@@ -326,13 +361,17 @@ class _CommandeCard extends StatelessWidget {
                                 ? AppColors.darkTextSecondary
                                 : AppColors.lightTextSecondary),
                         const SizedBox(width: 6),
-                        Text('Annulation impossible — délai de 48h dépassé',
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: isDark
-                                    ? AppColors.darkTextSecondary
-                                    : AppColors.lightTextSecondary,
-                                fontWeight: FontWeight.w500)),
+                        Flexible(
+                          child: Text(
+                              'Annulation impossible — délai de 48h dépassé',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
+                                  fontWeight: FontWeight.w500)),
+                        ),
                       ]),
                 ),
             ],
@@ -386,15 +425,30 @@ class _CommandeCard extends StatelessWidget {
                   ),
                   onPressed: () async {
                     Navigator.pop(dialogCtx);
+                    // Capturés avant l'await : la carte peut disparaître
+                    // (changement d'onglet/statut) pendant l'annulation.
+                    final messenger = ScaffoldMessenger.of(context);
+                    final facturation = context.read<FacturationProvider>();
                     final ok = await cmdProv.annuler(commande.id);
-                    if (ok && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    if (ok) {
+                      facturation.charger();
+                      messenger.showSnackBar(SnackBar(
                         content: const Row(children: [
                           Icon(Icons.check_rounded, color: Colors.white),
                           SizedBox(width: 8),
                           Text('Commande annulée'),
                         ]),
                         backgroundColor: AppColors.warning,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        margin: const EdgeInsets.all(12),
+                      ));
+                    } else {
+                      messenger.showSnackBar(SnackBar(
+                        content: Text(cmdProv.error ??
+                            'Impossible d\'annuler la commande'),
+                        backgroundColor: AppColors.error,
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10)),

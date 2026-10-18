@@ -44,8 +44,14 @@ class _FacturationScreenState extends State<FacturationScreen>
     super.dispose();
   }
 
+  Future<void> _recharger() => Future.wait([
+        context.read<CommandeProvider>().loadMesCommandes(),
+        context.read<FacturationProvider>().charger(),
+      ]);
+
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final canPop = Navigator.of(context).canPop();
     return Scaffold(
       appBar: AppBar(
@@ -64,16 +70,15 @@ class _FacturationScreenState extends State<FacturationScreen>
             IconButton(
               icon: const Icon(Icons.refresh_rounded),
               tooltip: 'Actualiser',
-              onPressed: () => Future.wait([
-                context.read<CommandeProvider>().loadMesCommandes(),
-                context.read<FacturationProvider>().charger(),
-              ]),
+              onPressed: _recharger,
             ),
         ],
         bottom: TabBar(
           controller: _tabs,
           labelColor: AppColors.accent,
-          unselectedLabelColor: AppColors.lightTextSecondary,
+          unselectedLabelColor: isDark
+              ? AppColors.darkTextSecondary
+              : AppColors.lightTextSecondary,
           indicatorColor: AppColors.accent,
           indicatorSize: TabBarIndicatorSize.label,
           tabs: const [
@@ -88,15 +93,29 @@ class _FacturationScreenState extends State<FacturationScreen>
       ),
       body: Consumer2<CommandeProvider, FacturationProvider>(
           builder: (_, cmdProv, tarifProv, __) {
-        if (cmdProv.isLoading) {
+        // Squelettes uniquement au premier chargement (liste vide)
+        if (cmdProv.listLoading && cmdProv.mesCommandes.isEmpty) {
           return ListView(
               padding: const EdgeInsets.all(16),
               children: List.generate(4, (_) => const ShimmerCard()));
+        }
+        if (cmdProv.listError != null && cmdProv.mesCommandes.isEmpty) {
+          return EmptyState(
+            icon: Icons.cloud_off_rounded,
+            title: 'Chargement impossible',
+            subtitle: cmdProv.listError,
+            action: ElevatedButton.icon(
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Réessayer'),
+              onPressed: _recharger,
+            ),
+          );
         }
         return TabBarView(
           controller: _tabs,
           children: [
             _HistoriqueTab(
+              onRefresh: _recharger,
               commandes: cmdProv.mesCommandes,
               dateDebut: _dateDebut,
               dateFin: _dateFin,
@@ -108,6 +127,7 @@ class _FacturationScreenState extends State<FacturationScreen>
               }),
             ),
             _RecapMensuelTab(
+              onRefresh: _recharger,
               commandes: cmdProv.mesCommandes,
               tarifProvider: tarifProv,
             ),
@@ -123,6 +143,7 @@ class _FacturationScreenState extends State<FacturationScreen>
 // ══════════════════════════════════════════════════════════════
 
 class _HistoriqueTab extends StatelessWidget {
+  final Future<void> Function() onRefresh;
   final List<Commande> commandes;
   final DateTime? dateDebut;
   final DateTime? dateFin;
@@ -130,6 +151,7 @@ class _HistoriqueTab extends StatelessWidget {
   final void Function(DateTime?, DateTime?, String?) onFiltrer;
 
   const _HistoriqueTab({
+    required this.onRefresh,
     required this.commandes,
     required this.dateDebut,
     required this.dateFin,
@@ -151,8 +173,7 @@ class _HistoriqueTab extends StatelessWidget {
       // Agence
       if (agenceFiltre != null && agenceFiltre!.isNotEmpty) {
         final agence = c.menuDetail?.agenceNom ?? '';
-        if (!agence.toLowerCase().contains(agenceFiltre!.toLowerCase()))
-          return false;
+        if (agence != agenceFiltre) return false;
       }
       return true;
     }).toList();
@@ -168,6 +189,7 @@ class _HistoriqueTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final filtrees = _commandesFiltrees;
     final hasFiltre = dateDebut != null ||
         dateFin != null ||
@@ -189,8 +211,11 @@ class _HistoriqueTab extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Row(children: [
             Text('${filtrees.length} résultat(s)',
-                style: const TextStyle(
-                    fontSize: 12, color: AppColors.lightTextSecondary)),
+                style: TextStyle(
+                    fontSize: 12,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary)),
             const Spacer(),
             TextButton.icon(
               icon: const Icon(Icons.clear_rounded, size: 14),
@@ -203,21 +228,27 @@ class _HistoriqueTab extends StatelessWidget {
 
       // ── Liste ─────────────────────────────────────────────
       Expanded(
-        child: filtrees.isEmpty
-            ? EmptyState(
-                icon: Icons.receipt_long_outlined,
-                title: 'Aucune commande',
-                subtitle: hasFiltre
-                    ? 'Aucun résultat pour ces filtres'
-                    : 'Vous n\'avez pas encore commandé',
-              )
-            : ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: filtrees.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (_, i) =>
-                    _CommandeHistoriqueCard(commande: filtrees[i]),
-              ),
+        child: RefreshIndicator(
+          onRefresh: onRefresh,
+          child: filtrees.isEmpty
+              ? _ScrollableEmpty(
+                  child: EmptyState(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'Aucune commande',
+                    subtitle: hasFiltre
+                        ? 'Aucun résultat pour ces filtres'
+                        : 'Vous n\'avez pas encore commandé',
+                  ),
+                )
+              : ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filtrees.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (_, i) =>
+                      _CommandeHistoriqueCard(commande: filtrees[i]),
+                ),
+        ),
       ),
     ]);
   }
@@ -267,7 +298,12 @@ class _FiltreBarre extends StatelessWidget {
                 firstDate: DateTime(2020),
                 lastDate: DateTime.now().add(const Duration(days: 365)),
               );
-              if (d != null) onFiltrer(d, dateFin, agenceFiltre);
+              if (d == null) return;
+              if (dateFin != null && d.isAfter(dateFin!)) {
+                if (context.mounted) _periodeInvalide(context);
+                return;
+              }
+              onFiltrer(d, dateFin, agenceFiltre);
             },
           )),
           const SizedBox(width: 8),
@@ -284,7 +320,12 @@ class _FiltreBarre extends StatelessWidget {
                 firstDate: DateTime(2020),
                 lastDate: DateTime.now().add(const Duration(days: 365)),
               );
-              if (d != null) onFiltrer(dateDebut, d, agenceFiltre);
+              if (d == null) return;
+              if (dateDebut != null && d.isBefore(dateDebut!)) {
+                if (context.mounted) _periodeInvalide(context);
+                return;
+              }
+              onFiltrer(dateDebut, d, agenceFiltre);
             },
           )),
         ]),
@@ -319,6 +360,35 @@ class _FiltreBarre extends StatelessWidget {
   }
 }
 
+void _periodeInvalide(BuildContext context) {
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: const Text('La date de début doit précéder la date de fin'),
+    backgroundColor: AppColors.error,
+    behavior: SnackBarBehavior.floating,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    margin: const EdgeInsets.all(12),
+  ));
+}
+
+/// Permet le « tirer pour actualiser » même quand la liste est vide.
+class _ScrollableEmpty extends StatelessWidget {
+  final Widget child;
+  const _ScrollableEmpty({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (_, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 class _DateChip extends StatelessWidget {
   final String label;
   final bool active;
@@ -328,28 +398,33 @@ class _DateChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeColor = isDark ? AppColors.accent : AppColors.primary;
+    final secColor =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color:
-              active ? AppColors.primary.withOpacity(0.08) : Colors.transparent,
+          color: active ? activeColor.withOpacity(0.08) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-              color: active ? AppColors.primary : AppColors.lightBorder),
+          border: Border.all(color: active ? activeColor : borderColor),
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.calendar_today_rounded,
-              size: 13,
-              color: active ? AppColors.primary : AppColors.lightTextSecondary),
+              size: 13, color: active ? activeColor : secColor),
           const SizedBox(width: 6),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 12,
-                  color:
-                      active ? AppColors.primary : AppColors.lightTextSecondary,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
+          Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: active ? activeColor : secColor,
+                    fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
+          ),
         ]),
       ),
     );
@@ -365,6 +440,7 @@ class _AgenceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -374,13 +450,20 @@ class _AgenceChip extends StatelessWidget {
           color: active ? AppColors.accent : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: active ? AppColors.accent : AppColors.lightBorder),
+              color: active
+                  ? AppColors.accent
+                  : (isDark ? AppColors.darkBorder : AppColors.lightBorder)),
         ),
         child: Text(label,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: active ? AppColors.primary : AppColors.lightTextSecondary,
+              // Navy sur fond vert (actif) ; sinon couleur secondaire du thème
+              color: active
+                  ? AppColors.primary
+                  : (isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary),
             )),
       ),
     );
@@ -400,6 +483,8 @@ class _CommandeHistoriqueCard extends StatelessWidget {
         ? DateTime.tryParse(commande.menuDetail!.dateMenu)
         : null;
     final dateCmde = DateTime.tryParse(commande.dateCommande);
+    final secColor =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -443,23 +528,19 @@ class _CommandeHistoriqueCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 2),
           Row(children: [
-            Icon(Icons.calendar_today_rounded,
-                size: 11, color: AppColors.lightTextSecondary),
+            Icon(Icons.calendar_today_rounded, size: 11, color: secColor),
             const SizedBox(width: 3),
             Text(
                 dateMenu != null
                     ? DateFormat('dd/MM/yyyy').format(dateMenu)
                     : '—',
-                style: const TextStyle(
-                    fontSize: 11, color: AppColors.lightTextSecondary)),
+                style: TextStyle(fontSize: 11, color: secColor)),
             const SizedBox(width: 10),
             if (dateCmde != null) ...[
-              Icon(Icons.access_time_rounded,
-                  size: 11, color: AppColors.lightTextSecondary),
+              Icon(Icons.access_time_rounded, size: 11, color: secColor),
               const SizedBox(width: 3),
               Text(DateFormat('HH:mm').format(dateCmde),
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.lightTextSecondary)),
+                  style: TextStyle(fontSize: 11, color: secColor)),
             ],
           ]),
         ])),
@@ -475,10 +556,12 @@ class _CommandeHistoriqueCard extends StatelessWidget {
 // ══════════════════════════════════════════════════════════════
 
 class _RecapMensuelTab extends StatelessWidget {
+  final Future<void> Function() onRefresh;
   final List<Commande> commandes;
   final FacturationProvider tarifProvider;
 
   const _RecapMensuelTab({
+    required this.onRefresh,
     required this.commandes,
     required this.tarifProvider,
   });
@@ -504,34 +587,53 @@ class _RecapMensuelTab extends StatelessWidget {
     final grouped = _parMois;
 
     if (grouped.isEmpty) {
-      return EmptyState(
-        icon: Icons.account_balance_wallet_outlined,
-        title: 'Aucune commande',
-        subtitle: 'Votre récapitulatif apparaîtra ici',
+      return RefreshIndicator(
+        onRefresh: onRefresh,
+        child: const _ScrollableEmpty(
+          child: EmptyState(
+            icon: Icons.account_balance_wallet_outlined,
+            title: 'Aucune commande',
+            subtitle: 'Votre récapitulatif apparaîtra ici',
+          ),
+        ),
       );
     }
 
     if (tarifProvider.error != null) {
-      return EmptyState(
-        icon: Icons.price_change_outlined,
-        title: 'Facturation indisponible',
-        subtitle: 'Impossible de charger vos montants.\n'
-            'Tirez vers le bas pour réessayer.',
+      return RefreshIndicator(
+        onRefresh: onRefresh,
+        child: _ScrollableEmpty(
+          child: EmptyState(
+            icon: Icons.price_change_outlined,
+            title: 'Facturation indisponible',
+            subtitle: '${tarifProvider.error}\n'
+                'Tirez vers le bas pour réessayer.',
+            action: ElevatedButton.icon(
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Réessayer'),
+              onPressed: () => tarifProvider.charger(),
+            ),
+          ),
+        ),
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: grouped.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 16),
-      itemBuilder: (_, i) {
-        final entry = grouped.entries.elementAt(i);
-        return _MoisCard(
-          moisKey: entry.key,
-          commandes: entry.value,
-          tarifProvider: tarifProvider,
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        itemCount: grouped.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 16),
+        itemBuilder: (_, i) {
+          final entry = grouped.entries.elementAt(i);
+          return _MoisCard(
+            moisKey: entry.key,
+            commandes: entry.value,
+            tarifProvider: tarifProvider,
+          );
+        },
+      ),
     );
   }
 }
@@ -576,6 +678,9 @@ class _MoisCardState extends State<_MoisCard> {
         .where((c) => c.statut == StatutCommande.retiree)
         .length;
     final totalMois = widget.tarifProvider.calculerTotal(widget.commandes);
+    final secColor =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final primaryText = isDark ? AppColors.darkTextPrimary : AppColors.primary;
 
     return Container(
       decoration: BoxDecoration(
@@ -613,7 +718,9 @@ class _MoisCardState extends State<_MoisCard> {
                             _moisLibelle.substring(1),
                         style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 2),
-                    Text('$nbCmdes repas • $nbEn en attente • $nbRet retirés',
+                    Text(
+                        '$nbCmdes repas • $nbEn en attente • '
+                        '$nbRet ${nbRet > 1 ? 'retirés' : 'retiré'}',
                         style: Theme.of(context).textTheme.bodySmall),
                   ])),
               // ✅ Total à payer
@@ -629,8 +736,7 @@ class _MoisCardState extends State<_MoisCard> {
                     widget.tarifProvider.estCloture(widget.commandes)
                         ? 'Facture clôturée'
                         : 'Montant provisoire',
-                    style: const TextStyle(
-                        fontSize: 10, color: AppColors.lightTextSecondary)),
+                    style: TextStyle(fontSize: 10, color: secColor)),
               ]),
             ]),
           ),
@@ -675,7 +781,7 @@ class _MoisCardState extends State<_MoisCard> {
                   _expanded
                       ? Icons.keyboard_arrow_up_rounded
                       : Icons.keyboard_arrow_down_rounded,
-                  color: AppColors.lightTextSecondary),
+                  color: secColor),
             ),
           ]),
         ),
@@ -728,9 +834,7 @@ class _MoisCardState extends State<_MoisCard> {
                         style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: montant > 0
-                                ? AppColors.primary
-                                : AppColors.lightTextSecondary)),
+                            color: montant > 0 ? primaryText : secColor)),
                     const SizedBox(height: 3),
                     StatutBadge(statut: c.statut),
                   ]),
@@ -750,11 +854,11 @@ class _MoisCardState extends State<_MoisCard> {
             child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('TOTAL À PAYER CE MOIS',
+                  Text('TOTAL À PAYER CE MOIS',
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.primary)),
+                          color: primaryText)),
                   Text(_fmt(totalMois),
                       style: const TextStyle(
                           fontSize: 16,
@@ -774,16 +878,32 @@ class _MoisCardState extends State<_MoisCard> {
     final user = auth.user;
     final totalMois = widget.tarifProvider.calculerTotal(widget.commandes);
 
-    String fmtM(double m) =>
-        m > 0 ? '${NumberFormat('#,##0', 'fr_FR').format(m)} FCFA' : 'N/D';
+    // Helvetica (police PDF par défaut) n'a ni « — », ni « • », ni les
+    // espaces insécables qu'insère le format fr_FR des montants.
+    String pdfSafe(String t) => t
+        .replaceAll('\u2014', '-')
+        .replaceAll('\u2022', '-')
+        .replaceAll('\u202F', ' ')
+        .replaceAll('\u00A0', ' ');
+
+    String fmtM(double m) => pdfSafe(
+        m > 0 ? '${NumberFormat('#,##0', 'fr_FR').format(m)} FCFA' : 'N/D');
 
     final pdf = pw.Document();
-    pdf.addPage(pw.Page(
+    // MultiPage : le tableau se poursuit sur plusieurs pages si besoin
+    pdf.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(32),
-      build: (_) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      footer: (_) => pw.Column(children: [
+        pw.Divider(color: PdfColors.grey300),
+        pw.Center(
+            child: pw.Text(
+                'Document généré par UbiFood - ${DateTime.now().year}',
+                style: const pw.TextStyle(
+                    fontSize: 8, color: PdfColors.grey500))),
+      ]),
+      build: (_) => [
           // En-tête
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -791,7 +911,7 @@ class _MoisCardState extends State<_MoisCard> {
               pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('UbiFood — Cantine',
+                    pw.Text('UbiFood - Cantine',
                         style: pw.TextStyle(
                             fontSize: 20,
                             fontWeight: pw.FontWeight.bold,
@@ -804,7 +924,7 @@ class _MoisCardState extends State<_MoisCard> {
               pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Text(moisLabel,
+                    pw.Text(pdfSafe(moisLabel),
                         style: pw.TextStyle(
                             fontSize: 16,
                             fontWeight: pw.FontWeight.bold,
@@ -827,16 +947,17 @@ class _MoisCardState extends State<_MoisCard> {
             child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text('Employé : ${user?.fullName ?? '—'}',
+                  pw.Text(pdfSafe('Employé : ${user?.fullName ?? '-'}'),
                       style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold, fontSize: 12)),
                   pw.SizedBox(height: 3),
-                  pw.Text('Badge : ${user?.username ?? '—'}',
+                  pw.Text(pdfSafe('Badge : ${user?.username ?? '-'}'),
                       style: const pw.TextStyle(
                           fontSize: 11, color: PdfColors.grey700)),
                   pw.SizedBox(height: 3),
                   pw.Text(
-                      'Catégorie : ${user?.derniereCategoriesalarieLibelle ?? '—'}',
+                      pdfSafe(
+                          'Catégorie : ${user?.derniereCategoriesalarieLibelle ?? '-'}'),
                       style: const pw.TextStyle(
                           fontSize: 11, color: PdfColors.grey700)),
                 ]),
@@ -886,16 +1007,16 @@ class _MoisCardState extends State<_MoisCard> {
                 return pw.TableRow(
                   decoration: pw.BoxDecoration(color: bg),
                   children: [
-                    c.platDetail?.nom ?? '—',
-                    c.menuDetail?.agenceNom ?? '—',
-                    d != null ? DateFormat('dd/MM/yyyy').format(d) : '—',
+                    c.platDetail?.nom ?? '-',
+                    c.menuDetail?.agenceNom ?? '-',
+                    d != null ? DateFormat('dd/MM/yyyy').format(d) : '-',
                     c.statut.label,
                     fmtM(montant),
                   ]
                       .map((cell) => pw.Padding(
                             padding: const pw.EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 4),
-                            child: pw.Text(cell,
+                            child: pw.Text(pdfSafe(cell),
                                 style: const pw.TextStyle(fontSize: 8)),
                           ))
                       .toList(),
@@ -927,15 +1048,7 @@ class _MoisCardState extends State<_MoisCard> {
                           color: const PdfColor.fromInt(0xFF5BD988))),
                 ]),
           ),
-          pw.Spacer(),
-          pw.Divider(color: PdfColors.grey300),
-          pw.Center(
-              child: pw.Text(
-                  'Document généré par UbiFood • ${DateTime.now().year}',
-                  style: const pw.TextStyle(
-                      fontSize: 8, color: PdfColors.grey500))),
-        ],
-      ),
+      ],
     ));
 
     await Printing.layoutPdf(

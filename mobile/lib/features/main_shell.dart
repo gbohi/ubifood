@@ -158,8 +158,10 @@ class _MainShellState extends State<MainShell> {
                     IconButton(
                       icon: const Icon(Icons.refresh_rounded),
                       tooltip: 'Actualiser',
-                      onPressed: () =>
-                          context.read<CommandeProvider>().loadMesCommandes(),
+                      onPressed: () {
+                        context.read<CommandeProvider>().loadMesCommandes();
+                        context.read<FacturationProvider>().charger();
+                      },
                     ),
                 ],
               ),
@@ -266,9 +268,7 @@ class _AppDrawer extends StatelessWidget {
                         Border.all(color: AppColors.accent.withOpacity(0.4))),
                 child: Center(
                     child: Text(
-                  user?.nom.isNotEmpty == true
-                      ? user!.nom[0].toUpperCase()
-                      : 'U',
+                  user?.initiales ?? 'U',
                   style: const TextStyle(
                       color: Colors.white,
                       fontSize: 22,
@@ -294,7 +294,12 @@ class _AppDrawer extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                     border:
                         Border.all(color: AppColors.accent.withOpacity(0.4))),
-                child: Text(isGestionnaire ? '⚡ Gestionnaire' : '👤 Employé',
+                child: Text(
+                    user?.isAdmin == true
+                        ? '🛡️ Administrateur'
+                        : isGestionnaire
+                            ? '⚡ Gestionnaire'
+                            : '👤 Employé',
                     style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,

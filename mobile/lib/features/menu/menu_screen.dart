@@ -54,11 +54,12 @@ class _MenuScreenState extends State<MenuScreen> {
       // Menus de toutes les agences : un agent peut commander là où il se
       // trouve ; son agence est seulement pré-sélectionnée dans le filtre.
       await context.read<MenuProvider>().loadMenus();
+      if (!mounted) return;
       context.read<CommandeProvider>().loadMesCommandes();
 
       // ✅ Pré-sélectionner l'agence du user APRÈS le chargement
       // → les items du dropdown existent déjà → pas d'assertion error
-      if (mounted && agenceId != null && agenceNom != null) {
+      if (agenceId != null && agenceNom != null) {
         final menus = context.read<MenuProvider>().menus;
         final agenceExiste = menus.any(
           (m) => m.agenceId.toString() == agenceId.toString(),
@@ -114,8 +115,10 @@ class _MenuScreenState extends State<MenuScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted)
               setState(() {
-                _menuSelectionne =
-                    menusFiltres.isNotEmpty ? menusFiltres.first : null;
+                _menuSelectionne = menusFiltres.isNotEmpty
+                    ? menusFiltres.firstWhere((m) => m.isToday,
+                        orElse: () => menusFiltres.first)
+                    : null;
               });
           });
         }
@@ -138,6 +141,9 @@ class _MenuScreenState extends State<MenuScreen> {
           if (menusFiltres.isNotEmpty)
             _JoursSelector(
               menus: menusFiltres,
+              // Plusieurs agences possibles : on distingue par l'agence,
+              // sinon par l'équipe.
+              distinguerParAgence: _agenceSelectionnee == null,
               selected: _menuSelectionne,
               onSelected: (m) => setState(() => _menuSelectionne = m),
             ),
@@ -291,11 +297,13 @@ class _FiltresBar extends StatelessWidget {
 
 class _JoursSelector extends StatelessWidget {
   final List<Menu> menus;
+  final bool distinguerParAgence;
   final Menu? selected;
   final ValueChanged<Menu> onSelected;
 
   const _JoursSelector({
     required this.menus,
+    required this.distinguerParAgence,
     required this.selected,
     required this.onSelected,
   });
@@ -303,8 +311,14 @@ class _JoursSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Plusieurs menus le même jour (équipes / agences) : 2e ligne explicative
+    final parDate = <String, int>{};
+    for (final m in menus) {
+      parDate[m.dateMenu] = (parDate[m.dateMenu] ?? 0) + 1;
+    }
+    final avecSousTitre = parDate.values.any((n) => n > 1);
     return SizedBox(
-      height: 68,
+      height: avecSousTitre ? 80 : 68,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -321,6 +335,9 @@ class _JoursSelector extends StatelessWidget {
               : '—';
           final numStr =
               date != null ? DateFormat('d', 'fr_FR').format(date) : '—';
+          final sousTitre = (parDate[menu.dateMenu] ?? 0) > 1
+              ? (distinguerParAgence ? menu.agenceNom : menu.typeEquipeLibelle)
+              : null;
 
           final borderColor = isSelected
               ? AppColors.primary
@@ -354,7 +371,8 @@ class _JoursSelector extends StatelessWidget {
             onTap: () => onSelected(menu),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              width: 56,
+              width: avecSousTitre ? 72 : 56,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               decoration: BoxDecoration(
                 color: bgColor,
                 borderRadius: BorderRadius.circular(14),
@@ -377,6 +395,14 @@ class _JoursSelector extends StatelessWidget {
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
                           color: numColor)),
+                  if (sousTitre != null)
+                    Text(sousTitre,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                            color: jourColor)),
                 ],
               ),
             ),
@@ -572,15 +598,6 @@ class _PlatCommandeCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (plat.typePlatLibelle != null)
-              Text(plat.typePlatLibelle!,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary)),
-            const SizedBox(height: 4),
             Text(plat.nom,
                 style: Theme.of(context)
                     .textTheme
@@ -642,9 +659,13 @@ class _Tag extends StatelessWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 13, color: color),
         const SizedBox(width: 4),
-        Text(label,
-            style: TextStyle(
-                fontSize: 12, color: color, fontWeight: FontWeight.w500)),
+        Flexible(
+          child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 12, color: color, fontWeight: FontWeight.w500)),
+        ),
       ]),
     );
   }
@@ -814,7 +835,10 @@ class _BoutonCommander extends StatelessWidget {
   }
 
   void _commander(BuildContext context, CommandeProvider cmdProv) async {
+    final facturation = context.read<FacturationProvider>();
     final ok = await cmdProv.commander(menuId: menu.id, platId: plat.id);
+    // « Ma facturation » doit refléter la nouvelle commande
+    if (ok) facturation.charger();
     if (ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Row(children: [
@@ -867,9 +891,11 @@ class _BoutonCommander extends StatelessWidget {
                   ),
                   onPressed: () async {
                     Navigator.pop(context);
+                    final messenger = ScaffoldMessenger.of(context);
+                    final facturation = context.read<FacturationProvider>();
                     final ok = await cmdProv.annuler(commandeId);
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    if (ok) facturation.charger();
+                    messenger.showSnackBar(SnackBar(
                       content: Text(ok
                           ? 'Commande annulée'
                           : (cmdProv.error ??
@@ -914,9 +940,13 @@ class _StatutBouton extends StatelessWidget {
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(icon, color: color, size: 18),
         const SizedBox(width: 8),
-        Text(label,
-            style: TextStyle(
-                color: color, fontWeight: FontWeight.w600, fontSize: 14)),
+        Flexible(
+          child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: color, fontWeight: FontWeight.w600, fontSize: 14)),
+        ),
       ]),
     );
   }
