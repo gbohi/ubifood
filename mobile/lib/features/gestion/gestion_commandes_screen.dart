@@ -567,6 +567,23 @@ class _CommandeGestionCard extends StatelessWidget {
                     ),
                   ),
                 ]),
+                // Agence du menu : utile à l'administrateur, qui voit toutes les agences
+                if (context.read<AuthProvider>().user?.isAdmin == true &&
+                    (commande.menuDetail?.agenceNom ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Row(children: [
+                    Icon(Icons.location_on_outlined,
+                        size: 12, color: secondaire),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: Text(
+                        commande.menuDetail!.agenceNom,
+                        style: TextStyle(fontSize: 12, color: secondaire),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ]),
+                ],
                 const SizedBox(height: 3),
 
                 // Date menu + heure

@@ -117,7 +117,9 @@ class _MainShellState extends State<MainShell> {
                         children: [
                           Text(titles[_index]),
                           Text(
-                            auth.user?.derniereAgence ?? '',
+                            (auth.user?.isAdmin ?? false)
+                                ? 'Toutes les agences'
+                                : (auth.user?.derniereAgence ?? ''),
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.accent,

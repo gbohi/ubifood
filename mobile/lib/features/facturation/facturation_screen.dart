@@ -545,8 +545,45 @@ class _CommandeHistoriqueCard extends StatelessWidget {
           ]),
         ])),
         const SizedBox(width: 8),
-        StatutBadge(statut: commande.statut),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          StatutBadge(statut: commande.statut),
+          const SizedBox(height: 6),
+          _MontantRepas(commande: commande),
+        ]),
       ]),
+    );
+  }
+}
+
+/// Montant facturé d'un repas (calculé par le serveur, tarif à la date du menu)
+class _MontantRepas extends StatelessWidget {
+  final Commande commande;
+  const _MontantRepas({required this.commande});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fact = context.watch<FacturationProvider>();
+    final secColor =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+
+    if (commande.statut == StatutCommande.annulee) {
+      return Text('Non facturé',
+          style: TextStyle(fontSize: 11, color: secColor));
+    }
+    final montant = fact.montant(commande);
+    if (montant == null) {
+      return Text(fact.loaded ? 'Tarif non défini' : '…',
+          style: TextStyle(
+              fontSize: 11,
+              color: fact.loaded ? AppColors.warning : secColor));
+    }
+    return Text(
+      '${NumberFormat('#,##0', 'fr_FR').format(montant)} FCFA',
+      style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: isDark ? AppColors.accent : AppColors.primary),
     );
   }
 }
