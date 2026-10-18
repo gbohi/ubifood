@@ -4,6 +4,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { Observable, Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
+import { ToastrService } from 'ngx-toastr';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import jsPDF from 'jspdf';
@@ -12,11 +13,11 @@ import autoTable from 'jspdf-autotable';
 import { fetchDashboardCantine } from 'src/app/store/DashboardCantine/dashboard-cantine.action';
 import {
   selectDashboardCantineLoading,
+  selectDashboardCantineError,
   selectKpis,
   selectParMois,
   selectTopPlats,
   selectParAgence,
-  selectParTypeEquipe,
   selectParTypePlat,
   selectMenusRecents,
   selectEvolutionHebdo,
@@ -32,8 +33,8 @@ import { fetchtypeequipeNoPaginateData } from 'src/app/store/Typeequipe/typeequi
 
 import {
   KpisCantine, ParMoisItem, TopPlatItem, ParAgenceItem,
-  ParTypeEquipeItem, ParTypePlatItem, MenuRecentItem, EvolutionHebdoItem,
-  FactFournisseur, FactEmploye,
+  ParTypePlatItem, MenuRecentItem, EvolutionHebdoItem,
+  FactFournisseur, FactEmploye, FactMoisItem,
   StatutCommande, StatutOption, DashboardCantineFilters,
   EvolutionParDateItem,
 } from 'src/app/store/DashboardCantine/dashboard-cantine.model';
@@ -59,22 +60,27 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
 
   readonly statutOptions: StatutOption[] = [
     { value: 'en_attente', label: 'En attente', color: '#ffc107' },
-    { value: 'retiree',    label: 'Retiree',    color: '#51d78e' },
-    { value: 'annulee',    label: 'Annulee',    color: '#ff4d4f' },
+    { value: 'retiree',    label: 'Retirée',    color: '#51d78e' },
+    { value: 'annulee',    label: 'Annulée',    color: '#ff4d4f' },
   ];
 
   moisLibelles: string[] = [
-    'Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin',
-    'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre',
+    'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+  ];
+
+  moisCourts: string[] = [
+    'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+    'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
   ];
 
   // ── Observables ──────────────────────────────────────────────
   isLoading$:        Observable<boolean>;
+  error$:            Observable<string | null>;
   kpis$:             Observable<KpisCantine | null>;
-  parMois$:          Observable<{ [k: number]: ParMoisItem } | null>;
+  parMois$:          Observable<ParMoisItem[] | null>;
   topPlats$:         Observable<TopPlatItem[] | null>;
   parAgence$:        Observable<ParAgenceItem[] | null>;
-  parTypeEquipe$:    Observable<ParTypeEquipeItem[] | null>;
   parTypePlat$:      Observable<ParTypePlatItem[] | null>;
   menusRecents$:     Observable<MenuRecentItem[] | null>;
   evolutionHebdo$:   Observable<EvolutionHebdoItem[] | null>;
@@ -91,14 +97,12 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
   chartEvolutionParDate: any = null;
   chartFactPrestMois:    any = null;
   chartFactPrestAgence:  any = null;
-  chartFactPrestPrest:   any = null;
   chartFactEmpMois:      any = null;
   chartFactEmpAgence:    any = null;
-  chartFactEmpCategorie: any = null;
 
   // ── Snapshots exports ────────────────────────────────────────
   private _kpis:            KpisCantine | null   = null;
-  private _parMois:         { [k: number]: ParMoisItem } = {};
+  private _parMois:         ParMoisItem[]         = [];
   private _topPlats:        TopPlatItem[]         = [];
   private _parAgence:       ParAgenceItem[]        = [];
   private _factFournisseur: FactFournisseur | null = null;
@@ -117,13 +121,13 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(last).padStart(2, '0');
   }
 
-  constructor(private store: Store) {
+  constructor(private store: Store, private toastService: ToastrService) {
     this.isLoading$       = this.store.select(selectDashboardCantineLoading);
+    this.error$           = this.store.select(selectDashboardCantineError);
     this.kpis$            = this.store.select(selectKpis);
     this.parMois$         = this.store.select(selectParMois);
     this.topPlats$        = this.store.select(selectTopPlats);
     this.parAgence$       = this.store.select(selectParAgence);
-    this.parTypeEquipe$   = this.store.select(selectParTypeEquipe);
     this.parTypePlat$     = this.store.select(selectParTypePlat);
     this.menusRecents$    = this.store.select(selectMenusRecents);
     this.evolutionHebdo$  = this.store.select(selectEvolutionHebdo);
@@ -135,7 +139,7 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.breadCrumbItems = [
       { label: 'Cantine', active: false },
-      { label: 'Dashboard', active: true },
+      { label: 'Tableau de bord', active: true },
     ];
 
     this.store.dispatch(fetchagenceNoPaginateData());
@@ -148,6 +152,11 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
     this.store.select(selectAllTypeequipeWithoutPagination)
       .pipe(takeUntil(this._destroy$))
       .subscribe(data => { if (data) this.typeequipes = data; });
+
+    this.error$.pipe(takeUntil(this._destroy$))
+      .subscribe(e => {
+        if (e) this.toastService.error(e, 'Tableau de bord : chargement impossible');
+      });
 
     this.kpis$.pipe(takeUntil(this._destroy$))
       .subscribe(k => { if (k) this._kpis = k; });
@@ -176,7 +185,6 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
           this._factFournisseur = f;
           this._buildChartFactPrestMois(f);
           this._buildChartFactPrestAgence(f);
-          this._buildChartFactPrestPrest(f);
         }
       });
 
@@ -186,7 +194,6 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
           this._factEmploye = f;
           this._buildChartFactEmpMois(f);
           this._buildChartFactEmpAgence(f);
-          this._buildChartFactEmpCategorie(f);
         }
       });
 
@@ -233,9 +240,9 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
     if (this.dateDebut || this.dateFin)
       parts.push((this.dateDebut || '...') + ' -> ' + (this.dateFin || '...'));
     if (this.selectedAgences.length)     parts.push(this.selectedAgences.length + ' agence(s)');
-    if (this.selectedTypeEquipes.length) parts.push(this.selectedTypeEquipes.length + ' equipe(s)');
+    if (this.selectedTypeEquipes.length) parts.push(this.selectedTypeEquipes.length + ' équipe(s)');
     if (this.selectedStatuts.length)     parts.push(this.selectedStatuts.length + ' statut(s)');
-    return parts.length ? parts.join(' | ') : 'Toutes les donnees';
+    return parts.length ? parts.join(' | ') : 'Mois en cours';
   }
 
   // ── Helpers template ──────────────────────────────────────────
@@ -250,40 +257,31 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
     return n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' FCFA';
   }
 
-  parMoisArray(parMois: { [k: number]: ParMoisItem } | null): { mois: number; label: string; data: ParMoisItem }[] {
+  /** Plusieurs années dans la période → on affiche l'année avec le mois. */
+  private _plusieursAnnees(items: { annee: number }[]): boolean {
+    return new Set(items.map(i => i.annee)).size > 1;
+  }
+
+  /** « Octobre » si une seule année, « oct. 2026 » (court) / « Octobre 2026 » (long) sinon. */
+  libelleMois(item: { annee: number; mois: number }, avecAnnee: boolean, court = false): string {
+    const nom = (court ? this.moisCourts : this.moisLibelles)[item.mois - 1] || String(item.mois);
+    return avecAnnee ? nom + ' ' + item.annee : nom;
+  }
+
+  parMoisArray(parMois: ParMoisItem[] | null): { label: string; data: ParMoisItem }[] {
     if (!parMois) return [];
-    const empty: ParMoisItem = { total: 0, en_attente: 0, retiree: 0, annulee: 0 };
-    return Array.from({ length: 12 }, (_, i) => {
-      const key   = i + 1;
-      // JSON retourne les clés comme strings "1","2"... → chercher les deux
-      const data  = parMois[key] || (parMois as any)[String(key)] || empty;
-      // Sécuriser : s'assurer que les valeurs sont bien des numbers
-      return {
-        mois:  key,
-        label: this.moisLibelles[i],
-        data: {
-          total:      Number(data.total      || 0),
-          en_attente: Number(data.en_attente || 0),
-          retiree:    Number(data.retiree    || 0),
-          annulee:    Number(data.annulee    || 0),
-        },
-      };
-    });
+    const avecAnnee = this._plusieursAnnees(parMois);
+    return parMois.map(m => ({ label: this.libelleMois(m, avecAnnee), data: m }));
   }
 
-  sumParMois(parMois: { [k: number]: ParMoisItem } | null, field: 'total' | 'en_attente' | 'retiree' | 'annulee'): number {
+  sumParMois(parMois: ParMoisItem[] | null, field: 'total' | 'en_attente' | 'retiree' | 'annulee'): number {
     if (!parMois) return 0;
-    return Object.values(parMois).reduce((acc, m) => {
-      const v = m && typeof m === 'object' ? m[field] : 0;
-      return acc + (Number(v) || 0);
-    }, 0);
+    return parMois.reduce((acc, m) => acc + (Number(m?.[field]) || 0), 0);
   }
 
+  /** Taux calculé par le serveur : retirées / non annulées dont le menu est passé. */
   tauxRetrait(row: ParMoisItem): number {
-    const total   = Number(row?.total)   || 0;
-    const retiree = Number(row?.retiree) || 0;
-    if (total === 0) return 0;
-    return Math.round((retiree / total) * 100);
+    return Number(row?.taux_retrait) || 0;
   }
 
   maxNombre(topPlats: TopPlatItem[] | null): number {
@@ -319,23 +317,23 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
 
   // ── Chart builders — commandes ────────────────────────────────
 
-  private _buildChartMois(data: { [k: number]: ParMoisItem }): void {
-    // JSON retourne les clés comme strings → chercher data[i+1] ET data[String(i+1)]
-    const getVal = (i: number, field: keyof ParMoisItem): number => {
-      const row = data[i + 1] || (data as any)[String(i + 1)];
-      return row ? Number(row[field]) || 0 : 0;
-    };
+  private _buildChartMois(data: ParMoisItem[]): void {
+    if (!data.length || !data.some(m => Number(m.total) > 0)) { this.chartCommandesMois = null; return; }
+    const avecAnnee = this._plusieursAnnees(data);
     this.chartCommandesMois = {
       series: [
-        { name: 'Retirees',   data: Array.from({length:12},(_,i) => getVal(i,'retiree'))    },
-        { name: 'En attente', data: Array.from({length:12},(_,i) => getVal(i,'en_attente')) },
-        { name: 'Annulees',   data: Array.from({length:12},(_,i) => getVal(i,'annulee'))    },
+        { name: 'Retirées',   data: data.map(m => Number(m.retiree)    || 0) },
+        { name: 'En attente', data: data.map(m => Number(m.en_attente) || 0) },
+        { name: 'Annulées',   data: data.map(m => Number(m.annulee)    || 0) },
       ],
       chart: { type: 'bar', height: 320, stacked: true, toolbar: { show: false } },
       colors: ['#51d78e', '#ffc107', '#ff4d4f'],
       plotOptions: { bar: { columnWidth: '55%', borderRadius: 4 } },
       dataLabels: { enabled: false },
-      xaxis: { categories: this.moisLibelles, labels: { style: { fontSize: '11px' } } },
+      xaxis: {
+        categories: data.map(m => this.libelleMois(m, avecAnnee, avecAnnee)),
+        labels: { style: { fontSize: '11px' } },
+      },
       yaxis: { labels: { formatter: (v: any) => (typeof v === 'number' ? Math.round(v).toString() : '') } },
       legend: { position: 'top' },
       grid:   { borderColor: '#f3f4f6' },
@@ -348,7 +346,7 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
   }
 
   private _buildChartTopPlats(data: TopPlatItem[]): void {
-    if (!data.length) return;
+    if (!data.length) { this.chartTopPlats = null; return; }
     const top7 = data.slice(0, 7);
     this.chartTopPlats = {
       series: [{ name: 'Commandes', data: top7.map(p => p.nombre) }],
@@ -362,12 +360,12 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
   }
 
   private _buildChartAgence(data: ParAgenceItem[]): void {
-    if (!data.length) return;
+    if (!data.length) { this.chartParAgence = null; return; }
     this.chartParAgence = {
       series: [
         { name: 'En attente', data: data.map(a => Number(a.en_attente) || 0) },
-        { name: 'Retirees',   data: data.map(a => Number(a.retiree)    || 0) },
-        { name: 'Annulees',   data: data.map(a => Number(a.annulee)    || 0) },
+        { name: 'Retirées',   data: data.map(a => Number(a.retiree)    || 0) },
+        { name: 'Annulées',   data: data.map(a => Number(a.annulee)    || 0) },
       ],
       chart: { type: 'bar', height: 300, toolbar: { show: false } },
       colors: ['#ffc107', '#51d78e', '#ff4d4f'],
@@ -385,17 +383,17 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
   }
 
   private _buildChartTypePlat(data: ParTypePlatItem[]): void {
-  if (!data.length) return;
+  if (!data.length) { this.chartTypePlat = null; return; }
   this.chartTypePlat = {
     series: data.map(d => d.total),
-    chart: { 
-      type: 'donut', 
+    chart: {
+      type: 'donut',
       height: 300,
       parentHeightOffset: 0 // Aide à mieux utiliser l'espace
     },
     labels: data.map(d => d.type_plat || 'Inconnu'),
     colors: ['#092440', '#51d78e', '#ffc107', '#17a2b8', '#6f42c1', '#ff4d4f'],
-    legend: { 
+    legend: {
       position: 'bottom',
       horizontalAlign: 'center',
       fontSize: '12px',
@@ -406,14 +404,14 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
       },
       // Permet de masquer la légende si l'écran est vraiment trop petit
       // ou de la forcer sur plusieurs lignes proprement
-    }, 
-    dataLabels: { 
+    },
+    dataLabels: {
       enabled: true,
       dropShadow: { enabled: false } // Plus propre sur un donut
     },
-    plotOptions: { 
-      pie: { 
-        donut: { 
+    plotOptions: {
+      pie: {
+        donut: {
           size: '70%', // Légèrement plus grand pour la lisibilité
           labels: {
             show: true,
@@ -425,14 +423,14 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
               }
             }
           }
-        } 
-      } 
+        }
+      }
     },
   };
 }
 
   private _buildChartEvolution(data: EvolutionHebdoItem[]): void {
-    if (!data.length) return;
+    if (!data.length) { this.chartEvolution = null; return; }
     this.chartEvolution = {
       series: [{ name: 'Commandes', data: data.map(d => d.total) }],
       chart: { type: 'area', height: 180, sparkline: { enabled: true } },
@@ -444,10 +442,10 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
     };
   }
 
-  // ── Chart builder — evolution par date ──────────────────────────
+  // ── Chart builder — évolution par date ──────────────────────────
 
   private _buildChartEvolutionParDate(data: EvolutionParDateItem[]): void {
-    if (!data.length) return;
+    if (!data.length) { this.chartEvolutionParDate = null; return; }
 
     // Formater les dates : YYYY-MM-DD → DD/MM
     const labels = data.map(d => {
@@ -458,8 +456,8 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
     this.chartEvolutionParDate = {
       series: [
         { name: 'En attente', data: data.map(d => Number(d.en_attente) || 0) },
-        { name: 'Retirees',   data: data.map(d => Number(d.retiree)    || 0) },
-        { name: 'Annulees',   data: data.map(d => Number(d.annulee)    || 0) },
+        { name: 'Retirées',   data: data.map(d => Number(d.retiree)    || 0) },
+        { name: 'Annulées',   data: data.map(d => Number(d.annulee)    || 0) },
       ],
       chart: {
         type: 'line',
@@ -496,98 +494,56 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
     };
   }
 
-  // ── Chart builders — facturation prestataire ──────────────────
+  // ── Chart builders — facturation ──────────────────────────────
 
-  private _buildChartFactPrestMois(f: FactFournisseur): void {
-    const montants = Array.from({ length: 12 }, (_, i) =>
-      Number(f.par_mois[i + 1] || (f.par_mois as any)[String(i + 1)] || 0));
-    this.chartFactPrestMois = {
-      series: [{ name: 'Montant FCFA', data: montants }],
+  private _chartFactMois(parMois: FactMoisItem[], couleur: string): any {
+    if (!parMois.length || !parMois.some(m => Number(m.montant) > 0)) return null;
+    const avecAnnee = this._plusieursAnnees(parMois);
+    return {
+      series: [{ name: 'Montant FCFA', data: parMois.map(m => Number(m.montant) || 0) }],
       chart: { type: 'bar', height: 260, toolbar: { show: false } },
-      colors: ['#092440'],
+      colors: [couleur],
       plotOptions: { bar: { columnWidth: '55%', borderRadius: 4 } },
       dataLabels: { enabled: false },
-      xaxis: { categories: this.moisLibelles, labels: { style: { fontSize: '10px' } } },
+      xaxis: {
+        categories: parMois.map(m => this.libelleMois(m, avecAnnee, avecAnnee)),
+        labels: { style: { fontSize: '10px' } },
+      },
       yaxis: { labels: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
       grid: { borderColor: '#f3f4f6' },
       tooltip: { y: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
     };
+  }
+
+  private _chartFactAgence(parAgence: { agence: string; montant: number }[], couleur: string): any {
+    if (!parAgence.length) return null;
+    return {
+      series: [{ name: 'Montant', data: parAgence.map(a => a.montant) }],
+      chart: { type: 'bar', height: 260, toolbar: { show: false } },
+      colors: [couleur],
+      plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '55%' } },
+      dataLabels: { enabled: false },
+      xaxis: { categories: parAgence.map(a => a.agence) },
+      yaxis: { labels: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
+      grid: { borderColor: '#f3f4f6' },
+      tooltip: { y: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
+    };
+  }
+
+  private _buildChartFactPrestMois(f: FactFournisseur): void {
+    this.chartFactPrestMois = this._chartFactMois(f.par_mois || [], '#092440');
   }
 
   private _buildChartFactPrestAgence(f: FactFournisseur): void {
-    if (!f.par_agence.length) return;
-    this.chartFactPrestAgence = {
-      series: [{ name: 'Montant', data: f.par_agence.map(a => a.montant) }],
-      chart: { type: 'bar', height: 260, toolbar: { show: false } },
-      colors: ['#092440'],
-      plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '55%' } },
-      dataLabels: { enabled: false },
-      xaxis: { categories: f.par_agence.map(a => a.agence) },
-      yaxis: { labels: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
-      grid: { borderColor: '#f3f4f6' },
-      tooltip: { y: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
-    };
+    this.chartFactPrestAgence = this._chartFactAgence(f.par_agence || [], '#092440');
   }
-
-  private _buildChartFactPrestPrest(f: FactFournisseur): void {
-    if (!f.par_prestataire.length) return;
-    this.chartFactPrestPrest = {
-      series: f.par_prestataire.map(p => p.montant),
-      chart: { type: 'donut', height: 260 },
-      labels: f.par_prestataire.map(p => p.prestataire),
-      colors: ['#092440', '#51d78e', '#ffc107', '#17a2b8', '#6f42c1', '#ff4d4f'],
-      legend: { position: 'bottom' },
-      dataLabels: { enabled: true },
-      plotOptions: { pie: { donut: { size: '60%' } } },
-      tooltip: { y: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
-    };
-  }
-
-  // ── Chart builders — facturation employé ─────────────────────
 
   private _buildChartFactEmpMois(f: FactEmploye): void {
-    const montants = Array.from({ length: 12 }, (_, i) =>
-      Number(f.par_mois[i + 1] || (f.par_mois as any)[String(i + 1)] || 0));
-    this.chartFactEmpMois = {
-      series: [{ name: 'Montant FCFA', data: montants }],
-      chart: { type: 'bar', height: 260, toolbar: { show: false } },
-      colors: ['#51d78e'],
-      plotOptions: { bar: { columnWidth: '55%', borderRadius: 4 } },
-      dataLabels: { enabled: false },
-      xaxis: { categories: this.moisLibelles, labels: { style: { fontSize: '10px' } } },
-      yaxis: { labels: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
-      grid: { borderColor: '#f3f4f6' },
-      tooltip: { y: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
-    };
+    this.chartFactEmpMois = this._chartFactMois(f.par_mois || [], '#51d78e');
   }
 
   private _buildChartFactEmpAgence(f: FactEmploye): void {
-    if (!f.par_agence.length) return;
-    this.chartFactEmpAgence = {
-      series: [{ name: 'Montant', data: f.par_agence.map(a => a.montant) }],
-      chart: { type: 'bar', height: 260, toolbar: { show: false } },
-      colors: ['#51d78e'],
-      plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '55%' } },
-      dataLabels: { enabled: false },
-      xaxis: { categories: f.par_agence.map(a => a.agence) },
-      yaxis: { labels: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
-      grid: { borderColor: '#f3f4f6' },
-      tooltip: { y: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
-    };
-  }
-
-  private _buildChartFactEmpCategorie(f: FactEmploye): void {
-    if (!f.par_categorie.length) return;
-    this.chartFactEmpCategorie = {
-      series: f.par_categorie.map(c => c.montant),
-      chart: { type: 'donut', height: 260 },
-      labels: f.par_categorie.map(c => c.categorie),
-      colors: ['#51d78e', '#092440', '#ffc107', '#17a2b8', '#6f42c1', '#ff4d4f'],
-      legend: { position: 'bottom' },
-      dataLabels: { enabled: true },
-      plotOptions: { pie: { donut: { size: '60%' } } },
-      tooltip: { y: { formatter: (v: any) => (typeof v === 'number' ? this.formatMontant(v) : '') } },
-    };
+    this.chartFactEmpAgence = this._chartFactAgence(f.par_agence || [], '#51d78e');
   }
 
   // ── Exports ───────────────────────────────────────────────────
@@ -598,30 +554,34 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
       ['Indicateur', 'Valeur'],
       ['Total commandes',  this._kpis.total_commandes],
       ['En attente',       this._kpis.total_en_attente],
-      ['Retirees',         this._kpis.total_retirees],
-      ['Annulees',         this._kpis.total_annulees],
+      ['Retirées',         this._kpis.total_retirees],
+      ['Annulées',         this._kpis.total_annulees],
       ['Total menus',      this._kpis.total_menus],
       ['Taux retrait (%)', this._kpis.taux_retrait],
       ['Taux annul. (%)',  this._kpis.taux_annulation],
-    ] : [['Aucune donnee']];
+    ] : [['Aucune donnée']];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kpisRows), 'KPIs');
 
     const moisRows: any[][] = [
-      ['Mois', 'Total', 'En attente', 'Retirees', 'Annulees'],
-      ...this.moisLibelles.map((label, i) => {
-        const m = this._parMois[i + 1] || { total: 0, en_attente: 0, retiree: 0, annulee: 0 };
-        return [label, m.total, m.en_attente, m.retiree, m.annulee];
-      }),
+      ['Mois', 'Total', 'En attente', 'Retirées', 'Annulées', 'Taux retrait (%)'],
+      ...this.parMoisArray(this._parMois).map(r =>
+        [r.label, r.data.total, r.data.en_attente, r.data.retiree, r.data.annulee, r.data.taux_retrait]),
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(moisRows), 'Par mois');
+
+    const lignesMois = (parMois: FactMoisItem[]) => {
+      const avecAnnee = this._plusieursAnnees(parMois);
+      return parMois.map(m => [this.libelleMois(m, avecAnnee), this.formatMontant(m.montant)]);
+    };
 
     if (this._factFournisseur) {
       const f = this._factFournisseur;
       const fpRows: any[][] = [
         ['Total prestataire', this.formatMontant(f.total_montant)],
+        ['Repas sans tarif',  f.repas_sans_tarif || 0],
         [],
         ['Mois', 'Montant'],
-        ...this.moisLibelles.map((l, i) => [l, this.formatMontant(f.par_mois[i + 1] || 0)]),
+        ...lignesMois(f.par_mois || []),
         [],
         ['Prestataire', 'Montant', 'Nb commandes'],
         ...f.par_prestataire.map(p => [p.prestataire, this.formatMontant(p.montant), p.nb_commandes]),
@@ -635,18 +595,19 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
     if (this._factEmploye) {
       const f = this._factEmploye;
       const feRows: any[][] = [
-        ['Total employe', this.formatMontant(f.total_montant)],
+        ['Total employé',    this.formatMontant(f.total_montant)],
+        ['Repas sans tarif', f.repas_sans_tarif || 0],
         [],
         ['Mois', 'Montant'],
-        ...this.moisLibelles.map((l, i) => [l, this.formatMontant(f.par_mois[i + 1] || 0)]),
+        ...lignesMois(f.par_mois || []),
         [],
-        ['Categorie', 'Montant', 'Nb commandes'],
+        ['Catégorie', 'Montant', 'Nb commandes'],
         ...f.par_categorie.map(c => [c.categorie, this.formatMontant(c.montant), c.nb_commandes]),
         [],
         ['Agence', 'Montant', 'Nb commandes'],
         ...f.par_agence.map(a => [a.agence, this.formatMontant(a.montant), a.nb_commandes]),
       ];
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(feRows), 'Fact. Employe');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(feRows), 'Fact. Employé');
     }
 
     XLSX.utils.book_append_sheet(
@@ -663,10 +624,12 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
   exporterPDF(): void {
     const doc   = new jsPDF();
     const today = new Date().toLocaleDateString('fr-FR');
+    // Position sous le dernier tableau (ou sous l'en-tête s'il n'y en a pas encore)
+    const suite = () => ((doc as any).lastAutoTable?.finalY ?? 18) + 10;
     doc.setFontSize(14); doc.setTextColor(9, 36, 64);
-    doc.text('Dashboard Cantine', 14, 15);
+    doc.text('Tableau de bord cantine', 14, 15);
     doc.setFontSize(9); doc.setTextColor(100);
-    doc.text('Filtres : ' + this.getFiltresActifs() + '  -  Edite le ' + today, 14, 22);
+    doc.text('Filtres : ' + this.getFiltresActifs() + '  -  Édité le ' + today, 14, 22);
 
     if (this._kpis) {
       autoTable(doc, {
@@ -675,8 +638,8 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
         body: [
           ['Total commandes', this._kpis.total_commandes],
           ['En attente',      this._kpis.total_en_attente],
-          ['Retirees',        this._kpis.total_retirees],
-          ['Annulees',        this._kpis.total_annulees],
+          ['Retirées',        this._kpis.total_retirees],
+          ['Annulées',        this._kpis.total_annulees],
           ['Taux retrait',    this._kpis.taux_retrait + '%'],
         ],
         headStyles: { fillColor: [9, 36, 64] }, styles: { fontSize: 9 },
@@ -685,7 +648,7 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
 
     if (this._factFournisseur) {
       autoTable(doc, {
-        startY: ((doc as any).lastAutoTable?.finalY ?? 70) + 10,
+        startY: suite(),
         head: [['Prestataire', 'Montant', 'Nb commandes']],
         body: this._factFournisseur.par_prestataire.map(p =>
           [p.prestataire, this.formatMontant(p.montant), p.nb_commandes]
@@ -696,8 +659,8 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
 
     if (this._factEmploye) {
       autoTable(doc, {
-        startY: (doc as any).lastAutoTable.finalY + 10,
-        head: [['Categorie', 'Montant', 'Nb commandes']],
+        startY: suite(),
+        head: [['Catégorie', 'Montant', 'Nb commandes']],
         body: this._factEmploye.par_categorie.map(c =>
           [c.categorie, this.formatMontant(c.montant), c.nb_commandes]
         ),

@@ -12,13 +12,6 @@ export const MENU: MenuItem[] = [
         label: 'MENUITEMS.DASHBOARD.TEXT',
         icon: 'ph-gauge',
         subItems: [
-            /*
-            {
-                id: 8,
-                label: 'MENUITEMS.DASHBOARD.LIST.DASHBOARDENTRETIENVEHICULE',
-                link: '/',
-                parentId: 2
-            },*/
             {
                 id: 191,
                 label: 'MENUITEMS.DASHBOARD.LIST.DASHBOARDCANTINE',

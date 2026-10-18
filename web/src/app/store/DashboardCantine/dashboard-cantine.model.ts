@@ -11,10 +11,13 @@ export interface KpisCantine {
 }
 
 export interface ParMoisItem {
-  total:      number;
+  annee:        number;
+  mois:         number;          // 1..12
+  total:        number;
   en_attente: number;
   retiree:    number;
   annulee:    number;
+  taux_retrait: number;          // retirées / non annulées au menu passé (%)
 }
 
 export interface TopPlatItem {
@@ -29,11 +32,6 @@ export interface ParAgenceItem {
   en_attente: number;
   retiree:    number;
   annulee:    number;
-}
-
-export interface ParTypeEquipeItem {
-  typeequipe: string;
-  total:      number;
 }
 
 export interface ParTypePlatItem {
@@ -74,16 +72,24 @@ export interface FactCategorieItem {
   nb_commandes: number;
 }
 
+export interface FactMoisItem {
+  annee:   number;
+  mois:    number;
+  montant: number;
+}
+
 export interface FactFournisseur {
   total_montant:    number;
-  par_mois:         { [mois: number]: number };
+  repas_sans_tarif: number;      // repas sans prestataire ou sans tarif
+  par_mois:         FactMoisItem[];
   par_agence:       FactAgenceItem[];
   par_prestataire:  FactPrestataireItem[];
 }
 
 export interface FactEmploye {
-  total_montant:  number;
-  par_mois:       { [mois: number]: number };
+  total_montant:    number;
+  repas_sans_tarif: number;      // repas sans catégorie ou sans tarif
+  par_mois:         FactMoisItem[];
   par_agence:     FactAgenceItem[];
   par_categorie:  FactCategorieItem[];
 }
@@ -98,11 +104,12 @@ export interface EvolutionParDateItem {
 }
 
 export interface DashboardCantineData {
+  date_debut:       string;
+  date_fin:         string;
   kpis:             KpisCantine;
-  par_mois:         { [mois: number]: ParMoisItem };
+  par_mois:         ParMoisItem[];
   top_plats:        TopPlatItem[];
   par_agence:       ParAgenceItem[];
-  par_typeequipe:   ParTypeEquipeItem[];
   par_typeplat:     ParTypePlatItem[];
   menus_recents:    MenuRecentItem[];
   evolution_hebdo:   EvolutionHebdoItem[];

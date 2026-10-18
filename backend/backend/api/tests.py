@@ -738,3 +738,75 @@ class GestionUtilisateursTests(BaseAPITestCase):
         r = client.post(f'{API}/user-agences/', {**ligne, 'date_debut': '2026-06-01',
                                                  'date_fin': None}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
+
+
+class DashboardCantineTests(_FacturationBase):
+    """Tableau de bord cantine : filtres, période par défaut, taux de retrait."""
+
+    def dashboard(self, **params):
+        return self.client_pour(self.gestionnaire).get(f'{API}/dashboard-cantine/', params)
+
+    def test_filtre_statut_sans_effet_sur_la_facturation(self):
+        self.commander(self.employe, self.date(2026, 8, 20))                     # 1500 / 900
+        self.commander(self.employe, self.date(2026, 8, 21), statut='retiree')   # 1500 / 900
+        self.commander(self.employe2, self.date(2026, 8, 22), statut='annulee')
+        periode = {'date_debut': '2026-08-01', 'date_fin': '2026-08-31'}
+        for statuts, nb in (('annulee', 1), ('retiree', 1), ('en_attente,retiree', 2)):
+            r = self.dashboard(statuts=statuts, **periode)
+            self.assertEqual(r.status_code, 200, r.data)
+            self.assertEqual(r.data['kpis']['total_commandes'], nb)
+            self.assertEqual(r.data['fact_employe']['total_montant'], 3000.0)
+            self.assertEqual(r.data['fact_fournisseur']['total_montant'], 1800.0)
+
+    def test_repas_sans_tarif_signales(self):
+        self.commander(self.employe, self.date(2026, 8, 20))
+        self.commander(self.employe2, self.date(2026, 8, 20))   # emp2 sans catégorie
+        r = self.dashboard(date_debut='2026-08-01', date_fin='2026-08-31')
+        self.assertEqual(r.data['fact_employe']['repas_sans_tarif'], 1)
+        self.assertEqual(r.data['fact_employe']['total_montant'], 1500.0)
+        self.assertEqual(r.data['fact_fournisseur']['repas_sans_tarif'], 0)
+
+    def test_periode_par_defaut_et_dates_invalides(self):
+        today = timezone.localdate()
+        r = self.dashboard()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['date_debut'], today.replace(day=1).isoformat())
+        self.assertEqual([(m['annee'], m['mois']) for m in r.data['par_mois']],
+                         [(today.year, today.month)])
+
+        r = self.dashboard(date_debut='2026-13-45')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('Date invalide', str(r.data))
+        r = self.dashboard(date_fin='pas-une-date')
+        self.assertEqual(r.status_code, 400)
+        r = self.dashboard(date_debut='2026-09-01', date_fin='2026-08-01')
+        self.assertEqual(r.status_code, 400)
+
+    def test_mois_de_deux_annees_non_fusionnes(self):
+        self.commander(self.employe, self.date(2025, 8, 5))
+        self.commander(self.employe, self.date(2026, 8, 5))
+        r = self.dashboard(date_debut='2025-08-01', date_fin='2026-08-31')
+        par_mois = {(m['annee'], m['mois']): m['total'] for m in r.data['par_mois']}
+        self.assertEqual(len(par_mois), 13)
+        self.assertEqual((par_mois[(2025, 8)], par_mois[(2026, 8)]), (1, 1))
+        fact_mois = {(m['annee'], m['mois']): m['montant'] for m in r.data['fact_employe']['par_mois']}
+        self.assertEqual(fact_mois[(2026, 8)], 500.0)   # emp1 « Agent » au 05/08
+
+    def test_taux_de_retrait_hors_annulees_et_repas_a_venir(self):
+        today = timezone.localdate()
+        self.commander(self.employe, today - timedelta(days=2), statut='retiree')
+        self.commander(self.employe2, today - timedelta(days=2))                    # non retirée
+        self.commander(self.employe, today - timedelta(days=1), statut='annulee')   # exclue
+        self.commander(self.employe, today + timedelta(days=3))                     # à venir : exclue
+        r = self.dashboard(date_debut=(today - timedelta(days=10)).isoformat(),
+                           date_fin=(today + timedelta(days=10)).isoformat())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['kpis']['total_commandes'], 4)
+        self.assertEqual(r.data['kpis']['taux_retrait'], 50.0)
+
+        # Semaines glissantes : aujourd'hui inclus, annulées exclues
+        self.commander(self.employe2, today, statut='retiree')
+        r = self.dashboard()
+        hebdo = r.data['evolution_hebdo']
+        self.assertEqual([s['label'] for s in hebdo], ['S-3', 'S-2', 'S-1', 'Cette semaine'])
+        self.assertEqual(hebdo[-1]['total'], 3)

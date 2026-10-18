@@ -2,9 +2,10 @@
 
 import { Injectable, inject } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { DashboardCantineService } from 'src/app/core/services/dashboard-cantine/dashboard-cantine.service';
+import { messageErreurApi } from 'src/app/core/helpers/error.interceptor';
 import {
   fetchDashboardCantine,
   fetchDashboardCantineSuccess,
@@ -20,11 +21,15 @@ export class DashboardCantineEffects {
   fetch$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchDashboardCantine),
-      mergeMap(({ filters }) =>
+      // switchMap : un nouveau filtrage annule la requête précédente
+      switchMap(({ filters }) =>
         this.dashboardCantineService.getDashboard(filters).pipe(
           map(data  => fetchDashboardCantineSuccess({ data })),
           catchError(error =>
-            of(fetchDashboardCantineFailure({ error: error.toString() }))
+            // l'ErrorInterceptor renvoie déjà un message lisible (string)
+            of(fetchDashboardCantineFailure({
+              error: typeof error === 'string' ? error : messageErreurApi(error),
+            }))
           )
         )
       )

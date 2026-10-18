@@ -4,7 +4,7 @@ import { createFeatureSelector, createSelector } from '@ngrx/store';
 import { DashboardCantineState } from './dashboard-cantine.reducer';
 import {
   KpisCantine, ParMoisItem, TopPlatItem, ParAgenceItem,
-  ParTypeEquipeItem, ParTypePlatItem, MenuRecentItem,
+  ParTypePlatItem, MenuRecentItem,
   EvolutionHebdoItem, EvolutionParDateItem, FactFournisseur, FactEmploye,
 } from './dashboard-cantine.model';
 
@@ -19,16 +19,13 @@ export const selectKpis = createSelector(
   selectDashboardCantineData, (d): KpisCantine | null => d?.kpis ?? null
 );
 export const selectParMois = createSelector(
-  selectDashboardCantineData, (d): { [mois: number]: ParMoisItem } | null => d?.par_mois ?? null
+  selectDashboardCantineData, (d): ParMoisItem[] | null => d?.par_mois ?? null
 );
 export const selectTopPlats = createSelector(
   selectDashboardCantineData, (d): TopPlatItem[] | null => d?.top_plats ?? null
 );
 export const selectParAgence = createSelector(
   selectDashboardCantineData, (d): ParAgenceItem[] | null => d?.par_agence ?? null
-);
-export const selectParTypeEquipe = createSelector(
-  selectDashboardCantineData, (d): ParTypeEquipeItem[] | null => d?.par_typeequipe ?? null
 );
 export const selectParTypePlat = createSelector(
   selectDashboardCantineData, (d): ParTypePlatItem[] | null => d?.par_typeplat ?? null

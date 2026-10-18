@@ -22,7 +22,8 @@ import * as echarts from 'echarts';
 
 import { BsDropdownModule } from 'ngx-bootstrap/dropdown';
 import { TabsModule } from 'ngx-bootstrap/tabs';
-import { TooltipModule } from 'ngx-bootstrap/tooltip';
+// Pas de TooltipModule (ngx-bootstrap) ici : son sélecteur [tooltip] s'appliquait
+// aux <apx-chart [tooltip]="..."> et affichait « [object Object] » au survol.
 import { PaginationModule } from 'ngx-bootstrap/pagination';
 import { ProgressbarModule } from 'ngx-bootstrap/progressbar';
 import { ModalModule } from 'ngx-bootstrap/modal';
@@ -32,13 +33,11 @@ import { BsDatepickerModule } from 'ngx-bootstrap/datepicker';
 import { LeafletModule } from '@asymmetrik/ngx-leaflet';
 
 // component
-import { DashboardentretienvehiculeComponent } from './dashboardentretienvehicule/dashboardentretienvehicule.component';
 import { DashboardCantineComponent } from './dashboard-cantine/dashboard-cantine.component';
 import { NgSelectModule } from '@ng-select/ng-select';
 
 @NgModule({
   declarations: [
-    DashboardentretienvehiculeComponent,
     DashboardCantineComponent
   ],
   imports: [
@@ -49,7 +48,6 @@ import { NgSelectModule } from '@ng-select/ng-select';
     CountUpModule,
     NgApexchartsModule,
     TabsModule.forRoot(),
-    TooltipModule.forRoot(),
     PaginationModule.forRoot(),
     FormsModule,
     ReactiveFormsModule,

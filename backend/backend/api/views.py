@@ -1425,23 +1425,30 @@ class DashboardCantineView(APIView):
     """
     GET /api/api/dashboard-cantine/
     Params:
-      date_debut   : YYYY-MM-DD
-      date_fin     : YYYY-MM-DD
+      date_debut   : YYYY-MM-DD  (défaut : 1er jour du mois en cours)
+      date_fin     : YYYY-MM-DD  (défaut : dernier jour du mois en cours)
       agences      : "1,2,3"
       typeequipes  : "1,2"
-      statuts      : "en_attente,retiree,annulee"
+      statuts      : "en_attente,retiree,annulee"  (statistiques de commandes
+                     uniquement : la facturation suit toujours la règle de
+                     api/facturation.py, repas non annulés)
     """
     permission_classes = [IsGestionnaireRole]
 
     def get(self, request):
         from django.db.models import Count, Q
-        from django.db.models.functions import ExtractMonth
+        from django.db.models.functions import TruncMonth
         from decimal import Decimal
-        from datetime import date as date_type, timedelta
+        from datetime import timedelta
 
         # ── Paramètres ────────────────────────────────────────
-        date_debut  = request.query_params.get('date_debut',  None)
-        date_fin    = request.query_params.get('date_fin',    None)
+        aujourdhui = timezone.localdate()
+        debut_defaut, fin_defaut = fact.bornes_mois(aujourdhui.year, aujourdhui.month)
+        date_debut = _parse_date(request.query_params.get('date_debut'), debut_defaut)
+        date_fin   = _parse_date(request.query_params.get('date_fin'), fin_defaut)
+        if date_debut > date_fin:
+            raise ValidationError("La date de début doit être antérieure ou égale à la date de fin.")
+
         agences_str = request.query_params.get('agences',     None)
         equipes_str = request.query_params.get('typeequipes', None)
         statuts_str = request.query_params.get('statuts',     None)
@@ -1460,23 +1467,29 @@ class DashboardCantineView(APIView):
         ] if statuts_str else []
 
         # ── Querysets de base ─────────────────────────────────
-        commande_qs = Commande.objects.all()
-        menu_qs     = Menu.objects.all()
+        # base_qs : période / agences / équipes (sans filtre statut) →
+        # facturation et évolution par date. commande_qs : + filtre statut.
+        base_qs = Commande.objects.filter(
+            menu__date_menu__gte=date_debut, menu__date_menu__lte=date_fin)
+        menu_qs = Menu.objects.filter(date_menu__gte=date_debut, date_menu__lte=date_fin)
 
-        if date_debut:
-            commande_qs = commande_qs.filter(menu__date_menu__gte=date_debut)
-            menu_qs     = menu_qs.filter(date_menu__gte=date_debut)
-        if date_fin:
-            commande_qs = commande_qs.filter(menu__date_menu__lte=date_fin)
-            menu_qs     = menu_qs.filter(date_menu__lte=date_fin)
         if agences_ids:
-            commande_qs = commande_qs.filter(menu__agence__id__in=agences_ids)
-            menu_qs     = menu_qs.filter(agence__id__in=agences_ids)
+            base_qs = base_qs.filter(menu__agence__id__in=agences_ids)
+            menu_qs = menu_qs.filter(agence__id__in=agences_ids)
         if equipes_ids:
-            commande_qs = commande_qs.filter(menu__typeequipe__id__in=equipes_ids)
-            menu_qs     = menu_qs.filter(typeequipe__id__in=equipes_ids)
-        if statuts_list:
-            commande_qs = commande_qs.filter(statut__in=statuts_list)
+            base_qs = base_qs.filter(menu__typeequipe__id__in=equipes_ids)
+            menu_qs = menu_qs.filter(typeequipe__id__in=equipes_ids)
+
+        commande_qs = base_qs.filter(statut__in=statuts_list) if statuts_list else base_qs
+
+        # Taux de retrait : retirées / commandes non annulées dont le menu
+        # est passé (≤ aujourd'hui) — les repas à venir ne peuvent pas
+        # encore être retirés.
+        filtre_echues   = Q(menu__date_menu__lte=aujourdhui) & ~Q(statut='annulee')
+        filtre_retirees = Q(menu__date_menu__lte=aujourdhui) & Q(statut='retiree')
+
+        def taux(retirees, echues):
+            return round((retirees / echues * 100) if echues > 0 else 0, 1)
 
         # ── KPIs globaux ──────────────────────────────────────
         total_commandes  = commande_qs.count()
@@ -1484,30 +1497,46 @@ class DashboardCantineView(APIView):
         total_retirees   = commande_qs.filter(statut='retiree').count()
         total_annulees   = commande_qs.filter(statut='annulee').count()
         total_menus      = menu_qs.count()
-        taux_retrait     = round((total_retirees / total_commandes * 100) if total_commandes > 0 else 0, 1)
+        taux_retrait     = taux(commande_qs.filter(filtre_retirees).count(),
+                                commande_qs.filter(filtre_echues).count())
         taux_annulation  = round((total_annulees / total_commandes * 100) if total_commandes > 0 else 0, 1)
 
-        # ── Par mois ──────────────────────────────────────────
-        commandes_par_mois = (
-            commande_qs
-            .annotate(mois=ExtractMonth('menu__date_menu'))
-            .values('mois')
-            .annotate(
-                total=Count('id'),
-                en_attente=Count('id', filter=Q(statut='en_attente')),
-                retiree=Count('id',    filter=Q(statut='retiree')),
-                annulee=Count('id',    filter=Q(statut='annulee')),
+        # ── Par mois (année + mois : pas de fusion entre années) ──
+        mois_periode = []
+        annee, mois = date_debut.year, date_debut.month
+        while (annee, mois) <= (date_fin.year, date_fin.month):
+            mois_periode.append((annee, mois))
+            annee, mois = (annee + 1, 1) if mois == 12 else (annee, mois + 1)
+
+        commandes_par_mois = {
+            (row['mois'].year, row['mois'].month): row
+            for row in (
+                commande_qs
+                .annotate(mois=TruncMonth('menu__date_menu'))
+                .values('mois')
+                .annotate(
+                    total=Count('id'),
+                    en_attente=Count('id', filter=Q(statut='en_attente')),
+                    retiree=Count('id',    filter=Q(statut='retiree')),
+                    annulee=Count('id',    filter=Q(statut='annulee')),
+                    echues=Count('id',          filter=filtre_echues),
+                    retirees_echues=Count('id', filter=filtre_retirees),
+                )
+                .order_by('mois')
             )
-            .order_by('mois')
-        )
-        par_mois = {i: {'total': 0, 'en_attente': 0, 'retiree': 0, 'annulee': 0} for i in range(1, 13)}
-        for row in commandes_par_mois:
-            par_mois[row['mois']] = {
-                'total':      int(row['total']      or 0),
-                'en_attente': int(row['en_attente'] or 0),
-                'retiree':    int(row['retiree']    or 0),
-                'annulee':    int(row['annulee']    or 0),
-            }
+        }
+        par_mois = []
+        for annee, mois in mois_periode:
+            row = commandes_par_mois.get((annee, mois), {})
+            par_mois.append({
+                'annee':        annee,
+                'mois':         mois,
+                'total':        int(row.get('total')      or 0),
+                'en_attente':   int(row.get('en_attente') or 0),
+                'retiree':      int(row.get('retiree')    or 0),
+                'annulee':      int(row.get('annulee')    or 0),
+                'taux_retrait': taux(int(row.get('retirees_echues') or 0), int(row.get('echues') or 0)),
+            })
 
         # ── Top plats ─────────────────────────────────────────
         top_plats = (
@@ -1544,18 +1573,6 @@ class DashboardCantineView(APIView):
             for row in par_agence
         ]
 
-        # ── Par type équipe ───────────────────────────────────
-        par_typeequipe_data = [
-            {
-                'typeequipe': str(row['menu__typeequipe__libelle'] or ''),
-                'total':      int(row['total'] or 0),
-            }
-            for row in (
-                commande_qs.values('menu__typeequipe__libelle')
-                .annotate(total=Count('id')).order_by('-total')
-            )
-        ]
-
         # ── Par type plat ─────────────────────────────────────
         par_typeplat_data = [
             {
@@ -1568,7 +1585,7 @@ class DashboardCantineView(APIView):
             )
         ]
 
-        # ── Menus récents ─────────────────────────────────────
+        # ── Menus récents (commandes non annulées) ────────────
         menus_recents_data = [
             {
                 'id':           int(m.id),
@@ -1579,36 +1596,28 @@ class DashboardCantineView(APIView):
             }
             for m in (
                 menu_qs.select_related('agence', 'typeequipe')
-                .annotate(nb_commandes=Count('commandes'))
+                .annotate(nb_commandes=Count('commandes', filter=~Q(commandes__statut='annulee')))
                 .order_by('-date_menu')[:5]
             )
         ]
 
-        # ── Évolution hebdomadaire ────────────────────────────
-        today    = date_type.today()
+        # ── Évolution hebdomadaire (4 semaines glissantes, aujourd'hui inclus) ──
         semaines = []
         for i in range(3, -1, -1):
-            debut_s = today - timedelta(weeks=i + 1)
-            fin_s   = today - timedelta(weeks=i)
-            qs_s    = Commande.objects.filter(menu__date_menu__gte=debut_s, menu__date_menu__lt=fin_s)
-            if agences_ids: qs_s = qs_s.filter(menu__agence__id__in=agences_ids)
-            if equipes_ids: qs_s = qs_s.filter(menu__typeequipe__id__in=equipes_ids)
+            fin_s   = aujourdhui - timedelta(weeks=i)
+            debut_s = fin_s - timedelta(days=6)
+            qs_s    = Commande.objects.filter(
+                menu__date_menu__gte=debut_s, menu__date_menu__lte=fin_s,
+            ).exclude(statut='annulee')
+            if agences_ids:  qs_s = qs_s.filter(menu__agence__id__in=agences_ids)
+            if equipes_ids:  qs_s = qs_s.filter(menu__typeequipe__id__in=equipes_ids)
             if statuts_list: qs_s = qs_s.filter(statut__in=statuts_list)
-            semaines.append({'label': 'S-' + str(i + 1) if i > 0 else 'Cette sem.', 'total': qs_s.count()})
+            semaines.append({'label': f'S-{i}' if i > 0 else 'Cette semaine', 'total': qs_s.count()})
 
-
-        # ── Evolution des commandes par statut par date menu ────
-        # Retourne chaque date_menu avec les 3 compteurs de statut
-        # Filtres de dates/agences/équipes appliqués, pas de filtre statut
-        # (on veut toujours les 3 statuts côte à côte)
-        evo_qs = Commande.objects.all()
-        if date_debut:  evo_qs = evo_qs.filter(menu__date_menu__gte=date_debut)
-        if date_fin:    evo_qs = evo_qs.filter(menu__date_menu__lte=date_fin)
-        if agences_ids: evo_qs = evo_qs.filter(menu__agence__id__in=agences_ids)
-        if equipes_ids: evo_qs = evo_qs.filter(menu__typeequipe__id__in=equipes_ids)
-
+        # ── Évolution des commandes par statut par date menu ────
+        # Pas de filtre statut : on veut toujours les 3 statuts côte à côte.
         evo_par_date_qs = (
-            evo_qs
+            base_qs
             .values('menu__date_menu')
             .annotate(
                 en_attente=Count('id', filter=Q(statut='en_attente')),
@@ -1630,84 +1639,53 @@ class DashboardCantineView(APIView):
         # FACTURATION — même calcul que /facturation/ et
         # /facturation/prestataires/ (api/facturation.py) : repas commandés
         # et non annulés, tarifs à la date du menu, montants figés pour les
-        # mois clôturés.
+        # mois clôturés. Calculée sur base_qs : le filtre « statuts » ne
+        # concerne que les statistiques de commandes.
+        # Repas sans tarif (ou sans prestataire rattaché) → repas_sans_tarif.
         # ════════════════════════════════════════════════════
-        total_montant_prestataire = Decimal('0.00')
-        fact_prest_par_mois       = {i: Decimal('0.00') for i in range(1, 13)}
-        fact_prest_par_agence     = {}
-        fact_prest_par_prest      = {}
+        def agreger(lignes, cle_groupe, cle_liste, libelle_groupe):
+            total      = Decimal('0.00')
+            sans_tarif = 0
+            par_mois_f = {am: Decimal('0.00') for am in mois_periode}
+            par_agence_f, par_groupe = {}, {}
+            for l in lignes:
+                if l['montant'] is None:
+                    sans_tarif += 1
+                    continue
+                montant = l['montant']
+                total += montant
+                am = (l['date_menu'].year, l['date_menu'].month)
+                par_mois_f[am] = par_mois_f.get(am, Decimal('0.00')) + montant
+                for dico, cle, nom in ((par_agence_f, 'agence', l['agence_menu']),
+                                       (par_groupe, cle_groupe, libelle_groupe(l))):
+                    ligne = dico.setdefault(nom, {cle: nom, 'montant': Decimal('0.00'), 'nb_commandes': 0})
+                    ligne['montant']      += montant
+                    ligne['nb_commandes'] += 1
 
-        for l in fact.lignes_prestataires(commande_qs):
-            if l['montant'] is None:
-                continue
-            montant = l['montant']
-            total_montant_prestataire += montant
-            fact_prest_par_mois[l['date_menu'].month] += montant
+            def serialiser(dico, cle):
+                return [
+                    {cle: v[cle], 'montant': float(v['montant']), 'nb_commandes': v['nb_commandes']}
+                    for v in sorted(dico.values(), key=lambda x: x['montant'], reverse=True)
+                ]
+            return {
+                'total_montant':    float(total),
+                'repas_sans_tarif': sans_tarif,
+                'par_mois': [
+                    {'annee': a, 'mois': m, 'montant': float(v)}
+                    for (a, m), v in sorted(par_mois_f.items())
+                ],
+                'par_agence': serialiser(par_agence_f, 'agence'),
+                cle_liste:    serialiser(par_groupe, cle_groupe),
+            }
 
-            agence_nom = l['agence_menu']
-            ligne = fact_prest_par_agence.setdefault(
-                agence_nom, {'agence': agence_nom, 'montant': Decimal('0.00'), 'nb_commandes': 0})
-            ligne['montant']      += montant
-            ligne['nb_commandes'] += 1
-
-            prest_nom = l['prestataire'].libelle
-            ligne = fact_prest_par_prest.setdefault(
-                prest_nom, {'prestataire': prest_nom, 'montant': Decimal('0.00'), 'nb_commandes': 0})
-            ligne['montant']      += montant
-            ligne['nb_commandes'] += 1
-
-        fact_fournisseur = {
-            'total_montant': float(total_montant_prestataire),
-            'par_mois': {k: float(v) for k, v in fact_prest_par_mois.items()},
-            'par_agence': [
-                {'agence': v['agence'], 'montant': float(v['montant']), 'nb_commandes': v['nb_commandes']}
-                for v in sorted(fact_prest_par_agence.values(), key=lambda x: x['montant'], reverse=True)
-            ],
-            'par_prestataire': [
-                {'prestataire': v['prestataire'], 'montant': float(v['montant']), 'nb_commandes': v['nb_commandes']}
-                for v in sorted(fact_prest_par_prest.values(), key=lambda x: x['montant'], reverse=True)
-            ],
-        }
-
-        # Facturation employé
-        total_montant_employe   = Decimal('0.00')
-        fact_emp_par_mois       = {i: Decimal('0.00') for i in range(1, 13)}
-        fact_emp_par_agence     = {}
-        fact_emp_par_categorie  = {}
-
-        for l in fact.lignes_facturation(commande_qs):
-            if l['montant'] is None:
-                continue
-            montant = l['montant']
-            total_montant_employe += montant
-            fact_emp_par_mois[l['date_menu'].month] += montant
-
-            agence_nom = l['agence_menu']
-            ligne = fact_emp_par_agence.setdefault(
-                agence_nom, {'agence': agence_nom, 'montant': Decimal('0.00'), 'nb_commandes': 0})
-            ligne['montant']      += montant
-            ligne['nb_commandes'] += 1
-
-            cat_lib = l['categorie'] or '—'
-            ligne = fact_emp_par_categorie.setdefault(
-                cat_lib, {'categorie': cat_lib, 'montant': Decimal('0.00'), 'nb_commandes': 0})
-            ligne['montant']      += montant
-            ligne['nb_commandes'] += 1
-
-        fact_employe = {
-            'total_montant': float(total_montant_employe),
-            'par_mois': {k: float(v) for k, v in fact_emp_par_mois.items()},
-            'par_agence': [
-                {'agence': v['agence'], 'montant': float(v['montant']), 'nb_commandes': v['nb_commandes']}
-                for v in sorted(fact_emp_par_agence.values(), key=lambda x: x['montant'], reverse=True)
-            ],
-            'par_categorie': [
-                {'categorie': v['categorie'], 'montant': float(v['montant']), 'nb_commandes': v['nb_commandes']}
-                for v in sorted(fact_emp_par_categorie.values(), key=lambda x: x['montant'], reverse=True)
-            ],
-        }
+        fact_fournisseur = agreger(fact.lignes_prestataires(base_qs), 'prestataire',
+                                   'par_prestataire', lambda l: l['prestataire'].libelle)
+        fact_employe = agreger(fact.lignes_facturation(base_qs), 'categorie',
+                               'par_categorie', lambda l: l['categorie'] or '—')
 
         return Response({
+            'date_debut':       date_debut.isoformat(),
+            'date_fin':         date_fin.isoformat(),
             'kpis':             {
                 'total_commandes':  total_commandes,
                 'total_en_attente': total_en_attente,
@@ -1720,7 +1698,6 @@ class DashboardCantineView(APIView):
             'par_mois':         par_mois,
             'top_plats':        top_plats_data,
             'par_agence':       par_agence_data,
-            'par_typeequipe':   par_typeequipe_data,
             'par_typeplat':     par_typeplat_data,
             'menus_recents':    menus_recents_data,
             'evolution_hebdo':  semaines,
