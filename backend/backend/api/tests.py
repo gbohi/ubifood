@@ -1164,3 +1164,35 @@ class BesoinsTests(BaseAPITestCase):
                                    format='multipart')
         self.assertEqual(r.status_code, 400)
         self.assertFalse(Besoin.objects.exists())
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PhotoProfilTests(BaseAPITestCase):
+    def image(self, fmt='PNG', nom='photo.png', taille=(1200, 900)):
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        buf = _BytesIO()
+        Image.new('RGB', taille, (20, 120, 60)).save(buf, format=fmt)
+        return SimpleUploadedFile(nom, buf.getvalue(), content_type=f'image/{fmt.lower()}')
+
+    def test_ajout_reduction_et_retrait(self):
+        from PIL import Image
+        client = self.client_pour(self.employe)
+        r = client.post(f'{API}/users/me/photo/', {'photo': self.image()}, format='multipart')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn('photos_profil/', r.data['photo_url'])
+        self.employe.refresh_from_db()
+        with Image.open(self.employe.photo.path) as im:
+            self.assertLessEqual(max(im.size), 512)
+        self.assertEqual(client.get(f'{API}/users/me/').data['photo_url'], r.data['photo_url'])
+        r = client.delete(f'{API}/users/me/photo/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(r.data['photo_url'])
+
+    def test_fichier_invalide_refuse(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        client = self.client_pour(self.employe)
+        faux = SimpleUploadedFile('photo.png', b'pas une image', content_type='image/png')
+        r = client.post(f'{API}/users/me/photo/', {'photo': faux}, format='multipart')
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(self.client_pour().post(f'{API}/users/me/photo/', {}).status_code, 401)

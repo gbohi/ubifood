@@ -32,7 +32,10 @@ class User(AbstractUser):
     poste_telephone = models.CharField(max_length=255, blank=True)
     statut = models.ForeignKey('Statut', on_delete=models.CASCADE)
     last_logout = models.DateTimeField(null=True, blank=True)
-    
+    # Photo de profil (modifiable par l'utilisateur lui-même, web et mobile)
+    photo = models.ImageField(upload_to='photos_profil/', null=True, blank=True,
+                              validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'webp'])])
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     user_created = models.ForeignKey(

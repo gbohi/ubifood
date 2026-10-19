@@ -385,6 +385,48 @@ class UserViewSet(BaseViewSet):
         serializer = self.get_serializer(user)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['post', 'delete'], url_path='me/photo',
+            permission_classes=[IsAuthenticated], parser_classes=[MultiPartParser, FormParser])
+    def ma_photo(self, request):
+        """
+        POST   /api/api/users/me/photo/   champ « photo » (JPEG, PNG ou WebP, 5 Mo max)
+        DELETE /api/api/users/me/photo/   retire la photo
+        L'image est vérifiée, redressée et réduite (512 px, JPEG) avant l'enregistrement.
+        """
+        user = request.user
+        if request.method == 'DELETE':
+            if user.photo:
+                user.photo.delete(save=False)
+            user.photo = None
+            user.save(update_fields=['photo', 'updated_at'])
+            return Response(self.get_serializer(user).data)
+
+        fichier = request.FILES.get('photo')
+        if not fichier:
+            raise ValidationError("Choisissez une photo.")
+        if fichier.size > 5 * 1024 * 1024:
+            raise ValidationError("La photo ne doit pas dépasser 5 Mo.")
+        from PIL import Image, ImageOps, UnidentifiedImageError
+        from django.core.files.base import ContentFile
+        try:
+            image = Image.open(fichier)
+            if image.format not in ('JPEG', 'PNG', 'WEBP'):
+                raise ValidationError("Formats acceptés : JPEG, PNG ou WebP.")
+            image.verify()
+            fichier.seek(0)
+            image = ImageOps.exif_transpose(Image.open(fichier)).convert('RGB')
+        except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+            raise ValidationError("Le fichier n'est pas une image valide (JPEG, PNG ou WebP).")
+        image.thumbnail((512, 512))
+        sortie = BytesIO()
+        image.save(sortie, format='JPEG', quality=85)
+        ancien = user.photo.name if user.photo else None
+        user.photo.save(f'user_{user.pk}.jpg', ContentFile(sortie.getvalue()), save=False)
+        user.save(update_fields=['photo', 'updated_at'])
+        if ancien and ancien != user.photo.name:
+            user.photo.storage.delete(ancien)
+        return Response(self.get_serializer(user).data)
+
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def logout(self, request):
         """

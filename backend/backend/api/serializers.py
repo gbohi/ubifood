@@ -347,8 +347,18 @@ class UserSerializer(serializers.ModelSerializer):
             # ✅ Dernières lignes (pour affichage en liste)
             'dernier_service', 'derniere_agence',
             'dernier_poste', 'derniere_categoriesalarie',
+            'photo_url',
         ]
         read_only_fields = ['last_login', 'last_logout', 'is_superuser']
+
+    # Photo de profil : envoyée par POST /users/me/photo/ (pas par ce formulaire)
+    photo_url = serializers.SerializerMethodField()
+
+    def get_photo_url(self, obj):
+        if not obj.photo:
+            return None
+        # Paramètre de version : l'ancienne photo n'est pas resservie par le cache
+        return f"{obj.photo.url}?v={int(obj.updated_at.timestamp())}" if obj.updated_at else obj.photo.url
 
     def get_roles(self, obj):
         return sorted(g.name for g in obj.groups.all())
