@@ -43,6 +43,9 @@ class AuthUser {
   final String? derniereCategoriesalarieLibelle;
   final int? derniereAgenceId; // ✅ ID agence du gestionnaire
 
+  /// Photo de profil (URL absolue) ; null → initiales
+  final String? photoUrl;
+
   const AuthUser({
     required this.id,
     required this.username,
@@ -58,6 +61,7 @@ class AuthUser {
     this.derniereCategoriesalarieId,
     this.derniereCategoriesalarieLibelle,
     this.derniereAgenceId,
+    this.photoUrl,
   });
 
   String get fullName => '$nom $prenom'.trim();
@@ -95,6 +99,7 @@ class AuthUser {
         derniereCategoriesalarieLibelle: json['derniere_categoriesalarie']
             ?['categoriesalarie_libelle'],
         derniereAgenceId: json['derniere_agence']?['agence'],
+        photoUrl: _absoluteUrl(json['photo_url'] as String?),
       );
 }
 

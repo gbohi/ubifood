@@ -1,6 +1,8 @@
 // lib/features/profil/profil_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
@@ -51,18 +53,44 @@ class _ProfilScreenState extends State<ProfilScreen> {
               ],
             ),
             child: Row(children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(18)),
-                child: Center(
-                    child: Text(user?.initiales ?? 'U',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700))),
+              // Photo de profil : toucher pour la changer
+              Semantics(
+                button: true,
+                label: 'Changer ma photo de profil',
+                child: GestureDetector(
+                  onTap: auth.photoEnCours ? null : () => _choisirPhoto(context),
+                  child: Stack(clipBehavior: Clip.none, children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(18)),
+                      child: auth.photoEnCours
+                          ? const Center(
+                              child: SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white)))
+                          : PhotoProfil(user: user, fontSize: 24),
+                    ),
+                    Positioned(
+                      right: -4,
+                      bottom: -4,
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.primary, width: 2)),
+                        child: const Icon(Icons.photo_camera_rounded,
+                            size: 13, color: AppColors.primary),
+                      ),
+                    ),
+                  ]),
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -352,6 +380,81 @@ class _ProfilScreenState extends State<ProfilScreen> {
         ],
       ),
     );
+  }
+
+  // ── Photo de profil ─────────────────────────────────────────
+  Future<void> _choisirPhoto(BuildContext context) async {
+    final auth = context.read<AuthProvider>();
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_rounded),
+            title: const Text('Choisir dans la galerie'),
+            onTap: () => Navigator.pop(sheetCtx, 'galerie'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_camera_rounded),
+            title: const Text('Prendre une photo'),
+            onTap: () => Navigator.pop(sheetCtx, 'camera'),
+          ),
+          if (auth.user?.photoUrl != null)
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded,
+                  color: AppColors.error),
+              title: const Text('Retirer la photo',
+                  style: TextStyle(color: AppColors.error)),
+              onTap: () => Navigator.pop(sheetCtx, 'retirer'),
+            ),
+        ]),
+      ),
+    );
+    if (source == null || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    String? erreur;
+    if (source == 'retirer') {
+      erreur = await auth.retirerPhoto();
+    } else {
+      final XFile? image;
+      try {
+        image = await ImagePicker().pickImage(
+          source: source == 'camera' ? ImageSource.camera : ImageSource.gallery,
+          // Réduite sur le téléphone : envoi plus rapide (le serveur la redimensionne aussi)
+          maxWidth: 1024,
+          maxHeight: 1024,
+          imageQuality: 85,
+        );
+      } on PlatformException catch (e) {
+        final refus = e.code.contains('access_denied');
+        messenger.showSnackBar(SnackBar(
+            content: Text(refus
+                ? "Accès refusé. Autorisez l'appareil photo ou la galerie dans les réglages du téléphone."
+                : "Impossible d'ouvrir l'appareil photo ou la galerie.")));
+        return;
+      } catch (_) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text("Impossible d'ouvrir l'appareil photo ou la galerie.")));
+        return;
+      }
+      if (image == null) return; // annulé
+      final octets = await image.readAsBytes();
+      if (octets.length > 5 * 1024 * 1024) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('La photo ne doit pas dépasser 5 Mo.')));
+        return;
+      }
+      erreur = await auth.changerPhoto(octets, image.name);
+    }
+    messenger.showSnackBar(SnackBar(
+      content: Text(erreur ??
+          (source == 'retirer'
+              ? 'Photo de profil retirée.'
+              : 'Photo de profil mise à jour.')),
+      backgroundColor: erreur == null ? AppColors.success : AppColors.error,
+    ));
   }
 }
 

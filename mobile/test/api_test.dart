@@ -164,4 +164,14 @@ void main() {
       expect(libelleDateLimite(DateTime(2026, 1, 7, 10)), 'mercredi 7 janvier à 10:00');
     });
   });
+
+  group('Photo de profil', () {
+    test('URL absolue de la photo, null sans photo', () {
+      final avec = AuthUser.fromJson({'id': 1, 'username': 'emp', 'nom': 'KONE', 'prenom': 'Fatou',
+        'photo_url': '/media/photos_profil/user_1.jpg?v=3'});
+      expect(avec.photoUrl, endsWith('/media/photos_profil/user_1.jpg?v=3'));
+      expect(avec.photoUrl, startsWith('http'));
+      expect(AuthUser.fromJson({'id': 2, 'username': 'x'}).photoUrl, isNull);
+    });
+  });
 }

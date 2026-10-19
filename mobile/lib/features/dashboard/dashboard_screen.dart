@@ -116,17 +116,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Container(
                             width: 38,
                             height: 38,
+                            clipBehavior: Clip.antiAlias,
                             decoration: BoxDecoration(
                                 color: AppColors.accent.withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
                                     color: AppColors.accent.withOpacity(0.4))),
-                            child: Center(
-                                child: Text(auth.user?.initiales ?? 'U',
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700))),
+                            child: PhotoProfil(user: auth.user, fontSize: 14),
                           ),
                           const SizedBox(width: 8),
 

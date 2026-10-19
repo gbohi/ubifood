@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../shared/theme/app_theme.dart';
 import '../shared/providers/app_provider.dart';
+import '../core/widgets/common_widgets.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'menu/menu_screen.dart';
 import 'commandes/commandes_screen.dart';
@@ -303,19 +304,13 @@ class _AppDrawer extends StatelessWidget {
               Container(
                 width: 52,
                 height: 52,
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                     color: AppColors.accent.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(14),
                     border:
                         Border.all(color: AppColors.accent.withOpacity(0.4))),
-                child: Center(
-                    child: Text(
-                  user?.initiales ?? 'U',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700),
-                )),
+                child: PhotoProfil(user: user, fontSize: 22),
               ),
               const SizedBox(height: 10),
               Text(user?.fullName ?? '—',

@@ -37,6 +37,20 @@ class AuthService {
     return AuthUser.fromJson(meRes.data);
   }
 
+  /// Envoie la photo de profil (le serveur la vérifie et la réduit).
+  Future<AuthUser> envoyerPhoto(List<int> octets, String nomFichier) async {
+    final res = await apiClient.post('/users/me/photo/',
+        data: FormData.fromMap({
+          'photo': MultipartFile.fromBytes(octets, filename: nomFichier),
+        }));
+    return AuthUser.fromJson(res.data);
+  }
+
+  Future<AuthUser> retirerPhoto() async {
+    final res = await apiClient.delete('/users/me/photo/');
+    return AuthUser.fromJson(res.data);
+  }
+
   /// Révoque le refresh token côté serveur puis efface les jetons locaux.
   Future<void> logout() async {
     try {

@@ -131,6 +131,34 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  // ── Photo de profil ─────────────────────────────────────────
+  bool _photoEnCours = false;
+  bool get photoEnCours => _photoEnCours;
+
+  /// null si tout s'est bien passé, sinon le message d'erreur à afficher.
+  Future<String?> changerPhoto(List<int> octets, String nomFichier) =>
+      _majPhoto(() => authService.envoyerPhoto(octets, nomFichier));
+
+  Future<String?> retirerPhoto() => _majPhoto(authService.retirerPhoto);
+
+  Future<String?> _majPhoto(Future<AuthUser> Function() appel) async {
+    if (_photoEnCours) return null;
+    final demandeur = _user?.id;
+    _photoEnCours = true;
+    notifyListeners();
+    try {
+      final profil = await appel();
+      // Déconnexion ou changement de compte pendant l'envoi : on ignore
+      if (_user?.id == demandeur) _user = profil;
+      return null;
+    } catch (e) {
+      return messageErreurApi(e) ?? "L'envoi de la photo a échoué.";
+    } finally {
+      _photoEnCours = false;
+      notifyListeners();
+    }
+  }
+
   bool _deconnexionEnCours = false;
 
   Future<void> logout() async {

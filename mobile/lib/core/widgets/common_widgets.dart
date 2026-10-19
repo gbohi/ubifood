@@ -1,9 +1,54 @@
 // lib/core/widgets/common_widgets.dart
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/models/models.dart';
+
+// ══════════════════════════════════════════════════════════════
+// PHOTO DE PROFIL (ou initiales)
+// ══════════════════════════════════════════════════════════════
+
+/// Contenu d'un avatar : la photo de l'utilisateur si elle existe,
+/// sinon ses initiales. Le conteneur parent fournit forme et fond
+/// (penser à clipBehavior: Clip.antiAlias).
+class PhotoProfil extends StatelessWidget {
+  final AuthUser? user;
+  final double fontSize;
+  final Color couleurTexte;
+
+  const PhotoProfil({
+    super.key,
+    required this.user,
+    this.fontSize = 16,
+    this.couleurTexte = Colors.white,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final initiales = Center(
+        child: Text(user?.initiales ?? 'U',
+            style: TextStyle(
+                color: couleurTexte,
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700)));
+    final url = user?.photoUrl;
+    if (url == null) return initiales;
+    return Semantics(
+      label: 'Photo de profil',
+      image: true,
+      child: CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        placeholder: (_, __) => initiales,
+        errorWidget: (_, __, ___) => initiales,
+      ),
+    );
+  }
+}
 
 // ══════════════════════════════════════════════════════════════
 // APP BUTTON
