@@ -1,4 +1,7 @@
-import { Component, Output, EventEmitter, Inject, ViewChild } from '@angular/core';
+import { Component, Output, EventEmitter, Inject, ViewChild, ElementRef, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { ToastrService } from 'ngx-toastr';
+import { environment } from 'src/environments/environment';
 import { DOCUMENT } from '@angular/common';
 import { EventService } from 'src/app/core/services/event.service';
 import { LanguageService } from 'src/app/core/services/language.service';
@@ -101,6 +104,88 @@ export class TopbarComponent {
     public _cookiesService: CookieService,
     public store: Store<RootReducerState>,
     private TokenStorageService: TokenStorageService) { }
+
+  // ── Photo de profil ─────────────────────────────────────────
+  @ViewChild('photoModal', { static: false }) photoModal?: ModalDirective;
+  @ViewChild('photoInput', { static: false }) photoInput?: ElementRef<HTMLInputElement>;
+  private http = inject(HttpClient);
+  private toastr = inject(ToastrService);
+  nouvellePhoto: File | null = null;
+  apercuPhoto: string | null = null;
+  erreurPhoto: string | null = null;
+  photoEnCours = false;
+
+  /** URL complète de la photo de l'utilisateur connecté (ou null). */
+  get photoUrl(): string | null {
+    const url = this.userData?.photo_url;
+    return url ? `${environment.apiUrl}${url}` : null;
+  }
+
+  ouvrirPhoto(): void {
+    this.nouvellePhoto = null;
+    this.apercuPhoto = null;
+    this.erreurPhoto = null;
+    if (this.photoInput?.nativeElement) this.photoInput.nativeElement.value = '';
+    this.photoModal?.show();
+  }
+
+  onPhotoChoisie(event: Event): void {
+    const fichier = (event.target as HTMLInputElement).files?.[0] ?? null;
+    this.erreurPhoto = null;
+    this.nouvellePhoto = null;
+    this.apercuPhoto = null;
+    if (!fichier) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(fichier.type)) {
+      this.erreurPhoto = 'Choisissez une image JPEG, PNG ou WebP.';
+      return;
+    }
+    if (fichier.size > 5 * 1024 * 1024) {
+      this.erreurPhoto = 'La photo ne doit pas dépasser 5 Mo.';
+      return;
+    }
+    this.nouvellePhoto = fichier;
+    const lecteur = new FileReader();
+    lecteur.onload = () => {
+      // Ignore une lecture terminée après un autre choix
+      if (this.nouvellePhoto === fichier) this.apercuPhoto = lecteur.result as string;
+    };
+    lecteur.readAsDataURL(fichier);
+  }
+
+  enregistrerPhoto(): void {
+    if (!this.nouvellePhoto || this.photoEnCours) return;
+    const donnees = new FormData();
+    donnees.append('photo', this.nouvellePhoto);
+    this.envoyerPhoto(this.http.post<any>(this.urlPhoto, donnees), 'Photo de profil mise à jour.');
+  }
+
+  retirerPhoto(): void {
+    if (this.photoEnCours) return;
+    this.envoyerPhoto(this.http.delete<any>(this.urlPhoto), 'Photo de profil retirée.');
+  }
+
+  private get urlPhoto(): string {
+    return `${environment.apiUrl}/api/api/users/me/photo/`;
+  }
+
+  private envoyerPhoto(requete: any, succes: string): void {
+    this.photoEnCours = true;
+    this.erreurPhoto = null;
+    requete.subscribe({
+      next: (profil: any) => {
+        // Profil enregistré localement : la photo suit sur toutes les pages
+        this.userData = { ...this.userData, photo_url: profil?.photo_url ?? null };
+        this.TokenStorageService.saveUser(this.userData);
+        this.photoEnCours = false;
+        this.photoModal?.hide();
+        this.toastr.success(succes);
+      },
+      error: (err: any) => {
+        this.photoEnCours = false;
+        this.erreurPhoto = typeof err === 'string' ? err : "L'envoi de la photo a échoué.";
+      },
+    });
+  }
 
   ngOnInit(): void {
     this.element = document.documentElement;

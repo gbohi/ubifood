@@ -312,7 +312,11 @@
                 <div dropdown class="dropdown ms-sm-3 header-item topbar-user">
                     <button dropdownToggle type="button" class="btn shadow-none" id="page-header-user-dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                         <span class="d-flex align-items-center">
-                            <span class="rounded-circle bg-primary-subtle text-primary fw-semibold fs-sm d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 36px; height: 36px;">{{ initiales }}</span>
+                            @if (photoUrl) {
+                                <img [src]="photoUrl" alt="Photo de profil" class="rounded-circle flex-shrink-0 object-fit-cover" style="width: 36px; height: 36px;">
+                            } @else {
+                                <span class="rounded-circle bg-primary-subtle text-primary fw-semibold fs-sm d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 36px; height: 36px;">{{ initiales }}</span>
+                            }
                             <span class="text-start ms-xl-2">
                                 <span class="d-none d-xl-inline-block ms-1 fw-medium user-name-text">{{ nomAffiche }}</span>
                                 <span class="d-none d-xl-block ms-1 fs-sm user-name-sub-text text-nowrap">{{ roleAffiche }}</span>
@@ -322,6 +326,7 @@
                     <div *dropdownMenu class="dropdown-menu dropdown-menu-end">
                         <!-- item-->
                         <h6 class="dropdown-header">Bienvenue {{ nomAffiche }} !</h6>
+                        <a class="dropdown-item" href="javascript: void(0);" (click)="ouvrirPhoto()"><i class="mdi mdi-account-circle text-muted fs-lg align-middle me-1"></i> <span class="align-middle">Ma photo de profil</span></a>
                         <div class="dropdown-divider"></div>
                         <a class="dropdown-item" href="javascript: void(0);" (click)="logout()"><i class="mdi mdi-logout text-muted fs-lg align-middle me-1"></i> <span class="align-middle" data-key="t-logout"> Déconnexion</span></a>
                     </div>
@@ -330,6 +335,39 @@
         </div>
     </div>
 </header>
+
+<!-- Photo de profil -->
+<div bsModal #photoModal="bs-modal" class="modal fade" tabindex="-1" aria-labelledby="photoModalTitre" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="photoModalTitre">Ma photo de profil</h5>
+                <button type="button" class="btn-close" aria-label="Fermer" (click)="photoModal.hide()"></button>
+            </div>
+            <div class="modal-body text-center">
+                @if (apercuPhoto || photoUrl) {
+                    <img [src]="apercuPhoto || photoUrl" alt="Aperçu de la photo" class="rounded-circle object-fit-cover mb-3" style="width: 128px; height: 128px;">
+                } @else {
+                    <span class="rounded-circle bg-primary-subtle text-primary fw-semibold fs-2 d-inline-flex align-items-center justify-content-center mb-3" style="width: 128px; height: 128px;">{{ initiales }}</span>
+                }
+                <input #photoInput type="file" class="form-control" accept="image/jpeg,image/png,image/webp" (change)="onPhotoChoisie($event)">
+                <small class="text-muted d-block mt-1">JPEG, PNG ou WebP — 5 Mo maximum</small>
+                @if (erreurPhoto) {
+                    <div class="alert alert-danger py-2 small mt-2 mb-0">{{ erreurPhoto }}</div>
+                }
+            </div>
+            <div class="modal-footer justify-content-between">
+                @if (photoUrl) {
+                    <button type="button" class="btn btn-subtle-danger btn-sm" [disabled]="photoEnCours" (click)="retirerPhoto()">Retirer la photo</button>
+                } @else { <span></span> }
+                <button type="button" class="btn btn-primary btn-sm" [disabled]="!nouvellePhoto || photoEnCours" (click)="enregistrerPhoto()">
+                    @if (photoEnCours) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Enregistrer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- removeNotificationModal -->
 <div bsModal #removeNotificationModal="bs-modal" id="removeNotificationModal" class="modal fade zoomIn" tabindex="-1" aria-hidden="true">
