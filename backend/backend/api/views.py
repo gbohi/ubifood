@@ -51,14 +51,14 @@ _NOMS_LIES = {
     'UserService': 'des affectations d\'agents', 'UserPoste': 'des postes d\'agents',
     'UserCategoriesalarie': 'des catégories d\'agents', 'Menu': 'des menus', 'MenuPlat': 'des menus',
     'Plat': 'des plats', 'Commande': 'des commandes', 'Retrait': 'des retraits',
-    'Besoin': 'des besoins', 'Vehicule': 'des véhicules', 'Poste': 'des postes',
+    'Besoin': 'des besoins', 'Poste': 'des postes',
     'AgencePrestataire': 'des rattachements agence / prestataire',
     'PlatPrestataire': 'des tarifs', 'PlatCategoriesalarie': 'des tarifs',
     'FactureMensuelle': 'des factures', 'FacturePrestataire': 'des factures',
     'AvisPlat': 'des avis', 'Notification': 'des notifications', 'Prestataire': 'des prestataires',
     'Banniere': 'des bannières', 'DeviceToken': 'des appareils', 'ClotureMensuelle': 'des clôtures',
     'PlatImage': 'des photos de plats', 'UserAllergie': 'des allergies', 'BesoinService': 'des besoins',
-    'LigneFacture': 'des factures', 'LigneFacturePrestataire': 'des factures', 'EntretienVehicule': 'des entretiens',
+    'LigneFacture': 'des factures', 'LigneFacturePrestataire': 'des factures',
 }
 
 
