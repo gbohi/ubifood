@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+import django_filters
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import *
 from .serializers import *
@@ -264,6 +265,34 @@ def _verifier_peut_gerer(request, cible):
             )
 
 
+class UserFilter(django_filters.FilterSet):
+    """
+    Recherche avancée des comptes (page Utilisateurs) sur toutes les données :
+    texte partiel, rôle, et affectations en cours (agence, service, poste, catégorie).
+    """
+    nom       = django_filters.CharFilter(lookup_expr='icontains')
+    prenom    = django_filters.CharFilter(lookup_expr='icontains')
+    username  = django_filters.CharFilter(lookup_expr='icontains')
+    email     = django_filters.CharFilter(lookup_expr='icontains')
+    groupe    = django_filters.NumberFilter(field_name='groups')
+    allergie  = django_filters.CharFilter(field_name='userallergie__libelle', lookup_expr='icontains',
+                                          distinct=True)
+    agence           = django_filters.NumberFilter(method='filtrer_affectation')
+    service          = django_filters.NumberFilter(method='filtrer_affectation')
+    poste            = django_filters.NumberFilter(method='filtrer_affectation')
+    categoriesalarie = django_filters.NumberFilter(method='filtrer_affectation')
+
+    class Meta:
+        model  = User
+        fields = ['statut', 'is_active']
+
+    def filtrer_affectation(self, queryset, name, value):
+        relation = {'agence': 'useragence', 'service': 'userservice', 'poste': 'userposte',
+                    'categoriesalarie': 'usercategoriesalarie'}[name]
+        en_cours = Q(**{f'{relation}__date_fin__isnull': True}) | Q(**{f'{relation}__date_fin__gte': timezone.now()})
+        return queryset.filter(Q(**{f'{relation}__{name}': value}) & en_cours).distinct()
+
+
 class UserViewSet(BaseViewSet):
     """
     Gestion des comptes : réservée aux administrateurs.
@@ -278,9 +307,9 @@ class UserViewSet(BaseViewSet):
     # Défini par action (mot de passe oublié) ; doit exister au niveau classe
     # pour pouvoir être passé en argument de @action.
     throttle_scope = None
-    filterset_fields = ['nom', 'prenom', 'email', 'statut', 'is_active']
+    filterset_class  = UserFilter
     search_fields    = ['nom', 'prenom', 'email', 'username']
-    ordering_fields  = ['nom', 'created_at']
+    ordering_fields  = ['id', 'nom', 'prenom', 'username', 'created_at']
 
     @staticmethod
     def _prefetch(qs):
@@ -313,8 +342,11 @@ class UserViewSet(BaseViewSet):
         if page_qs is not None:
             user_ids = [u.id for u in page_qs]
             users_avec_prefetch = list(
-                self._prefetch(User.objects.filter(id__in=user_ids)).order_by('id')
+                self._prefetch(User.objects.filter(id__in=user_ids))
             )
+            # Même ordre que la page (tri demandé par ?ordering=)
+            rang = {pk: i for i, pk in enumerate(user_ids)}
+            users_avec_prefetch.sort(key=lambda u: rang[u.id])
             serializer = self.get_serializer(users_avec_prefetch, many=True)
             return self.get_paginated_response(serializer.data)
 
@@ -805,7 +837,7 @@ class AgenceViewSet(BaseViewSet):
     serializer_class = AgenceSerializer
     filterset_fields = ['nom_agence']
     search_fields = ['nom_agence']
-    ordering_fields = ['nom_agence', 'created_at']
+    ordering_fields = ['id', 'nom_agence', 'created_at']
 
 
 class AllAgenceNopginListAPIView(ListAPIView):
@@ -896,7 +928,7 @@ class FonctionViewSet(BaseViewSet):
     serializer_class = FonctionSerializer
     filterset_fields = ['libelle']
     search_fields = ['libelle']
-    ordering_fields = ['libelle', 'created_at']
+    ordering_fields = ['id', 'libelle', 'created_at']
 
 
 class CategoriesalarieViewSet(BaseViewSet):
@@ -906,7 +938,7 @@ class CategoriesalarieViewSet(BaseViewSet):
     serializer_class = CategoriesalarieSerializer
     filterset_fields = ['libelle']
     search_fields = ['libelle']
-    ordering_fields = ['libelle', 'created_at']
+    ordering_fields = ['id', 'libelle', 'created_at']
 
 
 class PrestataireViewSet(BaseViewSet):
@@ -917,7 +949,7 @@ class PrestataireViewSet(BaseViewSet):
     serializer_class = PrestataireSerializer
     filterset_fields = ['libelle']
     search_fields = ['libelle']
-    ordering_fields = ['libelle', 'created_at']
+    ordering_fields = ['id', 'libelle', 'created_at']
 
     # Factures, tarifs et rattachements d'agence : suppression refusée
     # (vérification générique de BaseViewSet)
@@ -954,7 +986,7 @@ class PosteViewSet(BaseViewSet):
     serializer_class = PosteSerializer
     filterset_fields = ['libelle', 'fonction', 'service']
     search_fields    = ['libelle']
-    ordering_fields  = ['libelle', 'created_at']
+    ordering_fields  = ['id', 'libelle', 'created_at']
 
 
 # ============================================================
@@ -1394,7 +1426,8 @@ class MenuViewSet(BaseViewSet):
         'agence':     ['exact'],
         'typeequipe': ['exact'],
     }
-    ordering_fields = ['date_menu', 'created_at']
+    ordering_fields = ['id', 'date_menu', 'agence__nom_agence', 'typeequipe__libelle', 'created_at']
+    search_fields   = ['agence__nom_agence', 'typeequipe__libelle']
     bulk_delete_permission_classes = [IsGestionnaireRole]
 
     def get_queryset(self):

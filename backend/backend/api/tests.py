@@ -1269,3 +1269,15 @@ class PopupConnexionTests(BaseAPITestCase):
         r = self.client_pour(self.admin).get(f'{API}/groups/', {'search': 'employé'})
         noms = [g['name'] for g in (r.data['results'] if isinstance(r.data, dict) else r.data)]
         self.assertEqual(noms, ['employe'])
+
+
+class ListesUtilisateursTests(BaseAPITestCase):
+    def test_tri_et_recherche_avancee(self):
+        admin = self.client_pour(self.admin)
+        r = admin.get(f'{API}/users/', {'ordering': '-username'})
+        noms = [u['username'] for u in r.data['results']]
+        self.assertEqual(noms, sorted(noms, reverse=True))
+        r = admin.get(f'{API}/users/', {'agence': self.agence.id})
+        self.assertEqual({u['username'] for u in r.data['results']}, {'emp1', 'gest1'})
+        r = admin.get(f'{API}/users/', {'username': 'EMP', 'groupe': self.groupes['employe'].id})
+        self.assertEqual({u['username'] for u in r.data['results']}, {'emp1', 'emp2'})
