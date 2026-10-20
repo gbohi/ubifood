@@ -43,6 +43,7 @@ import { PrestataireComponent } from './prestataire/prestataire.component';
 import { PosteComponent } from './poste/poste.component';
 import { SocieteComponent } from './societe/societe.component';
 import { BannieresComponent } from './bannieres/bannieres.component';
+import { PopupConnexionComponent } from './popup-connexion/popup-connexion.component';
 
 const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
   // Change this to your upload POST address:
@@ -55,6 +56,7 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
   declarations: [
     SocieteComponent,
     BannieresComponent,
+    PopupConnexionComponent,
     AgenceComponent,
     EtatComponent,
     PrioriteComponent,

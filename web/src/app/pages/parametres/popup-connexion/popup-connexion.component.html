@@ -1,0 +1,119 @@
+<app-breadcrumbs title="Fenêtre de connexion" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+
+<div class="card">
+  <div class="card-header d-flex align-items-center flex-wrap gap-2">
+    <div class="flex-grow-1">
+      <h5 class="mb-0"><i class="ph-picture-in-picture me-2"></i>Fenêtre affichée après la connexion</h5>
+      <small class="text-muted">
+        L'image active s'affiche dans une fenêtre juste après la connexion, sur le web et sur l'application.
+        Une seule image peut être active : en activer une désactive les autres. Aucune image active → pas de fenêtre.
+        Format conseillé : portrait ou carré (PNG, JPEG ou WebP, 5 Mo maximum).
+      </small>
+    </div>
+    <button class="btn btn-primary" (click)="ouvrir(null)" [disabled]="formulaireOuvert">
+      <i class="ri-add-line align-baseline me-1"></i> Ajouter une image
+    </button>
+  </div>
+
+  <div class="card-body">
+
+    @if (!isLoading) {
+      @if (active) {
+        <div class="alert alert-success py-2 small"><i class="ph-check-circle me-1"></i>
+          Image affichée après la connexion : <strong>{{ active.titre }}</strong></div>
+      } @else {
+        <div class="alert alert-secondary py-2 small"><i class="ph-info me-1"></i>
+          Aucune image active : la fenêtre ne s'affiche pas.</div>
+      }
+    }
+
+    <!-- ── Formulaire ajout / modification ─────────────────── -->
+    @if (formulaireOuvert) {
+      <div class="border rounded p-3 mb-4 bg-light-subtle">
+        <h6 class="mb-3">{{ enEdition ? 'Modifier l\'image' : 'Nouvelle image' }}</h6>
+        <form [formGroup]="form" (ngSubmit)="enregistrer()">
+          <div class="row g-3">
+            <div class="col-lg-5">
+              <label class="form-label">Image <span class="text-danger">*</span></label>
+              <div class="rounded border bg-body-secondary overflow-hidden mb-2 d-flex align-items-center justify-content-center" style="height: 220px;">
+                @if (apercu || imageUrl(enEdition)) {
+                  <img [src]="apercu || imageUrl(enEdition)" alt="Aperçu" class="mw-100 mh-100" style="object-fit: contain;">
+                } @else {
+                  <span class="text-muted"><i class="ph-image me-1"></i>Aucune image</span>
+                }
+              </div>
+              <input type="file" class="form-control" id="popup-image"
+                     accept="image/png,image/jpeg,image/webp" (change)="onImageChoisie($event)">
+              @if (erreurImage) { <small class="text-danger">{{ erreurImage }}</small> }
+            </div>
+            <div class="col-lg-7">
+              <label class="form-label">Titre (interne) <span class="text-danger">*</span></label>
+              <input class="form-control" formControlName="titre" id="popup-titre" placeholder="Ex. Semaine du goût"
+                     [class.is-invalid]="form.get('titre')?.touched && form.get('titre')?.invalid">
+              <div class="invalid-feedback">Le titre est requis.</div>
+              <div class="form-check form-switch mt-3">
+                <input class="form-check-input" type="checkbox" id="popup-actif" formControlName="actif">
+                <label class="form-check-label" for="popup-actif">Active (désactive les autres images)</label>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-light" (click)="fermer()">Annuler</button>
+            <button type="submit" class="btn btn-primary" id="popup-enregistrer" [disabled]="isSaving">
+              @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+              Enregistrer
+            </button>
+          </div>
+        </form>
+      </div>
+    }
+
+    <!-- ── Liste ─────────────────────────────────────────────── -->
+    @if (isLoading) {
+      <div class="text-center py-5"><span class="spinner-border text-primary" role="status"></span></div>
+    } @else if (popups.length === 0) {
+      <div class="text-center text-muted py-5">
+        <i class="ph-picture-in-picture display-6 d-block mb-2"></i>
+        Aucune image enregistrée.
+      </div>
+    } @else {
+      <div class="row g-3">
+        @for (p of popups; track p.id) {
+          <div class="col-md-6 col-xl-4">
+            <div class="card h-100 mb-0 border" [class.border-success]="p.actif" [class.opacity-50]="!p.actif">
+              @if (imageUrl(p)) {
+                <div class="bg-body-secondary d-flex align-items-center justify-content-center" style="height: 200px;">
+                  <img [src]="imageUrl(p)" [alt]="p.titre" class="mw-100 mh-100" style="object-fit: contain;">
+                </div>
+              }
+              <div class="card-body">
+                <h6 class="mb-2">{{ p.titre }}</h6>
+                @if (p.actif) {
+                  <span class="badge bg-success-subtle text-success">Activée — affichée après la connexion</span>
+                } @else {
+                  <span class="badge bg-secondary-subtle text-secondary">Désactivée</span>
+                }
+              </div>
+              <div class="card-footer d-flex gap-2">
+                <button class="btn btn-sm btn-subtle-secondary" (click)="ouvrir(p)"><i class="ph-pencil me-1"></i>Modifier</button>
+                <button class="btn btn-sm" [class.btn-subtle-success]="!p.actif" [class.btn-subtle-warning]="p.actif"
+                        [disabled]="enCours !== null" (click)="basculerActif(p)">
+                  @if (enCours === p.id) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                  {{ p.actif ? 'Désactiver' : 'Activer' }}
+                </button>
+                <button class="btn btn-sm btn-subtle-danger ms-auto" (click)="aSupprimer = p" aria-label="Supprimer"><i class="ph-trash"></i></button>
+              </div>
+              @if (aSupprimer?.id === p.id) {
+                <div class="card-footer bg-danger-subtle d-flex align-items-center gap-2">
+                  <small class="flex-grow-1">Supprimer cette image ?</small>
+                  <button class="btn btn-sm btn-light" (click)="aSupprimer = null">Non</button>
+                  <button class="btn btn-sm btn-danger" (click)="supprimer()">Oui, supprimer</button>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>

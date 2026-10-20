@@ -10,6 +10,9 @@ export interface CommandeModel {
   statut: CommandeStatut;
   date_commande: string;
   date_annulation: string | null;
+  /** Annulation faite par un gestionnaire / administrateur (et non par l'agent) */
+  annulee_par_nom?: string | null;
+  annulee_par_gestionnaire?: boolean;
   // lecture
   plat_detail?: PlatModel;
   menu_detail?: MenulistModel;

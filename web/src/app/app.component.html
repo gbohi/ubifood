@@ -1,2 +1,19 @@
-
 <router-outlet></router-outlet>
+
+<!-- Fenêtre affichée après la connexion (image active de Paramètres → Fenêtre de connexion) -->
+@if (popupImage) {
+  <div class="modal d-block" tabindex="-1" role="dialog" aria-modal="true" aria-label="Information"
+       (click)="fermer()">
+    <div class="modal-dialog modal-dialog-centered modal-lg" (click)="$event.stopPropagation()">
+      <div class="modal-content border-0 bg-transparent shadow-none">
+        <div class="position-relative text-center">
+          <button #fermerPopup type="button" class="btn btn-light btn-icon rounded-circle position-absolute top-0 end-0 m-2 shadow"
+                  aria-label="Fermer" (click)="fermer()"><i class="ri-close-line fs-lg"></i></button>
+          <img [src]="popupImage" alt="Information" class="img-fluid rounded shadow"
+               style="max-height: 85vh; object-fit: contain;" (error)="fermer()">
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop show"></div>
+}

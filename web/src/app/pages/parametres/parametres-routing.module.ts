@@ -20,9 +20,17 @@ import { PrestataireComponent } from './prestataire/prestataire.component';
 import { PosteComponent } from './poste/poste.component';
 import { SocieteComponent } from './societe/societe.component';
 import { BannieresComponent } from './bannieres/bannieres.component';
+import { PopupConnexionComponent } from './popup-connexion/popup-connexion.component';
 
 
 const routes: Routes = [
+  {
+    // Image de la fenêtre affichée après la connexion (web et mobile)
+    path: 'popup-connexion',
+    component: PopupConnexionComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
+  },
   {
     // Bannières de l'accueil de l'application mobile
     path: 'bannieres',

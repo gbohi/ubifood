@@ -2,7 +2,11 @@
 
 import { agencesGerees, filtrerAgencesGerees } from 'src/app/core/helpers/roles';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
-import { Component, OnInit, OnDestroy, DestroyRef, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, DestroyRef, ViewChild, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { ModalDirective } from 'ngx-bootstrap/modal';
+import { ToastrService } from 'ngx-toastr';
+import { environment } from 'src/environments/environment';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
 import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
@@ -84,10 +88,46 @@ export class GestionCommandesComponent implements OnInit, OnDestroy {
 
   private destroyRef = inject(DestroyRef);
 
+  // ── Annulation d'une commande / d'un retrait par le gestionnaire ──
+  @ViewChild('actionModal', { static: false }) actionModal?: ModalDirective;
+  actionEnCours: { type: 'commande' | 'retrait'; commande: CommandeModel } | null = null;
+  actionEnvoi = false;
+  private http = inject(HttpClient);
+  private toastr = inject(ToastrService);
+
   constructor(
     private store: Store,
     private fb: UntypedFormBuilder,
   ) {}
+
+  demanderAction(type: 'commande' | 'retrait', commande: CommandeModel): void {
+    this.actionEnCours = { type, commande };
+    this.actionModal?.show();
+  }
+
+  confirmerAction(): void {
+    const a = this.actionEnCours;
+    if (!a || this.actionEnvoi) return;
+    const base = `${environment.apiUrl}/api/api/commandes/${a.commande.id}`;
+    const requete = a.type === 'commande'
+      ? this.http.patch(`${base}/annuler/`, {})
+      : this.http.post(`${base}/annuler-retrait/`, {});
+    this.actionEnvoi = true;
+    requete.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => {
+        this.actionEnvoi = false;
+        this.actionModal?.hide();
+        this.toastr.success(a.type === 'commande'
+          ? 'Commande annulée. L\'agent a été prévenu.'
+          : 'Retrait annulé : la commande est de nouveau en attente. L\'agent a été prévenu.', 'Succès');
+        this.rechercher();
+      },
+      error: err => {
+        this.actionEnvoi = false;
+        this.toastr.error(typeof err === 'string' ? err : 'L\'action a échoué.', 'Erreur');
+      },
+    });
+  }
 
   ngOnInit(): void {
     this.store.dispatch(resetCommandeError());

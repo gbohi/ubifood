@@ -637,16 +637,24 @@ export class ListBesoinComponent implements OnInit, AfterViewInit {
     this.detailRawFiles = [];
     this.selectedServiceId = null;
     this.detailModifie = false;
+    this.documentASupprimer = null;
     this.viewBesoin?.show();
   }
 
+  /** Document dont la suppression est en attente de confirmation (dans la fiche). */
+  documentASupprimer: number | null = null;
+  suppressionDocumentEnCours = false;
+
   deleteDocumentFromDetail(docId: number) {
     const besoinId = this.selectedBesoin?.id;
-    if (!besoinId || !confirm('Supprimer définitivement ce document ?')) return;
+    if (!besoinId || this.suppressionDocumentEnCours) return;
+    this.suppressionDocumentEnCours = true;
     this.besoinService.deleteDocument(besoinId, docId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
+          this.suppressionDocumentEnCours = false;
+          this.documentASupprimer = null;
           if (this.selectedBesoin?.id === besoinId) {
             this.selectedBesoin = {
               ...this.selectedBesoin,
@@ -656,8 +664,11 @@ export class ListBesoinComponent implements OnInit, AfterViewInit {
           this.detailModifie = true;
           this.toastService.success('Document supprimé avec succès.', 'Succès');
         },
-        error: (err) => this.toastService.error(
-          typeof err === 'string' && err ? err : 'Échec lors de la suppression du document.', 'Erreur'),
+        error: (err) => {
+          this.suppressionDocumentEnCours = false;
+          this.toastService.error(
+            typeof err === 'string' && err ? err : 'Échec lors de la suppression du document.', 'Erreur');
+        },
       });
   }
 
