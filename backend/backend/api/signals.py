@@ -67,7 +67,7 @@ def _notifier_commande(commande_id, statut):
     from .fcm_service import envoyer_notification_user
     from .models import Commande
 
-    commande = Commande.objects.select_related('user', 'plat', 'menu').filter(pk=commande_id).first()
+    commande = Commande.objects.select_related('user', 'plat', 'menu', 'annulee_par').filter(pk=commande_id).first()
     if not commande:
         return
     date_str = commande.menu.date_menu.strftime("%d/%m/%Y")
@@ -81,10 +81,14 @@ def _notifier_commande(commande_id, statut):
             menu_id=commande.menu_id,
         )
     elif statut == 'annulee':
+        from .serializers import nom_complet
+        par = ''
+        if commande.annulee_par_id and commande.annulee_par_id != commande.user_id:
+            par = f' par {nom_complet(commande.annulee_par)} (gestionnaire)'
         envoyer_notification_user(
             user=commande.user,
             titre='❌ Commande annulée',
-            message=f'Votre commande de {commande.plat.nom} du {date_str} a été annulée.',
+            message=f'Votre commande de {commande.plat.nom} du {date_str} a été annulée{par}.',
             type_notif='commande_annulee',
             commande_id=commande.id,
             menu_id=commande.menu_id,
@@ -117,6 +121,27 @@ def _notifier_retrait(retrait_id):
         type_notif='retrait_valide',
         menu_id=retrait.menu_id,
     )
+
+
+def _notifier_retrait_annule(user_id, menu_id):
+    from .fcm_service import envoyer_notification_user
+    from .models import Menu, User
+    user = User.objects.filter(pk=user_id).first()
+    menu = Menu.objects.filter(pk=menu_id).first()
+    if not user or not menu:
+        return
+    envoyer_notification_user(
+        user=user,
+        titre='↩️ Retrait annulé',
+        message=(f'Le retrait de votre repas du {menu.date_menu.strftime("%d/%m/%Y")} a été annulé '
+                 'par le gestionnaire : votre commande est de nouveau en attente.'),
+        type_notif='retrait_annule',
+        menu_id=menu.id,
+    )
+
+
+def notifier_retrait_annule(user_id, menu_id):
+    _en_arriere_plan(_notifier_retrait_annule, user_id, menu_id)
 
 
 @receiver(post_save, sender='api.Retrait')

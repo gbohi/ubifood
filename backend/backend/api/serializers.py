@@ -896,8 +896,19 @@ class CommandeSerializer(serializers.ModelSerializer):
             'plat_detail', 'menu_detail', 'user_nom', 'user_agence',
             'user_id', 'user_username',
             'menu_id', 'plat_id', 'avis',
+            'annulee_par_nom', 'annulee_par_gestionnaire',
         ]
         read_only_fields = ['date_commande', 'date_annulation', 'statut']
+
+    # Annulation faite par un gestionnaire / administrateur (et non par l'agent)
+    annulee_par_nom          = serializers.SerializerMethodField()
+    annulee_par_gestionnaire = serializers.SerializerMethodField()
+
+    def get_annulee_par_nom(self, obj):
+        return nom_complet(obj.annulee_par) if obj.annulee_par_id else None
+
+    def get_annulee_par_gestionnaire(self, obj):
+        return bool(obj.annulee_par_id and obj.annulee_par_id != obj.user_id)
 
     avis = serializers.SerializerMethodField()
 
@@ -961,7 +972,9 @@ class CommandeAnnulationSerializer(serializers.ModelSerializer):
                 "Seule une commande en attente peut être annulée."
             )
         limite = date_limite_annulation(commande.menu.date_menu)
-        if timezone.now() > limite:
+        # Un gestionnaire peut annuler pour un agent après la date limite
+        # (agent absent, en mission) ; l'agent, lui, est tenu par le délai.
+        if not self.context.get('ignorer_delai') and timezone.now() > limite:
             raise serializers.ValidationError(
                 "Impossible d'annuler : les annulations pour ce menu étaient "
                 f"possibles jusqu'au {libelle_date_limite(limite)}."
@@ -971,6 +984,7 @@ class CommandeAnnulationSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         instance.statut          = 'annulee'
         instance.date_annulation = timezone.now()
+        instance.annulee_par     = validated_data.get('user_updated')
         if validated_data.get('user_updated'):
             instance.user_updated = validated_data['user_updated']
         instance.save()
@@ -1244,3 +1258,36 @@ class ParametresCantineSerializer(serializers.ModelSerializer):
     class Meta:
         model  = ParametresSociete
         fields = ['delai_commande_heures', 'delai_annulation_heures']
+
+
+class PopupConnexionSerializer(serializers.ModelSerializer):
+    """Image de la fenêtre affichée après la connexion (5 Mo maximum)."""
+    image_url = serializers.SerializerMethodField()
+    # Déclaré explicitement : pas de validateur d'unicité généré par la contrainte
+    actif = serializers.BooleanField(required=False, default=False)
+    TAILLE_MAX = 5 * 1024 * 1024
+
+    class Meta:
+        model  = PopupConnexion
+        fields = ['id', 'titre', 'image', 'image_url', 'actif', 'updated_at']
+        read_only_fields = ['updated_at']
+        extra_kwargs = {'image': {'write_only': True}}
+        # La contrainte « une seule active » est appliquée par PopupConnexion.save()
+        # (qui désactive les autres) : pas de refus à la validation
+        validators = []
+
+    def get_image_url(self, obj):
+        if not obj.image:
+            return None
+        # Version dans l'URL : une image remplacée n'est pas resservie par le cache
+        return f"{obj.image.url}?v={int(obj.updated_at.timestamp())}" if obj.updated_at else obj.image.url
+
+    def validate_image(self, image):
+        if image and image.size > self.TAILLE_MAX:
+            raise serializers.ValidationError("Image trop volumineuse (5 Mo maximum).")
+        return image
+
+    def validate(self, attrs):
+        if self.instance is None and not attrs.get('image'):
+            raise serializers.ValidationError({'image': "Choisissez une image."})
+        return attrs

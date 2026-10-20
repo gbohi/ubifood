@@ -13,6 +13,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import *
 from .serializers import *
+from .signals import notifier_retrait_annule
 from .permissions import (
     IsAdminRole, IsGestionnaireRole, IsOwnerOrGestionnaire,
     ReadAuthenticatedWriteAdmin, ReadAuthenticatedWriteGestionnaire,
@@ -742,6 +743,17 @@ class GroupViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminRole]
 
     ROLES_SYSTEME = {'super_admin', 'admin', 'gestionnaire', 'employe'}
+    LIBELLES = {'super_admin': 'Super administrateur', 'admin': 'Administrateur',
+                'gestionnaire': 'Gestionnaire', 'employe': 'Employé'}
+    ordering_fields = ['id', 'name']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        terme = (self.request.query_params.get('search') or '').strip().lower()
+        if terme:
+            francais = [nom for nom, lib in self.LIBELLES.items() if terme in lib.lower()]
+            qs = qs.filter(Q(name__icontains=terme) | Q(name__in=francais))
+        return qs
 
     def _proteger(self, group):
         if group.name in self.ROLES_SYSTEME:
@@ -1540,8 +1552,14 @@ class CommandeViewSet(BaseViewSet):
         with transaction.atomic():
             # Verrou : un retrait simultané ne peut pas être écrasé par l'annulation
             commande = Commande.objects.select_for_update().get(pk=commande.pk)
+            # Gestionnaire (ses agences) ou administrateur annulant pour un agent :
+            # la date limite ne s'applique pas (agent absent, en mission…)
+            geres = agences_gerees(request.user)
+            pour_un_agent = commande.user_id != request.user.id and is_gestionnaire(request.user) \
+                and (geres is None or commande.menu.agence_id in geres)
             serializer = CommandeAnnulationSerializer(
-                commande, data={}, partial=True, context={'request': request}
+                commande, data={}, partial=True,
+                context={'request': request, 'ignorer_delai': pour_un_agent}
             )
             serializer.is_valid(raise_exception=True)
             serializer.save(user_updated=request.user)
@@ -1549,6 +1567,24 @@ class CommandeViewSet(BaseViewSet):
             CommandeSerializer(commande, context={'request': request}).data,
             status=status.HTTP_200_OK
         )
+
+    @action(detail=True, methods=['post'], url_path='annuler-retrait',
+            permission_classes=[IsGestionnaireRole])
+    def annuler_retrait(self, request, pk=None):
+        """
+        POST /commandes/{id}/annuler-retrait/   retrait enregistré par erreur :
+        la commande repasse « en attente » (tant que le mois n'est pas clôturé).
+        """
+        commande = self.get_object()
+        verifier_menu_gere(request.user, commande.menu)
+        if commande.statut != 'retiree':
+            raise ValidationError("Seul un repas retiré peut voir son retrait annulé.")
+        retrait = Retrait.objects.filter(user=commande.user, menu=commande.menu).first()
+        if retrait is None:
+            raise ValidationError("Aucun retrait enregistré pour ce repas.")
+        annuler_retrait(retrait, request.user)
+        commande.refresh_from_db()
+        return Response(CommandeSerializer(commande, context={'request': request}).data)
 
     @action(detail=False, methods=['get'], url_path='mes-commandes')
     def mes_commandes(self, request):
@@ -1936,7 +1972,8 @@ class RetraitViewSet(BaseViewSet):
     filterset_fields = ['menu', 'user']
 
     def get_permissions(self):
-        if self.action in ('update', 'partial_update', 'destroy', 'bulk_delete'):
+        # Annuler un retrait (DELETE) : gestionnaire de l'agence ou administrateur
+        if self.action in ('update', 'partial_update', 'bulk_delete'):
             return [IsAdminRole()]
         return super().get_permissions()
 
@@ -1957,12 +1994,23 @@ class RetraitViewSet(BaseViewSet):
         verifier_mois_ouvert(instance.menu.date_menu)
 
     def perform_destroy(self, instance):
-        # Annuler un retrait remet les commandes de l'agent « en attente »
-        self.verifier_suppression(instance)
-        with transaction.atomic():
-            Commande.objects.filter(user=instance.user, menu=instance.menu, statut='retiree') \
-                .update(statut='en_attente', updated_at=timezone.now())
-            instance.delete()
+        annuler_retrait(instance, self.request.user)
+
+
+def annuler_retrait(retrait, par):
+    """
+    Annule un retrait (erreur de scan…) : les commandes de l'agent repassent
+    « en attente » et l'avis éventuel, donné sur un repas désormais non retiré,
+    est supprimé. Interdit si le mois est clôturé. L'agent est prévenu.
+    """
+    verifier_mois_ouvert(retrait.menu.date_menu)
+    with transaction.atomic():
+        commandes = Commande.objects.filter(user=retrait.user, menu=retrait.menu, statut='retiree')
+        AvisPlat.objects.filter(commande__in=commandes).delete()
+        commandes.update(statut='en_attente', updated_at=timezone.now(), user_updated=par)
+        user_id, menu = retrait.user_id, retrait.menu
+        retrait.delete()
+        transaction.on_commit(lambda: notifier_retrait_annule(user_id, menu.pk))
 
 
 class FonctionListAPIView(ListAPIView):
@@ -2506,6 +2554,36 @@ class BanniereViewSet(BaseViewSet):
         return (qs.filter(actif=True)
                   .filter(Q(date_debut__isnull=True) | Q(date_debut__lte=jour))
                   .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=jour)))
+
+
+class PopupConnexionViewSet(BaseViewSet):
+    """
+    Fenêtre affichée après la connexion (web et mobile).
+    GET    /api/api/popups-connexion/          toutes les images (administrateurs)
+    GET    /api/api/popups-connexion/active/   l'image active, ou {} si aucune (tout utilisateur connecté)
+    POST / PATCH / DELETE                      administrateurs (multipart : image) ;
+                                               activer une image désactive les autres.
+    """
+    queryset = PopupConnexion.objects.all()
+    serializer_class = PopupConnexionSerializer
+    permission_classes = [IsAdminRole]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = None
+    filter_backends = []
+
+    def get_permissions(self):
+        if self.action == 'active':
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
+    @action(detail=False, methods=['get'])
+    def active(self, request):
+        popup = PopupConnexion.objects.filter(actif=True).first()
+        return Response(self.get_serializer(popup).data if popup else {})
+
+    def perform_destroy(self, instance):
+        instance.image.delete(save=False)
+        instance.delete()
 
 
 class AvisPlatViewSet(viewsets.ModelViewSet):

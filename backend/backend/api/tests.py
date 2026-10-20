@@ -1196,3 +1196,76 @@ class PhotoProfilTests(BaseAPITestCase):
         r = client.post(f'{API}/users/me/photo/', {'photo': faux}, format='multipart')
         self.assertEqual(r.status_code, 400)
         self.assertEqual(self.client_pour().post(f'{API}/users/me/photo/', {}).status_code, 401)
+
+
+class AnnulationsGestionnaireTests(BaseAPITestCase):
+    """Annulation pour un agent (après la date limite) et annulation d'un retrait."""
+
+    def test_gestionnaire_annule_apres_la_date_limite(self):
+        from .models import Notification
+        menu = self.creer_menu(jours=1)            # date limite (48 h) dépassée
+        cmd = Commande.objects.create(user=self.employe, menu=menu, plat=self.plat1)
+        url = f'{API}/commandes/{cmd.id}/annuler/'
+        self.assertEqual(self.client_pour(self.employe).patch(url).status_code, 400)
+        with self.captureOnCommitCallbacks(execute=True):
+            r = self.client_pour(self.gestionnaire).patch(url)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut'], 'annulee')
+        self.assertTrue(r.data['annulee_par_gestionnaire'])
+        self.assertEqual(r.data['annulee_par_nom'], 'GEST1 Test')
+
+    def test_gestionnaire_autre_agence_ne_peut_pas_annuler(self):
+        autre = Agence.objects.create(nom_agence='Plateau')
+        menu = Menu.objects.create(date_menu=timezone.localdate() + timedelta(days=1),
+                                   agence=autre, typeequipe=self.typeequipe)
+        MenuPlat.objects.create(menu=menu, plat=self.plat1)
+        cmd = Commande.objects.create(user=self.employe2, menu=menu, plat=self.plat1)
+        r = self.client_pour(self.gestionnaire).patch(f'{API}/commandes/{cmd.id}/annuler/')
+        self.assertEqual(r.status_code, 404)
+
+    def test_annuler_un_retrait(self):
+        from .models import AvisPlat, Retrait
+        menu = self.creer_menu(jours=0)
+        cmd = Commande.objects.create(user=self.employe, menu=menu, plat=self.plat1, statut='retiree')
+        Retrait.objects.create(user=self.employe, menu=menu, badge_matricule='emp1')
+        AvisPlat.objects.create(commande=cmd, user=self.employe, plat=self.plat1, note=4)
+        url = f'{API}/commandes/{cmd.id}/annuler-retrait/'
+        self.assertEqual(self.client_pour(self.employe).post(url).status_code, 403)
+        r = self.client_pour(self.gestionnaire).post(url)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut'], 'en_attente')
+        self.assertFalse(Retrait.objects.exists())
+        self.assertFalse(AvisPlat.objects.exists())
+        # Plus rien à annuler
+        self.assertEqual(self.client_pour(self.gestionnaire).post(url).status_code, 400)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PopupConnexionTests(BaseAPITestCase):
+    def image(self):
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        buf = _BytesIO()
+        Image.new('RGB', (40, 40), (200, 0, 0)).save(buf, format='PNG')
+        return SimpleUploadedFile('p.png', buf.getvalue(), content_type='image/png')
+
+    def test_une_seule_image_active(self):
+        admin = self.client_pour(self.admin)
+        url = f'{API}/popups-connexion/'
+        self.assertEqual(self.client_pour(self.employe).get(f'{url}active/').data, {})
+        a = admin.post(url, {'titre': 'A', 'image': self.image(), 'actif': 'true'}, format='multipart').data
+        rb = admin.post(url, {'titre': 'B', 'image': self.image(), 'actif': 'true'}, format='multipart')
+        self.assertEqual(rb.status_code, 201, rb.data)
+        b = rb.data
+        liste = {p['titre']: p['actif'] for p in admin.get(url).data}
+        self.assertEqual(liste, {'A': False, 'B': True})
+        self.assertEqual(self.client_pour(self.employe).get(f'{url}active/').data['id'], b['id'])
+        admin.patch(f"{url}{b['id']}/", {'actif': False}, format='json')
+        self.assertEqual(self.client_pour(self.employe).get(f'{url}active/').data, {})
+        self.assertEqual(self.client_pour(self.employe).post(url, {'titre': 'X'}).status_code, 403)
+        self.assertTrue(a['id'])
+
+    def test_recherche_des_roles_en_francais(self):
+        r = self.client_pour(self.admin).get(f'{API}/groups/', {'search': 'employé'})
+        noms = [g['name'] for g in (r.data['results'] if isinstance(r.data, dict) else r.data)]
+        self.assertEqual(noms, ['employe'])

@@ -173,6 +173,9 @@ class Commande(BaseModel):
     date_commande = models.DateTimeField(default=timezone.now)
     statut        = models.CharField(max_length=20, choices=STATUT_CHOICES, default='en_attente')
     date_annulation = models.DateTimeField(null=True, blank=True)
+    # Qui a annulé : l'agent lui-même ou un gestionnaire / administrateur
+    annulee_par     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                        related_name='commandes_annulees')
 
     class Meta:
         # Un agent ne peut commander le même plat qu'une seule fois par menu
@@ -314,6 +317,7 @@ class Notification(models.Model):
         ('commande_passee',  'Commande passée'),
         ('commande_annulee', 'Commande annulée'),
         ('retrait_valide',   'Retrait validé'),
+        ('retrait_annule',   'Retrait annulé'),
         ('menu_disponible',  'Menu disponible'),
         ('rappel_48h',       'Rappel avant la date limite'),
         ('info',             'Information'),
@@ -517,6 +521,42 @@ class Banniere(models.Model):
     class Meta:
         db_table = 'banniere'
         ordering = ['ordre', 'id']
+
+    def __str__(self):
+        return self.titre
+
+
+class PopupConnexion(models.Model):
+    """
+    Image affichée dans une fenêtre juste après la connexion (web et mobile).
+    Une seule peut être active à la fois ; aucune active → pas de fenêtre.
+    """
+    titre      = models.CharField(max_length=150, help_text="Nom interne (non affiché)")
+    image      = models.ImageField(upload_to='popups/',
+                                   validators=[FileExtensionValidator(['png', 'jpg', 'jpeg', 'webp'])])
+    actif      = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    user_created = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='+')
+    user_updated = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='+')
+
+    class Meta:
+        db_table = 'popup_connexion'
+        ordering = ['-actif', '-updated_at']
+        constraints = [
+            models.UniqueConstraint(fields=['actif'], condition=models.Q(actif=True),
+                                    name='une_seule_popup_active'),
+        ]
+
+    def save(self, *args, **kwargs):
+        from django.db import transaction
+        with transaction.atomic():
+            if self.actif:
+                # Activer celle-ci désactive les autres
+                PopupConnexion.objects.filter(actif=True).exclude(pk=self.pk).update(actif=False)
+            super().save(*args, **kwargs)
 
     def __str__(self):
         return self.titre
