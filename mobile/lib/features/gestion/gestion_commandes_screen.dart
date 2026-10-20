@@ -174,8 +174,8 @@ class GestionCommandesScreenState extends State<GestionCommandesScreen>
           onFiltrer: (debut, fin) {
             if (debut != null && fin != null && debut.isAfter(fin)) {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text(
-                      'La date de début doit précéder la date de fin.')));
+                  content:
+                      Text('La date de début doit précéder la date de fin.')));
               return;
             }
             setState(() {
@@ -510,7 +510,8 @@ class _ListeCommandes extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         itemCount: commandes.length,
         separatorBuilder: (_, __) => const SizedBox(height: 10),
-        itemBuilder: (_, i) => _CommandeGestionCard(commande: commandes[i]),
+        itemBuilder: (_, i) =>
+            _CommandeGestionCard(commande: commandes[i], onModifiee: onRefresh),
       ),
     );
   }
@@ -522,7 +523,11 @@ class _ListeCommandes extends StatelessWidget {
 
 class _CommandeGestionCard extends StatelessWidget {
   final Commande commande;
-  const _CommandeGestionCard({required this.commande});
+
+  /// Après une annulation (commande ou retrait) : rechargement de la liste
+  final Future<void> Function() onModifiee;
+  const _CommandeGestionCard(
+      {required this.commande, required this.onModifiee});
 
   @override
   Widget build(BuildContext context) {
@@ -549,103 +554,126 @@ class _CommandeGestionCard extends StatelessWidget {
           )
         ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Photo plat
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: commande.platDetail?.imageUrl != null
-                ? Image.network(commande.platDetail!.imageUrl!,
-                    width: 52,
-                    height: 52,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _iconPlat())
-                : _iconPlat(),
-          ),
-          const SizedBox(width: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Photo plat
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: commande.platDetail?.imageUrl != null
+                  ? Image.network(commande.platDetail!.imageUrl!,
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _iconPlat())
+                  : _iconPlat(),
+            ),
+            const SizedBox(width: 12),
 
-          // Infos — Expanded pour ne jamais déborder
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Nom plat
-                Text(
-                  commande.platDetail?.nom ?? '—',
-                  style: Theme.of(context).textTheme.titleSmall,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-                const SizedBox(height: 4),
-
-                // Employé
-                Row(children: [
-                  Icon(Icons.person_outline_rounded,
-                      size: 12, color: secondaire),
-                  const SizedBox(width: 3),
-                  Expanded(
-                    child: Text(
-                      commande.userNom.isNotEmpty ? commande.userNom : '—',
-                      style: TextStyle(fontSize: 12, color: secondaire),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+            // Infos — Expanded pour ne jamais déborder
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Nom plat
+                  Text(
+                    commande.platDetail?.nom ?? '—',
+                    style: Theme.of(context).textTheme.titleSmall,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
-                ]),
-                // Agence du menu : utile à l'administrateur, qui voit toutes les agences
-                if (context.read<AuthProvider>().user?.isAdmin == true &&
-                    (commande.menuDetail?.agenceNom ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
+
+                  // Employé
                   Row(children: [
-                    Icon(Icons.location_on_outlined,
+                    Icon(Icons.person_outline_rounded,
                         size: 12, color: secondaire),
                     const SizedBox(width: 3),
                     Expanded(
                       child: Text(
-                        commande.menuDetail!.agenceNom,
+                        commande.userNom.isNotEmpty ? commande.userNom : '—',
                         style: TextStyle(fontSize: 12, color: secondaire),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ]),
-                ],
-                const SizedBox(height: 3),
+                  // Agence du menu : utile à l'administrateur, qui voit toutes les agences
+                  if (context.read<AuthProvider>().user?.isAdmin == true &&
+                      (commande.menuDetail?.agenceNom ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Row(children: [
+                      Icon(Icons.location_on_outlined,
+                          size: 12, color: secondaire),
+                      const SizedBox(width: 3),
+                      Expanded(
+                        child: Text(
+                          commande.menuDetail!.agenceNom,
+                          style: TextStyle(fontSize: 12, color: secondaire),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ]),
+                  ],
+                  const SizedBox(height: 3),
 
-                // Date menu + heure
-                Row(children: [
-                  Icon(Icons.calendar_today_rounded,
-                      size: 12, color: secondaire),
-                  const SizedBox(width: 3),
-                  Flexible(
-                    child: Text(
-                      dateMenu != null
-                          ? DateFormat('EEE dd/MM/yyyy', 'fr_FR')
-                              .format(dateMenu)
-                          : '—',
-                      style: TextStyle(fontSize: 11, color: secondaire),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (dateCmde != null) ...[
-                    const SizedBox(width: 6),
-                    Icon(Icons.access_time_rounded,
+                  // Date menu + heure
+                  Row(children: [
+                    Icon(Icons.calendar_today_rounded,
                         size: 12, color: secondaire),
                     const SizedBox(width: 3),
-                    Text(
-                      DateFormat('HH:mm').format(dateCmde),
-                      style: TextStyle(fontSize: 11, color: secondaire),
+                    Flexible(
+                      child: Text(
+                        dateMenu != null
+                            ? DateFormat('EEE dd/MM/yyyy', 'fr_FR')
+                                .format(dateMenu)
+                            : '—',
+                        style: TextStyle(fontSize: 11, color: secondaire),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ],
-                ]),
-              ],
+                    if (dateCmde != null) ...[
+                      const SizedBox(width: 6),
+                      Icon(Icons.access_time_rounded,
+                          size: 12, color: secondaire),
+                      const SizedBox(width: 3),
+                      Text(
+                        DateFormat('HH:mm').format(dateCmde),
+                        style: TextStyle(fontSize: 11, color: secondaire),
+                      ),
+                    ],
+                  ]),
+                ],
+              ),
             ),
-          ),
 
-          // Badge statut
-          const SizedBox(width: 8),
-          StatutBadge(statut: commande.statut),
+            // Badge statut
+            const SizedBox(width: 8),
+            StatutBadge(statut: commande.statut),
+          ],
+        ),
+        // Annulation décidée par un gestionnaire / administrateur
+        if (commande.libelleAnnulationGestionnaire != null) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            Icon(Icons.admin_panel_settings_outlined,
+                size: 12, color: secondaire),
+            const SizedBox(width: 3),
+            Expanded(
+              child: Text(commande.libelleAnnulationGestionnaire!,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: secondaire,
+                      fontStyle: FontStyle.italic),
+                  overflow: TextOverflow.ellipsis),
+            ),
+          ]),
         ],
-      ),
+        if (context.read<AuthProvider>().isGestionnaire &&
+            (commande.statut == StatutCommande.enAttente ||
+                commande.statut == StatutCommande.retiree))
+          _ActionsGestion(commande: commande, onModifiee: onModifiee),
+      ]),
     );
   }
 
@@ -659,4 +687,127 @@ class _CommandeGestionCard extends StatelessWidget {
         child: const Icon(Icons.restaurant_rounded,
             color: AppColors.primary, size: 24),
       );
+}
+
+// ══════════════════════════════════════════════════════════════
+// ACTIONS GESTIONNAIRE : annuler la commande / annuler le retrait
+// ══════════════════════════════════════════════════════════════
+
+class _ActionsGestion extends StatelessWidget {
+  final Commande commande;
+  final Future<void> Function() onModifiee;
+  const _ActionsGestion({required this.commande, required this.onModifiee});
+
+  bool get _estRetrait => commande.statut == StatutCommande.retiree;
+
+  @override
+  Widget build(BuildContext context) {
+    final cmdProv = context.watch<CommandeProvider>();
+    final enCours = cmdProv.actionGestionEnCours == commande.id;
+    // Une seule action à la fois, toutes cartes confondues
+    final occupe = cmdProv.actionGestionEnCours != null;
+    final libelle = _estRetrait ? 'Annuler le retrait' : 'Annuler la commande';
+    final couleur = _estRetrait ? AppColors.warning : AppColors.error;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: couleur,
+            side: BorderSide(color: couleur.withOpacity(0.6)),
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            textStyle:
+                const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          icon: enCours
+              ? SizedBox(
+                  width: 14,
+                  height: 14,
+                  child:
+                      CircularProgressIndicator(strokeWidth: 2, color: couleur))
+              : Icon(_estRetrait ? Icons.undo_rounded : Icons.cancel_outlined,
+                  size: 16),
+          label: Text(enCours ? '$libelle…' : libelle),
+          onPressed: occupe ? null : () => _confirmer(context, cmdProv),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmer(
+      BuildContext context, CommandeProvider cmdProv) async {
+    final agent = commande.userNom.isNotEmpty ? commande.userNom : "l'agent";
+    final plat = commande.platDetail?.nom;
+    final dateMenu = DateTime.tryParse(commande.menuDetail?.dateMenu ?? '');
+    final repas = [
+      if (plat != null) '« $plat »',
+      if (dateMenu != null)
+        'du ${DateFormat('EEEE d MMMM', 'fr_FR').format(dateMenu)}',
+    ].join(' ');
+    final explication = _estRetrait
+        ? 'Le retrait du repas ${repas.isEmpty ? '' : '$repas '}de $agent '
+            'sera annulé : la commande repassera « en attente » et l\'avis '
+            'éventuellement laissé par l\'agent sera supprimé.\n\n'
+            'L\'agent sera notifié.'
+        : 'La commande ${repas.isEmpty ? '' : '$repas '}de $agent sera '
+            'annulée, même si la date limite d\'annulation est dépassée.\n\n'
+            'L\'agent sera notifié.';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          Icon(Icons.warning_amber_rounded,
+              color: _estRetrait ? AppColors.warning : AppColors.error),
+          const SizedBox(width: 8),
+          Expanded(
+              child: Text(_estRetrait
+                  ? 'Annuler le retrait ?'
+                  : 'Annuler la commande ?')),
+        ]),
+        content: Text(explication),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Non'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor:
+                  _estRetrait ? AppColors.warning : AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child:
+                Text(_estRetrait ? 'Oui, annuler le retrait' : 'Oui, annuler'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+
+    // Capturé avant l'await : la carte peut changer d'onglet (statut modifié)
+    final messenger = ScaffoldMessenger.of(context);
+    final erreur = _estRetrait
+        ? await cmdProv.annulerRetrait(commande.id)
+        : await cmdProv.annulerCommandeAgent(commande.id);
+    messenger.showSnackBar(SnackBar(
+      content: Text(erreur ??
+          (_estRetrait
+              ? 'Retrait annulé : la commande est de nouveau en attente'
+              : 'Commande annulée — l\'agent a été notifié')),
+      backgroundColor: erreur == null ? AppColors.success : AppColors.error,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      margin: const EdgeInsets.all(12),
+    ));
+    // Succès ou refus (commande modifiée entre-temps) : liste à jour
+    await onModifiee();
+  }
 }

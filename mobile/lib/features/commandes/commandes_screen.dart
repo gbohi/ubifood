@@ -7,6 +7,7 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../shared/models/models.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../core/widgets/tic_echeance.dart';
 import '../avis/avis_widgets.dart';
 
 class CommandesScreen extends StatefulWidget {
@@ -204,7 +205,6 @@ class _CommandeCard extends StatelessWidget {
     final date = DateTime.tryParse(commande.dateCommande)?.toLocal();
     final dateMenu = commande.menuDetail?.dateMenu;
     final menuDate = dateMenu != null ? DateTime.tryParse(dateMenu) : null;
-    final peutAnnuler = commande.peutAnnuler && !_depasseDelai;
 
     return Container(
       decoration: BoxDecoration(
@@ -282,42 +282,28 @@ class _CommandeCard extends StatelessWidget {
                 value: commande.menuDetail!.typeEquipeLibelle,
               ),
 
-            // ── Badge délai (le dépassement est indiqué par le bouton) ──
-            if (commande.statut == StatutCommande.enAttente &&
-                peutAnnuler) ...[
+            // ── Annulée par le gestionnaire (et non par l'agent) ──
+            if (commande.libelleAnnulationGestionnaire != null) ...[
               const SizedBox(height: 10),
               Container(
                 width: double.infinity,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _depasseDelai
-                      ? AppColors.errorLight
-                      : AppColors.accentLight,
+                  color: AppColors.errorLight,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: _depasseDelai
-                          ? AppColors.error.withOpacity(0.3)
-                          : AppColors.accent.withOpacity(0.3)),
+                  border: Border.all(color: AppColors.error.withOpacity(0.3)),
                 ),
                 child: Row(children: [
-                  Icon(
-                    _depasseDelai
-                        ? Icons.lock_clock_rounded
-                        : Icons.timer_outlined,
-                    size: 14,
-                    color: _depasseDelai ? AppColors.error : AppColors.accent,
-                  ),
+                  const Icon(Icons.admin_panel_settings_outlined,
+                      size: 14, color: AppColors.error),
                   const SizedBox(width: 6),
                   Expanded(
-                      child: Text(_delaiMessage,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: _depasseDelai
-                                ? AppColors.error
-                                : AppColors.accent,
-                          ))),
+                      child: Text(commande.libelleAnnulationGestionnaire!,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.error))),
                 ]),
               ),
             ],
@@ -328,63 +314,104 @@ class _CommandeCard extends StatelessWidget {
               AvisCommandeBloc(commande: commande),
             ],
 
-            // ── Bouton annuler ────────────────────────────────
-            if (commande.statut == StatutCommande.enAttente) ...[
-              const SizedBox(height: 12),
-              if (peutAnnuler)
-                Consumer<CommandeProvider>(
-                  builder: (_, cmdProv, __) => AppButton(
-                    label: 'Annuler la commande',
-                    outlined: true,
-                    color: AppColors.error,
-                    icon: Icons.cancel_outlined,
-                    loading: cmdProv.isLoading,
-                    onPressed: cmdProv.isLoading
-                        ? null
-                        : () => _showAnnulerDialog(context, cmdProv),
-                  ),
-                )
-              else
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color:
-                        isDark ? AppColors.darkCard : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: (isDark
-                                ? AppColors.darkTextSecondary
-                                : AppColors.lightTextSecondary)
-                            .withOpacity(0.3)),
-                  ),
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.lock_outline_rounded,
-                            size: 14,
-                            color: isDark
-                                ? AppColors.darkTextSecondary
-                                : AppColors.lightTextSecondary),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                              'Annulation impossible — date limite dépassée',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: isDark
-                                      ? AppColors.darkTextSecondary
-                                      : AppColors.lightTextSecondary,
-                                  fontWeight: FontWeight.w500)),
-                        ),
-                      ]),
-                ),
-            ],
+            // ── Délai et bouton d'annulation : mis à jour en direct, le
+            // bouton se ferme à l'heure limite sans action de l'utilisateur
+            if (commande.statut == StatutCommande.enAttente)
+              TicEcheance(
+                echeances: [commande.menuDetail?.dateLimiteAnnulation],
+                builder: (ctx) => _blocAnnulation(ctx, isDark),
+              ),
           ]),
         ),
       ]),
     );
+  }
+
+  Widget _blocAnnulation(BuildContext context, bool isDark) {
+    final peutAnnuler = commande.peutAnnuler && !_depasseDelai;
+    return Column(children: [
+      // ── Badge délai (le dépassement est indiqué par le bouton) ──
+      if (commande.statut == StatutCommande.enAttente && peutAnnuler) ...[
+        const SizedBox(height: 10),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: _depasseDelai ? AppColors.errorLight : AppColors.accentLight,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+                color: _depasseDelai
+                    ? AppColors.error.withOpacity(0.3)
+                    : AppColors.accent.withOpacity(0.3)),
+          ),
+          child: Row(children: [
+            Icon(
+              _depasseDelai ? Icons.lock_clock_rounded : Icons.timer_outlined,
+              size: 14,
+              color: _depasseDelai ? AppColors.error : AppColors.accent,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+                child: Text(_delaiMessage,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: _depasseDelai ? AppColors.error : AppColors.accent,
+                    ))),
+          ]),
+        ),
+      ],
+
+      // ── Bouton annuler ────────────────────────────────
+      if (commande.statut == StatutCommande.enAttente) ...[
+        const SizedBox(height: 12),
+        if (peutAnnuler)
+          Consumer<CommandeProvider>(
+            builder: (_, cmdProv, __) => AppButton(
+              label: 'Annuler la commande',
+              outlined: true,
+              color: AppColors.error,
+              icon: Icons.cancel_outlined,
+              loading: cmdProv.isLoading,
+              onPressed: cmdProv.isLoading
+                  ? null
+                  : () => _showAnnulerDialog(context, cmdProv),
+            ),
+          )
+        else
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkCard : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: (isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary)
+                      .withOpacity(0.3)),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.lock_outline_rounded,
+                  size: 14,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text('Annulation impossible — date limite dépassée',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
+                        fontWeight: FontWeight.w500)),
+              ),
+            ]),
+          ),
+      ],
+    ]);
   }
 
   void _showAnnulerDialog(BuildContext context, CommandeProvider cmdProv) {

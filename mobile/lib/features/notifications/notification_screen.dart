@@ -396,7 +396,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   CibleNotification? _cible(NotificationItem n) {
-    if (n.type.startsWith('commande_') || n.type == 'retrait_valide') {
+    if (n.type.startsWith('commande_') ||
+        n.type == 'retrait_valide' ||
+        n.type == 'retrait_annule') {
       return CibleNotification.commandes;
     }
     if (n.menuId != null) return CibleNotification.menus;
@@ -550,6 +552,8 @@ class _NotificationTile extends StatelessWidget {
         return _NotifConfig(Icons.cancel_rounded, AppColors.error);
       case 'retrait_valide':
         return _NotifConfig(Icons.restaurant_rounded, AppColors.accent);
+      case 'retrait_annule':
+        return const _NotifConfig(Icons.undo_rounded, AppColors.warning);
       case 'menu_disponible':
         return _NotifConfig(Icons.restaurant_menu_rounded, AppColors.primary);
       case 'rappel_48h':

@@ -279,6 +279,7 @@ class CommandeProvider extends ChangeNotifier {
   CommandeState get state => _state;
   String? get error => _error;
   String? get successMessage => _successMessage;
+
   /// Action en cours (commander / annuler)
   bool get isLoading => _state == CommandeState.loading;
 
@@ -310,8 +311,8 @@ class CommandeProvider extends ChangeNotifier {
       _mesCommandes.where((c) => c.statut == StatutCommande.annulee).length;
 
   /// Plusieurs écrans demandent la liste au démarrage : un seul appel.
-  Future<void> loadMesCommandes() =>
-      _chargementEnCours ??= _charger().whenComplete(() => _chargementEnCours = null);
+  Future<void> loadMesCommandes() => _chargementEnCours ??=
+      _charger().whenComplete(() => _chargementEnCours = null);
 
   Future<void> _charger() async {
     final gen = _generation;
@@ -338,6 +339,7 @@ class CommandeProvider extends ChangeNotifier {
     _commandesAgence = [];
     _state = CommandeState.idle;
     _commandeEnCours = null;
+    _actionGestionEnCours = null;
     _error = _successMessage = _listError = null;
     _listLoading = false;
     notifyListeners();
@@ -389,6 +391,50 @@ class CommandeProvider extends ChangeNotifier {
       _commandeEnCours = null;
       notifyListeners();
       return false;
+    }
+  }
+
+  // ── Gestion des commandes (gestionnaire / administrateur) ──────
+  /// Commande d'agent en cours de traitement (une seule action à la fois)
+  int? _actionGestionEnCours;
+  int? get actionGestionEnCours => _actionGestionEnCours;
+
+  /// Annule la commande d'un agent : le serveur n'applique pas la date
+  /// limite au gestionnaire de l'agence (ni à l'administrateur) et prévient
+  /// l'agent. null si tout s'est bien passé, sinon le message à afficher.
+  Future<String?> annulerCommandeAgent(int commandeId) => _actionGestion(
+      commandeId,
+      () => commandeService.annuler(commandeId),
+      'Impossible d\'annuler la commande');
+
+  /// Retrait enregistré par erreur : la commande repasse « en attente »
+  /// et l'avis de l'agent est supprimé.
+  Future<String?> annulerRetrait(int commandeId) => _actionGestion(
+      commandeId,
+      () => commandeService.annulerRetrait(commandeId),
+      'Impossible d\'annuler le retrait');
+
+  Future<String?> _actionGestion(int commandeId,
+      Future<Commande> Function() appel, String erreurParDefaut) async {
+    // Double appui / seconde carte pendant une action : ignoré
+    if (_actionGestionEnCours != null) return null;
+    final gen = _generation;
+    _actionGestionEnCours = commandeId;
+    notifyListeners();
+    try {
+      final maj = await appel();
+      if (gen != _generation) return null;
+      // Sa propre commande (gestionnaire qui commande aussi) : liste à jour
+      final idx = _mesCommandes.indexWhere((c) => c.id == commandeId);
+      if (idx != -1) _mesCommandes[idx] = maj;
+      return null;
+    } catch (e) {
+      return messageErreurApi(e) ?? erreurParDefaut;
+    } finally {
+      if (gen == _generation) {
+        _actionGestionEnCours = null;
+        notifyListeners();
+      }
     }
   }
 
@@ -635,7 +681,8 @@ class AllergieProvider extends ChangeNotifier {
   }
 
   bool _existeDeja(String libelle, {int? sauf}) => _allergies.any((a) =>
-      a.id != sauf && a.libelle.trim().toLowerCase() == libelle.trim().toLowerCase());
+      a.id != sauf &&
+      a.libelle.trim().toLowerCase() == libelle.trim().toLowerCase());
 
   Future<bool> ajouter(String libelle) async {
     final auth = _getAuth();
@@ -717,5 +764,6 @@ class AllergieProvider extends ChangeNotifier {
     }
     _authUser = user;
   }
+
   AuthUser? _getAuth() => _authUser;
 }

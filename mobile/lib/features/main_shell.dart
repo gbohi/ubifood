@@ -15,6 +15,7 @@ import 'facturation/facturation_screen.dart';
 import 'allergies/allergies_screen.dart';
 import 'gestion/gestion_commandes_screen.dart';
 import 'notifications/notification_screen.dart';
+import 'popup/popup_connexion.dart';
 
 class _NavItem {
   final IconData activeIcon;
@@ -39,6 +40,12 @@ class _MainShellState extends State<MainShell> {
   void initState() {
     super.initState();
     cibleNotification.addListener(_ouvrirCibleNotification);
+    // Arrivée sur l'application (connexion ou session restaurée au
+    // lancement) : MainShell n'est créé qu'une fois par session, la fenêtre
+    // n'apparaît donc pas à chaque retour au premier plan. Sans attendre.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) afficherPopupConnexion(context);
+    });
   }
 
   @override

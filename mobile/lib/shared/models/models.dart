@@ -268,6 +268,12 @@ class Commande {
   /// Avis de l'agent sur ce repas (repas retirés uniquement)
   final Avis? avis;
 
+  /// Auteur de l'annulation (null si non annulée ou inconnu)
+  final String? annuleeParNom;
+
+  /// true : annulée par un gestionnaire / administrateur (et non par l'agent)
+  final bool annuleeParGestionnaire;
+
   const Commande({
     required this.id,
     required this.statut,
@@ -277,7 +283,21 @@ class Commande {
     this.menuDetail,
     required this.userNom,
     this.avis,
+    this.annuleeParNom,
+    this.annuleeParGestionnaire = false,
   });
+
+  /// « Annulée par Jean DUPONT (gestionnaire) », null si l'agent a lui-même
+  /// annulé (ou si la commande n'est pas annulée).
+  String? get libelleAnnulationGestionnaire {
+    if (statut != StatutCommande.annulee || !annuleeParGestionnaire) {
+      return null;
+    }
+    final nom = annuleeParNom?.trim() ?? '';
+    return nom.isEmpty
+        ? 'Annulée par un gestionnaire'
+        : 'Annulée par $nom (gestionnaire)';
+  }
 
   bool get peutAnnuler => statut == StatutCommande.enAttente;
 
@@ -293,6 +313,8 @@ class Commande {
         menuDetail: menuDetail,
         userNom: userNom,
         avis: avis,
+        annuleeParNom: annuleeParNom,
+        annuleeParGestionnaire: annuleeParGestionnaire,
       );
 
   factory Commande.fromJson(Map<String, dynamic> j) => Commande(
@@ -308,6 +330,8 @@ class Commande {
         avis: j['avis'] is Map<String, dynamic>
             ? Avis.fromJson(j['avis'] as Map<String, dynamic>)
             : null,
+        annuleeParNom: j['annulee_par_nom'] as String?,
+        annuleeParGestionnaire: j['annulee_par_gestionnaire'] == true,
       );
 }
 
@@ -443,7 +467,6 @@ class AllergieModel {
       AllergieModel(id: id, libelle: libelle ?? this.libelle, userId: userId);
 }
 
-
 // ══════════════════════════════════════════════════════════════
 // BANNIÈRE (accueil, paramétrée dans l'administration web)
 // ══════════════════════════════════════════════════════════════
@@ -460,4 +483,28 @@ class Banniere {
         titre: j['titre'] ?? '',
         imageUrl: _absoluteUrl(j['image_url'] as String?),
       );
+}
+
+// ══════════════════════════════════════════════════════════════
+// FENÊTRE APRÈS CONNEXION (image paramétrée dans l'administration web)
+// ══════════════════════════════════════════════════════════════
+
+class PopupConnexion {
+  final int id;
+  final String titre;
+  final String imageUrl; // URL absolue
+
+  const PopupConnexion(
+      {required this.id, required this.titre, required this.imageUrl});
+
+  /// GET /popups-connexion/active/ renvoie {} quand aucune image n'est
+  /// active : null dans ce cas (ou si l'image manque / est désactivée).
+  static PopupConnexion? fromJsonOuNull(dynamic j) {
+    if (j is! Map) return null;
+    final id = j['id'];
+    final url = _absoluteUrl(j['image_url'] as String?);
+    if (id is! int || url == null || j['actif'] == false) return null;
+    return PopupConnexion(
+        id: id, titre: (j['titre'] as String?) ?? '', imageUrl: url);
+  }
 }

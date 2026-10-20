@@ -57,9 +57,8 @@ class AuthService {
       final refresh = await apiClient.getRefreshToken();
       if (refresh != null) {
         // Hors ligne : on n'attend pas plus de 5 s pour déconnecter
-        await apiClient
-            .post('/users/logout/', data: {'refresh': refresh})
-            .timeout(const Duration(seconds: 5));
+        await apiClient.post('/users/logout/',
+            data: {'refresh': refresh}).timeout(const Duration(seconds: 5));
       }
     } catch (_) {
       // Hors ligne ou session déjà expirée : la déconnexion locale suffit.
@@ -80,7 +79,8 @@ String _iso(DateTime d) =>
 class MenuService {
   /// Menus pour le retrait : servis aujourd'hui ou les jours précédents
   /// (un menu futur ne peut pas être retiré), du plus récent au plus ancien.
-  Future<List<Menu>> getMenusRetrait({int? agenceId, int joursPasses = 7}) async {
+  Future<List<Menu>> getMenusRetrait(
+      {int? agenceId, int joursPasses = 7}) async {
     final today = DateTime.now().toUtc();
     final params = <String, dynamic>{
       'date_menu__lte': _iso(today),
@@ -174,8 +174,17 @@ class CommandeService {
     return Commande.fromJson(res.data);
   }
 
+  /// Annulation par l'agent (date limite appliquée) ou, pour la commande
+  /// d'un agent, par son gestionnaire / un administrateur (sans date limite).
   Future<Commande> annuler(int commandeId) async {
     final res = await apiClient.patch('/commandes/$commandeId/annuler/');
+    return Commande.fromJson(res.data);
+  }
+
+  /// Gestionnaire / administrateur : retrait enregistré par erreur.
+  /// La commande repasse « en attente » et l'avis de l'agent est supprimé.
+  Future<Commande> annulerRetrait(int commandeId) async {
+    final res = await apiClient.post('/commandes/$commandeId/annuler-retrait/');
     return Commande.fromJson(res.data);
   }
 }
@@ -276,6 +285,14 @@ class BanniereService {
   }
 }
 
+class PopupConnexionService {
+  /// Image à afficher après la connexion, null si aucune n'est active.
+  Future<PopupConnexion?> getActive() async {
+    final res = await apiClient.get('/popups-connexion/active/');
+    return PopupConnexion.fromJsonOuNull(res.data);
+  }
+}
+
 class FacturationService {
   /// Lignes de facturation de l'utilisateur connecté sur la période.
   Future<List<LigneFacturation>> mesLignes({
@@ -306,6 +323,7 @@ final menuService = MenuService();
 final commandeService = CommandeService();
 final avisService = AvisService();
 final banniereService = BanniereService();
+final popupConnexionService = PopupConnexionService();
 final retraitService = RetraitService();
 final facturationService = FacturationService();
 

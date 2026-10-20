@@ -7,6 +7,7 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../shared/models/models.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../core/widgets/tic_echeance.dart';
 import '../../core/services/cantine_service.dart';
 import '../avis/avis_widgets.dart';
 
@@ -201,11 +202,7 @@ class _MenuScreenState extends State<MenuScreen> {
                     ? const Center(child: CircularProgressIndicator())
                     : RefreshIndicator(
                         onRefresh: _recharger,
-                        child: _MenuDetail(
-                          menu: selection,
-                          depasseDelai: _depasseDelai(selection),
-                          delaiMessage: _delaiMessage(selection),
-                        ),
+                        child: _MenuDetail(menu: selection),
                       ),
           ),
         ]);
@@ -465,14 +462,8 @@ class _JoursSelector extends StatelessWidget {
 
 class _MenuDetail extends StatelessWidget {
   final Menu menu;
-  final bool depasseDelai;
-  final String delaiMessage;
 
-  const _MenuDetail({
-    required this.menu,
-    required this.depasseDelai,
-    required this.delaiMessage,
-  });
+  const _MenuDetail({required this.menu});
 
   @override
   Widget build(BuildContext context) {
@@ -518,8 +509,7 @@ class _MenuDetail extends StatelessWidget {
               const SizedBox(height: 6),
 
               // ── Ligne 3 : Statut commande ──────────────────
-              _DelaiBadge(
-                  depasseDelai: depasseDelai, message: delaiMessage),
+              _DelaiBadge(menu: menu),
               const SizedBox(height: 6),
 
               // ── Ligne 4 : Agence + Équipe ──────────────────
@@ -551,11 +541,8 @@ class _MenuDetail extends StatelessWidget {
         ),
 
         // ── Plats ──────────────────────────────────────────
-        ...menu.menuPlats.map((mp) => _PlatCommandeCard(
-              plat: mp.plat,
-              menu: menu,
-              depasseDelai: depasseDelai,
-            )),
+        ...menu.menuPlats
+            .map((mp) => _PlatCommandeCard(plat: mp.plat, menu: menu)),
       ],
     );
   }
@@ -568,13 +555,8 @@ class _MenuDetail extends StatelessWidget {
 class _PlatCommandeCard extends StatelessWidget {
   final Plat plat;
   final Menu menu;
-  final bool depasseDelai;
 
-  const _PlatCommandeCard({
-    required this.plat,
-    required this.menu,
-    required this.depasseDelai,
-  });
+  const _PlatCommandeCard({required this.plat, required this.menu});
 
   @override
   Widget build(BuildContext context) {
@@ -632,8 +614,7 @@ class _PlatCommandeCard extends StatelessWidget {
                   color: AppColors.accent),
             ],
             const SizedBox(height: 16),
-            _BoutonCommander(
-                plat: plat, menu: menu, depasseDelai: depasseDelai),
+            _BoutonCommander(plat: plat, menu: menu),
           ]),
         ),
       ]),
@@ -664,13 +645,21 @@ class _ImagePlaceholder extends StatelessWidget {
       );
 }
 
+/// Badge « Ferme dans … » : mis à jour en direct (minuteur léger) et
+/// basculé sur « Délai de commande dépassé » à l'heure limite.
 class _DelaiBadge extends StatelessWidget {
-  final bool depasseDelai;
-  final String message;
-  const _DelaiBadge({required this.depasseDelai, required this.message});
+  final Menu menu;
+  const _DelaiBadge({required this.menu});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => TicEcheance(
+        echeances: [menu.dateLimiteCommande],
+        builder: _contenu,
+      );
+
+  Widget _contenu(BuildContext context) {
+    final depasseDelai = _depasseDelai(menu);
+    final message = _delaiMessage(menu);
     final color = depasseDelai ? AppColors.error : AppColors.accent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -739,16 +728,19 @@ class _Tag extends StatelessWidget {
 class _BoutonCommander extends StatelessWidget {
   final Plat plat;
   final Menu menu;
-  final bool depasseDelai;
 
-  const _BoutonCommander({
-    required this.plat,
-    required this.menu,
-    required this.depasseDelai,
-  });
+  const _BoutonCommander({required this.plat, required this.menu});
 
+  /// Reconstruit à l'heure limite de commande / d'annulation : « Réserver »
+  /// et « Annuler » se ferment sans action de l'utilisateur.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => TicEcheance(
+        echeances: [menu.dateLimiteCommande, menu.dateLimiteAnnulation],
+        builder: _contenu,
+      );
+
+  Widget _contenu(BuildContext context) {
+    final depasseDelai = _depasseDelai(menu);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cmdProv = context.watch<CommandeProvider>();
     final secColor =
@@ -1073,7 +1065,6 @@ class _PlatDetailSheetState extends State<_PlatDetailSheet> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final menu = widget.menu;
     final plat = widget.plat;
-    final depasse = _depasseDelai(menu);
     final iconColor =
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
     final bg = isDark ? AppColors.darkSurface : AppColors.lightSurface;
@@ -1170,9 +1161,7 @@ class _PlatDetailSheetState extends State<_PlatDetailSheet> {
                           color: iconColor,
                           text: menu.typeEquipeLibelle),
                       const SizedBox(height: 4),
-                      _DelaiBadge(
-                          depasseDelai: depasse,
-                          message: _delaiMessage(menu)),
+                      _DelaiBadge(menu: menu),
                       const SizedBox(height: 20),
 
                       // ── Actions : mêmes règles que la carte ─────
@@ -1185,8 +1174,7 @@ class _PlatDetailSheetState extends State<_PlatDetailSheet> {
                                   c.statut == StatutCommande.retiree)
                               .firstOrNull;
                           return Column(children: [
-                            _BoutonCommander(
-                                plat: plat, menu: menu, depasseDelai: depasse),
+                            _BoutonCommander(plat: plat, menu: menu),
                             if (retiree != null) ...[
                               const SizedBox(height: 10),
                               // Le résumé des avis est rechargé après notation
