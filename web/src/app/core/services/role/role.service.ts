@@ -6,6 +6,7 @@ import { Observable, of } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { RolelistModel, ApiResponse } from 'src/app/store/Role/role.model';
+import { paramTri } from 'src/app/shared/tri-serveur';
 
 @Injectable({ providedIn: 'root' })
 export class RoleService {
@@ -13,16 +14,22 @@ export class RoleService {
   private apiUrl = `${environment.apiUrl}/api/api`;
 
   private currentPage  = 1;
+  private currentOrdering = '';
+  private currentSearch = '';
   private totalItems   = 0;
   private itemsPerPage = 10;
 
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllRoles(page: number = 1): Observable<ApiResponse<RolelistModel>> {
+  getAllRoles(page: number = 1, search?: string, ordering?: string): Observable<ApiResponse<RolelistModel>> {
     this.currentPage = page;
+    // Recherche serveur (?search= : nom technique ou libellé français) : conservée lors des rechargements
+    if (search !== undefined) this.currentSearch = search.trim();
+    // Tri serveur (?ordering=) : conservé lors des rechargements tant qu'aucun nouveau tri n'est fourni
+    if (ordering !== undefined) this.currentOrdering = ordering.trim();
     return this.http.get<ApiResponse<RolelistModel>>(
-      `${this.apiUrl}/groups/?page=${page}`
+      `${this.apiUrl}/groups/?page=${page}${this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : ''}${paramTri(this.currentOrdering)}`
     ).pipe(
       tap(response => {
         this.totalItems   = response.count;
@@ -73,5 +80,15 @@ export class RoleService {
       totalItems:   this.totalItems,
       itemsPerPage: this.itemsPerPage,
     });
+  }
+
+  // ── Terme de recherche courant (conservé lors des rechargements) ──
+  getCurrentSearch(): string {
+    return this.currentSearch;
+  }
+
+  // ── Tri courant (conservé lors des rechargements) ──
+  getCurrentOrdering(): string {
+    return this.currentOrdering;
   }
 }

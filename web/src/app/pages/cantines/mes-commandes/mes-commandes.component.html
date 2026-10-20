@@ -194,6 +194,11 @@
                           <i [class]="getStatutIcon(c.statut) + ' me-1'"></i>
                           {{ getStatutLabel(c.statut) }}
                         </span>
+                        @if (annulationGestionnaire(c); as par) {
+                          <div class="small text-secondary mt-1">
+                            <i class="ph-user-gear me-1"></i>{{ par }}
+                          </div>
+                        }
                       </td>
 
                       <!-- Action — getDateMenu() évite TS2532 sur menu_detail?.date_menu -->
@@ -248,6 +253,11 @@
                     <i [class]="getStatutIcon(c.statut) + ' me-1'"></i>
                     {{ getStatutLabel(c.statut) }}
                   </span>
+                  @if (annulationGestionnaire(c); as par) {
+                    <div class="small text-secondary mb-2">
+                      <i class="ph-user-gear me-1"></i>{{ par }}
+                    </div>
+                  }
 
                   <h6 class="card-title fw-semibold mb-1">{{ c.plat_detail?.nom }}</h6>
                   <small class="text-muted">{{ c.plat_detail?.type_plat_libelle }}</small>

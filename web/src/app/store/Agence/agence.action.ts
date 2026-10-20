@@ -6,7 +6,7 @@ import { AgencelistModel, ApiResponse } from './agence.model';
 // ── Fetch paginé ──────────────────────────────────────────────
 export const fetchagenceData = createAction(
   '[Data] Fetch agence Table Data',
-  props<{ page?: number; search?: string }>()
+  props<{ page?: number; search?: string; ordering?: string }>()
 );
 export const fetchagenceSuccess = createAction(
   '[Data] Fetch agence Data Success',

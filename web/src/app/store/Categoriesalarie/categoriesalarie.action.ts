@@ -4,7 +4,7 @@ import { CategoriesalarielistModel, ApiResponse } from './categoriesalarie.model
 // fetch categoriesalarie data
 export const fetchcategoriesalarieData = createAction(
     '[Data] Fetch categoriesalarie Table Data',
-    props<{ page?: number; search?: string }>()
+    props<{ page?: number; search?: string; ordering?: string }>()
 );
 
 export const fetchcategoriesalarieSuccess = createAction(

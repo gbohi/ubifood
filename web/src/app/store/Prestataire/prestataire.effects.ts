@@ -45,8 +45,8 @@ export class PrestataireEffects {
     this.actions$.pipe(
       ofType(fetchprestataireData),
       // switchMap : une recherche plus récente annule la précédente
-      switchMap(({ page, search }) =>
-        this.prestataireService.getAllPrestataires(page || 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>
+        this.prestataireService.getAllPrestataires(page || 1, search, ordering).pipe(
           map(response => fetchprestataireSuccess({ response })),
           catchError(error => of(fetchprestataireFailure({ error: error.toString() })))
         )

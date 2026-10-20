@@ -197,3 +197,9 @@
     }
 }
 
+
+[data-theme="default"] {
+    .tab-container.justify-content-end .nav-tabs {
+        margin-top: -38px;
+    }
+}

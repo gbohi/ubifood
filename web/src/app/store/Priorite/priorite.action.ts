@@ -6,7 +6,7 @@ import { PrioritelistModel, ApiResponse } from './priorite.model';
 // ── Fetch paginé ──────────────────────────────────────────────
 export const fetchprioriteData = createAction(
   '[Data] Fetch priorite Table Data',
-  props<{ page?: number; search?: string }>()
+  props<{ page?: number; search?: string; ordering?: string }>()
 );
 export const fetchprioriteSuccess = createAction(
   '[Data] Fetch priorite Data Success',

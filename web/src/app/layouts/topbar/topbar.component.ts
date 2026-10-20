@@ -3,20 +3,13 @@ import { HttpClient } from '@angular/common/http';
 import { ToastrService } from 'ngx-toastr';
 import { environment } from 'src/environments/environment';
 import { DOCUMENT } from '@angular/common';
-import { EventService } from 'src/app/core/services/event.service';
 import { LanguageService } from 'src/app/core/services/language.service';
-import { CookieService } from 'ngx-cookie-service';
-import { AuthenticationService } from 'src/app/core/services/auth.service';
-import { Router } from '@angular/router';
 import { GESTIONNAIRES, aUnRole, rolesUtilisateur } from 'src/app/core/helpers/roles';
 
 import { ModalDirective } from 'ngx-bootstrap/modal';
-import { notification } from './data';
 import { RootReducerState } from 'src/app/store';
 import { Store } from '@ngrx/store';
-import { changeMode } from 'src/app/store/layouts/layout-action';
 import { logout } from 'src/app/store/Authentication/authentication.actions';
-import { getLayoutmode } from 'src/app/store/layouts/layout-selector';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 
 const LIBELLES_ROLES: Record<string, string> = {
@@ -43,13 +36,7 @@ const LIENS_UTILES: { libelle: string; icone: string; lien: string; roles?: stri
 })
 export class TopbarComponent {
 
-  country: any;
-  selectedItem!: any;
-
-  flagvalue: any;
-  valueset: any;
-  countryName: any;
-  cookieValue: any;
+  element: any;
   userData: any;
   liensUtiles: typeof LIENS_UTILES = [];
 
@@ -72,36 +59,11 @@ export class TopbarComponent {
     const role = ['super_admin', 'admin', 'gestionnaire', 'employe'].find(r => roles.includes(r));
     return role ? LIBELLES_ROLES[role] : 'Utilisateur';
   }
-  cartData: any;
-
-  element: any;
-  mode: string | undefined;
-
-  total: any;
-  subtotal: any = 0;
-  totalsum: any;
-  taxRate: any = 0.125;
-  shippingRate: any = '65.00';
-  discountRate: any = 0.15;
-  discount: any;
-  tax: any;
-
-  notificationList: any;
 
   @Output() mobileMenuButtonClicked = new EventEmitter();
-  @ViewChild('removeNotificationModal', { static: false }) removeNotificationModal?: ModalDirective;
-  @ViewChild('removeCartModal', { static: false }) removeCartModal?: ModalDirective;
-  deleteid: any;
-  totalNotify: number = 0;
-  newNotify: number = 0;
-  readNotify: number = 0;
 
   constructor(@Inject(DOCUMENT) private document: any,
-    private eventService: EventService,
     public languageService: LanguageService,
-    private authService: AuthenticationService,
-    private router: Router,
-    public _cookiesService: CookieService,
     public store: Store<RootReducerState>,
     private TokenStorageService: TokenStorageService) { }
 
@@ -191,38 +153,6 @@ export class TopbarComponent {
     this.element = document.documentElement;
     this.userData = this.TokenStorageService.getUser();
     this.liensUtiles = LIENS_UTILES.filter(l => aUnRole(this.userData, l.roles));
-    // Panier de démonstration du template supprimé (bloc HTML déjà commenté)
-    this.cartData = [];
-    this.cartData.map((x: any) => {
-      x['total'] = (x['qty'] * x['price']).toFixed(2)
-      this.subtotal += parseFloat(x['total'])
-    })
-    this.subtotal = this.subtotal.toFixed(2)
-    this.discount = (this.subtotal * this.discountRate).toFixed(2)
-    this.tax = (this.subtotal * this.taxRate).toFixed(2);
-    this.totalsum = (parseFloat(this.subtotal) + parseFloat(this.tax) + parseFloat(this.shippingRate) - parseFloat(this.discount)).toFixed(2)
-
-
-    // Cookies wise Language set
-    this.cookieValue = this._cookiesService.get('lang');
-    const val = this.listLang.filter(x => x.lang === this.cookieValue);
-    this.countryName = val.map(element => element.text);
-    if (val.length === 0) {
-      if (this.flagvalue === undefined) { this.valueset = 'assets/images/flags/us.svg'; }
-      this.countryName = 'English'
-    } else {
-      this.flagvalue = val.map(element => element.flag);
-    }
-
-    this.notificationList = notification
-    this.notificationList.forEach((element: any) => {
-      this.totalNotify += element.items.length
-      if (element.title == 'New') {
-        this.newNotify = element.items.length
-      } else {
-        this.readNotify = element.items.length
-      }
-    });
   }
 
   windowScroll() {
@@ -233,90 +163,6 @@ export class TopbarComponent {
       (document.getElementById('back-to-top') as HTMLElement).style.display = "none";
       document.getElementById('page-topbar')?.classList.remove('topbar-shadow')
     }
-  }
-
-  // Increment Decrement Quantity
-  qty: number = 0;
-  increment(qty: any, i: any, id: any) {
-    this.subtotal = 0;
-    if (id == '0' && qty > 1) {
-      qty--;
-      this.cartData[i].qty = qty
-      this.cartData[i].total = (this.cartData[i].qty * this.cartData[i].price).toFixed(2)
-    }
-    if (id == '1') {
-      qty++;
-      this.cartData[i].qty = qty
-      this.cartData[i].total = (this.cartData[i].qty * this.cartData[i].price).toFixed(2)
-    }
-
-    this.cartData.map((x: any) => {
-      this.subtotal += parseFloat(x['total'])
-    })
-
-    this.subtotal = this.subtotal.toFixed(2)
-    this.discount = (this.subtotal * this.discountRate).toFixed(2)
-    this.tax = (this.subtotal * this.taxRate).toFixed(2);
-    this.totalsum = (parseFloat(this.subtotal) + parseFloat(this.tax) + parseFloat(this.shippingRate) - parseFloat(this.discount)).toFixed(2)
-  }
-
-  removeCart(id: any) {
-    this.removeCartModal?.show()
-    this.deleteid = id;
-  }
-
-  confirmDelete() {
-    this.removeCartModal?.hide()
-
-    this.subtotal -= this.cartData[this.deleteid].total
-    this.subtotal = this.subtotal.toFixed(2)
-    this.discount = (this.subtotal * this.discountRate).toFixed(2)
-    this.tax = (this.subtotal * this.taxRate).toFixed(2);
-    this.totalsum = (parseFloat(this.subtotal) + parseFloat(this.tax) + parseFloat(this.shippingRate) - parseFloat(this.discount)).toFixed(2)
-    this.cartData.splice(this.deleteid, 1)
-  }
-
-  /**
-* Topbar Light-Dark Mode Change
-*/
-  changeMode(mode: string) {
-    this.mode = mode;
-    if (mode == 'auto') {
-      document.documentElement.setAttribute('data-bs-theme', 'light')
-      document.documentElement.setAttribute('data-topbar', 'light');
-      document.documentElement.classList.add('mode-auto')
-    } else {
-      this.store.dispatch(changeMode({ mode }));
-    this.store.select(getLayoutmode).subscribe((mode) => {
-      document.documentElement.setAttribute('data-bs-theme', mode);
-    })
-      document.documentElement.classList.remove('mode-auto')
-      document.documentElement.setAttribute('data-topbar', mode);
-    }
-  }
-
-  /***
-   * Language Listing
-   */
-  listLang = [
-    { text: 'English', flag: 'assets/images/flags/us.svg', lang: 'en' },
-    { text: 'Española', flag: 'assets/images/flags/spain.svg', lang: 'sp' },
-    { text: 'Deutsche', flag: 'assets/images/flags/germany.svg', lang: 'gr' },
-    { text: 'Italiana', flag: 'assets/images/flags/italy.svg', lang: 'it' },
-    { text: 'русский', flag: 'assets/images/flags/russia.svg', lang: 'ru' },
-    { text: '中国人', flag: 'assets/images/flags/china.svg', lang: 'ch' },
-    { text: 'français', flag: 'assets/images/flags/french.svg', lang: 'fr' },
-    { text: 'Arabic', flag: 'assets/images/flags/ae.svg', lang: 'ar' },
-  ];
-
-  /***
-  * Language Value Set
-  */
-  setLanguage(text: string, lang: string, flag: string) {
-    this.countryName = text;
-    this.flagvalue = flag;
-    this.cookieValue = lang;
-    this.languageService.setLanguage(lang);
   }
 
   /**
@@ -361,54 +207,6 @@ export class TopbarComponent {
         /* IE/Edge */
         this.document.msExitFullscreen();
       }
-    }
-  }
-
-  // Remove Notification
-  checkedValGet: any[] = [];
-  onCheckboxChange(event: any, id: any) {
-    var checkedVal: any[] = [];
-    var result
-    for (var i = 0; i < this.notificationList.length; i++) {
-      for (var x = 0; x < this.notificationList[i].items.length; x++) {
-        if (this.notificationList[i].items[x].state == true) {
-          result = this.notificationList[i].items[x].id;
-          checkedVal.push(result);
-        }
-      }
-    }
-    this.checkedValGet = checkedVal
-    checkedVal.length > 0 ? (document.getElementById("notification-actions") as HTMLElement).style.display = 'block' : (document.getElementById("notification-actions") as HTMLElement).style.display = 'none';
-  }
-
-  notificationDelete() {
-    for (var i = 0; i < this.checkedValGet.length; i++) {
-      for (var j = 0; j < this.notificationList.length; j++) {
-        for (var x = 0; x < this.notificationList[j].items.length; x++) {
-          if (this.notificationList[j].items[x].id == this.checkedValGet[i]) {
-            this.notificationList[j].items.splice(x, 1)
-          }
-        }
-      }
-    }
-    this.calculatenotification()
-    this.removeNotificationModal?.hide();
-  }
-
-  calculatenotification() {
-    this.totalNotify = 0;
-    this.checkedValGet = []
-    this.notificationList.forEach((element: any) => {
-      this.totalNotify += element.items.length
-      if (element.title == 'New') {
-        this.newNotify = element.items.length
-      } else {
-        this.readNotify = element.items.length
-      }
-    });
-    this.checkedValGet.length > 0 ? (document.getElementById("notification-actions") as HTMLElement).style.display = 'block' : (document.getElementById("notification-actions") as HTMLElement).style.display = 'none';
-    if (this.totalNotify == 0) {
-      document.querySelector('.empty-notification-elem')?.classList.remove('d-none')
     }
   }
 

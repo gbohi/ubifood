@@ -9,7 +9,8 @@ import { Actions, ofType } from '@ngrx/effects';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { ToastrService } from 'ngx-toastr';
-import { filter } from 'rxjs';
+import { Subject, filter } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ModalDirective } from 'ngx-bootstrap/modal';
 import { Store } from '@ngrx/store';
@@ -43,6 +44,7 @@ import { fetchtypeequipeNoPaginateData } from 'src/app/store/Typeequipe/typeequi
 import { MenulistModel } from 'src/app/store/Menu/menu.model';
 import { PlatModel } from 'src/app/store/Plat/plat.model';
 import { environment } from 'src/environments/environment';
+import { TriServeur } from 'src/app/shared/tri-serveur';
 
 @Component({
   selector: 'app-liste-menus',
@@ -51,6 +53,9 @@ import { environment } from 'src/environments/environment';
   providers: [DecimalPipe, DatePipe]
 })
 export class ListeMenusComponent implements OnInit {
+
+  // Tri serveur des colonnes : clé de colonne → champ autorisé par l'API (ordering_fields)
+  readonly tri = new TriServeur({ id: 'id', date_menu: 'date_menu', agence_nom: 'agence__nom_agence', typeequipe_libelle: 'typeequipe__libelle', created_at: 'created_at' });
   // Un gestionnaire ne gère que les agences auxquelles il est rattaché
   private userConnecte = inject(TokenStorageService).getUser();
 
@@ -109,6 +114,7 @@ export class ListeMenusComponent implements OnInit {
 
   // ── DestroyRef ───────────────────────────────────────────────
   private destroyRef = inject(DestroyRef);
+  private readonly search$ = new Subject<string>();
   private actions$ = inject(Actions);
 
   constructor(
@@ -197,6 +203,13 @@ export class ListeMenusComponent implements OnInit {
       this.toastService.error(msg, 'Erreur');
     });
 
+    // Recherche côté serveur (?search= : agence, équipe), relancée sur la page 1 (tri conservé)
+    this.search$.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => this.loadData(1));
+
     this.loadData(1);
     this.loadTousLesPlats();
   }
@@ -220,7 +233,7 @@ export class ListeMenusComponent implements OnInit {
   // ── Chargement ──────────────────────────────────────────────
 
   loadData(page: number = 1): void {
-    this.store.dispatch(fetchmenuData({ page }));
+    this.store.dispatch(fetchmenuData({ page, search: (this.term ?? '').toString().trim(), ordering: this.tri.ordering }));
     this.store.dispatch(fetchagenceNoPaginateData());
     this.store.dispatch(fetchtypeequipeNoPaginateData());
   }
@@ -409,36 +422,17 @@ export class ListeMenusComponent implements OnInit {
       .map(m => m.id);
   }
 
-  // ── Tri ─────────────────────────────────────────────────────
-
+  // Tri côté serveur (?ordering=) : s'applique à toutes les données, pas seulement à la page affichée.
+  // Un nouveau clic inverse le sens ; la recherche courante est conservée et on revient à la page 1.
   onSort(column: string): void {
-    this.direction = this.direction === 'asc' ? 'desc' : 'asc';
-    const sorted = [...this.menus];
-    sorted.sort((a, b) => {
-      const res = this.compare((a as any)[column], (b as any)[column]);
-      return this.direction === 'asc' ? res : -res;
-    });
-    this.menus = sorted;
-  }
-
-  compare(v1: any, v2: any): number {
-    return v1 < v2 ? -1 : v1 > v2 ? 1 : 0;
+    if (this.tri.basculer(column)) this.loadData(1);
   }
 
   // ── Recherche ───────────────────────────────────────────────
 
+  // Recherche côté serveur (debounce 300 ms) : toutes les données, pas seulement la page affichée
   filterdata(): void {
-    if (this.term) {
-      this.menus = this.menuList.filter(el =>
-        el.date_menu?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.agence_nom?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.typeequipe_libelle?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.id?.toString().includes(this.term)
-      );
-    } else {
-      this.loadData(this.currentPage);
-    }
-    this.updateNoResultDisplay();
+    this.search$.next((this.term ?? '').toString().trim());
   }
 
   updateNoResultDisplay(): void {

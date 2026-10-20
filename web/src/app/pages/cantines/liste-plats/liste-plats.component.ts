@@ -38,6 +38,7 @@ import { selectAllAgenceWithoutPagination } from 'src/app/store/Agence/agence-se
 import { fetchagenceNoPaginateData } from 'src/app/store/Agence/agence.action';
 import { environment } from 'src/environments/environment';
 import { PlatModel } from 'src/app/store/Plat/plat.model';
+import { TriServeur } from 'src/app/shared/tri-serveur';
 
 @Component({
   selector: 'app-liste-plats',
@@ -46,6 +47,9 @@ import { PlatModel } from 'src/app/store/Plat/plat.model';
   providers: [DecimalPipe, DatePipe]
 })
 export class ListePlatsComponent implements OnInit {
+
+  // Tri serveur des colonnes : clé de colonne → champ autorisé par l'API (ordering_fields)
+  readonly tri = new TriServeur({ id: 'id', nom: 'nom', type_plat_libelle: 'type_plat__libelle', agence_nom: 'agence__nom_agence', created_at: 'created_at' });
   // Un gestionnaire ne gère que les agences auxquelles il est rattaché
   private userConnecte = inject(TokenStorageService).getUser();
 
@@ -237,7 +241,7 @@ export class ListePlatsComponent implements OnInit {
   // ── Chargement ──────────────────────────────────────────────
 
   loadData(page: number = 1): void {
-    this.store.dispatch(fetchplatData({ page, search: (this.term ?? '').trim() }));
+    this.store.dispatch(fetchplatData({ page, search: (this.term ?? '').trim(), ordering: this.tri.ordering }));
     this.store.dispatch(fetchagenceNoPaginateData());
     this.store.dispatch(fetchtypeplatNoPaginateData());
   }
@@ -466,20 +470,10 @@ export class ListePlatsComponent implements OnInit {
       .map(p => p.id);
   }
 
-  // ── Tri ─────────────────────────────────────────────────────
-
-  onSort(column: string) {
-    this.direction = this.direction === 'asc' ? 'desc' : 'asc';
-    const sorted = [...this.plats];
-    sorted.sort((a, b) => {
-      const res = this.compare((a as any)[column], (b as any)[column]);
-      return this.direction === 'asc' ? res : -res;
-    });
-    this.plats = sorted;
-  }
-
-  compare(v1: any, v2: any): number {
-    return v1 < v2 ? -1 : v1 > v2 ? 1 : 0;
+  // Tri côté serveur (?ordering=) : s'applique à toutes les données, pas seulement à la page affichée.
+  // Un nouveau clic inverse le sens ; la recherche courante est conservée et on revient à la page 1.
+  onSort(column: string): void {
+    if (this.tri.basculer(column)) this.loadData(1);
   }
 
   // ── Recherche ───────────────────────────────────────────────

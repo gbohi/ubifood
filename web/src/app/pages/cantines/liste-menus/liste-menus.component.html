@@ -13,7 +13,7 @@
                     <div class="col-xl-3 col-md-4">
                         <div class="search-box">
                             <input type="text" class="form-control search"
-                                   placeholder="Rechercher par date, agence, équipe..."
+                                   placeholder="Rechercher par agence, équipe..."
                                    [(ngModel)]="term"
                                    (keyup)="filterdata()">
                             <i class="ri-search-line search-icon"></i>
@@ -49,12 +49,12 @@
                                         <label class="form-check-label" for="checkAll"></label>
                                     </div>
                                 </th>
-                                <th scope="col" class="sort cursor-pointer" (click)="onSort('id')">N°</th>
-                                <th scope="col" class="sort cursor-pointer" (click)="onSort('date_menu')">Date</th>
-                                <th scope="col" class="sort cursor-pointer" (click)="onSort('agence_nom')">Agence</th>
-                                <th scope="col" class="sort cursor-pointer" (click)="onSort('typeequipe_libelle')">Équipe</th>
+                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('id')" (click)="onSort('id')">N°<i class="ms-1 align-middle" [ngClass]="tri.icone('id')"></i></th>
+                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('date_menu')" (click)="onSort('date_menu')">Date<i class="ms-1 align-middle" [ngClass]="tri.icone('date_menu')"></i></th>
+                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('agence_nom')" (click)="onSort('agence_nom')">Agence<i class="ms-1 align-middle" [ngClass]="tri.icone('agence_nom')"></i></th>
+                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('typeequipe_libelle')" (click)="onSort('typeequipe_libelle')">Équipe<i class="ms-1 align-middle" [ngClass]="tri.icone('typeequipe_libelle')"></i></th>
                                 <th scope="col">Plats</th>
-                                <th scope="col" class="sort cursor-pointer" (click)="onSort('created_at')">Créé le</th>
+                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('created_at')" (click)="onSort('created_at')">Créé le<i class="ms-1 align-middle" [ngClass]="tri.icone('created_at')"></i></th>
                                 <th scope="col">Action</th>
                             </tr>
                         </thead>

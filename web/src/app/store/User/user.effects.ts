@@ -2,7 +2,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { UserService } from 'src/app/core/services/user/user.service';
 import {
@@ -29,8 +29,9 @@ export class UserEffects {
   fetch$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchuserData),
-      mergeMap(({ page }) =>
-        this.userService.getAllUsers(page ?? 1).pipe(
+      // switchMap : une recherche ou un tri plus récent annule la requête précédente
+      switchMap(({ page, search, ordering, filtres }) =>
+        this.userService.getAllUsers(page ?? 1, search, ordering, filtres).pipe(
           map(response => fetchuserSuccess({ response })),
           catchError(error => of(fetchuserFailure({ error: error.toString() })))
         )

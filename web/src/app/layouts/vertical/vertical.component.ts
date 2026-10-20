@@ -73,20 +73,4 @@ export class VerticalComponent {
     }
     this.isCondensed = !this.isCondensed;
   }
-
-  /**
-   * on settings button clicked from topbar
-   */
-  onSettingsButtonClicked() {
-    document.querySelector('.custom-offcanvas')?.classList.toggle('show')
-    document.getElementById('backdrop')?.classList.toggle('show')
-    // document.body.classList.toggle('right-bar-enabled');
-    // const rightBar = document.getElementById('theme-settings-offcanvas');
-    // if (rightBar != null) {
-    //   rightBar.classList.toggle('show');
-    //   rightBar.setAttribute('style', "visibility: visible;");
-
-    // }
-  }
-
 }

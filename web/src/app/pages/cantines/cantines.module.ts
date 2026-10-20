@@ -10,35 +10,23 @@ import { SharedModule } from 'src/app/shared/shared.module';
 import { NgSelectModule } from '@ng-select/ng-select';
 
 // Range Slider
-import { NgxSliderModule } from 'ngx-slider-v2';
 
 //Wizard
-import { CdkStepperModule } from '@angular/cdk/stepper';
-import { NgStepperModule } from 'angular-ng-stepper';
 
 // Simplebar
-import { SimplebarAngularModule } from 'simplebar-angular';
 
 // Flat Picker
-import { FlatpickrModule } from 'angularx-flatpickr';
 
 // Count To
-import { CountUpModule } from 'ngx-countup';
 
 // Drop Zone
 import { DropzoneModule } from 'ngx-dropzone-wrapper';
 import { DROPZONE_CONFIG } from 'ngx-dropzone-wrapper';
 import { DropzoneConfigInterface } from 'ngx-dropzone-wrapper';
 
-import { BsDropdownModule } from 'ngx-bootstrap/dropdown';
 import { PaginationModule } from 'ngx-bootstrap/pagination';
 import { ModalModule } from 'ngx-bootstrap/modal';
-import { AccordionModule } from 'ngx-bootstrap/accordion';
-import { TabsModule } from 'ngx-bootstrap/tabs';
-import { RatingModule } from 'ngx-bootstrap/rating';
 
-import { ProgressbarModule } from 'ngx-bootstrap/progressbar';
-import { TooltipModule } from 'ngx-bootstrap/tooltip';
 import { BsDatepickerModule } from 'ngx-bootstrap/datepicker';
 
 // Component
@@ -46,7 +34,6 @@ import { ListePlatsComponent } from './liste-plats/liste-plats.component';
 import { ListeMenusComponent } from './liste-menus/liste-menus.component';
 import { ListeCommandesComponent } from './liste-commandes/liste-commandes.component';
 
-import { NgxEditorModule } from 'ngx-editor';
 import { PlanningMenuComponent } from './planningmenu/planningmenu.component';
 import { GestionCommandesComponent } from './gestion-commandes/gestion-commandes.component';
 import { MesCommandesComponent } from './mes-commandes/mes-commandes.component';
@@ -81,26 +68,13 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     CommonModule,
     CantinesRoutingModule,
     SharedModule,
-    BsDropdownModule.forRoot(),
     PaginationModule.forRoot(),
     ModalModule.forRoot(),
     FormsModule,
     ReactiveFormsModule,
-    AccordionModule.forRoot(),
-    TabsModule.forRoot(),
-    ProgressbarModule.forRoot(),
-    TooltipModule.forRoot(),
     BsDatepickerModule.forRoot(),
-    CountUpModule,
-    SimplebarAngularModule,
-    NgxEditorModule,
     DropzoneModule,
-    NgStepperModule,
-    CdkStepperModule,
-    RatingModule,
-    NgSelectModule,
-    NgxSliderModule,
-    FlatpickrModule.forRoot()
+    NgSelectModule
   ],
   providers: [
     DatePipe,

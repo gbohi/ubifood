@@ -159,6 +159,13 @@ export class MesCommandesComponent implements OnInit {
     }
   }
 
+  /** Mention « Annulée par X (gestionnaire) » si la commande a été annulée par un gestionnaire, sinon null */
+  annulationGestionnaire(c: CommandeModel): string | null {
+    if (c.statut !== 'annulee' || !c.annulee_par_gestionnaire) return null;
+    const nom = (c.annulee_par_nom ?? '').trim();
+    return nom ? `Annulée par ${nom} (gestionnaire)` : 'Annulée par un gestionnaire';
+  }
+
   getStatutLabel(statut: string): string {
     switch (statut) {
       case 'en_attente': return 'En attente';

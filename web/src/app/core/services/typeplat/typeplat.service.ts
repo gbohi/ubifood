@@ -6,6 +6,7 @@ import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { TypeplatlistModel, ApiResponse } from 'src/app/store/Typeplat/typeplat.model';
+import { paramTri } from 'src/app/shared/tri-serveur';
 
 @Injectable({ providedIn: 'root' })
 export class TypeplatService {
@@ -15,6 +16,7 @@ export class TypeplatService {
 
   // Infos de pagination conservées en mémoire pour la gestion post-suppression
   private currentPage  = 1;
+  private currentOrdering = '';
   private totalItems   = 0;
   private itemsPerPage = 10;
   private currentSearch = '';
@@ -22,12 +24,14 @@ export class TypeplatService {
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllTypeplats(page: number = 1, search?: string): Observable<ApiResponse<TypeplatlistModel>> {
+  getAllTypeplats(page: number = 1, search?: string, ordering?: string): Observable<ApiResponse<TypeplatlistModel>> {
     this.currentPage = page;
+    // Tri serveur (?ordering=) : conservé lors des rechargements tant qu'aucun nouveau tri n'est fourni
+    if (ordering !== undefined) this.currentOrdering = ordering.trim();
     this.currentSearch = (search ?? '').trim();
     // ✅ Plus de getAuthHeaders() — le JWT est géré par l'intercepteur HTTP
     return this.http.get<ApiResponse<TypeplatlistModel>>(
-      `${this.apiUrl}/typeplats/?page=${page}`
+      `${this.apiUrl}/typeplats/?page=${page}${paramTri(this.currentOrdering)}`
         + (this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '')
     ).pipe(
       tap(response => {
@@ -101,5 +105,10 @@ export class TypeplatService {
       totalItems:   this.totalItems,
       itemsPerPage: this.itemsPerPage,
     });
+  }
+
+  // ── Tri courant (conservé lors des rechargements) ──
+  getCurrentOrdering(): string {
+    return this.currentOrdering;
   }
 }

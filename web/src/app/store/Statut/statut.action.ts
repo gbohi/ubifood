@@ -6,7 +6,7 @@ import { StatutlistModel, ApiResponse } from './statut.model';
 // ── Fetch paginé ──────────────────────────────────────────────
 export const fetchstatutData = createAction(
   '[Data] Fetch statut Table Data',
-  props<{ page?: number; search?: string }>()
+  props<{ page?: number; search?: string; ordering?: string }>()
 );
 export const fetchstatutSuccess = createAction(
   '[Data] Fetch statut Data Success',

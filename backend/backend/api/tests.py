@@ -1238,6 +1238,11 @@ class AnnulationsGestionnaireTests(BaseAPITestCase):
         self.assertFalse(AvisPlat.objects.exists())
         # Plus rien à annuler
         self.assertEqual(self.client_pour(self.gestionnaire).post(url).status_code, 400)
+        # Commande « retirée » sans fiche de retrait : remise en attente quand même
+        cmd.statut = 'retiree'; cmd.save()
+        r = self.client_pour(self.gestionnaire).post(url)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut'], 'en_attente')
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())

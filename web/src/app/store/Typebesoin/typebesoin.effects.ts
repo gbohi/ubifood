@@ -33,8 +33,8 @@ export class TypebesoinEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchtypebesoinData),
-      switchMap(({ page, search }) =>
-        this.typebesoinService.getAllTypebesoins(page ?? 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>
+        this.typebesoinService.getAllTypebesoins(page ?? 1, search, ordering).pipe(
           map((response) => fetchtypebesoinSuccess({ response })),
           catchError((error) =>
             of(fetchtypebesoinFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))

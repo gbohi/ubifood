@@ -8,7 +8,7 @@ import { MenulistModel, ApiResponse } from './menu.model';
 
 export const fetchmenuData = createAction(
   '[Menu] Fetch List',
-  props<{ page?: number }>()
+  props<{ page?: number; search?: string; ordering?: string }>()
 );
 export const fetchmenuSuccess = createAction(
   '[Menu] Fetch List Success',

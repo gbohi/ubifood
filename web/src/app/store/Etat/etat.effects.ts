@@ -50,8 +50,8 @@ export class EtatEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchetatData),
-      switchMap(({ page, search }) =>  // dernière recherche/page gagne
-        this.etatService.getAllEtats(page || 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>  // dernière recherche/page gagne
+        this.etatService.getAllEtats(page || 1, search, ordering).pipe(
           map(response => fetchetatSuccess({ response })),
           catchError(error => of(fetchetatFailure({ error: toMessage(error) })))
         )

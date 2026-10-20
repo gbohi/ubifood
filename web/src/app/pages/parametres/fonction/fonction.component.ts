@@ -33,6 +33,7 @@ import {
   selectLoading,
   selectCurrentPage,
 } from 'src/app/store/Fonction/fonction-selector';
+import { TriServeur } from 'src/app/shared/tri-serveur';
 
 @Component({
   selector: 'app-fonction',
@@ -41,6 +42,9 @@ import {
   providers: [DecimalPipe, DatePipe],
 })
 export class FonctionComponent implements OnInit, AfterViewInit {
+
+  // Tri serveur des colonnes : clé de colonne → champ autorisé par l'API (ordering_fields)
+  readonly tri = new TriServeur({ id: 'id', libelle: 'libelle' });
 
   private destroyRef = inject(DestroyRef);
   private actions$   = inject(Actions);
@@ -176,7 +180,7 @@ export class FonctionComponent implements OnInit, AfterViewInit {
 
   // ── Chargement ────────────────────────────────────────────
   loadData(page: number = 1): void {
-    this.store.dispatch(fetchfonctionData({ page, search: this.searchTerm || undefined }));
+    this.store.dispatch(fetchfonctionData({ page, search: this.searchTerm || undefined, ordering: this.tri.ordering }));
   }
 
   private resetSelection(): void {
@@ -323,17 +327,10 @@ export class FonctionComponent implements OnInit, AfterViewInit {
     this.masterSelected = this.fonctions.length > 0 && this.checkedValGet.length === this.fonctions.length;
   }
 
-  // ── Tri ───────────────────────────────────────────────────
+  // Tri côté serveur (?ordering=) : s'applique à toutes les données, pas seulement à la page affichée.
+  // Un nouveau clic inverse le sens ; la recherche courante est conservée et on revient à la page 1.
   onSort(column: string): void {
-    this.direction = this.direction === 'asc' ? 'desc' : 'asc';
-    this.fonctions = [...this.fonctions].sort((a, b) => {
-      const res = this.compare(a[column], b[column]);
-      return this.direction === 'asc' ? res : -res;
-    });
-  }
-
-  compare(v1: string | number, v2: string | number): number {
-    return v1 < v2 ? -1 : v1 > v2 ? 1 : 0;
+    if (this.tri.basculer(column)) this.loadData(1);
   }
 
   // ── Recherche (côté serveur) ──────────────────────────────

@@ -35,8 +35,8 @@ export class PlatEffects {
       ofType(fetchplatData),
       // switchMap annule la requête précédente si une nouvelle arrive
       // (ex: l'utilisateur clique rapidement sur plusieurs pages)
-      switchMap(({ page, search }) =>
-        this.platService.getAllPlats(page ?? 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>
+        this.platService.getAllPlats(page ?? 1, search, ordering).pipe(
           map((response) => fetchplatSuccess({ response })),
           catchError((error) =>
             of(fetchplatFailure({ error: error?.message ?? error.toString() }))

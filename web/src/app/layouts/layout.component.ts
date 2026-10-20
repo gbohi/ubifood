@@ -1,8 +1,12 @@
 import { Component } from '@angular/core';
-import { EventService } from '../core/services/event.service';
 import { RootReducerState } from '../store';
 import { Store } from '@ngrx/store';
-import { LayoutState } from '../../app/store/layouts/layout-reducers';
+
+/**
+ * Coquille de l'espace connecté : seule la mise en page verticale
+ * (menu latéral + barre du haut) est utilisée.
+ * Les attributs data-* posés sur <html> pilotent les styles du thème.
+ */
 @Component({
   selector: 'app-layout',
   templateUrl: './layout.component.html',
@@ -10,61 +14,31 @@ import { LayoutState } from '../../app/store/layouts/layout-reducers';
 })
 export class LayoutComponent {
 
-  // layout related config
-  layoutType!: string;
-  showMain: any;
-  initialAppState!: LayoutState;
-
-  constructor(private eventService: EventService, private store: Store<RootReducerState>) { }
+  constructor(private store: Store<RootReducerState>) { }
 
   ngOnInit() {
     this.store.select('layout').subscribe((data) => {
-      this.layoutType = data.LAYOUT;
       document.documentElement.setAttribute('data-layout', data.LAYOUT);
-      data.LAYOUT == "vertical" || data.LAYOUT == "twocolumn" ? document.documentElement.setAttribute('data-sidebar', data.SIDEBAR_COLOR) : '';
-      data.LAYOUT == "vertical" ? document.documentElement.setAttribute('data-sidebar-size', data.SIDEBAR_SIZE) : '';
+      document.documentElement.setAttribute('data-sidebar', data.SIDEBAR_COLOR);
+      document.documentElement.setAttribute('data-sidebar-size', data.SIDEBAR_SIZE);
       document.documentElement.setAttribute('data-bs-theme', data.LAYOUT_MODE);
       document.documentElement.setAttribute('data-layout-width', data.LAYOUT_WIDTH);
       document.documentElement.setAttribute('data-sidebar-image', data.SIDEBAR_IMAGE);
       document.documentElement.setAttribute('data-layout-position', data.LAYOUT_POSITION);
       document.documentElement.setAttribute('data-layout-style', data.SIDEBAR_VIEW);
       document.documentElement.setAttribute('data-topbar', data.TOPBAR);
-      document.documentElement.setAttribute('data-preloader', data.DATA_PRELOADER)
-      document.documentElement.setAttribute('data-theme', data.LAYOUT_THEME)
+      document.documentElement.setAttribute('data-preloader', data.DATA_PRELOADER);
+      document.documentElement.setAttribute('data-theme', data.LAYOUT_THEME);
 
-      if (document.documentElement.getAttribute('data-preloader') == 'enable') {
+      if (data.DATA_PRELOADER == 'enable') {
         setTimeout(() => {
-          (document.getElementById("preloader") as HTMLElement).style.opacity = "0";
-          (document.getElementById("preloader") as HTMLElement).style.visibility = "hidden";
+          const preloader = document.getElementById('preloader');
+          if (preloader) {
+            preloader.style.opacity = '0';
+            preloader.style.visibility = 'hidden';
+          }
         }, 1000);
       }
-
-    })
-  }
-
-  /**
-  /**
-  * Check if the vertical layout is requested
-  */
-  isVerticalLayoutRequested() {
-    return this.layoutType === 'vertical';
-  }
-
-  /**
-   * Check if the horizontal layout is requested
-   */
-  isHorizontalLayoutRequested() {
-    return this.layoutType === 'horizontal';
-  }
-
-  /**
-   * Check if the horizontal layout is requested
-   */
-  isTwoColumnLayoutRequested() {
-    return this.layoutType === 'twocolumn';
-  }
-
-  getLayoutRequest(): string {
-    return this.layoutType
+    });
   }
 }

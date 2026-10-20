@@ -44,8 +44,8 @@ export class PosteEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchposteData),
-      switchMap(({ page, search }) =>  // dernière recherche/page gagne
-        this.posteService.getAllPostes(page || 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>  // dernière recherche/page gagne
+        this.posteService.getAllPostes(page || 1, search, ordering).pipe(
           map(response => fetchposteSuccess({ response })),
           catchError(error => of(fetchposteFailure({ error: toMessage(error) })))
         )

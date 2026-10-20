@@ -6,6 +6,7 @@ import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { PrioritelistModel, ApiResponse } from 'src/app/store/Priorite/priorite.model';
+import { paramTri } from 'src/app/shared/tri-serveur';
 
 @Injectable({ providedIn: 'root' })
 export class PrioriteService {
@@ -15,6 +16,7 @@ export class PrioriteService {
 
   // Infos de pagination conservées en mémoire pour la gestion post-suppression
   private currentPage  = 1;
+  private currentOrdering = '';
   private totalItems   = 0;
   private itemsPerPage = 10;
   private currentSearch = '';
@@ -22,12 +24,14 @@ export class PrioriteService {
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllPriorites(page: number = 1, search?: string): Observable<ApiResponse<PrioritelistModel>> {
+  getAllPriorites(page: number = 1, search?: string, ordering?: string): Observable<ApiResponse<PrioritelistModel>> {
     this.currentPage = page;
+    // Tri serveur (?ordering=) : conservé lors des rechargements tant qu'aucun nouveau tri n'est fourni
+    if (ordering !== undefined) this.currentOrdering = ordering.trim();
     this.currentSearch = (search ?? '').trim();
     // ✅ Plus de getAuthHeaders() — le JWT est géré par l'intercepteur HTTP
     return this.http.get<ApiResponse<PrioritelistModel>>(
-      `${this.apiUrl}/priorites/?page=${page}`
+      `${this.apiUrl}/priorites/?page=${page}${paramTri(this.currentOrdering)}`
         + (this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '')
     ).pipe(
       tap(response => {
@@ -102,5 +106,10 @@ export class PrioriteService {
       totalItems:   this.totalItems,
       itemsPerPage: this.itemsPerPage,
     });
+  }
+
+  // ── Tri courant (conservé lors des rechargements) ──
+  getCurrentOrdering(): string {
+    return this.currentOrdering;
   }
 }

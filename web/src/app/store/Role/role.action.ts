@@ -4,7 +4,7 @@ import { RolelistModel, ApiResponse } from './role.model';
 // fetch role data
 export const fetchroleData = createAction(
     '[Data] Fetch role Table Data',
-    props<{ page?: number }>()
+    props<{ page?: number; search?: string; ordering?: string }>()
 );
 
 export const fetchroleSuccess = createAction(

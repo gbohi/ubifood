@@ -173,9 +173,9 @@
                            [(ngModel)]="masterSelected" (change)="checkUncheckAll($event)">
                   </div>
                 </th>
-                <th class="sort cursor-pointer" (click)="onSort('id')">#</th>
-                <th class="sort cursor-pointer" (click)="onSort('nom')">Nom & Prénom</th>
-                <th>Username</th>
+                <th class="cursor-pointer" [class.sort]="!tri.estActif('id')" (click)="onSort('id')">#<i class="ms-1 align-middle" [ngClass]="tri.icone('id')"></i></th>
+                <th class="cursor-pointer" [class.sort]="!tri.estActif('nom')" (click)="onSort('nom')">Nom & Prénom<i class="ms-1 align-middle" [ngClass]="tri.icone('nom')"></i></th>
+                <th class="cursor-pointer" [class.sort]="!tri.estActif('username')" (click)="onSort('username')">Username<i class="ms-1 align-middle" [ngClass]="tri.icone('username')"></i></th>
                 <th>Email</th>
                 <th>Service</th>
                 <th>Agence</th>
@@ -198,11 +198,18 @@
                   <td><a href="javascript:void(0);" class="fw-medium link-primary">#{{ data.id }}</a></td>
                   <td>
                     <div class="d-flex align-items-center gap-2">
-                      <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center
-                                  text-white fw-bold"
-                           style="width:32px;height:32px;font-size:12px;min-width:32px;">
-                        {{ (data.nom?.charAt(0)||'') + (data.prenom?.charAt(0)||'') }}
-                      </div>
+                      @if (photoUrl(data); as photo) {
+                        <img [src]="photo" alt="Photo de {{ data.prenom }} {{ data.nom }}"
+                             class="rounded-circle flex-shrink-0"
+                             style="width:32px;height:32px;min-width:32px;object-fit:cover;"
+                             loading="lazy" (error)="onPhotoErreur(data)">
+                      } @else {
+                        <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center
+                                    text-white fw-bold flex-shrink-0"
+                             style="width:32px;height:32px;font-size:12px;min-width:32px;">
+                          {{ initiales(data) }}
+                        </div>
+                      }
                       <div>
                         <div class="fw-medium">{{ data.nom }} {{ data.prenom }}</div>
                         <small class="text-muted">{{ data.contact || '' }}</small>
@@ -624,6 +631,24 @@
     <div class="modal-content">
       <div class="modal-header"><h5 class="modal-title">Détails de l'utilisateur</h5><button type="button" class="btn-close" (click)="closeViewModal()"></button></div>
       <div class="modal-body">
+        <!-- Photo de profil (ou initiales) -->
+        <div class="d-flex align-items-center gap-3 mb-3">
+          @if (photoUrl(selectedUser); as photo) {
+            <img [src]="photo" alt="Photo de {{ selectedUser?.prenom }} {{ selectedUser?.nom }}"
+                 class="rounded-circle flex-shrink-0 border"
+                 style="width:96px;height:96px;object-fit:cover;"
+                 (error)="onPhotoErreur(selectedUser)">
+          } @else {
+            <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+                 style="width:96px;height:96px;font-size:32px;">
+              {{ initiales(selectedUser) }}
+            </div>
+          }
+          <div>
+            <h5 class="mb-1">{{ selectedUser?.prenom }} {{ selectedUser?.nom }}</h5>
+            <span class="text-muted">{{ selectedUser?.username }}</span>
+          </div>
+        </div>
         <div class="row g-3 mb-4">
           <div class="col-md-4"><label class="form-label fw-medium">Nom :</label><p>{{selectedUser?.nom}} {{selectedUser?.prenom}}</p></div>
           <div class="col-md-4"><label class="form-label fw-medium">Username :</label><p>{{selectedUser?.username}}</p></div>

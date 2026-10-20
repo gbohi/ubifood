@@ -6,6 +6,7 @@ import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { PosteModel, ApiResponse } from 'src/app/store/Poste/poste.model';
+import { paramTri } from 'src/app/shared/tri-serveur';
 
 @Injectable({ providedIn: 'root' })
 export class PosteService {
@@ -13,6 +14,7 @@ export class PosteService {
   private apiUrl = `${environment.apiUrl}/api/api`;
 
   private currentPage  = 1;
+  private currentOrdering = '';
   private totalItems   = 0;
   private currentSearch?: string;
   private itemsPerPage = 10;
@@ -20,12 +22,14 @@ export class PosteService {
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllPostes(page: number = 1, search?: string): Observable<ApiResponse<PosteModel>> {
+  getAllPostes(page: number = 1, search?: string, ordering?: string): Observable<ApiResponse<PosteModel>> {
     this.currentPage = page;
+    // Tri serveur (?ordering=) : conservé lors des rechargements tant qu'aucun nouveau tri n'est fourni
+    if (ordering !== undefined) this.currentOrdering = ordering.trim();
     this.currentSearch = search?.trim() || undefined;
     const q = this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '';
     return this.http.get<ApiResponse<PosteModel>>(
-      `${this.apiUrl}/postes/?page=${page}${q}`
+      `${this.apiUrl}/postes/?page=${page}${paramTri(this.currentOrdering)}${q}`
     ).pipe(
       tap(response => {
         this.totalItems  = response.count;
@@ -74,5 +78,10 @@ export class PosteService {
       itemsPerPage: this.itemsPerPage,
       search:       this.currentSearch,
     });
+  }
+
+  // ── Tri courant (conservé lors des rechargements) ──
+  getCurrentOrdering(): string {
+    return this.currentOrdering;
   }
 }

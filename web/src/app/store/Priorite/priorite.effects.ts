@@ -33,8 +33,8 @@ export class PrioriteEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchprioriteData),
-      switchMap(({ page, search }) =>
-        this.prioriteService.getAllPriorites(page ?? 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>
+        this.prioriteService.getAllPriorites(page ?? 1, search, ordering).pipe(
           map((response) => fetchprioriteSuccess({ response })),
           catchError((error) =>
             of(fetchprioriteFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))

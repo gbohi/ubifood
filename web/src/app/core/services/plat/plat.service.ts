@@ -5,6 +5,7 @@ import { Observable, throwError, of } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { PlatModel, ApiResponse, ApiError, StatistiqueGlobale } from 'src/app/store/Plat/plat.model';
+import { paramTri } from 'src/app/shared/tri-serveur';
 
 @Injectable({
   providedIn: 'root'
@@ -15,6 +16,7 @@ export class PlatService {
 
   // Pagination locale — mise à jour à chaque appel getAllPlats()
   private currentPage = 1;
+  private currentOrdering = '';
   private totalItems = 0;
   // Dernier terme de recherche — réutilisé lors des rechargements (après création, suppression…)
   private currentSearch = '';
@@ -27,12 +29,14 @@ export class PlatService {
    * Sans `search`, le dernier terme utilisé est conservé.
    * Le token JWT est injecté automatiquement par AuthInterceptor.
    */
-  getAllPlats(page: number = 1, search?: string): Observable<ApiResponse<PlatModel>> {
+  getAllPlats(page: number = 1, search?: string, ordering?: string): Observable<ApiResponse<PlatModel>> {
     this.currentPage = page;
+    // Tri serveur (?ordering=) : conservé lors des rechargements tant qu'aucun nouveau tri n'est fourni
+    if (ordering !== undefined) this.currentOrdering = ordering.trim();
     if (search !== undefined) this.currentSearch = search;
 
     // gerees=1 : un gestionnaire ne voit que les plats de son agence
-    let url = `${this.apiUrl}/api/plats/?page=${page}&gerees=1`;
+    let url = `${this.apiUrl}/api/plats/?page=${page}${paramTri(this.currentOrdering)}&gerees=1`;
     if (this.currentSearch) url += `&search=${encodeURIComponent(this.currentSearch)}`;
 
     return this.http.get<ApiResponse<PlatModel>>(url)
@@ -158,5 +162,10 @@ export class PlatService {
 
     console.error('Erreur API Plat :', apiError);
     return throwError(() => apiError);
+  }
+
+  // ── Tri courant (conservé lors des rechargements) ──
+  getCurrentOrdering(): string {
+    return this.currentOrdering;
   }
 }

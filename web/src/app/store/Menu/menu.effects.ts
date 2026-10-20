@@ -33,8 +33,8 @@ export class MenuEffects {
   fetchList$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchmenuData),
-      switchMap(({ page }) =>
-        this.menuService.getAllMenus(page ?? 1).pipe(
+      switchMap(({ page, search, ordering }) =>
+        this.menuService.getAllMenus(page ?? 1, search, ordering).pipe(
           map((response) => fetchmenuSuccess({ response })),
           catchError((error) =>
             of(fetchmenuFailure({ error: error?.message ?? error.toString() }))

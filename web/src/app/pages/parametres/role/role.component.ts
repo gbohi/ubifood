@@ -9,6 +9,8 @@ import { ModalDirective } from 'ngx-bootstrap/modal';
 import { Store } from '@ngrx/store';
 import { Actions, ofType } from '@ngrx/effects';
 import { PageChangedEvent } from 'ngx-bootstrap/pagination';
+import { Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 
 import {
   addroleData, addroleDataSuccess, addroleDataFailure,
@@ -20,6 +22,7 @@ import {
 import {
   selectroleData, selectTotalItems, selectLoading, selectCurrentPage,
 } from 'src/app/store/Role/role-selector';
+import { TriServeur } from 'src/app/shared/tri-serveur';
 
 /** Rôles système (non modifiables / non supprimables côté serveur) */
 export const ROLES_SYSTEME: Record<string, string> = {
@@ -36,6 +39,9 @@ export const ROLES_SYSTEME: Record<string, string> = {
   providers: [DecimalPipe, DatePipe],
 })
 export class RoleComponent implements OnInit, AfterViewInit {
+
+  // Tri serveur des colonnes : clé de colonne → champ autorisé par l'API (ordering_fields)
+  readonly tri = new TriServeur({ id: 'id', name: 'name' });
 
   private destroyRef = inject(DestroyRef);
   private actions$   = inject(Actions);
@@ -61,7 +67,7 @@ export class RoleComponent implements OnInit, AfterViewInit {
   checkedValGet: any[] = [];
   selectedRole:  any   = null;
   deleteID: any;
-  direction = 'asc';
+  private readonly search$ = new Subject<string>();
 
   private lastActiveElement: HTMLElement | null = null;
 
@@ -92,7 +98,7 @@ export class RoleComponent implements OnInit, AfterViewInit {
     this.store.select(selectroleData).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(data => {
       if (data) {
         this.roleList = data.map(item => ({ ...item, state: false }));
-        this.applyFilter();
+        this.roles = [...this.roleList];
         this.resetSelection();
       }
     });
@@ -132,6 +138,11 @@ export class RoleComponent implements OnInit, AfterViewInit {
         this.closeDeleteModal();
       });
 
+    // Recherche côté serveur (?search= : nom technique ou libellé français), relancée sur la page 1
+    this.search$
+      .pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.loadData(1));
+
     this.loadData(1);
   }
 
@@ -149,8 +160,10 @@ export class RoleComponent implements OnInit, AfterViewInit {
     });
   }
 
+  // Charger les données (page + terme de recherche + tri courants)
   loadData(page: number = 1): void {
-    this.store.dispatch(fetchroleData({ page }));
+    const search = (this.term ?? '').toString().trim();
+    this.store.dispatch(fetchroleData({ page, search, ordering: this.tri.ordering }));
   }
 
   // ── Rôles système ──────────────────────────────────────────
@@ -307,39 +320,22 @@ export class RoleComponent implements OnInit, AfterViewInit {
     this.masterSelected = selectable > 0 && this.checkedValGet.length === selectable;
   }
 
-  // ── Tri ────────────────────────────────────────────────────
+  // Tri côté serveur (?ordering=) : s'applique à toutes les données, pas seulement à la page affichée.
+  // Un nouveau clic inverse le sens ; la recherche courante est conservée et on revient à la page 1.
   onSort(column: string): void {
-    this.direction = this.direction === 'asc' ? 'desc' : 'asc';
-    this.roles = [...this.roles].sort((a, b) => {
-      const res = this.compare(a[column], b[column]);
-      return this.direction === 'asc' ? res : -res;
-    });
+    if (this.tri.basculer(column)) this.loadData(1);
   }
 
-  compare(v1: string | number, v2: string | number): number {
-    return v1 < v2 ? -1 : v1 > v2 ? 1 : 0;
-  }
-
-  // ── Recherche (côté client : /groups/ n'a pas de search_fields, et les rôles sont peu nombreux) ──
+  // ── Recherche (côté serveur, debounce 300 ms) ──────────────
   filterdata(value?: string): void {
     if (value !== undefined) this.term = value;
-    this.applyFilter();
-    this.updateCheckedValues();
-  }
-
-  private applyFilter(): void {
-    const t = (this.term ?? '').toString().trim().toLowerCase();
-    if (!t) {
-      this.roles = [...this.roleList];
-      return;
-    }
-    this.roles = this.roleList.filter(el =>
-      el.name?.toLowerCase().includes(t) ||
-      this.roleLabel(el.name).toLowerCase().includes(t) ||
-      el.id?.toString().includes(t)
-    );
+    this.search$.next((this.term ?? '').toString().trim());
   }
 
   // ── Pagination ─────────────────────────────────────────────
-  pageChanged(event: PageChangedEvent): void { this.loadData(event.page); }
+  // (le terme de recherche et le tri sont conservés)
+  pageChanged(event: PageChangedEvent): void {
+    if (event.page === this.currentPage) return;
+    this.loadData(event.page);
+  }
 }

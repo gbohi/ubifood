@@ -30,42 +30,22 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               "src/favicon.ico",
-              "src/assets",
-              "src/firebase-messaging-sw.js" 
+              "src/assets/images",
+              "src/assets/i18n",
+              "src/firebase-messaging-sw.js"
             ],
             "styles": [
-              "node_modules/prismjs/themes/prism.css",
-              "node_modules/flatpickr/dist/flatpickr.css",
-              "node_modules/@ctrl/ngx-emoji-mart/picker.css",
               "node_modules/ngx-toastr/toastr.css",
-              "node_modules/leaflet/dist/leaflet.css",
-              "node_modules/leaflet-routing-machine/dist/leaflet-routing-machine.css",
-              "node_modules/ngx-ui-switch/ui-switch.component.css",
-              "node_modules/slick-carousel/slick/slick.scss",
-              "node_modules/slick-carousel/slick/slick-theme.scss",
               "node_modules/ngx-spinner/animations/ball-scale-multiple.css",
               "src/assets/scss/bootstrap.scss",
               "src/assets/scss/app.scss",
               "src/assets/scss/icons.scss",
               "src/styles.scss"
             ],
-            "scripts": [
-              "node_modules/prismjs/prism.js",
-              "node_modules/jquery/dist/jquery.min.js",
-              "node_modules/slick-carousel/slick/slick.min.js"
-            ],
+            "scripts": [],
             "allowedCommonJsDependencies": [
-              "leaflet",
               "apexcharts",
-              "ev-emitter/ev-emitter",
-              "can-use-dom",
-              "moment",
-              "@ckeditor/ckeditor5-build-classic",
-              "lottie-web",
-              "sweetalert2",
-              "polylabel",
               "dropzone",
-              "prismjs",
               "lodash"
             ]
           },

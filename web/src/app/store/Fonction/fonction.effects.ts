@@ -50,8 +50,8 @@ export class FonctionEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchfonctionData),
-      switchMap(({ page, search }) =>  // dernière recherche/page gagne
-        this.fonctionService.getAllFonctions(page || 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>  // dernière recherche/page gagne
+        this.fonctionService.getAllFonctions(page || 1, search, ordering).pipe(
           map(response => fetchfonctionSuccess({ response })),
           catchError(error => of(fetchfonctionFailure({ error: toMessage(error) })))
         )

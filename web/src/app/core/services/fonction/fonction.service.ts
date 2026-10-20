@@ -6,6 +6,7 @@ import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { FonctionlistModel, ApiResponse } from 'src/app/store/Fonction/fonction.model';
+import { paramTri } from 'src/app/shared/tri-serveur';
 
 @Injectable({ providedIn: 'root' })
 export class FonctionService {
@@ -15,6 +16,7 @@ export class FonctionService {
 
   // Infos de pagination conservées en mémoire pour la gestion post-suppression
   private currentPage   = 1;
+  private currentOrdering = '';
   private totalItems    = 0;
   private currentSearch?: string;
   private itemsPerPage  = 10;
@@ -22,13 +24,15 @@ export class FonctionService {
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllFonctions(page: number = 1, search?: string): Observable<ApiResponse<FonctionlistModel>> {
+  getAllFonctions(page: number = 1, search?: string, ordering?: string): Observable<ApiResponse<FonctionlistModel>> {
     this.currentPage = page;
+    // Tri serveur (?ordering=) : conservé lors des rechargements tant qu'aucun nouveau tri n'est fourni
+    if (ordering !== undefined) this.currentOrdering = ordering.trim();
     this.currentSearch = search?.trim() || undefined;
     const q = this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '';
     // ✅ Plus de getAuthHeaders() — le JWT est géré par l'intercepteur HTTP
     return this.http.get<ApiResponse<FonctionlistModel>>(
-      `${this.apiUrl}/fonctions/?page=${page}${q}`
+      `${this.apiUrl}/fonctions/?page=${page}${paramTri(this.currentOrdering)}${q}`
     ).pipe(
       tap(response => {
         this.totalItems  = response.count;
@@ -84,5 +88,10 @@ export class FonctionService {
       itemsPerPage: this.itemsPerPage,
       search:       this.currentSearch,
     });
+  }
+
+  // ── Tri courant (conservé lors des rechargements) ──
+  getCurrentOrdering(): string {
+    return this.currentOrdering;
   }
 }

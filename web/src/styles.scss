@@ -10,22 +10,6 @@
 @import "~@ng-select/ng-select/themes/default.theme.css";
 
 
-.emoji-mart {
-  position: absolute;
-  bottom: 30px;
-  left: 0;
-}
-
-.emoji-mart-preview {
-  display: none;
-}
-
-.small-font {
-  .dz-text {
-    font-size: x-small;
-  }
-}
-
 .apex-charts {
   div {
     min-height: 0 !important;
@@ -48,12 +32,6 @@ ngx-dropzone-image-preview {
   }
 }
 
-ngx-editor{
-  .NgxEditor{
-    overflow: auto;
-  }
-}
-
 ngx-dropzone-preview {
   max-width: none !important;
   justify-content: normal !important;
@@ -70,152 +48,6 @@ ngx-dropzone-preview {
   }
 }
 
-// twostep input
-
-.twostep-input {
-  .wrapper {
-    display: flex;
-    justify-content: center;
-
-    input {
-      &:focus-visible {
-        outline: none;
-      }
-    }
-  }
-}
-
-.progress-nav {
-  .stepper {
-    .stepper-header {
-      .step {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-    }
-
-    .stepper-body[_ngcontent-ng-c625643793] {
-      margin: 0;
-    }
-
-    .completed {
-      .nav-link {
-        color: #fff;
-        background-color: var(--tb-primary);
-      }
-    }
-
-    .step[_ngcontent-ng-c625643793] {
-      .nav-link {
-        z-index: 1;
-        position: relative;
-      }
-
-      &:after {
-        z-index: 0;
-        height: 1px;
-        background-color: var(--tb-border-color);
-        left: -100%;
-      }
-    }
-
-    .step.completed[_ngcontent-ng-c625643793]+.step[_ngcontent-ng-c625643793]:after {
-      background-color: var(--tb-primary);
-    }
-  }
-}
-
-.stepper-header[_ngcontent-ng-c625643793] .steps[_ngcontent-ng-c625643793] {
-  width: 144% !important;
-}
-
-.step-arrow-nav {
-  .stepper {
-    .stepper-body[_ngcontent-ng-c625643793] {
-      margin: 0;
-    }
-
-    .completed {
-      .nav-link {
-        color: var(--tb-primary);
-      }
-
-      background-color: rgba(var(--tb-primary-rgb), 0.15);
-    }
-
-    .active {
-      .nav-link {
-        color: var(--tb-primary);
-      }
-    }
-
-    .step[_ngcontent-ng-c625643793] {
-      .nav-link {
-        z-index: 1;
-        position: relative;
-      }
-    }
-  }
-}
-
-.vertical-wizard {
-  .stepper {
-    .stepper-body[_ngcontent-ng-c625643793] {
-      margin: 0;
-      overflow: hidden;
-    }
-
-    .step-title {
-      // display: none;
-      position: relative !important;
-      bottom: 0 !important;
-
-      i {
-        color: var(--tb-danger);
-      }
-    }
-
-    .steps {
-      gap: 8px;
-
-      .step {
-        background-color: rgba(var(--tb-light-rgb), 0.4) !important;
-        border: 1px solid var(--tb-border-color);
-        border-radius: 0.25rem;
-
-        &.active {
-          .nav-link {
-            .step-title {
-              i {
-                color: var(--tb-primary);
-              }
-            }
-
-            color: var(--tb-primary);
-          }
-
-          border-color: rgba(var(--tb-primary-rgb), 1);
-        }
-
-        &.completed {
-          .nav-link {
-            .step-title {
-              i {
-                color: var(--tb-success);
-              }
-            }
-
-            color: var(--tb-success);
-          }
-
-          border-color: rgba(var(--tb-success-rgb), 1);
-        }
-      }
-    }
-  }
-}
-
 /* Increase the width of the scrollbar track */
 .simplebar-scrollbar::before {
   width: 5px;
@@ -227,49 +59,6 @@ ngx-dropzone-preview {
     background-color: var(--tb-secondary);
   }
 }
-
-// Swiper
-.coverflowslide .slide {
-  position: relative;
-  transition: transform 0.3s;
-}
-
-.coverflowslide .slick-list {
-  overflow: hidden !important;
-}
-
-.coverflowslide .slick-center {
-  transform: scale(1.2); // Adjust the scale factor for the "Coverflow" effect
-  z-index: 1;
-}
-
-.coverflowslide .carousel {
-  width: 100%;
-  max-width: 600px; // Adjust the carousel width as needed
-  margin: 0 auto;
-}
-
-.space .slick-slide {
-  margin: 25px;
-}
-
-//
-
-// .nav-pills {
-//   --tb-nav-pills-link-active-bg: none !important;
-//   --tb-nav-link-padding-y: 0!important ;
-//   --tb-nav-link-padding-x: 0 !important;
-// }
-
-// .nav-link{
-//   padding: 0 ;
-// }
-
-// .nav-item {
-//   .active{
-//     background-color:  !important;
-//   }
-// }
 
 [data-bs-theme="dark"] {
   .ng-select .ng-select-container {
@@ -331,12 +120,6 @@ ngx-dropzone-preview {
   }
 }
 
-.progress-nav {
-  .progress {
-    height: 0px !important;
-  }
-}
-
 [data-layout-width="boxed"] {
   .custom-verti-nav-pills {
     .nav-tabs {
@@ -355,10 +138,6 @@ ngx-dropzone-preview {
 
 .dropdown-responsive {
   left: 0 !important;
-}
-
-.table-dropdown {
-  right: 0 !important;
 }
 
 @media (max-width: 425px) {
@@ -405,14 +184,4 @@ bs-dropdown-container {
 
 .ngx-slider .ngx-slider-selection {
   background: var(--tb-secondary) !important;
-}
-
-.read-email {
-  .accordion-header {
-    border-bottom: 1px solid #dde1ef !important;
-  }
-}
-
-.stepper-body {
-  padding: 0px !important;
 }

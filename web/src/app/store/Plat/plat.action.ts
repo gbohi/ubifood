@@ -8,7 +8,7 @@ import { PlatModel, ApiResponse, StatistiqueGlobale } from './plat.model';
 
 export const fetchplatData = createAction(
   '[Plat] Fetch List',
-  props<{ page?: number; search?: string }>()
+  props<{ page?: number; search?: string; ordering?: string }>()
 );
 export const fetchplatSuccess = createAction(
   '[Plat] Fetch List Success',

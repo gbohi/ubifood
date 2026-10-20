@@ -42,6 +42,7 @@ import * as PlatCategoriesalarieActions from 'src/app/store/PlatCategoriesalarie
 import { selectPlatCategoriesalarieIsLoading } from 'src/app/store/PlatCategoriesalarie/plat-categoriesalarie-selector';
 import { PlatCategoriesalarieModel } from 'src/app/store/PlatCategoriesalarie/plat-categoriesalarie.model';
 import { PlatCategoriesalarieService } from 'src/app/core/services/plat-categoriesalarie/plat-categoriesalarie.service';
+import { TriServeur } from 'src/app/shared/tri-serveur';
 
 @Component({
   selector: 'app-categoriesalarie',
@@ -50,6 +51,9 @@ import { PlatCategoriesalarieService } from 'src/app/core/services/plat-categori
   providers: [DecimalPipe, DatePipe],
 })
 export class CategoriesalarieComponent implements OnInit, AfterViewInit {
+
+  // Tri serveur des colonnes : clé de colonne → champ autorisé par l'API (ordering_fields)
+  readonly tri = new TriServeur({ id: 'id', libelle: 'libelle' });
 
   breadCrumbItems = [
     { label: 'Catégorie salarié', active: false },
@@ -189,7 +193,7 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit {
   }
 
   loadData(page: number = 1): void {
-    this.store.dispatch(fetchcategoriesalarieData({ page, search: (this.term ?? '').trim() }));
+    this.store.dispatch(fetchcategoriesalarieData({ page, search: (this.term ?? '').trim(), ordering: this.tri.ordering }));
   }
 
   private mapTarifsToLignes(tarifs: PlatCategoriesalarieModel[]): PlatCategoriesalarieModel[] {
@@ -485,16 +489,10 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit {
       .map(f => f.id);
   }
 
+  // Tri côté serveur (?ordering=) : s'applique à toutes les données, pas seulement à la page affichée.
+  // Un nouveau clic inverse le sens ; la recherche courante est conservée et on revient à la page 1.
   onSort(column: string): void {
-    this.direction = this.direction === 'asc' ? 'desc' : 'asc';
-    this.categoriesalaries = [...this.categoriesalaries].sort((a, b) => {
-      const res = this.compare(a[column], b[column]);
-      return this.direction === 'asc' ? res : -res;
-    });
-  }
-
-  compare(v1: string | number, v2: string | number): number {
-    return v1 < v2 ? -1 : v1 > v2 ? 1 : 0;
+    if (this.tri.basculer(column)) this.loadData(1);
   }
 
   /** Recherche côté serveur (tout le référentiel, pas seulement la page affichée) */

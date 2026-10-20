@@ -34,9 +34,8 @@
                                         <label class="form-check-label" for="checkAll"></label>
                                     </div>
                                 </th>
-                                <th scope="col" class="sort cursor-pointer" (click)="onSort('id')">#
-                                </th>
-                                <th scope="col" class="sort cursor-pointer" (click)="onSort('libelle_service')">Libellé</th>
+                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('id')" (click)="onSort('id')">#<i class="ms-1 align-middle" [ngClass]="tri.icone('id')"></i></th>
+                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('libelle_service')" (click)="onSort('libelle_service')">Libellé<i class="ms-1 align-middle" [ngClass]="tri.icone('libelle_service')"></i></th>
                                 <th scope="col">Action</th>
                             </tr>
                         </thead>

@@ -5,6 +5,7 @@ import { Observable, throwError, of } from 'rxjs';
 import { catchError, switchMap, tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { MenulistModel, ApiResponse, ApiError } from 'src/app/store/Menu/menu.model';
+import { paramTri } from 'src/app/shared/tri-serveur';
 
 @Injectable({
   providedIn: 'root'
@@ -15,6 +16,8 @@ export class MenuService {
 
   // Pagination locale
   private currentPage = 1;
+  private currentOrdering = '';
+  private currentSearch = '';
   private totalItems = 0;
   private readonly itemsPerPage = 10;
 
@@ -22,9 +25,14 @@ export class MenuService {
 
   // ── Liste paginée ─────────────────────────────────────────────
 
-  getAllMenus(page: number = 1): Observable<ApiResponse<MenulistModel>> {
+  getAllMenus(page: number = 1, search?: string, ordering?: string): Observable<ApiResponse<MenulistModel>> {
     this.currentPage = page;
-    return this.http.get<ApiResponse<MenulistModel>>(`${this.apiUrl}/menus/?page=${page}&gerees=1`)
+    // Tri serveur (?ordering=) : conservé lors des rechargements tant qu'aucun nouveau tri n'est fourni
+    if (ordering !== undefined) this.currentOrdering = ordering.trim();
+    // Recherche serveur (?search= : agence, équipe) : conservée lors des rechargements
+    if (search !== undefined) this.currentSearch = search.trim();
+    const recherche = this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '';
+    return this.http.get<ApiResponse<MenulistModel>>(`${this.apiUrl}/menus/?page=${page}${recherche}${paramTri(this.currentOrdering)}&gerees=1`)
       .pipe(
         tap((response) => { this.totalItems = response.count; }),
         catchError(this.handleError)
@@ -91,5 +99,10 @@ export class MenuService {
       message: typeof error === 'string' ? error : (error.message || 'Une erreur est survenue'),
     };
     return throwError(() => apiError);
+  }
+
+  // ── Tri courant (conservé lors des rechargements) ──
+  getCurrentOrdering(): string {
+    return this.currentOrdering;
   }
 }

@@ -17,6 +17,7 @@ import {
   fetchtypebesoinData,
 } from 'src/app/store/Typebesoin/typebesoin.action';
 import { selecttypebesoinData, selectTotalItems, selectLoading, selectCurrentPage } from 'src/app/store/Typebesoin/typebesoin-selector';
+import { TriServeur } from 'src/app/shared/tri-serveur';
 
 @Component({
   selector: 'app-typebesoin',
@@ -25,6 +26,9 @@ import { selecttypebesoinData, selectTotalItems, selectLoading, selectCurrentPag
   providers: [DecimalPipe]
 })
 export class TypebesoinComponent implements OnInit, AfterViewInit {
+
+  // Tri serveur des colonnes : clé de colonne → champ autorisé par l'API (ordering_fields)
+  readonly tri = new TriServeur({ id: 'id', libelle: 'libelle' });
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly actions$ = inject(Actions);
@@ -170,7 +174,7 @@ export class TypebesoinComponent implements OnInit, AfterViewInit {
   // Charger les données (page + terme de recherche courant)
   loadData(page: number = 1): void {
     const search = this.term?.trim() || undefined;
-    this.store.dispatch(fetchtypebesoinData({ page, search }));
+    this.store.dispatch(fetchtypebesoinData({ page, search, ordering: this.tri.ordering }));
   }
 
   // Remet le focus sur l'élément d'origine (évite un focus resté dans une modal masquée)
@@ -303,19 +307,10 @@ export class TypebesoinComponent implements OnInit, AfterViewInit {
     this.masterSelected = this.typebesoins.length > 0 && this.checkedValGet.length === this.typebesoins.length;
   }
 
-  // Tri (page courante)
-  onSort(column: any) {
-    this.direction = this.direction == 'asc' ? 'desc' : 'asc';
-    const sortedArray = [...this.typebesoins];
-    sortedArray.sort((a, b) => {
-      const res = this.compare(a[column], b[column]);
-      return this.direction === 'asc' ? res : -res;
-    });
-    this.typebesoins = sortedArray;
-  }
-
-  compare(v1: string | number, v2: string | number) {
-    return v1 < v2 ? -1 : v1 > v2 ? 1 : 0;
+  // Tri côté serveur (?ordering=) : s'applique à toutes les données, pas seulement à la page affichée.
+  // Un nouveau clic inverse le sens ; la recherche courante est conservée et on revient à la page 1.
+  onSort(column: string): void {
+    if (this.tri.basculer(column)) this.loadData(1);
   }
 
   // Recherche (debounce 300 ms, côté serveur)

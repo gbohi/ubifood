@@ -4,7 +4,7 @@ import { EtatlistModel, ApiResponse } from './etat.model';
 // fetch etat data
 export const fetchetatData = createAction(
     '[Data] Fetch etat Table Data',
-    props<{ page?: number; search?: string }>()
+    props<{ page?: number; search?: string; ordering?: string }>()
 );
 
 export const fetchetatSuccess = createAction(

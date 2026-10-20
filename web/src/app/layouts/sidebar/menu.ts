@@ -141,6 +141,13 @@ export const MENU: MenuItem[] = [
                 parentId: 175
             },
             {
+                id: 1991,
+                label: 'MENUITEMS.PARAMETRES.LIST.POPUPCONNEXION',
+                link: '/parametres/popup-connexion',
+                roles: ADMINS,
+                parentId: 175
+            },
+            {
                 id: 176,
                 label: 'MENUITEMS.PARAMETRES.LIST.AGENCE',
                 link: '/parametres/agence',
@@ -183,7 +190,7 @@ export const MENU: MenuItem[] = [
                 parentId: 175
             },
             {
-                id: 182,
+                id: 1992,
                 label: 'MENUITEMS.PARAMETRES.LIST.ROLE',
                 link: '/parametres/role',
                 roles: ADMINS,

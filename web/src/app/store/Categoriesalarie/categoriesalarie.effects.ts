@@ -45,8 +45,8 @@ export class CategoriesalarieEffects {
     this.actions$.pipe(
       ofType(fetchcategoriesalarieData),
       // switchMap : une recherche plus récente annule la précédente
-      switchMap(({ page, search }) =>
-        this.CategoriesalarieService.getAllCategoriesalaries(page || 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>
+        this.CategoriesalarieService.getAllCategoriesalaries(page || 1, search, ordering).pipe(
           map(response => fetchcategoriesalarieSuccess({ response })),
           catchError(error => of(fetchcategoriesalarieFailure({ error: error.toString() })))
         )

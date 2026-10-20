@@ -1613,9 +1613,9 @@ class CommandeViewSet(BaseViewSet):
         if commande.statut != 'retiree':
             raise ValidationError("Seul un repas retiré peut voir son retrait annulé.")
         retrait = Retrait.objects.filter(user=commande.user, menu=commande.menu).first()
-        if retrait is None:
-            raise ValidationError("Aucun retrait enregistré pour ce repas.")
-        annuler_retrait(retrait, request.user)
+        # Sans fiche de retrait (données anciennes ou importées), on remet
+        # quand même la commande en attente
+        annuler_retrait(retrait, request.user, commande=commande)
         commande.refresh_from_db()
         return Response(CommandeSerializer(commande, context={'request': request}).data)
 
@@ -2030,20 +2030,23 @@ class RetraitViewSet(BaseViewSet):
         annuler_retrait(instance, self.request.user)
 
 
-def annuler_retrait(retrait, par):
+def annuler_retrait(retrait, par, commande=None):
     """
     Annule un retrait (erreur de scan…) : les commandes de l'agent repassent
     « en attente » et l'avis éventuel, donné sur un repas désormais non retiré,
     est supprimé. Interdit si le mois est clôturé. L'agent est prévenu.
+    `retrait` peut être None (commande retirée sans fiche de retrait) : on passe alors `commande`.
     """
-    verifier_mois_ouvert(retrait.menu.date_menu)
+    source = retrait or commande
+    verifier_mois_ouvert(source.menu.date_menu)
     with transaction.atomic():
-        commandes = Commande.objects.filter(user=retrait.user, menu=retrait.menu, statut='retiree')
+        commandes = Commande.objects.filter(user=source.user, menu=source.menu, statut='retiree')
         AvisPlat.objects.filter(commande__in=commandes).delete()
         commandes.update(statut='en_attente', updated_at=timezone.now(), user_updated=par)
-        user_id, menu = retrait.user_id, retrait.menu
-        retrait.delete()
-        transaction.on_commit(lambda: notifier_retrait_annule(user_id, menu.pk))
+        user_id, menu_id = source.user_id, source.menu_id
+        if retrait is not None:
+            retrait.delete()
+        transaction.on_commit(lambda: notifier_retrait_annule(user_id, menu_id))
 
 
 class FonctionListAPIView(ListAPIView):

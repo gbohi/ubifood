@@ -4,6 +4,7 @@ import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { PrestatairelistModel, ApiResponse } from 'src/app/store/Prestataire/prestataire.model';
+import { paramTri } from 'src/app/shared/tri-serveur';
 
 @Injectable({ providedIn: 'root' })
 export class PrestataireService {
@@ -13,6 +14,7 @@ export class PrestataireService {
 
   // Infos de pagination conservées en mémoire pour la gestion post-suppression
   private currentPage   = 1;
+  private currentOrdering = '';
   private currentSearch = '';
   private totalItems    = 0;
   private itemsPerPage  = 10;
@@ -22,13 +24,15 @@ export class PrestataireService {
   // ── Liste paginée ─────────────────────────────────────────
   // search : undefined = conserver le dernier filtre (rechargements après
   // ajout / suppression), '' = aucun filtre. Filtrage côté serveur (?search=).
-  getAllPrestataires(page: number = 1, search?: string): Observable<ApiResponse<PrestatairelistModel>> {
+  getAllPrestataires(page: number = 1, search?: string, ordering?: string): Observable<ApiResponse<PrestatairelistModel>> {
     this.currentPage = page;
+    // Tri serveur (?ordering=) : conservé lors des rechargements tant qu'aucun nouveau tri n'est fourni
+    if (ordering !== undefined) this.currentOrdering = ordering.trim();
     if (search !== undefined) this.currentSearch = search.trim();
     const filtre = this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '';
     // ✅ Plus de getAuthHeaders() — le JWT est géré par l'intercepteur HTTP
     return this.http.get<ApiResponse<PrestatairelistModel>>(
-      `${this.apiUrl}/prestataires/?page=${page}${filtre}`
+      `${this.apiUrl}/prestataires/?page=${page}${paramTri(this.currentOrdering)}${filtre}`
     ).pipe(
       tap(response => {
         this.totalItems  = response.count;
@@ -82,5 +86,10 @@ export class PrestataireService {
       totalItems:   this.totalItems,
       itemsPerPage: this.itemsPerPage,
     });
+  }
+
+  // ── Tri courant (conservé lors des rechargements) ──
+  getCurrentOrdering(): string {
+    return this.currentOrdering;
   }
 }

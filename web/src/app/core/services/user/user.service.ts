@@ -6,6 +6,7 @@ import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { UserModel, ApiResponse } from 'src/app/store/User/user.model';
+import { paramTri } from 'src/app/shared/tri-serveur';
 
 @Injectable({ providedIn: 'root' })
 export class UserService {
@@ -13,16 +14,29 @@ export class UserService {
   private apiUrl = `${environment.apiUrl}/api/api`;
 
   private currentPage  = 1;
+  private currentOrdering = '';
+  private currentSearch = '';
+  private currentFilters: Record<string, string> = {};
   private totalItems   = 0;
   private itemsPerPage = 10;
 
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllUsers(page: number = 1): Observable<ApiResponse<UserModel>> {
+  getAllUsers(page: number = 1, search?: string, ordering?: string, filtres?: Record<string, string>): Observable<ApiResponse<UserModel>> {
     this.currentPage = page;
+    // Recherche serveur (?search= sur nom, prénom, e-mail, identifiant) : conservée lors des rechargements
+    if (search !== undefined) this.currentSearch = search.trim();
+    // Tri serveur (?ordering=) : conservé lors des rechargements tant qu'aucun nouveau tri n'est fourni
+    if (ordering !== undefined) this.currentOrdering = ordering.trim();
+    // Recherche avancée (filtres serveur) : conservée lors des rechargements et de la pagination
+    if (filtres !== undefined) this.currentFilters = { ...filtres };
+    const paramsFiltres = Object.entries(this.currentFilters)
+      .filter(([, v]) => v !== undefined && v !== null && `${v}`.trim() !== '')
+      .map(([k, v]) => `&${encodeURIComponent(k)}=${encodeURIComponent(`${v}`.trim())}`)
+      .join('');
     return this.http.get<ApiResponse<UserModel>>(
-      `${this.apiUrl}/users/?page=${page}`
+      `${this.apiUrl}/users/?page=${page}${this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : ''}${paramTri(this.currentOrdering)}${paramsFiltres}`
     ).pipe(
       tap(response => {
         this.totalItems   = response.count;
@@ -106,5 +120,10 @@ export class UserService {
       totalItems:   this.totalItems,
       itemsPerPage: this.itemsPerPage,
     });
+  }
+
+  // ── Tri courant (conservé lors des rechargements) ──
+  getCurrentOrdering(): string {
+    return this.currentOrdering;
   }
 }

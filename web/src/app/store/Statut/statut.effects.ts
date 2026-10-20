@@ -33,8 +33,8 @@ export class StatutEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchstatutData),
-      switchMap(({ page, search }) =>
-        this.statutService.getAllStatuts(page ?? 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>
+        this.statutService.getAllStatuts(page ?? 1, search, ordering).pipe(
           map((response) => fetchstatutSuccess({ response })),
           catchError((error) =>
             of(fetchstatutFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))

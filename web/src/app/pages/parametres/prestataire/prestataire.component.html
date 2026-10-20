@@ -42,8 +42,8 @@
                            [(ngModel)]="masterSelected" (change)="checkUncheckAll($event)">
                   </div>
                 </th>
-                <th class="sort cursor-pointer" (click)="onSort('id')">#</th>
-                <th class="sort cursor-pointer" (click)="onSort('libelle')">Libellé</th>
+                <th class="cursor-pointer" [class.sort]="!tri.estActif('id')" (click)="onSort('id')">#<i class="ms-1 align-middle" [ngClass]="tri.icone('id')"></i></th>
+                <th class="cursor-pointer" [class.sort]="!tri.estActif('libelle')" (click)="onSort('libelle')">Libellé<i class="ms-1 align-middle" [ngClass]="tri.icone('libelle')"></i></th>
                 <th>Date début</th>
                 <th>Date fin</th>
                 <th>Statut</th>

@@ -2,7 +2,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { of } from 'rxjs';
-import { catchError, map, mergeMap } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap } from 'rxjs/operators';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { RoleService } from 'src/app/core/services/role/role.service';
 import {
@@ -29,8 +29,9 @@ export class RoleEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchroleData),
-      mergeMap(({ page }) =>
-        this.roleService.getAllRoles(page || 1).pipe(
+      // switchMap : une recherche ou un tri plus récent annule la requête précédente
+      switchMap(({ page, search, ordering }) =>
+        this.roleService.getAllRoles(page || 1, search, ordering).pipe(
           map(response => fetchroleSuccess({ response })),
           catchError(error => of(fetchroleFailure({ error: toMessage(error) })))
         )

@@ -33,8 +33,8 @@ export class AgenceEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchagenceData),
-      switchMap(({ page, search }) =>
-        this.agenceService.getAllAgences(page ?? 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>
+        this.agenceService.getAllAgences(page ?? 1, search, ordering).pipe(
           map((response) => fetchagenceSuccess({ response })),
           catchError((error) =>
             of(fetchagenceFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))

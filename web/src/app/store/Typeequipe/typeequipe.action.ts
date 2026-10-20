@@ -6,7 +6,7 @@ import { TypeequipelistModel, ApiResponse } from './typeequipe.model';
 // ── Fetch paginé ──────────────────────────────────────────────
 export const fetchtypeequipeData = createAction(
   '[Data] Fetch typeequipe Table Data',
-  props<{ page?: number; search?: string }>()
+  props<{ page?: number; search?: string; ordering?: string }>()
 );
 export const fetchtypeequipeSuccess = createAction(
   '[Data] Fetch typeequipe Data Success',

@@ -6,7 +6,7 @@ import { DepartementlistModel, ApiResponse } from './departement.model';
 // ── Fetch paginé ──────────────────────────────────────────────
 export const fetchdepartementData = createAction(
   '[Data] Fetch departement Table Data',
-  props<{ page?: number; search?: string }>()
+  props<{ page?: number; search?: string; ordering?: string }>()
 );
 export const fetchdepartementSuccess = createAction(
   '[Data] Fetch departement Data Success',

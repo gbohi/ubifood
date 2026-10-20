@@ -33,8 +33,8 @@ export class TypeplatEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchtypeplatData),
-      switchMap(({ page, search }) =>
-        this.typeplatService.getAllTypeplats(page ?? 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>
+        this.typeplatService.getAllTypeplats(page ?? 1, search, ordering).pipe(
           map((response) => fetchtypeplatSuccess({ response })),
           catchError((error) =>
             of(fetchtypeplatFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" }))

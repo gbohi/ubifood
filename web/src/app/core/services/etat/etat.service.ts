@@ -6,6 +6,7 @@ import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 import { EtatlistModel, ApiResponse } from 'src/app/store/Etat/etat.model';
+import { paramTri } from 'src/app/shared/tri-serveur';
 
 @Injectable({ providedIn: 'root' })
 export class EtatService {
@@ -14,6 +15,7 @@ export class EtatService {
   private apiUrl = `${environment.apiUrl}/api/api`;
 
   private currentPage  = 1;
+  private currentOrdering = '';
   private totalItems   = 0;
   private currentSearch?: string;
   private itemsPerPage = 10;
@@ -21,13 +23,15 @@ export class EtatService {
   constructor(private http: HttpClient) {}
 
   // ── Liste paginée ─────────────────────────────────────────
-  getAllEtats(page: number = 1, search?: string): Observable<ApiResponse<EtatlistModel>> {
+  getAllEtats(page: number = 1, search?: string, ordering?: string): Observable<ApiResponse<EtatlistModel>> {
     this.currentPage = page;
+    // Tri serveur (?ordering=) : conservé lors des rechargements tant qu'aucun nouveau tri n'est fourni
+    if (ordering !== undefined) this.currentOrdering = ordering.trim();
     this.currentSearch = search?.trim() || undefined;
     const q = this.currentSearch ? `&search=${encodeURIComponent(this.currentSearch)}` : '';
     // ✅ Plus de getAuthHeaders() — JWT géré par l'intercepteur
     return this.http.get<ApiResponse<EtatlistModel>>(
-      `${this.apiUrl}/etats/?page=${page}${q}`
+      `${this.apiUrl}/etats/?page=${page}${paramTri(this.currentOrdering)}${q}`
     ).pipe(
       tap(response => {
         this.totalItems  = response.count;
@@ -81,5 +85,10 @@ export class EtatService {
       itemsPerPage: this.itemsPerPage,
       search:       this.currentSearch,
     });
+  }
+
+  // ── Tri courant (conservé lors des rechargements) ──
+  getCurrentOrdering(): string {
+    return this.currentOrdering;
   }
 }

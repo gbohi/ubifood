@@ -37,8 +37,8 @@ export class DepartementEffects {
   fetchlistData$ = createEffect(() =>
     this.actions$.pipe(
       ofType(fetchdepartementData),
-      switchMap(({ page, search }) =>
-        this.departementService.getAllDepartements(page ?? 1, search).pipe(
+      switchMap(({ page, search, ordering }) =>
+        this.departementService.getAllDepartements(page ?? 1, search, ordering).pipe(
           map(response => fetchdepartementSuccess({ response })),
           catchError(error => of(fetchdepartementFailure({ error: typeof error === 'string' ? error : "Erreur lors du chargement des données" })))
         )

@@ -17,6 +17,8 @@ export interface UserModel {
   is_active?:        boolean;
   last_login?:       string;
   last_logout?:      string;
+  // Photo de profil : URL relative (/media/photos_profil/...?v=...) ou null
+  photo_url?:        string | null;
   // Groupes Django
   groups?:           number[];
   // Listes complètes (historique) — utilisées dans le détail / modification

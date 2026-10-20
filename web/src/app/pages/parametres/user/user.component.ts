@@ -12,7 +12,7 @@ import { Actions, ofType } from '@ngrx/effects';
 import { Store } from '@ngrx/store';
 import { PageChangedEvent } from 'ngx-bootstrap/pagination';
 import { Observable, Subject, concat, of } from 'rxjs';
-import { catchError, map, switchMap, takeUntil, toArray } from 'rxjs/operators';
+import { catchError, debounceTime, distinctUntilChanged, map, switchMap, takeUntil, toArray } from 'rxjs/operators';
 
 import {
   deleteuserData, deletemultipleuserData, fetchuserData,
@@ -57,6 +57,8 @@ import { TokenStorageService } from 'src/app/core/services/token-storage.service
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { TriServeur } from 'src/app/shared/tri-serveur';
+import { environment } from 'src/environments/environment';
 
 // ============================================================
 // VALIDATORS
@@ -86,6 +88,9 @@ export const passwordStrengthValidator: ValidatorFn = (control: AbstractControl)
   providers: [DecimalPipe, DatePipe],
 })
 export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
+
+  // Tri serveur des colonnes : clé de colonne → champ autorisé par l'API (ordering_fields)
+  readonly tri = new TriServeur({ id: 'id', nom: 'nom,prenom', username: 'username' });
 
   breadCrumbItems = [
     { label: 'RH', active: false },
@@ -137,6 +142,7 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
   connectedUserId: number | null = null;
 
   private destroy$ = new Subject<void>();
+  private readonly search$ = new Subject<string>();
   private lastActiveElement: HTMLElement | null = null;
 
   @ViewChild('addUser',           { static: false }) addUser?:           ModalDirective;
@@ -239,6 +245,11 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loadData(this.currentPage);
     });
 
+    // Recherche rapide côté serveur (?search= : nom, prénom, e-mail, identifiant), relancée sur la page 1
+    this.search$
+      .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
+      .subscribe(() => this.loadData(1));
+
     this.loadData(1);
   }
 
@@ -253,7 +264,34 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void { this.destroy$.next(); this.destroy$.complete(); }
 
-  loadData(page: number = 1): void { this.store.dispatch(fetchuserData({ page })); }
+  // ── Photo de profil / initiales ──────────────────────────
+  /** Ids des utilisateurs dont la photo n'a pas pu être chargée (repli sur les initiales) */
+  private photosEnErreur = new Set<number>();
+
+  /** URL complète de la photo de profil (ou null : afficher les initiales) */
+  photoUrl(user: any): string | null {
+    const url = user?.photo_url;
+    if (!url || this.photosEnErreur.has(user.id)) return null;
+    return /^https?:\/\//.test(url) ? url : `${environment.apiUrl}${url}`;
+  }
+
+  onPhotoErreur(user: any): void {
+    if (user?.id != null) this.photosEnErreur.add(user.id);
+  }
+
+  /** Initiales prénom + nom */
+  initiales(user: any): string {
+    return ((user?.prenom?.charAt(0) || '') + (user?.nom?.charAt(0) || '')).toUpperCase() || '?';
+  }
+
+  /** Filtres de la recherche avancée appliqués côté serveur (vide = aucun) */
+  private filtresAvances: Record<string, string> = {};
+
+  // Charger les données (page + recherche rapide + filtres avancés + tri courants)
+  loadData(page: number = 1): void {
+    const search = (this.term ?? '').toString().trim();
+    this.store.dispatch(fetchuserData({ page, search, ordering: this.tri.ordering, filtres: this.filtresAvances }));
+  }
 
   // ══════════════════════════════════════════════════════════
   // ✅ HELPERS SOUS-STORES IMBRIQUÉS
@@ -295,44 +333,18 @@ getDerniereCategorie(user: any): any | null {
 
   toggleSearchPanel(): void { this.showSearchPanel = !this.showSearchPanel; }
 
+  // Recherche avancée côté serveur, sur toutes les données (page 1, tri et recherche rapide conservés).
+  // agence / service / poste / catégorie : affectation EN COURS (date de fin vide ou future).
   applySearch(): void {
-    const {
-      nom, prenom, username, email, statut, is_active, groupe,
-      service, agence, poste, categoriesalarie, allergie
-    } = this.searchForm.value;
-
-    this.users = this.userList.filter(u => {
-      // Champs directs
-      const mNom      = !nom      || u.nom?.toLowerCase().includes(nom.toLowerCase());
-      const mPrenom   = !prenom   || u.prenom?.toLowerCase().includes(prenom.toLowerCase());
-      const mUsername = !username || u.username?.toLowerCase().includes(username.toLowerCase());
-      const mEmail    = !email    || u.email?.toLowerCase().includes(email.toLowerCase());
-      const mStatut   = !statut   || u.statut?.toString() === statut.toString();
-      const mActif    = (is_active === '' || is_active === null || is_active === undefined)
-                          ? true : u.is_active?.toString() === is_active.toString();
-      const mGroupe   = !groupe   || (u.groups || []).map(Number).includes(Number(groupe));
-
-      // ✅ Sous-stores — ligne la plus récente
-      const dernierSvc  = this.getDernierService(u);
-      const derniereAgc = this.getDerniereAgence(u);
-      const dernierPst  = this.getDernierPoste(u);
-      const derniereCat = this.getDerniereCategorie(u);
-
-      const mService          = !service          || (dernierSvc  && dernierSvc.service?.toString()  === service.toString());
-      const mAgence           = !agence           || (derniereAgc && derniereAgc.agence?.toString()  === agence.toString());
-      const mPoste            = !poste            || (dernierPst  && dernierPst.poste?.toString()    === poste.toString());
-      const mCategoriesalarie = !categoriesalarie || (derniereCat && derniereCat.categoriesalarie?.toString() === categoriesalarie.toString());
-
-      // Allergie : recherche dans toutes les lignes
-      const mAllergie = !allergie || (u.user_allergies || []).some((a: any) =>
-        a.libelle?.toLowerCase().includes(allergie.toLowerCase())
-      );
-
-      return mNom && mPrenom && mUsername && mEmail && mStatut && mActif && mGroupe
-          && mService && mAgence && mPoste && mCategoriesalarie && mAllergie;
+    const v = this.searchForm.value ?? {};
+    const filtres: Record<string, string> = {};
+    ['nom', 'prenom', 'username', 'email', 'statut', 'is_active', 'groupe',
+     'service', 'agence', 'poste', 'categoriesalarie', 'allergie'].forEach(cle => {
+      const val = v[cle];
+      if (val !== null && val !== undefined && `${val}`.trim() !== '') filtres[cle] = `${val}`.trim();
     });
-
-    this.updateNoResultDisplay();
+    this.filtresAvances = filtres;
+    this.loadData(1);
   }
 
   resetSearch(): void {
@@ -341,23 +353,15 @@ getDerniereCategorie(user: any): any | null {
       service: '', agence: '', poste: '', categoriesalarie: '', allergie: '',
     });
     this.term = '';
+    this.filtresAvances = {};
+    this.search$.next('');   // le prochain terme saisi relancera bien la recherche
     this.loadData(1);
     this.updateNoResultDisplay();
   }
 
+  // Recherche rapide (debounce 300 ms, côté serveur ; le tri courant est conservé)
   filterdata(): void {
-    if (this.term) {
-      this.users = this.userList.filter(el =>
-        el.nom?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.prenom?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.username?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.email?.toLowerCase().includes(this.term.toLowerCase()) ||
-        el.id?.toString().includes(this.term)
-      );
-    } else {
-      this.loadData(this.currentPage);
-    }
-    this.updateNoResultDisplay();
+    this.search$.next((this.term ?? '').toString().trim());
   }
 
   hasActiveSearch(): boolean {
@@ -792,11 +796,11 @@ getDerniereCategorie(user: any): any | null {
   onCheckboxChange(): void { this.updateCheckedValues(); }
   private updateCheckedValues(): void { this.checkedValGet = this.users.filter(u => u.state === true).map(u => u.id); }
 
+  // Tri côté serveur (?ordering=) : s'applique à toutes les données, pas seulement à la page affichée.
+  // Un nouveau clic inverse le sens ; la recherche courante est conservée et on revient à la page 1.
   onSort(column: string): void {
-    this.direction = this.direction === 'asc' ? 'desc' : 'asc';
-    this.users = [...this.users].sort((a, b) => { const res = this.compare(a[column], b[column]); return this.direction === 'asc' ? res : -res; });
+    if (this.tri.basculer(column)) this.loadData(1);
   }
-  compare(v1: string | number, v2: string | number): number { return v1 < v2 ? -1 : v1 > v2 ? 1 : 0; }
 
   updateNoResultDisplay(): void {
     const el = document.querySelector('.noresult') as HTMLElement;
