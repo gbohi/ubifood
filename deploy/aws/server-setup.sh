@@ -89,8 +89,19 @@ else
     echo "⚠️  /ubifood/FIREBASE_KEY absent : notifications push désactivées."
 fi
 
-echo "==> Construction et démarrage (PostgreSQL, Django, Nginx + site Angular)"
+SAUVEGARDE_S3=$(param BACKUP_S3)
+
+echo "==> Sauvegarde avant mise à jour (les migrations peuvent modifier la base)"
 cd "$BACKEND_DIR"
+if docker compose ps --status running db 2>/dev/null | grep -q db; then
+    SAUVEGARDE_S3="$SAUVEGARDE_S3" AWS_REGION="$REGION" \
+        bash "$APP_DIR/deploy/aws/sauvegarde.sh" avant-deploiement \
+        || { echo "❌ Sauvegarde impossible : déploiement interrompu" >&2; exit 1; }
+else
+    echo "Première installation : rien à sauvegarder."
+fi
+
+echo "==> Construction et démarrage (PostgreSQL, Django, Nginx + site Angular)"
 docker compose up -d --build --remove-orphans
 docker image prune -f >/dev/null
 
@@ -119,13 +130,20 @@ else:
     print('Compte admin déjà présent.')
 "
 
-echo "==> Sauvegarde quotidienne de la base (7 jours conservés)"
-mkdir -p /opt/ubifood-backups
-cat > /etc/cron.d/ubifood-backup <<'EOF'
-# Dump PostgreSQL chaque nuit à 2h, conservé 7 jours
-0 2 * * * root cd /opt/ubifood/backend && docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > /opt/ubifood-backups/ubifood-$(date +\%F).sql.gz && find /opt/ubifood-backups -name '*.sql.gz' -mtime +7 -delete
-EOF
-chmod 644 /etc/cron.d/ubifood-backup
+echo "==> Sauvegarde quotidienne (base + fichiers, 14 jours conservés)"
+rm -f /etc/cron.d/ubifood-backup   # ancienne sauvegarde (base seule, 7 jours)
+cat > /etc/cron.d/ubifood-sauvegarde <<CRON
+# Chaque nuit à 2 h (heure du serveur) ; journal : /var/log/ubifood-sauvegarde.log
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+SAUVEGARDE_S3=$SAUVEGARDE_S3
+AWS_REGION=$REGION
+0 2 * * * root bash $APP_DIR/deploy/aws/sauvegarde.sh quotidienne >/dev/null 2>&1
+CRON
+chmod 644 /etc/cron.d/ubifood-sauvegarde
+if [ -z "$SAUVEGARDE_S3" ]; then
+    echo "⚠️  /ubifood/BACKUP_S3 absent : sauvegardes conservées uniquement sur ce serveur."
+fi
 
 docker compose ps
 echo "✅ Ubifood déployé : http://$PUBLIC_IP"

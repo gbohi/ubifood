@@ -151,8 +151,33 @@ sauvegarde quotidienne de la base.
 
 Le mot de passe du compte `admin` est dans AWS Console → Systems Manager →
 Parameter Store → `/ubifood/ADMIN_PASSWORD`. Console du serveur : EC2 →
-instance « ubifood » → Se connecter → Session Manager. Sauvegardes :
-`/opt/ubifood-backups/` sur le serveur.
+instance « ubifood » → Se connecter → Session Manager.
+
+### Sauvegardes
+
+Installées par `deploy/aws/server-setup.sh` (donc à chaque `deploy.py create`
+ou `update`) :
+
+- **Chaque nuit à 2 h** : la base PostgreSQL **et** les fichiers envoyés
+  (photos des plats et de profil, bannières, fenêtre de connexion, documents
+  des besoins, logo) dans `/opt/ubifood-backups/base` et `/opt/ubifood-backups/fichiers`.
+  Chaque sauvegarde de la base est vérifiée ; **14 jours** sont conservés.
+- **Avant chaque mise à jour** (`deploy.py update`) : une sauvegarde
+  « avant-deploiement ». Si elle échoue, le déploiement s'arrête.
+- Journal : `/var/log/ubifood-sauvegarde.log` (une ligne ❌ en cas d'échec).
+- **Copie hors du serveur (recommandé)** : sans elle, la perte du disque
+  emporte aussi les sauvegardes. Créer un bucket S3, autoriser le rôle de
+  l'instance (`s3:PutObject` sur ce bucket), puis créer le paramètre SSM
+  `/ubifood/BACKUP_S3` = `s3://mon-bucket/ubifood` et relancer `deploy.py update`.
+
+Sauvegarde manuelle : `sudo bash /opt/ubifood/deploy/aws/sauvegarde.sh manuelle`.
+
+Restauration (remplace toutes les données ; l'état actuel est d'abord sauvegardé) :
+```bash
+sudo bash /opt/ubifood/deploy/aws/restaurer.sh \
+  /opt/ubifood-backups/base/ubifood_2026-10-20_0200_quotidienne.dump \
+  /opt/ubifood-backups/fichiers/media_2026-10-20_0200_quotidienne.tar.gz
+```
 
 ### HTTPS (fortement recommandé)
 
