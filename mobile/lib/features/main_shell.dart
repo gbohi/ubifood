@@ -360,7 +360,7 @@ class _AppDrawer extends StatelessWidget {
           children: [
             _DrawerItem(
                 icon: Icons.home_rounded,
-                label: 'Tableau de bord',
+                label: 'Accueil',
                 index: 0,
                 currentIndex: currentIndex,
                 onTap: () => onNavigate(0)),
@@ -411,7 +411,7 @@ class _AppDrawer extends StatelessWidget {
                   onTap: () => onNavigate(2)),
               _DrawerItem(
                   icon: Icons.qr_code_scanner_rounded,
-                  label: 'Retrait badge',
+                  label: 'Retrait commande',
                   index: 3,
                   currentIndex: currentIndex,
                   onTap: () => onNavigate(3)),
