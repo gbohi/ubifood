@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Icône UbiFood seule (menu replié) -->
+  <rect x="0" y="0" width="64" height="64" rx="18" fill="#0F3A6E"/>
+  <rect x="36" y="44" width="28" height="20" rx="10" fill="#5bd988"/>
+  <g transform="translate(32, 32)" fill="white">
+    <rect x="-14" y="-18" width="2.5" height="12" rx="1.2"/>
+    <rect x="-10" y="-18" width="2.5" height="12" rx="1.2"/>
+    <rect x="-6"  y="-18" width="2.5" height="12" rx="1.2"/>
+    <path d="M-14,-6 Q-10,-2 -6,-6 L-6,18 Q-10,20 -14,18 Z" opacity="0.95"/>
+    <rect x="6" y="-18" width="2.8" height="36" rx="1.4"/>
+    <path d="M6,-18 Q14,-10 8.8,-4 L6,-4 Z" opacity="0.9"/>
+  </g>
+</svg>

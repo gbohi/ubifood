@@ -25,7 +25,7 @@ messaging.onBackgroundMessage((payload) => {
 
   const titre   = payload.notification?.title || 'UbiFood';
   const body    = payload.notification?.body  || '';
-  const icon    = '/assets/images/logo-sm.png';
+  const icon    = '/assets/images/ubifood-icone.png';
 
   self.registration.showNotification(titre, {
     body:    body,
