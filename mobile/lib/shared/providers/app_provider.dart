@@ -184,7 +184,10 @@ class AuthProvider extends ChangeNotifier {
   String _parseError(dynamic e) {
     if (e is DioException) {
       final code = e.response?.statusCode;
-      if (code == 401) return 'Identifiants incorrects';
+      // Message du serveur (« Matricule ou mot de passe incorrect, ou compte désactivé. »)
+      if (code == 401) {
+        return messageErreurApi(e) ?? 'Matricule ou mot de passe incorrect.';
+      }
       if (code == 429) {
         return 'Trop de tentatives. Réessayez dans quelques minutes.';
       }
