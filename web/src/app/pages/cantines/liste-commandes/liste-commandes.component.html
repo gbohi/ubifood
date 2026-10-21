@@ -128,7 +128,7 @@
               </div>
               <div class="ce-pc-bd">
                 <h4>{{ plat.nom }}</h4>
-                @if (plat.description) { <p>{{ plat.description }}</p> }
+                @if (plat.description && plat.description.trim().toLowerCase() !== plat.nom?.trim()?.toLowerCase()) { <p>{{ plat.description }}</p> }
 
                 @if (isPlatRetire(menu.id!, plat.id!)) {
                   <button type="button" class="ce-cta ce-cta-info" disabled>
