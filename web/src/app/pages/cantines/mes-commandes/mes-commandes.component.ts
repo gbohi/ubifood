@@ -57,11 +57,12 @@ export class MesCommandesComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    const today = new Date().toISOString().split('T')[0];
-
+    // Pas de filtre de date par défaut : les compteurs portent sur toutes les
+    // commandes, la liste doit donc aussi toutes les montrer (y compris les
+    // commandes en attente des jours passés), la plus récente en premier.
     this.filterForm = this.fb.group({
       statut:     [''],
-      date_debut: [today],
+      date_debut: [''],
       date_fin:   [''],
     });
 
@@ -104,12 +105,12 @@ export class MesCommandesComponent implements OnInit {
       if (date_debut && dateMenu  < date_debut) return false;
       if (date_fin   && dateMenu  > date_fin)   return false;
       return true;
-    });
+    }).sort((a, b) => this.getDateMenu(b).localeCompare(this.getDateMenu(a))
+      || String(b.date_commande ?? '').localeCompare(String(a.date_commande ?? '')));
   }
 
   resetFilters(): void {
-    const today = new Date().toISOString().split('T')[0];
-    this.filterForm.reset({ statut: '', date_debut: today, date_fin: '' });
+    this.filterForm.reset({ statut: '', date_debut: '', date_fin: '' });
   }
 
   // ── Annuler ───────────────────────────────────────────────

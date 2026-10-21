@@ -15,9 +15,12 @@ import { RetraitCommandeComponent } from './retrait-commande/retrait-commande/re
 import { FacturationCommandeComponent } from './facturation-commande/facturation-commande.component';
 import { FacturationPrestataireComponent } from './facturation-prestataire/facturation-prestataire.component';
 import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
+import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.component';
 
 
 const routes: Routes = [
+  // Accueil de l'employé (tout utilisateur connecté) — voir ACCUEIL_EMPLOYE
+  { path: 'accueil', component: AccueilEmployeComponent },
   { path: 'liste-plats', component: ListePlatsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'liste-menus', component: ListeMenusComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   // Ouvert à tous : chacun commande ses repas (comme sur l'application mobile)

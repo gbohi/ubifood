@@ -1,5 +1,113 @@
 <!-- dashboard-cantine.component.html -->
-<app-breadcrumbs title="Tableau de bord cantine" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<!-- ══════════════════════════════════════════════════════════
+     ACCUEIL GESTIONNAIRE : salutation, service du jour, à faire, semaine
+     (données : GET /api/api/accueil/ → clé « gestion »)
+══════════════════════════════════════════════════════════ -->
+<div class="acc">
+
+  <div class="acc-salut">
+    <div class="acc-salut-txt">
+      <h1>Bonjour {{ prenom }} 👋</h1>
+      <p>{{ aujourdhui }}@if (agencesLibelle) { · Agences : {{ agencesLibelle }} }</p>
+    </div>
+    <div class="acc-btns">
+      <a class="acc-btn" routerLink="/cantines/liste-menus"><i class="ri-add-line"></i>Nouveau menu</a>
+      <a class="acc-btn" routerLink="/cantines/liste-plats"><i class="ri-restaurant-2-line"></i>Nouveau plat</a>
+      <a class="acc-btn vert" routerLink="/cantines/retrait-commande"><i class="ri-qr-scan-2-line"></i>Ouvrir le retrait</a>
+    </div>
+  </div>
+
+  @if (accueilErreur && !gestion) {
+    <div class="alert alert-warning d-flex align-items-center gap-2 mb-0" role="alert">
+      <i class="ri-error-warning-line fs-5"></i>
+      <div class="flex-grow-1">Impossible de charger le service du jour : {{ accueilErreur }}</div>
+      <button type="button" class="btn btn-sm btn-outline-warning" (click)="chargerAccueil()">Réessayer</button>
+    </div>
+  }
+
+  @if (!accueilCharge) {
+    <div class="text-center py-4">
+      <div class="spinner-border" role="status"><span class="visually-hidden">Chargement...</span></div>
+    </div>
+  }
+
+  @if (gestion; as g) {
+    <div class="acc-grille">
+
+      <!-- Service d'aujourd'hui -->
+      <div class="acc-carte acc-jour-carte">
+        <h3><i class="ri-restaurant-line"></i>Service d'aujourd'hui <small>{{ majIlYa }}</small></h3>
+        @if (g.service_du_jour.length) {
+          <div class="acc-agences">
+            @for (a of g.service_du_jour; track a.agence_id) {
+              <div class="acc-ag">
+                <div class="acc-ag-nom"><b>{{ a.agence }}</b><small>{{ detailAgence(a) }}</small></div>
+                <div class="acc-barre" [title]="pctServies(a) + ' % servis'"><i [style.width.%]="pctServies(a)"></i></div>
+                <div class="acc-chiffres">
+                  <span><b>{{ a.servies }}</b>servis</span>
+                  <span><b>{{ a.a_servir }}</b>à servir</span>
+                  <span><b>{{ a.commandees }}</b>commandés</span>
+                </div>
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="acc-jour-vide">
+            <i class="ri-calendar-event-line"></i>
+            <span>Aucun menu aujourd'hui dans vos agences</span>
+          </div>
+        }
+      </div>
+
+      <!-- À faire -->
+      <div class="acc-carte acc-afaire">
+        <h3><i class="ri-alarm-warning-line"></i>À faire
+          @if (g.a_faire.length) { <small>{{ g.a_faire.length }} point{{ g.a_faire.length > 1 ? 's' : '' }}</small> }</h3>
+        @if (g.a_faire.length) {
+          <ul>
+            @for (t of g.a_faire; track $index) {
+              <li>
+                <span class="acc-pastille" [ngClass]="styleAFaire(t).pastille"><i [class]="styleAFaire(t).icone"></i></span>
+                <div class="acc-afaire-txt"><b>{{ t.titre }}</b><small>{{ t.detail }}</small></div>
+                <a [routerLink]="styleAFaire(t).lien">{{ styleAFaire(t).action }}</a>
+              </li>
+            }
+          </ul>
+        } @else {
+          <div class="acc-rien">Rien à signaler 👍</div>
+        }
+      </div>
+    </div>
+
+    <!-- Cette semaine -->
+    <div class="acc-carte">
+      <h3><i class="ri-calendar-2-line"></i>Cette semaine <small>commandes par jour · toutes vos agences</small></h3>
+      <div class="acc-semaine">
+        @for (j of g.semaine; track j.date) {
+          <div class="acc-j" [class.auj]="estAujourdhui(j)">
+            <div class="acc-j-d">{{ jourCourt(j.date) }} <small>{{ jourMois(j.date) }}</small></div>
+            @if (j.etat === 'sans_menu') {
+              <div class="acc-j-n">—</div>
+              <div class="acc-j-s">{{ j.agences_sans_menu.length > 2 ? 'Aucune agence' : j.agences_sans_menu.join(', ') }} sans menu</div>
+            } @else {
+              <div class="acc-j-n">{{ formatNombre(j.commandees) }}</div>
+              <div class="acc-j-s">commande{{ j.commandees > 1 ? 's' : '' }}@if (j.etat === 'termine' || j.etat === 'en_cours') { · {{ j.retirees }} retirée{{ j.retirees > 1 ? 's' : '' }} }</div>
+              @if (j.agences_sans_menu.length) {
+                <div class="acc-j-manque"><i class="ri-error-warning-line"></i>{{ j.agences_sans_menu.join(', ') }} sans menu</div>
+              }
+            }
+            <span class="acc-tag" [ngClass]="tagJour(j).classe">{{ tagJour(j).texte }}</span>
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     STATISTIQUES DÉTAILLÉES (existantes) — filtres, KPIs puis onglets
+══════════════════════════════════════════════════════════ -->
+<div class="acc-section-titre"><i class="ri-bar-chart-2-line"></i>Statistiques détaillées</div>
 
 <!-- ══════════════════════════════════════════════════════════
      FILTRES
@@ -225,9 +333,24 @@
 </div>
 </ng-container>
 
+</ng-container>
+
 <!-- ══════════════════════════════════════════════════════════
-     CHARTS ROW 1 : Par mois + Top plats
+     ONGLETS : Commandes / Plats & avis / Facturation
 ══════════════════════════════════════════════════════════ -->
+<div class="acc-onglets" role="tablist">
+  @for (o of onglets; track o.id) {
+    <button type="button" role="tab" class="acc-onglet" [class.on]="onglet === o.id"
+            [attr.aria-selected]="onglet === o.id" (click)="onglet = o.id">
+      <i [class]="o.icone"></i>{{ o.libelle }}
+    </button>
+  }
+</div>
+
+<!-- ─────────────── Onglet COMMANDES ─────────────── -->
+@if (onglet === 'commandes') {
+<ng-container *ngIf="!(isLoading$ | async)">
+
 <div class="row g-3 mb-3">
 
   <div class="col-xl-8">
@@ -263,92 +386,6 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-transparent border-0 pb-0">
         <h6 class="card-title fw-bold mb-0" style="color:#092440;">
-          <i class="ph-trophy me-2 text-warning"></i>Top 7 plats
-        </h6>
-        <small class="text-muted">Par volume de commandes</small>
-      </div>
-      <div class="card-body pt-2">
-        <apx-chart *ngIf="chartTopPlats"
-          [series]="chartTopPlats.series"
-          [chart]="chartTopPlats.chart"
-          [colors]="chartTopPlats.colors"
-          [plotOptions]="chartTopPlats.plotOptions"
-          [dataLabels]="chartTopPlats.dataLabels"
-          [xaxis]="chartTopPlats.xaxis"
-          [grid]="chartTopPlats.grid"
-          dir="ltr">
-        </apx-chart>
-        <div *ngIf="!chartTopPlats" class="text-center py-4 text-muted">
-          <i class="ph-fork-knife fs-1"></i><p class="mt-2">Aucune donnée</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<!-- ══════════════════════════════════════════════════════════
-     CHARTS ROW 2 : Par agence + Donut + Évolution
-══════════════════════════════════════════════════════════ -->
-<div class="row g-3 mb-3">
-
-  <div class="col-xl-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-transparent border-0 pb-0">
-        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
-          <i class="ph-buildings me-2 text-primary"></i>Par agence
-        </h6>
-        <small class="text-muted">En attente / Retirées / Annulées</small>
-      </div>
-      <div class="card-body pt-2">
-        <apx-chart *ngIf="chartParAgence"
-          [series]="chartParAgence.series"
-          [chart]="chartParAgence.chart"
-          [colors]="chartParAgence.colors"
-          [plotOptions]="chartParAgence.plotOptions"
-          [dataLabels]="chartParAgence.dataLabels"
-          [xaxis]="chartParAgence.xaxis"
-          [legend]="chartParAgence.legend"
-          [grid]="chartParAgence.grid"
-          [tooltip]="chartParAgence.tooltip"
-          dir="ltr">
-        </apx-chart>
-        <div *ngIf="!chartParAgence" class="text-center py-4 text-muted">
-          <i class="ph-buildings fs-1"></i><p class="mt-2">Aucune donnée</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-xl-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-transparent border-0 pb-0">
-        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
-          <i class="ph-pie-chart me-2 text-info"></i>Par type de plat
-        </h6>
-      </div>
-      <div class="card-body pt-2">
-        <apx-chart *ngIf="chartTypePlat"
-          [series]="chartTypePlat.series"
-          [chart]="chartTypePlat.chart"
-          [labels]="chartTypePlat.labels"
-          [colors]="chartTypePlat.colors"
-          [legend]="chartTypePlat.legend"
-          [dataLabels]="chartTypePlat.dataLabels"
-          [plotOptions]="chartTypePlat.plotOptions"
-          dir="ltr">
-        </apx-chart>
-        <div *ngIf="!chartTypePlat" class="text-center py-4 text-muted">
-          <i class="ph-pie-chart fs-1"></i><p class="mt-2">Aucune donnée</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-xl-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-transparent border-0 pb-0">
-        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
           <i class="ph-trend-up me-2 text-success"></i>Évolution récente
         </h6>
         <small class="text-muted">4 dernières semaines (commandes non annulées)</small>
@@ -377,15 +414,84 @@
       </div>
     </div>
   </div>
+</div>
+
+<div class="row g-3 mb-3">
+
+  <div class="col-xl-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent border-0 pb-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-buildings me-2 text-primary"></i>Par agence
+        </h6>
+        <small class="text-muted">En attente / Retirées / Annulées</small>
+      </div>
+      <div class="card-body pt-2">
+        <apx-chart *ngIf="chartParAgence"
+          [series]="chartParAgence.series"
+          [chart]="chartParAgence.chart"
+          [colors]="chartParAgence.colors"
+          [plotOptions]="chartParAgence.plotOptions"
+          [dataLabels]="chartParAgence.dataLabels"
+          [xaxis]="chartParAgence.xaxis"
+          [legend]="chartParAgence.legend"
+          [grid]="chartParAgence.grid"
+          [tooltip]="chartParAgence.tooltip"
+          dir="ltr">
+        </apx-chart>
+        <div *ngIf="!chartParAgence" class="text-center py-4 text-muted">
+          <i class="ph-buildings fs-1"></i><p class="mt-2">Aucune donnée</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-5">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent border-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-clock-clockwise me-2 text-info"></i>5 derniers menus
+        </h6>
+        <small class="text-muted">Commandes non annulées</small>
+      </div>
+      <div class="card-body p-0">
+        <ng-container *ngIf="menusRecents$ | async as menus">
+          <div *ngIf="!menus.length" class="text-center py-4 text-muted">
+            <i class="ph-fork-knife" style="font-size:2.5rem;"></i>
+            <p class="mt-2 small">Aucun menu dans cette période</p>
+          </div>
+          <ul class="list-group list-group-flush">
+            <li
+              *ngFor="let m of menus"
+              class="list-group-item border-0 border-bottom py-3 px-3">
+              <div class="d-flex align-items-start justify-content-between">
+                <div>
+                  <div class="fw-semibold" style="color:#092440; font-size:.9rem;">
+                    {{ formatDate(m.date_menu) }}
+                  </div>
+                  <div class="text-muted" style="font-size:.8rem;">
+                    <i class="ph-buildings me-1"></i>{{ str(m.agence) }}
+                    &nbsp;&middot;&nbsp;
+                    <i class="ph-users me-1"></i>{{ str(m.typeequipe) }}
+                  </div>
+                </div>
+                <span class="badge rounded-pill"
+                      style="background:rgba(9,36,64,0.08); color:#092440; font-size:.8rem;">
+                  {{ formatNombre(m.nb_commandes) }} cmd
+                </span>
+              </div>
+            </li>
+          </ul>
+        </ng-container>
+      </div>
+    </div>
+  </div>
 
 </div>
 
-<!-- ══════════════════════════════════════════════════════════
-     TABLEAU MENSUEL + MENUS RÉCENTS
-══════════════════════════════════════════════════════════ -->
 <div class="row g-3 mb-3">
 
-  <div class="col-xl-8">
+  <div class="col-12">
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent border-0">
         <h6 class="card-title fw-bold mb-0" style="color:#092440;">
@@ -467,47 +573,118 @@
     </div>
   </div>
 
-  <div class="col-xl-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-transparent border-0">
-        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
-          <i class="ph-clock-clockwise me-2 text-info"></i>5 derniers menus
-        </h6>
-        <small class="text-muted">Commandes non annulées</small>
+</div>
+
+</ng-container>
+
+<!-- ══════════════════════════════════════════════════════════
+     ÉVOLUTION DES COMMANDES PAR STATUT PAR DATE MENU
+══════════════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent border-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div>
+          <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+            <i class="ph-chart-line me-2 text-primary"></i>Évolution des commandes par date de menu
+          </h6>
+          <small class="text-muted">En attente / Retirées / Annulées — par jour de menu</small>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <span class="badge" style="background:rgba(255,193,7,0.15); color:#ffc107;">
+            <i class="ph-circle-fill me-1" style="font-size:.5rem;"></i>En attente
+          </span>
+          <span class="badge" style="background:rgba(81,215,142,0.15); color:#51d78e;">
+            <i class="ph-circle-fill me-1" style="font-size:.5rem;"></i>Retirées
+          </span>
+          <span class="badge" style="background:rgba(255,77,79,0.15); color:#ff4d4f;">
+            <i class="ph-circle-fill me-1" style="font-size:.5rem;"></i>Annulées
+          </span>
+        </div>
       </div>
-      <div class="card-body p-0">
-        <ng-container *ngIf="menusRecents$ | async as menus">
-          <div *ngIf="!menus.length" class="text-center py-4 text-muted">
-            <i class="ph-fork-knife" style="font-size:2.5rem;"></i>
-            <p class="mt-2 small">Aucun menu dans cette période</p>
+      <div class="card-body pt-2">
+        <ng-container *ngIf="evolutionParDate$ | async as evoDate">
+          <apx-chart *ngIf="chartEvolutionParDate && evoDate.length"
+            [series]="chartEvolutionParDate.series"
+            [chart]="chartEvolutionParDate.chart"
+            [colors]="chartEvolutionParDate.colors"
+            [stroke]="chartEvolutionParDate.stroke"
+            [markers]="chartEvolutionParDate.markers"
+            [xaxis]="chartEvolutionParDate.xaxis"
+            [yaxis]="chartEvolutionParDate.yaxis"
+            [legend]="chartEvolutionParDate.legend"
+            [grid]="chartEvolutionParDate.grid"
+            [tooltip]="chartEvolutionParDate.tooltip"
+            [fill]="chartEvolutionParDate.fill"
+            dir="ltr">
+          </apx-chart>
+          <div *ngIf="!evoDate.length" class="text-center py-5 text-muted">
+            <i class="ph-chart-line" style="font-size:3rem; display:block; margin-bottom:12px;"></i>
+            <p class="mb-0">Aucune donnée sur la période sélectionnée</p>
           </div>
-          <ul class="list-group list-group-flush">
-            <li
-              *ngFor="let m of menus"
-              class="list-group-item border-0 border-bottom py-3 px-3">
-              <div class="d-flex align-items-start justify-content-between">
-                <div>
-                  <div class="fw-semibold" style="color:#092440; font-size:.9rem;">
-                    {{ formatDate(m.date_menu) }}
-                  </div>
-                  <div class="text-muted" style="font-size:.8rem;">
-                    <i class="ph-buildings me-1"></i>{{ str(m.agence) }}
-                    &nbsp;&middot;&nbsp;
-                    <i class="ph-users me-1"></i>{{ str(m.typeequipe) }}
-                  </div>
-                </div>
-                <span class="badge rounded-pill"
-                      style="background:rgba(9,36,64,0.08); color:#092440; font-size:.8rem;">
-                  {{ formatNombre(m.nb_commandes) }} cmd
-                </span>
-              </div>
-            </li>
-          </ul>
         </ng-container>
       </div>
     </div>
   </div>
+</div>
+}
 
+<!-- ─────────────── Onglet PLATS & AVIS ─────────────── -->
+@if (onglet === 'plats') {
+<ng-container *ngIf="!(isLoading$ | async)">
+
+<div class="row g-3 mb-3">
+
+  <div class="col-xl-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent border-0 pb-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-trophy me-2 text-warning"></i>Top 7 plats
+        </h6>
+        <small class="text-muted">Par volume de commandes</small>
+      </div>
+      <div class="card-body pt-2">
+        <apx-chart *ngIf="chartTopPlats"
+          [series]="chartTopPlats.series"
+          [chart]="chartTopPlats.chart"
+          [colors]="chartTopPlats.colors"
+          [plotOptions]="chartTopPlats.plotOptions"
+          [dataLabels]="chartTopPlats.dataLabels"
+          [xaxis]="chartTopPlats.xaxis"
+          [grid]="chartTopPlats.grid"
+          dir="ltr">
+        </apx-chart>
+        <div *ngIf="!chartTopPlats" class="text-center py-4 text-muted">
+          <i class="ph-fork-knife fs-1"></i><p class="mt-2">Aucune donnée</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-5">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent border-0 pb-0">
+        <h6 class="card-title fw-bold mb-0" style="color:#092440;">
+          <i class="ph-pie-chart me-2 text-info"></i>Par type de plat
+        </h6>
+      </div>
+      <div class="card-body pt-2">
+        <apx-chart *ngIf="chartTypePlat"
+          [series]="chartTypePlat.series"
+          [chart]="chartTypePlat.chart"
+          [labels]="chartTypePlat.labels"
+          [colors]="chartTypePlat.colors"
+          [legend]="chartTypePlat.legend"
+          [dataLabels]="chartTypePlat.dataLabels"
+          [plotOptions]="chartTypePlat.plotOptions"
+          dir="ltr">
+        </apx-chart>
+        <div *ngIf="!chartTypePlat" class="text-center py-4 text-muted">
+          <i class="ph-pie-chart fs-1"></i><p class="mt-2">Aucune donnée</p>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -575,59 +752,10 @@
 </div>
 
 </ng-container>
+}
 
-
-<!-- ══════════════════════════════════════════════════════════
-     ÉVOLUTION DES COMMANDES PAR STATUT PAR DATE MENU
-══════════════════════════════════════════════════════════ -->
-<div class="row g-3 mb-3">
-  <div class="col-12">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent border-0 d-flex align-items-center justify-content-between">
-        <div>
-          <h6 class="card-title fw-bold mb-0" style="color:#092440;">
-            <i class="ph-chart-line me-2 text-primary"></i>Évolution des commandes par date de menu
-          </h6>
-          <small class="text-muted">En attente / Retirées / Annulées — par jour de menu</small>
-        </div>
-        <div class="d-flex gap-2">
-          <span class="badge" style="background:rgba(255,193,7,0.15); color:#ffc107;">
-            <i class="ph-circle-fill me-1" style="font-size:.5rem;"></i>En attente
-          </span>
-          <span class="badge" style="background:rgba(81,215,142,0.15); color:#51d78e;">
-            <i class="ph-circle-fill me-1" style="font-size:.5rem;"></i>Retirées
-          </span>
-          <span class="badge" style="background:rgba(255,77,79,0.15); color:#ff4d4f;">
-            <i class="ph-circle-fill me-1" style="font-size:.5rem;"></i>Annulées
-          </span>
-        </div>
-      </div>
-      <div class="card-body pt-2">
-        <ng-container *ngIf="evolutionParDate$ | async as evoDate">
-          <apx-chart *ngIf="chartEvolutionParDate && evoDate.length"
-            [series]="chartEvolutionParDate.series"
-            [chart]="chartEvolutionParDate.chart"
-            [colors]="chartEvolutionParDate.colors"
-            [stroke]="chartEvolutionParDate.stroke"
-            [markers]="chartEvolutionParDate.markers"
-            [xaxis]="chartEvolutionParDate.xaxis"
-            [yaxis]="chartEvolutionParDate.yaxis"
-            [legend]="chartEvolutionParDate.legend"
-            [grid]="chartEvolutionParDate.grid"
-            [tooltip]="chartEvolutionParDate.tooltip"
-            [fill]="chartEvolutionParDate.fill"
-            dir="ltr">
-          </apx-chart>
-          <div *ngIf="!evoDate.length" class="text-center py-5 text-muted">
-            <i class="ph-chart-line" style="font-size:3rem; display:block; margin-bottom:12px;"></i>
-            <p class="mb-0">Aucune donnée sur la période sélectionnée</p>
-          </div>
-        </ng-container>
-      </div>
-    </div>
-  </div>
-</div>
-
+<!-- ─────────────── Onglet FACTURATION ─────────────── -->
+@if (onglet === 'facturation') {
 <!-- ══════════════════════════════════════════════════════════
      FACTURATION PRESTATAIRE
 ══════════════════════════════════════════════════════════ -->
@@ -805,4 +933,4 @@
   </div>
 </div>
 </ng-container>
-
+}

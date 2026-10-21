@@ -27,6 +27,15 @@ export const MENU: MenuItem[] = [
         isTitle: true
     },
     {
+        // Accueil de l'employé ; les gestionnaires ont le tableau de bord
+        id: 9,
+        label: 'MENUITEMS.ACCUEIL.TEXT',
+        icon: 'ph-house',
+        link: '/cantines/accueil',
+        sansRoles: GESTIONNAIRES,
+        parentId: 8
+    },
+    {
         // Besoins : réservé aux administrateurs
         id: 182,
         label: 'MENUITEMS.BESOINS.TEXT',

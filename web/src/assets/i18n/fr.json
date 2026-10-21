@@ -3,6 +3,9 @@
     "MENU": {
       "TEXT": "MENU"
     },
+    "ACCUEIL": {
+      "TEXT": "Accueil"
+    },
     "DASHBOARD": {
       "TEXT": "Tableaux de bord",
       "LIST": {

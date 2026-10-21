@@ -10,7 +10,7 @@ export const ADMINS: Role[] = ['super_admin', 'admin'];
 export const GESTIONNAIRES: Role[] = ['super_admin', 'admin', 'gestionnaire'];
 
 /** Page d'accueil d'un utilisateur sans droit de gestion */
-export const ACCUEIL_EMPLOYE = '/cantines/mes-commandes';
+export const ACCUEIL_EMPLOYE = '/cantines/accueil';
 
 /** Rôles de l'utilisateur stocké après connexion (réponse de /users/me/) */
 export function rolesUtilisateur(user: any): string[] {
@@ -32,14 +32,15 @@ export function estGestionnaire(user: any): boolean {
 
 /**
  * Filtre récursivement un menu : retire les entrées dont `roles` ne
- * correspond pas à l'utilisateur, les groupes devenus vides et les
+ * correspond pas à l'utilisateur (ou dont `sansRoles` lui correspond), les groupes devenus vides et les
  * titres de section qui n'ont plus d'entrée.
  */
-export function filtrerMenu<T extends { roles?: string[]; subItems?: any; isTitle?: boolean }>(
+export function filtrerMenu<T extends { roles?: string[]; sansRoles?: string[]; subItems?: any; isTitle?: boolean }>(
   items: T[], user: any,
 ): T[] {
   const visibles = items
     .filter(item => aUnRole(user, item.roles))
+    .filter(item => !item.sansRoles?.length || !aUnRole(user, item.sansRoles))
     .map(item => item.subItems
       ? { ...item, subItems: filtrerMenu(item.subItems, user) }
       : item)

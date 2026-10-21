@@ -1,0 +1,134 @@
+<!-- Accueil employé -->
+<div class="acc">
+
+  <div class="acc-salut">
+    <h1>Bonjour {{ prenom }} 👋</h1>
+    <p>{{ aujourdhui }}</p>
+  </div>
+
+  @if (chargement && !donnees) {
+    <div class="text-center py-5">
+      <div class="spinner-border acc-spinner" role="status"><span class="visually-hidden">Chargement...</span></div>
+    </div>
+  }
+
+  @if (erreur) {
+    <div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
+      <i class="ri-error-warning-line fs-5"></i>
+      <div class="flex-grow-1">Impossible de charger votre accueil : {{ erreur }}</div>
+      <button type="button" class="btn btn-sm btn-outline-danger" (click)="charger()">Réessayer</button>
+    </div>
+  }
+
+  @if (donnees; as d) {
+
+    <!-- ── Repas du jour + prochain repas ─────────────────────── -->
+    <div class="acc-grille">
+
+      @if (d.repas_du_jour; as r) {
+        <div class="acc-carte acc-repas">
+          <div class="acc-repas-img">
+            <i class="ri-restaurant-2-line"></i>
+            @if (imageUrl(r); as src) {
+              <img [src]="src" [alt]="r.plat" (error)="imageEnErreur = true">
+            }
+          </div>
+          <div class="acc-repas-txt">
+            <span class="acc-tag">
+              {{ r.statut === 'retiree' ? "AUJOURD'HUI · RETIRÉ" : "AUJOURD'HUI · À RETIRER" }}
+            </span>
+            <h2>{{ r.plat }}</h2>
+            <p>
+              {{ lieu(r) }}@if (lieu(r)) { — }{{ r.statut === 'retiree' ? 'bon appétit !' : 'présentez votre badge au comptoir' }}
+            </p>
+          </div>
+          <a class="acc-badge" routerLink="/cantines/mes-commandes" title="Voir ma commande et mon badge">
+            <i class="ri-qr-code-line"></i>Mon badge
+          </a>
+        </div>
+      } @else {
+        <div class="acc-carte acc-repas acc-repas-vide">
+          <div class="acc-repas-img"><i class="ri-restaurant-2-line"></i></div>
+          <div class="acc-repas-txt">
+            <span class="acc-tag">AUJOURD'HUI</span>
+            <h2>Pas de repas réservé aujourd'hui</h2>
+            <p>Consultez les menus de la semaine et réservez vos prochains repas.</p>
+          </div>
+          <a class="acc-badge" routerLink="/cantines/liste-commandes">
+            <i class="ri-book-open-line"></i>Voir les menus
+          </a>
+        </div>
+      }
+
+      <div class="acc-carte">
+        <h3><i class="ri-alarm-line"></i>Prochain repas à réserver</h3>
+        @if (d.prochain_a_reserver; as p) {
+          <div class="acc-proch">
+            <div class="acc-proch-ic"><i class="ri-restaurant-2-line"></i></div>
+            <div class="acc-proch-txt">
+              <b>{{ dateProchain(p.date) }}</b>
+              <small>{{ p.agence }} · {{ p.nb_plats }} plat{{ p.nb_plats > 1 ? 's' : '' }} au choix</small>
+              <div class="acc-compte">{{ compteARebours }}</div>
+            </div>
+            <a class="acc-btn-vert" routerLink="/cantines/liste-commandes">Réserver <i class="ri-arrow-right-line"></i></a>
+          </div>
+        } @else {
+          <div class="acc-vide">
+            <i class="ri-calendar-check-line"></i>
+            <span>Rien à réserver pour le moment : vous êtes à jour.</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- ── Ma semaine ──────────────────────────────────────────── -->
+    <div class="acc-carte">
+      <h3><i class="ri-calendar-2-line"></i>Ma semaine <small>touchez un jour pour voir le menu</small></h3>
+      <div class="acc-semaine">
+        @for (j of d.semaine; track j.date) {
+          <a class="acc-jour" [ngClass]="styleJour(j).classe" [class.auj]="estAujourdhui(j.date)"
+             routerLink="/cantines/liste-commandes">
+            <div class="acc-jour-d">{{ jourCourt(j.date) }}<small>{{ jourMois(j.date) }}</small></div>
+            <div class="acc-jour-e"><i [class]="styleJour(j).icone"></i>{{ styleJour(j).texte }}</div>
+          </a>
+        }
+      </div>
+    </div>
+
+    <!-- ── Mes chiffres + dernières commandes ─────────────────── -->
+    <div class="acc-grille">
+      <div class="acc-stats">
+        <div class="acc-k"><small>Repas en {{ moisLong }}</small><b>{{ d.mois.repas }}</b></div>
+        <div class="acc-k"><small>Retirés</small><b>{{ d.mois.retires }}</b></div>
+        <div class="acc-k"><small>Annulés</small><b>{{ d.mois.annules }}</b></div>
+        <div class="acc-k">
+          <small>À payer ({{ moisCourt }})</small><b>{{ montantF(d.mois.montant) }}</b>
+          @if (d.mois.repas_sans_tarif > 0) {
+            <span class="acc-k-note">+ {{ d.mois.repas_sans_tarif }} repas sans tarif</span>
+          }
+        </div>
+      </div>
+
+      <div class="acc-carte">
+        <h3><i class="ri-history-line"></i>Mes dernières commandes
+          <a class="acc-lien" routerLink="/cantines/mes-commandes">Tout voir</a></h3>
+        @if (d.recentes.length) {
+          <ul class="acc-liste">
+            @for (c of d.recentes; track c.id) {
+              <li>
+                <span>{{ c.plat }} · {{ jourMois(c.date_menu) }}</span>
+                <span class="acc-st" [ngClass]="badgeCommande(c).classe">{{ badgeCommande(c).texte }}</span>
+              </li>
+            }
+          </ul>
+        } @else {
+          <div class="acc-vide">
+            <i class="ri-shopping-basket-2-line"></i>
+            <span>Aucune commande pour l'instant.</span>
+            <a class="acc-lien" routerLink="/cantines/liste-commandes">Commander</a>
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>

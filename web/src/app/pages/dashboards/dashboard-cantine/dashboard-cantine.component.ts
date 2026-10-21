@@ -2,6 +2,10 @@
 
 import { agencesGerees, filtrerAgencesGerees } from 'src/app/core/helpers/roles';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
+import {
+  AccueilAFaire, AccueilGestion, AccueilJourGestion, AccueilService, AccueilServiceAgence,
+  dateLongue, jourCourt, jourMois, prenomUtilisateur,
+} from 'src/app/core/services/accueil/accueil.service';
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { Observable, Subject } from 'rxjs';
@@ -51,6 +55,29 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
   private userConnecte = inject(TokenStorageService).getUser();
 
   breadCrumbItems: Array<{}> = [];
+
+  // ── Accueil (haut de page) : GET /api/api/accueil/ → clé « gestion » ──
+  private accueilService = inject(AccueilService);
+  prenom     = prenomUtilisateur(this.userConnecte);
+  aujourdhui = dateLongue(new Date());
+  gestion:        AccueilGestion | null = null;
+  accueilErreur:  string | null = null;
+  accueilCharge   = false;
+  majIlYa         = '';
+  private dateJour = '';
+  private majA:   number | null = null;
+  private minuteur: ReturnType<typeof setInterval> | null = null;
+  readonly jourCourt = jourCourt;
+  readonly jourMois  = jourMois;
+
+  /** Onglet des statistiques détaillées (rendu avec @if : les graphiques
+   *  sont recréés à l'affichage et prennent la bonne largeur). */
+  onglet: 'commandes' | 'plats' | 'facturation' = 'commandes';
+  readonly onglets = [
+    { id: 'commandes' as const,   libelle: 'Commandes',     icone: 'ri-shopping-bag-3-line' },
+    { id: 'plats' as const,       libelle: 'Plats & avis',  icone: 'ri-restaurant-2-line' },
+    { id: 'facturation' as const, libelle: 'Facturation',   icone: 'ri-bill-line' },
+  ];
 
   // ── Filtres ──────────────────────────────────────────────────
   dateDebut:           string           = DashboardCantineComponent.debutMoisCourant();
@@ -202,11 +229,85 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
       });
 
     this.charger();
+    this.chargerAccueil();
+    // Service du jour : rafraîchi toutes les 2 minutes, libellé « il y a … » chaque 30 s
+    let tours = 0;
+    this.minuteur = setInterval(() => {
+      tours++;
+      if (tours % 4 === 0) this.chargerAccueil();
+      this._majIlYa();
+    }, 30_000);
   }
 
   ngOnDestroy(): void {
+    if (this.minuteur) clearInterval(this.minuteur);
     this._destroy$.next();
     this._destroy$.complete();
+  }
+
+  // ── Accueil gestionnaire ──────────────────────────────────────
+
+  chargerAccueil(): void {
+    this.accueilService.getAccueil()
+      .pipe(takeUntil(this._destroy$))
+      .subscribe({
+        next: d => {
+          this.gestion = d?.gestion ?? null;
+          if (d?.date) { this.aujourdhui = dateLongue(d.date); this.dateJour = String(d.date).slice(0, 10); }
+          this.accueilErreur = null;
+          this.accueilCharge = true;
+          this.majA = Date.now();
+          this._majIlYa();
+        },
+        error: e => {
+          this.accueilCharge = true;
+          this.accueilErreur = e?.error?.detail || e?.message || 'Erreur inconnue';
+        },
+      });
+  }
+
+  private _majIlYa(): void {
+    if (!this.majA) { this.majIlYa = ''; return; }
+    const min = Math.floor((Date.now() - this.majA) / 60_000);
+    this.majIlYa = min < 1 ? "mis à jour à l'instant" : `mis à jour il y a ${min} min`;
+  }
+
+  get agencesLibelle(): string {
+    return this.gestion?.agences?.length ? this.gestion.agences.join(', ') : '';
+  }
+
+  pctServies(a: AccueilServiceAgence): number {
+    return a.commandees ? Math.min(100, Math.round(a.servies / a.commandees * 100)) : 0;
+  }
+
+  detailAgence(a: AccueilServiceAgence): string {
+    const equipes = a.equipes?.length ? a.equipes.join(', ') : 'Menu du jour';
+    return `${equipes} · ${a.nb_plats} plat${a.nb_plats > 1 ? 's' : ''}`;
+  }
+
+  styleAFaire(t: AccueilAFaire): { pastille: string; icone: string; action: string; lien: string } {
+    switch (t.type) {
+      case 'menu_manquant':
+        return { pastille: 'p-ro', icone: 'ri-calendar-event-line', action: 'Créer', lien: '/cantines/liste-menus' };
+      case 'fermeture':
+        return { pastille: 'p-or', icone: 'ri-time-line', action: 'Voir', lien: '/cantines/gestion-commandes' };
+      default:
+        return { pastille: 'p-ve', icone: 'ri-file-list-3-line', action: 'Clôturer', lien: '/cantines/facturation-commande' };
+    }
+  }
+
+  tagJour(j: AccueilJourGestion): { classe: string; texte: string } {
+    switch (j.etat) {
+      case 'termine':   return { classe: 't-fer', texte: 'Terminé' };
+      case 'en_cours':  return { classe: 't-ouv', texte: 'En cours de service' };
+      case 'ouvert':    return { classe: 't-ouv', texte: 'Ouvert' };
+      case 'ferme':     return { classe: 't-fer', texte: 'Fermé' };
+      default:          return { classe: 't-man', texte: 'Menu manquant' };
+    }
+  }
+
+  estAujourdhui(j: AccueilJourGestion): boolean {
+    return String(j.date).slice(0, 10) === this.dateJour;
   }
 
   // ── Actions ───────────────────────────────────────────────────

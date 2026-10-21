@@ -10,7 +10,7 @@ import { ACCUEIL_EMPLOYE, aUnRole } from '../helpers/roles';
  *   { path: 'user', component: UserComponent,
  *     canActivate: [RoleGuard], data: { roles: ADMINS } }
  *
- * Un utilisateur sans le rôle requis est renvoyé vers « Mes commandes ».
+ * Un utilisateur sans le rôle requis est renvoyé vers son accueil (/cantines/accueil).
  * (Le backend refuse de toute façon les appels non autorisés : ce garde
  * évite d'afficher des pages vides ou en erreur.)
  */
