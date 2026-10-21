@@ -1286,3 +1286,33 @@ class ListesUtilisateursTests(BaseAPITestCase):
         self.assertEqual({u['username'] for u in r.data['results']}, {'emp1', 'gest1'})
         r = admin.get(f'{API}/users/', {'username': 'EMP', 'groupe': self.groupes['employe'].id})
         self.assertEqual({u['username'] for u in r.data['results']}, {'emp1', 'emp2'})
+
+
+class AccueilTests(BaseAPITestCase):
+    def test_employe_semaine_prochain_repas_et_mois(self):
+        aujourdhui = timezone.localdate()
+        menu_loin = self.creer_menu(jours=6)       # commandes ouvertes (48 h par défaut)
+        menu_jour = self.creer_menu(jours=0)
+        Commande.objects.create(user=self.employe, menu=menu_jour, plat=self.plat1)
+        r = self.client_pour(self.employe).get(f'{API}/accueil/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['repas_du_jour']['plat'], 'Garba')
+        self.assertEqual(r.data['prochain_a_reserver']['date'], menu_loin.date_menu)
+        self.assertEqual(r.data['prochain_a_reserver']['nb_plats'], 2)
+        jour = next(j for j in r.data['semaine'] if j['date'] == aujourdhui)
+        if aujourdhui.weekday() < 5:
+            self.assertEqual(jour['statut'], 'a_retirer')
+        self.assertNotIn('gestion', r.data)
+
+    def test_gestionnaire_service_du_jour_et_a_faire(self):
+        menu = self.creer_menu(jours=0)
+        Commande.objects.create(user=self.employe, menu=menu, plat=self.plat1, statut='retiree')
+        Commande.objects.create(user=self.employe2, menu=menu, plat=self.plat2)
+        r = self.client_pour(self.gestionnaire).get(f'{API}/accueil/')
+        g = r.data['gestion']
+        self.assertEqual(g['agences'], ['Siège'])
+        self.assertEqual(g['service_du_jour'][0]['commandees'], 2)
+        self.assertEqual(g['service_du_jour'][0]['servies'], 1)
+        self.assertEqual(g['service_du_jour'][0]['a_servir'], 1)
+        self.assertTrue(any(a['type'] == 'menu_manquant' for a in g['a_faire']))
+        self.assertEqual(self.client_pour().get(f'{API}/accueil/').status_code, 401)
