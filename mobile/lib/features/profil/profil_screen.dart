@@ -3,11 +3,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../allergies/allergies_screen.dart';
+import '../commandes/commandes_screen.dart' show EtatCommande, etatCommande;
 import 'change_password_screen.dart';
 import 'qr_code_screen.dart';
 
@@ -18,6 +20,11 @@ class ProfilScreen extends StatefulWidget {
 }
 
 class _ProfilScreenState extends State<ProfilScreen> {
+  /// Version affichée en bas de l'écran (sans version : « UbiFood »)
+  final Future<PackageInfo> _version = PackageInfo.fromPlatform().catchError(
+      (Object _) => PackageInfo(
+          appName: 'UbiFood', packageName: '', version: '', buildNumber: ''));
+
   @override
   void initState() {
     super.initState();
@@ -33,325 +40,263 @@ class _ProfilScreenState extends State<ProfilScreen> {
     final theme = context.watch<ThemeProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = auth.user;
-
-    return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // ── Carte profil ──────────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                  colors: [AppColors.primary, AppColors.primaryDark]),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8))
-              ],
+    final role = user?.isAdmin == true
+        ? 'Administrateur'
+        : auth.isGestionnaire
+            ? 'Gestionnaire'
+            : 'Employé';
+    final detailIdentite = [
+      if ((user?.username ?? '').isNotEmpty) 'Matricule ${user!.username}',
+      if (user?.derniereAgence != null) user!.derniereAgence!,
+    ].join(' · ');
+    final identite = Row(children: [
+      // Photo de profil : toucher pour la changer
+      Semantics(
+        button: true,
+        label: 'Changer ma photo de profil',
+        child: GestureDetector(
+          onTap: auth.photoEnCours ? null : () => _choisirPhoto(context),
+          child: Stack(clipBehavior: Clip.none, children: [
+            Container(
+              width: 64,
+              height: 64,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                      color: Colors.white.withOpacity(0.25), width: 2)),
+              child: auth.photoEnCours
+                  ? const Center(
+                      child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white)))
+                  : PhotoProfil(user: user, fontSize: 24),
             ),
-            child: Row(children: [
-              // Photo de profil : toucher pour la changer
-              Semantics(
-                button: true,
-                label: 'Changer ma photo de profil',
-                child: GestureDetector(
-                  onTap: auth.photoEnCours ? null : () => _choisirPhoto(context),
-                  child: Stack(clipBehavior: Clip.none, children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(18)),
-                      child: auth.photoEnCours
-                          ? const Center(
-                              child: SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white)))
-                          : PhotoProfil(user: user, fontSize: 24),
-                    ),
-                    Positioned(
-                      right: -4,
-                      bottom: -4,
-                      child: Container(
-                        padding: const EdgeInsets.all(5),
-                        decoration: BoxDecoration(
-                            color: AppColors.accent,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: AppColors.primary, width: 2)),
-                        child: const Icon(Icons.photo_camera_rounded,
-                            size: 13, color: AppColors.primary),
-                      ),
-                    ),
-                  ]),
-                ),
+            Positioned(
+              right: -6,
+              bottom: -6,
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                    color: AppColors.accentDark,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.primary, width: 2)),
+                child: const Icon(Icons.photo_camera_rounded,
+                    size: 13, color: AppColors.primary),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(
-                        (user?.fullName.isNotEmpty ?? false)
-                            ? user!.fullName
-                            : (user?.username ?? '—'),
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 2),
-                    Text('@${user?.username ?? ''}',
-                        style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
-                            fontSize: 13)),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(20)),
-                      child: Text(
-                          user?.isAdmin == true
-                              ? '🛡 Administrateur'
-                              : auth.isGestionnaire
-                                  ? '⚡ Gestionnaire'
-                                  : '👤 Employé',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                  ])),
+            ),
+          ]),
+        ),
+      ),
+      const SizedBox(width: 14),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+              (user?.fullName.isNotEmpty ?? false)
+                  ? user!.fullName
+                  : (user?.username ?? '—'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
+          if (detailIdentite.isNotEmpty)
+            Text(detailIdentite,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.7), fontSize: 12)),
+          const SizedBox(height: 5),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
+            decoration: BoxDecoration(
+                color: AppColors.accent.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(20)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(
+                  user?.isAdmin == true
+                      ? Icons.shield_outlined
+                      : auth.isGestionnaire
+                          ? Icons.admin_panel_settings_outlined
+                          : Icons.person_outline_rounded,
+                  size: 12,
+                  color: AppColors.accent),
+              const SizedBox(width: 4),
+              Text(role,
+                  style: const TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700)),
             ]),
           ),
-
-          const SizedBox(height: 24),
-
-          // ── Informations ──────────────────────────────────
-          _SectionTitle('Informations'),
-          const SizedBox(height: 10),
-          _InfoCard(children: [
-            _InfoRow(
-                icon: Icons.email_outlined,
-                label: 'Email',
-                // Email vide renvoyé par l'API : tiret plutôt qu'une ligne vide
-                value: (user?.email.isNotEmpty ?? false) ? user!.email : '—'),
-            if (user?.dernierService != null)
-              _InfoRow(
-                  icon: Icons.business_center_outlined,
-                  label: 'Service',
-                  value: user!.dernierService!),
-            if (user?.derniereAgence != null)
-              _InfoRow(
-                  icon: Icons.location_city_outlined,
-                  label: 'Agence',
-                  value: user!.derniereAgence!),
-            if (user?.dernierPoste != null)
-              _InfoRow(
-                  icon: Icons.work_outline_rounded,
-                  label: 'Poste',
-                  value: user!.dernierPoste!),
-          ]),
-
-          const SizedBox(height: 20),
-
-          // ── Paramètres ────────────────────────────────────
-          _SectionTitle('Paramètres'),
-          const SizedBox(height: 10),
-          _InfoCard(children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.amber.withOpacity(0.15)
-                          : AppColors.primary.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(10)),
-                  child: Icon(
-                      isDark
-                          ? Icons.light_mode_rounded
-                          : Icons.dark_mode_rounded,
-                      color: isDark ? Colors.amber : AppColors.primary,
-                      size: 18),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                    child: Text(isDark ? 'Mode clair' : 'Mode sombre',
-                        style: Theme.of(context).textTheme.titleSmall)),
-                Switch.adaptive(
-                    value: isDark,
-                    activeColor: AppColors.accent,
-                    onChanged: (_) => theme.toggle()),
-              ]),
-            ),
-          ]),
-
-          const SizedBox(height: 20),
-
-          // ── Sécurité ──────────────────────────────────────
-          _SectionTitle('Sécurité'),
-          const SizedBox(height: 10),
-          _InfoCard(children: [
-            // Modifier mot de passe
-            ListTile(
-              dense: true,
-              leading: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.lock_outline_rounded,
-                    color: AppColors.primary, size: 18),
-              ),
-              title: const Text('Modifier le mot de passe',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-              subtitle: const Text('8 car. | majuscule | chiffre | spécial',
-                  style: TextStyle(fontSize: 11)),
-              trailing: Icon(Icons.arrow_forward_ios_rounded,
-                  size: 14,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary),
-              onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const ChangePasswordScreen())),
-            ),
-
-            Divider(
-                height: 1,
-                color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-
-            // Mon badge QR
-            ListTile(
-              dense: true,
-              leading: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                    color: AppColors.accent.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.qr_code_rounded,
-                    color: AppColors.accent, size: 18),
-              ),
-              title: const Text('Mon badge QR',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-              subtitle: const Text('Scanner à la cantine pour le retrait',
-                  style: TextStyle(fontSize: 11)),
-              trailing: Icon(Icons.arrow_forward_ios_rounded,
-                  size: 14,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary),
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const QrCodeScreen())),
-            ),
-          ]),
-
-          const SizedBox(height: 20),
-
-          // ── Allergies ─────────────────────────────────────
-          _SectionTitle('Allergies alimentaires'),
-          const SizedBox(height: 10),
-          _InfoCard(children: [
-            Consumer<AllergieProvider>(builder: (_, allergieProv, __) {
-              final count = allergieProv.allergies.length;
-              return ListTile(
-                dense: true,
-                leading: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                      color: AppColors.error.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.warning_amber_rounded,
-                      color: AppColors.error, size: 18),
-                ),
-                title: const Text('Mes allergies',
-                    style:
-                        TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                subtitle: Text(
-                    count == 0
-                        ? 'Aucune allergie enregistrée'
-                        : '$count allergie(s) enregistrée(s)',
-                    style: const TextStyle(fontSize: 12)),
-                trailing: Icon(Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: isDark
-                        ? AppColors.darkTextSecondary
-                        : AppColors.lightTextSecondary),
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const AllergiesScreen())),
-              );
-            }),
-          ]),
-
-          const SizedBox(height: 20),
-
-          // ── Statistiques perso ────────────────────────────
-          _SectionTitle('Mes statistiques'),
-          const SizedBox(height: 10),
-          Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
-            return GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.4,
-              children: [
-                StatCard(
-                    label: 'Commandes',
-                    value: cmdProv.totalCommandes.toString(),
-                    icon: Icons.receipt_long_rounded,
-                    color: AppColors.primary),
-                StatCard(
-                    label: 'Retirées',
-                    value: cmdProv.retirees.toString(),
-                    icon: Icons.check_circle_rounded,
-                    color: AppColors.success),
-                StatCard(
-                    label: 'En attente',
-                    value: cmdProv.enAttente.toString(),
-                    icon: Icons.schedule_rounded,
-                    color: AppColors.warning),
-                StatCard(
-                    label: 'Annulées',
-                    value: cmdProv.annulees.toString(),
-                    icon: Icons.cancel_rounded,
-                    color: isDark
-                        ? AppColors.darkTextSecondary
-                        : AppColors.lightTextSecondary),
-              ],
-            );
-          }),
-
-          const SizedBox(height: 24),
-
-          // ── Déconnexion ───────────────────────────────────
-          AppButton(
-            label: 'Se déconnecter',
-            icon: Icons.logout_rounded,
-            outlined: true,
-            color: AppColors.error,
-            // Déconnexion en cours (jusqu'à quelques secondes hors ligne)
-            loading: auth.loading,
-            onPressed: () => _showLogoutDialog(context),
-          ),
-
-          const SizedBox(height: 40),
         ]),
+      ),
+    ]);
+
+    return Scaffold(
+      body: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          // ── En-tête marine + chiffres en une ligne ─────────────
+          Stack(clipBehavior: Clip.none, children: [
+            Column(children: [
+              EnTeteMarine(titre: 'Mon profil', bas: identite, margeBas: 46),
+              const SizedBox(height: 34),
+            ]),
+            Positioned(
+              left: 14,
+              right: 14,
+              bottom: 0,
+              child: Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
+                final cmds = cmdProv.mesCommandes;
+                final retirees = cmds
+                    .where((c) => etatCommande(c) == EtatCommande.retiree)
+                    .length;
+                final aRetirer = cmds.where((c) {
+                  final e = etatCommande(c);
+                  return e == EtatCommande.aVenir || e == EtatCommande.aRetirer;
+                }).length;
+                return _Chiffres(chiffres: [
+                  (
+                    cmds.length,
+                    cmds.length > 1 ? 'commandes' : 'commande',
+                    null
+                  ),
+                  (
+                    retirees,
+                    retirees > 1 ? 'retirées' : 'retirée',
+                    isDark ? AppColors.accent : const Color(0xFF1F9D55)
+                  ),
+                  (
+                    aRetirer,
+                    'à retirer',
+                    isDark ? const Color(0xFFFFC94D) : const Color(0xFFB97800)
+                  ),
+                ]);
+              }),
+            ),
+          ]),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 40),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Cantine ──────────────────────────────────
+                  const LibelleSection('Cantine'),
+                  CarteListe(lignes: [
+                    _Ligne(
+                      icone: Icons.qr_code_2_rounded,
+                      titre: 'Mon badge QR',
+                      sousTitre: 'À présenter au comptoir',
+                      onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const QrCodeScreen())),
+                    ),
+                    Consumer<AllergieProvider>(builder: (_, allergieProv, __) {
+                      final count = allergieProv.allergies.length;
+                      return _Ligne(
+                        icone: Icons.warning_amber_rounded,
+                        rouge: true,
+                        titre: 'Mes allergies',
+                        sousTitre: count == 0
+                            ? 'Aucune allergie déclarée'
+                            : '$count allergie${count > 1 ? 's' : ''} '
+                                'déclarée${count > 1 ? 's' : ''}',
+                        onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const AllergiesScreen())),
+                      );
+                    }),
+                  ]),
+                  const SizedBox(height: 10),
+
+                  // ── Compte ───────────────────────────────────
+                  const LibelleSection('Compte'),
+                  CarteListe(lignes: [
+                    _Ligne(
+                      icone: Icons.mail_outline_rounded,
+                      titre: 'Email',
+                      valeur: (user?.email.isNotEmpty ?? false)
+                          ? user!.email
+                          : 'Non renseigné',
+                    ),
+                    if (user?.dernierService != null)
+                      _Ligne(
+                          icone: Icons.business_center_outlined,
+                          titre: 'Service',
+                          valeur: user!.dernierService!),
+                    if (user?.dernierPoste != null)
+                      _Ligne(
+                          icone: Icons.work_outline_rounded,
+                          titre: 'Poste',
+                          valeur: user!.dernierPoste!),
+                    _Ligne(
+                      icone: Icons.lock_outline_rounded,
+                      titre: 'Modifier le mot de passe',
+                      onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const ChangePasswordScreen())),
+                    ),
+                    _Ligne(
+                      icone: Icons.dark_mode_outlined,
+                      titre: 'Mode sombre',
+                      fin: Switch.adaptive(
+                          value: isDark,
+                          activeColor: AppColors.accent,
+                          onChanged: (_) => theme.toggle()),
+                      onTap: theme.toggle,
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+
+                  // ── Déconnexion ──────────────────────────────
+                  CarteListe(lignes: [
+                    _Ligne(
+                      icone: Icons.logout_rounded,
+                      rouge: true,
+                      titre: 'Se déconnecter',
+                      titreRouge: true,
+                      // Déconnexion en cours (jusqu'à quelques secondes
+                      // hors ligne)
+                      fin: auth.loading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: AppColors.error))
+                          : const SizedBox.shrink(),
+                      onTap: auth.loading
+                          ? null
+                          : () => _showLogoutDialog(context),
+                    ),
+                  ]),
+                  const SizedBox(height: 14),
+                  FutureBuilder<PackageInfo>(
+                    future: _version,
+                    builder: (_, snap) => Text(
+                      snap.data == null
+                          ? 'UbiFood'
+                          : 'UbiFood · version ${snap.data!.version}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: isDark
+                              ? AppColors.darkTextHint
+                              : AppColors.lightTextHint),
+                    ),
+                  ),
+                ]),
+          ),
+        ],
       ),
     );
   }
@@ -436,7 +381,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
         return;
       } catch (_) {
         messenger.showSnackBar(const SnackBar(
-            content: Text("Impossible d'ouvrir l'appareil photo ou la galerie.")));
+            content:
+                Text("Impossible d'ouvrir l'appareil photo ou la galerie.")));
         return;
       }
       if (image == null) return; // annulé
@@ -462,69 +408,130 @@ class _ProfilScreenState extends State<ProfilScreen> {
 // WIDGETS HELPERS
 // ══════════════════════════════════════════════════════════════
 
-class _SectionTitle extends StatelessWidget {
-  final String title;
-  const _SectionTitle(this.title);
+/// Trois chiffres sur une ligne, à cheval sur l'en-tête
+class _Chiffres extends StatelessWidget {
+  final List<(int, String, Color?)> chiffres;
+  const _Chiffres({required this.chiffres});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Text(title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: isDark
-                ? AppColors.darkTextSecondary
-                : AppColors.lightTextSecondary,
-            fontWeight: FontWeight.w600));
-  }
-}
-
-class _InfoCard extends StatelessWidget {
-  final List<Widget> children;
-  const _InfoCard({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final filet = isDark ? AppColors.darkBorder : AppColors.lightBorder;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      height: 64,
       decoration: BoxDecoration(
-          color: isDark ? AppColors.darkCard : AppColors.lightCard,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder)),
-      child: Column(children: children),
+        color: isDark ? AppColors.darkCard : AppColors.lightCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: filet),
+        boxShadow: [
+          BoxShadow(
+              color: AppColors.primary.withOpacity(isDark ? 0.3 : 0.08),
+              blurRadius: 20,
+              offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Row(children: [
+        for (var i = 0; i < chiffres.length; i++) ...[
+          if (i > 0) VerticalDivider(width: 1, thickness: 1, color: filet),
+          Expanded(
+            child:
+                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text('${chiffres[i].$1}',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: chiffres[i].$3)),
+              Text(chiffres[i].$2,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary)),
+            ]),
+          ),
+        ],
+      ]),
     );
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  const _InfoRow(
-      {required this.icon, required this.label, required this.value});
+/// Ligne de réglage : icône, titre (+ sous-titre), valeur ou chevron
+class _Ligne extends StatelessWidget {
+  final IconData icone;
+  final String titre;
+  final String? sousTitre;
+  final String? valeur;
+  final Widget? fin;
+  final bool rouge;
+  final bool titreRouge;
+  final VoidCallback? onTap;
+
+  const _Ligne({
+    required this.icone,
+    required this.titre,
+    this.sousTitre,
+    this.valeur,
+    this.fin,
+    this.rouge = false,
+    this.titreRouge = false,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(10)),
-          child: Icon(icon, color: AppColors.primary, size: 18),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final (fond, couleur) =
+        couleursPastille(rouge ? TonPastille.rouge : TonPastille.bleu, isDark);
+    // Icônes lisibles en mode sombre (le marine y était invisible)
+    final couleurIcone =
+        rouge ? couleur : (isDark ? AppColors.accent : couleur);
+    final fondIcone =
+        rouge ? fond : (isDark ? AppColors.accent.withOpacity(0.12) : fond);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+                color: fondIcone, borderRadius: BorderRadius.circular(10)),
+            child: Icon(icone, size: 18, color: couleurIcone),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-          Text(value, style: Theme.of(context).textTheme.titleSmall),
-        ])),
-      ]),
+              Text(titre,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: titreRouge ? couleur : null)),
+              if (sousTitre != null)
+                Text(sousTitre!, style: TextStyle(fontSize: 11.5, color: gris)),
+            ]),
+          ),
+          if (valeur != null)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 190),
+              child: Text(valeur!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 12.5, color: gris)),
+            )
+          else if (fin != null)
+            fin!
+          else if (onTap != null)
+            Icon(Icons.chevron_right_rounded,
+                size: 22,
+                color:
+                    isDark ? AppColors.darkTextHint : AppColors.lightTextHint),
+        ]),
+      ),
     );
   }
 }

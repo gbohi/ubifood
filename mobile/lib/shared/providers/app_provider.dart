@@ -548,6 +548,7 @@ class RetraitProvider extends ChangeNotifier {
           badge: _result!.badge,
           aRetire: true,
           commandes: _result!.commandes,
+          photoUrl: _result!.photoUrl,
         );
       }
       _successMessage = 'Retrait validé avec succès !';

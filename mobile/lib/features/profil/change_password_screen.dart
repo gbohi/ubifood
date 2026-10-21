@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../core/api/api_client.dart';
+import '../../core/widgets/common_widgets.dart';
 import '../auth/password_rules.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
@@ -44,214 +45,213 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      appBar: AppBar(title: const Text('Modifier le mot de passe')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // ── Bannière succès ───────────────────────────────
-            if (_succes) _SuccesBanner(onDismiss: () => Navigator.pop(context)),
+      body: Column(children: [
+        const EnTeteMarine(
+          titre: 'Modifier le mot de passe',
+          sousTitre: '8 car. · majuscule · chiffre · spécial',
+        ),
+        Expanded(
+            child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // ── Bannière succès ───────────────────────────────
+              if (_succes)
+                _SuccesBanner(onDismiss: () => Navigator.pop(context)),
 
-            // ── Illustration + titre ──────────────────────────
-            Center(
-                child: Container(
-              width: 80,
-              height: 80,
-              margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Icon(Icons.lock_outline_rounded,
-                  color: AppColors.primary, size: 38),
-            )),
-
-            Text('Nouveau mot de passe',
-                style: Theme.of(context).textTheme.headlineMedium),
-            const SizedBox(height: 4),
-            Text('Choisissez un mot de passe sécurisé',
-                style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: 28),
-
-            // ── Ancien mot de passe ───────────────────────────
-            const _SectionLabel('Mot de passe actuel'),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: _ancienCtrl,
-              obscureText: !_showAncien,
-              decoration: InputDecoration(
-                hintText: 'Votre mot de passe actuel',
-                prefixIcon: const Icon(Icons.lock_rounded,
-                    color: AppColors.accent, size: 20),
-                suffixIcon: IconButton(
-                  tooltip: _showAncien
-                      ? 'Masquer le mot de passe'
-                      : 'Afficher le mot de passe',
-                  icon: Icon(
-                      _showAncien
-                          ? Icons.visibility_off_rounded
-                          : Icons.visibility_rounded,
-                      size: 20,
-                      color: AppColors.lightTextSecondary),
-                  onPressed: () => setState(() => _showAncien = !_showAncien),
+              // ── Illustration + titre ──────────────────────────
+              Center(
+                  child: Container(
+                width: 80,
+                height: 80,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: (isDark ? AppColors.accent : AppColors.primary)
+                      .withOpacity(isDark ? 0.12 : 0.08),
+                  borderRadius: BorderRadius.circular(24),
                 ),
-              ),
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Requis';
-                return null;
-              },
-            ),
+                child: Icon(Icons.lock_outline_rounded,
+                    color: isDark ? AppColors.accent : AppColors.primary,
+                    size: 38),
+              )),
 
-            const SizedBox(height: 20),
+              Text('Nouveau mot de passe',
+                  style: Theme.of(context).textTheme.headlineMedium),
+              const SizedBox(height: 4),
+              Text('Choisissez un mot de passe sécurisé',
+                  style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 28),
 
-            // ── Nouveau mot de passe ──────────────────────────
-            const _SectionLabel('Nouveau mot de passe'),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: _nouveauCtrl,
-              obscureText: !_showNouveau,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'Votre nouveau mot de passe',
-                prefixIcon: const Icon(Icons.lock_reset_rounded,
-                    color: AppColors.accent, size: 20),
-                suffixIcon: IconButton(
-                  tooltip: _showNouveau
-                      ? 'Masquer le mot de passe'
-                      : 'Afficher le mot de passe',
-                  icon: Icon(
-                      _showNouveau
-                          ? Icons.visibility_off_rounded
-                          : Icons.visibility_rounded,
-                      size: 20,
-                      color: AppColors.lightTextSecondary),
-                  onPressed: () => setState(() => _showNouveau = !_showNouveau),
-                ),
-              ),
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Requis';
-                if (!_motDePasseValide) {
-                  return 'Ne respecte pas les critères de sécurité';
-                }
-                if (v == _ancienCtrl.text) {
-                  return 'Doit être différent du mot de passe actuel';
-                }
-                return null;
-              },
-            ),
-
-            // ── Indicateur de force ───────────────────────────
-            if (_nouveauCtrl.text.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _IndicateurForce(
-                has8Chars: _has8Chars,
-                hasMajuscule: _hasMajuscule,
-                hasChiffre: _hasChiffre,
-                hasSpecial: _hasSpecial,
-              ),
-            ],
-
-            const SizedBox(height: 20),
-
-            // ── Confirmation ──────────────────────────────────
-            const _SectionLabel('Confirmer le nouveau mot de passe'),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: _confirmCtrl,
-              obscureText: !_showConfirm,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'Répétez le nouveau mot de passe',
-                prefixIcon: const Icon(Icons.check_circle_outline_rounded,
-                    color: AppColors.accent, size: 20),
-                suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
-                  // Indicateur de correspondance
-                  if (_confirmCtrl.text.isNotEmpty)
-                    Icon(
-                        _confirmCtrl.text == _nouveauCtrl.text
-                            ? Icons.check_circle_rounded
-                            : Icons.cancel_rounded,
-                        size: 20,
-                        color: _confirmCtrl.text == _nouveauCtrl.text
-                            ? AppColors.success
-                            : AppColors.error),
-                  IconButton(
-                    tooltip: _showConfirm
+              // ── Ancien mot de passe ───────────────────────────
+              const _SectionLabel('Mot de passe actuel'),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _ancienCtrl,
+                obscureText: !_showAncien,
+                decoration: InputDecoration(
+                  hintText: 'Votre mot de passe actuel',
+                  prefixIcon: const Icon(Icons.lock_rounded,
+                      color: AppColors.accent, size: 20),
+                  suffixIcon: IconButton(
+                    tooltip: _showAncien
                         ? 'Masquer le mot de passe'
                         : 'Afficher le mot de passe',
                     icon: Icon(
-                        _showConfirm
+                        _showAncien
+                            ? Icons.visibility_off_rounded
+                            : Icons.visibility_rounded,
+                        size: 20,
+                        color: AppColors.lightTextSecondary),
+                    onPressed: () => setState(() => _showAncien = !_showAncien),
+                  ),
+                ),
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Requis';
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 20),
+
+              // ── Nouveau mot de passe ──────────────────────────
+              const _SectionLabel('Nouveau mot de passe'),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _nouveauCtrl,
+                obscureText: !_showNouveau,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Votre nouveau mot de passe',
+                  prefixIcon: const Icon(Icons.lock_reset_rounded,
+                      color: AppColors.accent, size: 20),
+                  suffixIcon: IconButton(
+                    tooltip: _showNouveau
+                        ? 'Masquer le mot de passe'
+                        : 'Afficher le mot de passe',
+                    icon: Icon(
+                        _showNouveau
                             ? Icons.visibility_off_rounded
                             : Icons.visibility_rounded,
                         size: 20,
                         color: AppColors.lightTextSecondary),
                     onPressed: () =>
-                        setState(() => _showConfirm = !_showConfirm),
+                        setState(() => _showNouveau = !_showNouveau),
                   ),
-                ]),
-              ),
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Requis';
-                if (v != _nouveauCtrl.text) {
-                  return 'Les mots de passe ne correspondent pas';
-                }
-                return null;
-              },
-            ),
-
-            // ── Erreur API ────────────────────────────────────
-            if (_erreur != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.errorLight,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.error.withOpacity(0.3)),
                 ),
-                child: Row(children: [
-                  const Icon(Icons.error_outline_rounded,
-                      color: AppColors.error, size: 18),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: Text(_erreur!,
-                          style: const TextStyle(
-                              color: AppColors.error, fontSize: 13))),
-                ]),
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Requis';
+                  if (!_motDePasseValide) {
+                    return 'Ne respecte pas les critères de sécurité';
+                  }
+                  if (v == _ancienCtrl.text) {
+                    return 'Doit être différent du mot de passe actuel';
+                  }
+                  return null;
+                },
               ),
-            ],
 
-            const SizedBox(height: 32),
-
-            // ── Bouton sauvegarder ────────────────────────────
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                icon: _loading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.save_rounded, size: 18),
-                label: Text(
-                    _loading ? 'Modification...' : 'Modifier le mot de passe'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+              // ── Indicateur de force ───────────────────────────
+              if (_nouveauCtrl.text.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _IndicateurForce(
+                  has8Chars: _has8Chars,
+                  hasMajuscule: _hasMajuscule,
+                  hasChiffre: _hasChiffre,
+                  hasSpecial: _hasSpecial,
                 ),
+              ],
+
+              const SizedBox(height: 20),
+
+              // ── Confirmation ──────────────────────────────────
+              const _SectionLabel('Confirmer le nouveau mot de passe'),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _confirmCtrl,
+                obscureText: !_showConfirm,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Répétez le nouveau mot de passe',
+                  prefixIcon: const Icon(Icons.check_circle_outline_rounded,
+                      color: AppColors.accent, size: 20),
+                  suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+                    // Indicateur de correspondance
+                    if (_confirmCtrl.text.isNotEmpty)
+                      Icon(
+                          _confirmCtrl.text == _nouveauCtrl.text
+                              ? Icons.check_circle_rounded
+                              : Icons.cancel_rounded,
+                          size: 20,
+                          color: _confirmCtrl.text == _nouveauCtrl.text
+                              ? AppColors.success
+                              : AppColors.error),
+                    IconButton(
+                      tooltip: _showConfirm
+                          ? 'Masquer le mot de passe'
+                          : 'Afficher le mot de passe',
+                      icon: Icon(
+                          _showConfirm
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded,
+                          size: 20,
+                          color: AppColors.lightTextSecondary),
+                      onPressed: () =>
+                          setState(() => _showConfirm = !_showConfirm),
+                    ),
+                  ]),
+                ),
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Requis';
+                  if (v != _nouveauCtrl.text) {
+                    return 'Les mots de passe ne correspondent pas';
+                  }
+                  return null;
+                },
+              ),
+
+              // ── Erreur API ────────────────────────────────────
+              if (_erreur != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.errorLight,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.error_outline_rounded,
+                        color: AppColors.error, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: Text(_erreur!,
+                            style: const TextStyle(
+                                color: AppColors.error, fontSize: 13))),
+                  ]),
+                ),
+              ],
+
+              const SizedBox(height: 32),
+
+              // ── Bouton sauvegarder (vert, comme « Se connecter ») ──
+              BoutonVert(
+                label:
+                    _loading ? 'Modification...' : 'Modifier le mot de passe',
+                icone: Icons.save_rounded,
+                hauteur: 54,
+                chargement: _loading,
                 onPressed: _loading ? null : _soumettre,
               ),
-            ),
 
-            const SizedBox(height: 40),
-          ]),
-        ),
-      ),
+              const SizedBox(height: 40),
+            ]),
+          ),
+        )),
+      ]),
     );
   }
 

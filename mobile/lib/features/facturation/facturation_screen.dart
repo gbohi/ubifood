@@ -1,4 +1,7 @@
 // lib/features/facturation/facturation_screen.dart
+//
+// Ma facturation : une carte par mois (sélecteur dans l'en-tête), total,
+// répartition, relevé PDF, détail du mois et mois précédents.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +13,22 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../shared/models/models.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../commandes/commandes_screen.dart'
+    show DetailCommandeSheet, EtatCommande, etatCommande, pastilleCommande;
+import '../dashboard/accueil_widgets.dart' show formatFcfa;
+
+/// Période chargée par FacturationProvider.charger() (12 mois passés,
+/// 3 mois à venir) : hors de cette période, les montants ne sont pas connus.
+bool _dansPeriodeFacturation(FacturationProvider fact, Commande c) {
+  final d = DateTime.tryParse(c.menuDetail?.dateMenu ?? '');
+  if (d == null) return false;
+  return !d.isBefore(fact.debutPeriode) && !d.isAfter(fact.finPeriode);
+}
+
+String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+String _libelleMois(DateTime m) =>
+    _cap(DateFormat('MMMM yyyy', 'fr_FR').format(m));
 
 class FacturationScreen extends StatefulWidget {
   const FacturationScreen({super.key});
@@ -17,30 +36,18 @@ class FacturationScreen extends StatefulWidget {
   State<FacturationScreen> createState() => _FacturationScreenState();
 }
 
-class _FacturationScreenState extends State<FacturationScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabs;
-
-  // Filtres historique
-  DateTime? _dateDebut;
-  DateTime? _dateFin;
-  String? _agenceFiltre;
+class _FacturationScreenState extends State<FacturationScreen> {
+  /// Mois affiché (1er du mois) ; null : mois en cours
+  DateTime? _mois;
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CommandeProvider>().loadMesCommandes();
       // Montants calculés par le serveur (règle unique de facturation)
       context.read<FacturationProvider>().charger();
     });
-  }
-
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
   }
 
   Future<void> _recharger() => Future.wait([
@@ -50,57 +57,59 @@ class _FacturationScreenState extends State<FacturationScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    // Onglet intégré : pas de barre, même si un autre écran est poussé par-dessus
-    final canPop = ModalRoute.of(context)?.canPop ?? false;
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leading: canPop
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-                tooltip: 'Retour',
-              )
-            : null,
-        title: canPop ? const Text('Ma facturation') : null,
-        toolbarHeight: canPop ? kToolbarHeight : 0,
-        actions: [
-          if (canPop)
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: 'Actualiser',
-              onPressed: _recharger,
-            ),
-        ],
-        bottom: TabBar(
-          controller: _tabs,
-          labelColor: AppColors.accent,
-          unselectedLabelColor: isDark
-              ? AppColors.darkTextSecondary
-              : AppColors.lightTextSecondary,
-          indicatorColor: AppColors.accent,
-          indicatorSize: TabBarIndicatorSize.label,
-          tabs: const [
-            Tab(
-                icon: Icon(Icons.history_rounded, size: 18),
-                text: 'Historique'),
-            Tab(
-                icon: Icon(Icons.calendar_month_rounded, size: 18),
-                text: 'Récapitulatif'),
-          ],
-        ),
-      ),
       body: Consumer2<CommandeProvider, FacturationProvider>(
-          builder: (_, cmdProv, tarifProv, __) {
-        // Squelettes uniquement au premier chargement (liste vide)
-        if (cmdProv.listLoading && cmdProv.mesCommandes.isEmpty) {
-          return ListView(
-              padding: const EdgeInsets.all(16),
-              children: List.generate(4, (_) => const ShimmerCard()));
+          builder: (_, cmdProv, fact, __) {
+        final now = DateTime.now();
+        final moisCourant = DateTime(now.year, now.month);
+        final commandes = cmdProv.mesCommandes
+            .where((c) => _dansPeriodeFacturation(fact, c))
+            .toList();
+
+        // Commandes par mois du menu
+        final parMois = <DateTime, List<Commande>>{};
+        for (final c in commandes) {
+          final j = c.jourMenu;
+          if (j == null) continue;
+          parMois.putIfAbsent(DateTime(j.year, j.month), () => []).add(c);
         }
-        if (cmdProv.listError != null && cmdProv.mesCommandes.isEmpty) {
-          return EmptyState(
+        // Mois navigables : du premier mois commandé (ou du mois en cours)
+        // au dernier (commandes anticipées comprises)
+        final cles = {...parMois.keys, moisCourant}.toList()..sort();
+        final premier = cles.first, dernier = cles.last;
+        final navigables = <DateTime>[
+          for (var m = premier;
+              !m.isAfter(dernier);
+              m = DateTime(m.year, m.month + 1))
+            m
+        ];
+        final mois = (_mois != null && navigables.contains(_mois))
+            ? _mois!
+            : moisCourant;
+        final idx = navigables.indexOf(mois);
+
+        final enTete = EnTeteMarine(
+          titre: 'Ma facturation',
+          sousTitre: 'Repas retirés et à retirer, facturés au mois',
+          bas: _SelecteurMois(
+            libelle: _libelleMois(mois),
+            onPrecedent: idx > 0
+                ? () => setState(() => _mois = navigables[idx - 1])
+                : null,
+            onSuivant: idx < navigables.length - 1
+                ? () => setState(() => _mois = navigables[idx + 1])
+                : null,
+          ),
+        );
+
+        Widget corps;
+        if (cmdProv.listLoading && cmdProv.mesCommandes.isEmpty) {
+          corps = ListView(padding: const EdgeInsets.all(14), children: const [
+            ShimmerCard(height: 230),
+            ShimmerCard(height: 180),
+          ]);
+        } else if (cmdProv.listError != null && cmdProv.mesCommandes.isEmpty) {
+          corps = EmptyState(
             icon: Icons.cloud_off_rounded,
             title: 'Chargement impossible',
             subtitle: cmdProv.listError,
@@ -110,1038 +119,713 @@ class _FacturationScreenState extends State<FacturationScreen>
               onPressed: _recharger,
             ),
           );
+        } else {
+          final duMois = parMois[mois] ?? const <Commande>[];
+          final precedents = parMois.keys
+              .where((m) => m.isBefore(moisCourant) && m != mois)
+              .toList()
+            ..sort((a, b) => b.compareTo(a));
+          corps = RefreshIndicator(
+            onRefresh: _recharger,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 100),
+              children: [
+                if (fact.error != null) ...[
+                  BandeauInfo(
+                    icone: Icons.price_change_outlined,
+                    ton: TonPastille.rouge,
+                    texte: 'Facturation indisponible : ${fact.error}',
+                    action: TextButton(
+                        onPressed: fact.loading ? null : fact.charger,
+                        child: const Text('Réessayer')),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                _CarteTotal(
+                    mois: mois,
+                    moisCourant: moisCourant,
+                    commandes: duMois,
+                    fact: fact),
+                const SizedBox(height: 12),
+                _CarteDetail(mois: mois, commandes: duMois, fact: fact),
+                if (precedents.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _CartePrecedents(
+                    mois: precedents.take(6).toList(),
+                    parMois: parMois,
+                    fact: fact,
+                    onChoisir: (m) => setState(() => _mois = m),
+                  ),
+                ],
+              ],
+            ),
+          );
         }
-        return TabBarView(
-          controller: _tabs,
-          children: [
-            _HistoriqueTab(
-              onRefresh: _recharger,
-              commandes: cmdProv.mesCommandes,
-              dateDebut: _dateDebut,
-              dateFin: _dateFin,
-              agenceFiltre: _agenceFiltre,
-              onFiltrer: (debut, fin, agence) => setState(() {
-                _dateDebut = debut;
-                _dateFin = fin;
-                _agenceFiltre = agence;
-              }),
-            ),
-            _RecapMensuelTab(
-              onRefresh: _recharger,
-              commandes: cmdProv.mesCommandes,
-              tarifProvider: tarifProv,
-            ),
-          ],
-        );
+        return Column(children: [enTete, Expanded(child: corps)]);
       }),
     );
   }
 }
 
-/// Période chargée par FacturationProvider.charger() (12 mois passés,
-/// 3 mois à venir) : hors de cette période, les montants ne sont pas connus
-/// (avant : « Tarif non défini » / « N/D » affichés à tort).
-bool _dansPeriodeFacturation(FacturationProvider fact, Commande c) {
-  final d = DateTime.tryParse(c.menuDetail?.dateMenu ?? '');
-  if (d == null) return false;
-  return !d.isBefore(fact.debutPeriode) && !d.isAfter(fact.finPeriode);
-}
-
-// ══════════════════════════════════════════════════════════════
-// ONGLET 1 — HISTORIQUE
-// ══════════════════════════════════════════════════════════════
-
-class _HistoriqueTab extends StatelessWidget {
-  final Future<void> Function() onRefresh;
-  final List<Commande> commandes;
-  final DateTime? dateDebut;
-  final DateTime? dateFin;
-  final String? agenceFiltre;
-  final void Function(DateTime?, DateTime?, String?) onFiltrer;
-
-  const _HistoriqueTab({
-    required this.onRefresh,
-    required this.commandes,
-    required this.dateDebut,
-    required this.dateFin,
-    required this.agenceFiltre,
-    required this.onFiltrer,
-  });
-
-  List<Commande> get _commandesFiltrees {
-    return commandes.where((c) {
-      // Date menu
-      final dateMenu = c.menuDetail?.dateMenu != null
-          ? DateTime.tryParse(c.menuDetail!.dateMenu)
-          : null;
-      if (dateDebut != null &&
-          dateMenu != null &&
-          dateMenu.isBefore(dateDebut!)) return false;
-      if (dateFin != null && dateMenu != null && dateMenu.isAfter(dateFin!)) {
-        return false;
-      }
-      // Agence
-      if (agenceFiltre != null && agenceFiltre!.isNotEmpty) {
-        final agence = c.menuDetail?.agenceNom ?? '';
-        if (agence != agenceFiltre) return false;
-      }
-      return true;
-    }).toList();
-  }
-
-  // Extraire les agences uniques
-  List<String> get _agences => commandes
-      .map((c) => c.menuDetail?.agenceNom ?? '')
-      .where((a) => a.isNotEmpty)
-      .toSet()
-      .toList()
-    ..sort();
+class _SelecteurMois extends StatelessWidget {
+  final String libelle;
+  final VoidCallback? onPrecedent;
+  final VoidCallback? onSuivant;
+  const _SelecteurMois(
+      {required this.libelle, this.onPrecedent, this.onSuivant});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final filtrees = _commandesFiltrees;
-    final hasFiltre = dateDebut != null ||
-        dateFin != null ||
-        (agenceFiltre != null && agenceFiltre!.isNotEmpty);
-
-    return Column(children: [
-      // ── Barre de filtres ─────────────────────────────────
-      _FiltreBarre(
-        dateDebut: dateDebut,
-        dateFin: dateFin,
-        agenceFiltre: agenceFiltre,
-        agences: _agences,
-        onFiltrer: onFiltrer,
-      ),
-
-      // ── Compteur ─────────────────────────────────────────
-      if (hasFiltre)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Row(children: [
-            Text('${filtrees.length} résultat(s)',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: isDark
-                        ? AppColors.darkTextSecondary
-                        : AppColors.lightTextSecondary)),
-            const Spacer(),
-            TextButton.icon(
-              icon: const Icon(Icons.clear_rounded, size: 14),
-              label:
-                  const Text('Effacer filtres', style: TextStyle(fontSize: 12)),
-              onPressed: () => onFiltrer(null, null, null),
-            ),
-          ]),
-        ),
-
-      // ── Liste ─────────────────────────────────────────────
-      Expanded(
-        child: RefreshIndicator(
-          onRefresh: onRefresh,
-          child: filtrees.isEmpty
-              ? _ScrollableEmpty(
-                  child: EmptyState(
-                    icon: Icons.receipt_long_outlined,
-                    title: 'Aucune commande',
-                    subtitle: hasFiltre
-                        ? 'Aucun résultat pour ces filtres'
-                        : 'Vous n\'avez pas encore commandé',
-                  ),
-                )
-              : ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  itemCount: filtrees.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (_, i) =>
-                      _CommandeHistoriqueCard(commande: filtrees[i]),
-                ),
-        ),
-      ),
-    ]);
-  }
-}
-
-// ── Barre de filtres ───────────────────────────────────────────
-
-class _FiltreBarre extends StatelessWidget {
-  final DateTime? dateDebut;
-  final DateTime? dateFin;
-  final String? agenceFiltre;
-  final List<String> agences;
-  final void Function(DateTime?, DateTime?, String?) onFiltrer;
-
-  const _FiltreBarre({
-    required this.dateDebut,
-    required this.dateFin,
-    required this.agenceFiltre,
-    required this.agences,
-    required this.onFiltrer,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    Widget fleche(IconData icone, String tooltip, VoidCallback? onTap) =>
+        IconButton(
+          icon: Icon(icone,
+              color: Colors.white.withOpacity(onTap == null ? 0.3 : 0.9)),
+          tooltip: tooltip,
+          visualDensity: VisualDensity.compact,
+          onPressed: onTap,
+        );
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        border: Border(
-            bottom: BorderSide(
-                color: isDark ? AppColors.darkBorder : AppColors.lightBorder)),
-      ),
-      child: Column(children: [
-        // Ligne 1 — dates
-        Row(children: [
-          Expanded(
-              child: _DateChip(
-            label: dateDebut != null
-                ? 'Du ${DateFormat('dd/MM/yy').format(dateDebut!)}'
-                : 'Date début',
-            active: dateDebut != null,
-            onTap: () async {
-              final d = await showDatePicker(
-                context: context,
-                initialDate: dateDebut ?? DateTime.now(),
-                firstDate: DateTime(2020),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-              );
-              if (d == null) return;
-              if (dateFin != null && d.isAfter(dateFin!)) {
-                if (context.mounted) _periodeInvalide(context);
-                return;
-              }
-              onFiltrer(d, dateFin, agenceFiltre);
-            },
-          )),
-          const SizedBox(width: 8),
-          Expanded(
-              child: _DateChip(
-            label: dateFin != null
-                ? 'Au ${DateFormat('dd/MM/yy').format(dateFin!)}'
-                : 'Date fin',
-            active: dateFin != null,
-            onTap: () async {
-              final d = await showDatePicker(
-                context: context,
-                initialDate: dateFin ?? DateTime.now(),
-                firstDate: DateTime(2020),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-              );
-              if (d == null) return;
-              if (dateDebut != null && d.isBefore(dateDebut!)) {
-                if (context.mounted) _periodeInvalide(context);
-                return;
-              }
-              onFiltrer(dateDebut, d, agenceFiltre);
-            },
-          )),
-        ]),
-        const SizedBox(height: 8),
-        // Ligne 2 — agence
-        if (agences.isNotEmpty)
-          SizedBox(
-            height: 32,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: agences.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                if (i == 0) {
-                  return _AgenceChip(
-                    label: 'Toutes',
-                    active: agenceFiltre == null || agenceFiltre!.isEmpty,
-                    onTap: () => onFiltrer(dateDebut, dateFin, null),
-                  );
-                }
-                final ag = agences[i - 1];
-                return _AgenceChip(
-                  label: ag,
-                  active: agenceFiltre == ag,
-                  onTap: () => onFiltrer(dateDebut, dateFin, ag),
-                );
-              },
-            ),
-          ),
-      ]),
-    );
-  }
-}
-
-void _periodeInvalide(BuildContext context) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-    content: const Text('La date de début doit précéder la date de fin'),
-    backgroundColor: AppColors.error,
-    behavior: SnackBarBehavior.floating,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    margin: const EdgeInsets.all(12),
-  ));
-}
-
-/// Permet le « tirer pour actualiser » même quand la liste est vide.
-class _ScrollableEmpty extends StatelessWidget {
-  final Widget child;
-  const _ScrollableEmpty({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (_, constraints) => SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
-class _DateChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  const _DateChip(
-      {required this.label, required this.active, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final activeColor = isDark ? AppColors.accent : AppColors.primary;
-    final secColor =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
-    final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: active ? activeColor.withOpacity(0.08) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: active ? activeColor : borderColor),
-        ),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.calendar_today_rounded,
-              size: 13, color: active ? activeColor : secColor),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 12,
-                    color: active ? activeColor : secColor,
-                    fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
-          ),
-        ]),
-      ),
-    );
-  }
-}
-
-class _AgenceChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  const _AgenceChip(
-      {required this.label, required this.active, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: active ? AppColors.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: active
-                  ? AppColors.accent
-                  : (isDark ? AppColors.darkBorder : AppColors.lightBorder)),
-        ),
-        child: Text(label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              // Navy sur fond vert (actif) ; sinon couleur secondaire du thème
-              color: active
-                  ? AppColors.primary
-                  : (isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary),
-            )),
-      ),
-    );
-  }
-}
-
-// ── Carte commande historique ──────────────────────────────────
-
-class _CommandeHistoriqueCard extends StatelessWidget {
-  final Commande commande;
-  const _CommandeHistoriqueCard({required this.commande});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dateMenu = commande.menuDetail?.dateMenu != null
-        ? DateTime.tryParse(commande.menuDetail!.dateMenu)
-        : null;
-    final dateCmde = DateTime.tryParse(commande.dateCommande)?.toLocal();
-    final secColor =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkCard : AppColors.lightCard,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-      ),
+          color: Colors.white.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12)),
       child: Row(children: [
-        // Icône plat
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: commande.platDetail?.imageUrl != null
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(commande.platDetail!.imageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(
-                          Icons.restaurant_rounded,
-                          color: AppColors.primary,
-                          size: 22)),
-                )
-              : const Icon(Icons.restaurant_rounded,
-                  color: AppColors.primary, size: 22),
-        ),
-        const SizedBox(width: 12),
+        fleche(Icons.chevron_left_rounded, 'Mois précédent', onPrecedent),
         Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(commande.platDetail?.nom ?? '—',
-              style: Theme.of(context).textTheme.titleSmall,
-              overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 2),
-          Text(commande.menuDetail?.agenceNom ?? '—',
-              style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: 2),
-          Row(children: [
-            Icon(Icons.calendar_today_rounded, size: 11, color: secColor),
-            const SizedBox(width: 3),
-            Text(
-                dateMenu != null
-                    ? DateFormat('dd/MM/yyyy').format(dateMenu)
-                    : '—',
-                style: TextStyle(fontSize: 11, color: secColor)),
-            const SizedBox(width: 10),
-            if (dateCmde != null) ...[
-              Icon(Icons.access_time_rounded, size: 11, color: secColor),
-              const SizedBox(width: 3),
-              Text(DateFormat('HH:mm').format(dateCmde),
-                  style: TextStyle(fontSize: 11, color: secColor)),
-            ],
-          ]),
-        ])),
-        const SizedBox(width: 8),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          StatutBadge(statut: commande.statut),
-          const SizedBox(height: 6),
-          _MontantRepas(commande: commande),
-        ]),
+          child: Text(libelle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700)),
+        ),
+        fleche(Icons.chevron_right_rounded, 'Mois suivant', onSuivant),
       ]),
     );
   }
 }
 
-/// Montant facturé d'un repas (calculé par le serveur, tarif à la date du menu)
-class _MontantRepas extends StatelessWidget {
-  final Commande commande;
-  const _MontantRepas({required this.commande});
+// ── Carte du mois : total, état, répartition, PDF ────────────────
+
+class _CarteTotal extends StatelessWidget {
+  final DateTime mois;
+  final DateTime moisCourant;
+  final List<Commande> commandes;
+  final FacturationProvider fact;
+  const _CarteTotal(
+      {required this.mois,
+      required this.moisCourant,
+      required this.commandes,
+      required this.fact});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fact = context.watch<FacturationProvider>();
-    final secColor =
+    final gris =
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final actives =
+        commandes.where((c) => c.statut != StatutCommande.annulee).toList();
+    final total = fact.calculerTotal(actives);
+    final cloture = fact.estCloture(actives);
+    List<Commande> dEtat(EtatCommande e) =>
+        actives.where((c) => etatCommande(c) == e).toList();
+    final retirees = dEtat(EtatCommande.retiree);
+    final aRetirer = [
+      ...dEtat(EtatCommande.aVenir),
+      ...dEtat(EtatCommande.aRetirer)
+    ];
+    final nonRetirees = dEtat(EtatCommande.nonRetiree);
+    final annulees = commandes.length - actives.length;
+    double somme(List<Commande> l) => fact.calculerTotal(l);
 
-    if (commande.statut == StatutCommande.annulee) {
-      return Text('Non facturé',
-          style: TextStyle(fontSize: 11, color: secColor));
-    }
-    if (!_dansPeriodeFacturation(fact, commande)) {
-      return Text('—', style: TextStyle(fontSize: 11, color: secColor));
-    }
-    final montant = fact.montant(commande);
-    if (montant == null) {
-      return Text(fact.loaded ? 'Tarif non défini' : '…',
-          style: TextStyle(
-              fontSize: 11,
-              color: fact.loaded ? AppColors.warning : secColor));
-    }
-    return Text(
-      '${NumberFormat('#,##0', 'fr_FR').format(montant)} FCFA',
-      style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: isDark ? AppColors.accent : AppColors.primary),
-    );
-  }
-}
+    final finMois = DateTime(mois.year, mois.month + 1, 0);
+    final (libelleEtat, iconeEtat, tonEtat) = !fact.loaded
+        ? ('Calcul en cours', Icons.hourglass_empty_rounded, TonPastille.gris)
+        : cloture
+            ? (
+                'Mois terminé',
+                Icons.check_circle_outline_rounded,
+                TonPastille.vert
+              )
+            : mois.isBefore(moisCourant)
+                ? (
+                    'Provisoire · en attente de clôture',
+                    Icons.schedule_rounded,
+                    TonPastille.or
+                  )
+                : (
+                    'Provisoire · arrêté le ${DateFormat('d MMMM', 'fr_FR').format(finMois)}',
+                    Icons.schedule_rounded,
+                    TonPastille.or
+                  );
 
-// ══════════════════════════════════════════════════════════════
-// ONGLET 2 — RÉCAPITULATIF MENSUEL
-// ══════════════════════════════════════════════════════════════
-
-class _RecapMensuelTab extends StatelessWidget {
-  final Future<void> Function() onRefresh;
-  final List<Commande> commandes;
-  final FacturationProvider tarifProvider;
-
-  const _RecapMensuelTab({
-    required this.onRefresh,
-    required this.commandes,
-    required this.tarifProvider,
-  });
-
-  Map<String, List<Commande>> get _parMois {
-    // Mois hors de la période de facturation chargée : montants inconnus
-    final actives = commandes
-        .where((c) =>
-            c.statut != StatutCommande.annulee && _dansPeriodeFacturation(tarifProvider, c))
-        .toList();
-    final Map<String, List<Commande>> grouped = {};
-    for (final c in actives) {
-      final dateMenu = c.menuDetail?.dateMenu != null
-          ? DateTime.tryParse(c.menuDetail!.dateMenu)
-          : null;
-      if (dateMenu == null) continue;
-      final key = DateFormat('yyyy-MM').format(dateMenu);
-      grouped.putIfAbsent(key, () => []).add(c);
-    }
-    return Map.fromEntries(
-        grouped.entries.toList()..sort((a, b) => b.key.compareTo(a.key)));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final grouped = _parMois;
-
-    if (grouped.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: onRefresh,
-        child: const _ScrollableEmpty(
-          child: EmptyState(
-            icon: Icons.account_balance_wallet_outlined,
-            title: 'Aucune commande',
-            subtitle: 'Votre récapitulatif apparaîtra ici',
-          ),
-        ),
-      );
-    }
-
-    if (tarifProvider.error != null) {
-      return RefreshIndicator(
-        onRefresh: onRefresh,
-        child: _ScrollableEmpty(
-          child: EmptyState(
-            icon: Icons.price_change_outlined,
-            title: 'Facturation indisponible',
-            subtitle: '${tarifProvider.error}\n'
-                'Tirez vers le bas pour réessayer.',
-            action: ElevatedButton.icon(
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Réessayer'),
-              onPressed: () => tarifProvider.charger(),
+    Widget tuile(int n, String libelle) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurface : AppColors.lightBackground,
+              borderRadius: BorderRadius.circular(12),
             ),
-          ),
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        itemCount: grouped.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 16),
-        itemBuilder: (_, i) {
-          final entry = grouped.entries.elementAt(i);
-          return _MoisCard(
-            moisKey: entry.key,
-            commandes: entry.value,
-            tarifProvider: tarifProvider,
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ── Carte mois ─────────────────────────────────────────────────
-
-class _MoisCard extends StatefulWidget {
-  final String moisKey;
-  final List<Commande> commandes;
-  final FacturationProvider tarifProvider;
-
-  const _MoisCard({
-    required this.moisKey,
-    required this.commandes,
-    required this.tarifProvider,
-  });
-
-  @override
-  State<_MoisCard> createState() => _MoisCardState();
-}
-
-class _MoisCardState extends State<_MoisCard> {
-  bool _expanded = false;
-
-  String get _moisLibelle {
-    final d = DateTime.tryParse('${widget.moisKey}-01');
-    if (d == null) return widget.moisKey;
-    return DateFormat('MMMM yyyy', 'fr_FR').format(d);
-  }
-
-  // « … » tant que les montants du serveur ne sont pas chargés (avant : N/D)
-  String _fmt(double m) => !widget.tarifProvider.loaded
-      ? '…'
-      : m > 0
-          ? '${NumberFormat('#,##0', 'fr_FR').format(m)} FCFA'
-          : 'N/D';
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final nbCmdes = widget.commandes.length;
-    final nbEn = widget.commandes
-        .where((c) => c.statut == StatutCommande.enAttente)
-        .length;
-    final nbRet = widget.commandes
-        .where((c) => c.statut == StatutCommande.retiree)
-        .length;
-    final totalMois = widget.tarifProvider.calculerTotal(widget.commandes);
-    final secColor =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
-    final primaryText = isDark ? AppColors.darkTextPrimary : AppColors.primary;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkCard : AppColors.lightCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-      ),
-      child: Column(children: [
-        // ── Header mois ──────────────────────────────────────
-        InkWell(
-          onTap: () => setState(() => _expanded = !_expanded),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                      colors: [AppColors.accent, AppColors.accentDark]),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.calendar_month_rounded,
-                    color: Colors.white, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(
-                        _moisLibelle[0].toUpperCase() +
-                            _moisLibelle.substring(1),
-                        style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 2),
-                    Text(
-                        '$nbCmdes repas • $nbEn en attente • '
-                        '$nbRet ${nbRet > 1 ? 'retirés' : 'retiré'}',
-                        style: Theme.of(context).textTheme.bodySmall),
-                  ])),
-              // ✅ Total à payer
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(_fmt(totalMois),
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.accent)),
-                const SizedBox(height: 2),
-                // Mois clôturé : montant figé ; sinon calcul provisoire
-                Text(
-                    !widget.tarifProvider.loaded
-                        ? 'Calcul en cours'
-                        : widget.tarifProvider.estCloture(widget.commandes)
-                            ? 'Facture clôturée'
-                            : 'Montant provisoire',
-                    style: TextStyle(fontSize: 10, color: secColor)),
-              ]),
+            child: Column(children: [
+              Text('$n',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
+              Text(libelle, style: TextStyle(fontSize: 10.5, color: gris)),
             ]),
           ),
-        ),
+        );
 
-        // ── Bouton PDF + toggle ───────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: Row(children: [
-            Expanded(
-                child: Divider(
-                    height: 1,
-                    color:
-                        isDark ? AppColors.darkBorder : AppColors.lightBorder)),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _exporterPDF(context),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.error.withOpacity(0.3)),
-                ),
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.picture_as_pdf_rounded,
-                      color: AppColors.error, size: 13),
-                  SizedBox(width: 4),
-                  Text('PDF',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.error,
-                          fontWeight: FontWeight.w600)),
-                ]),
-              ),
+    final nRepas = actives.length;
+    const vert = AppColors.accentDark;
+    const or = AppColors.warning;
+    const rouge = Color(0xFFD0452C);
+    Widget legende(Color c, String t) =>
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+          const SizedBox(width: 4),
+          Text(t, style: TextStyle(fontSize: 10.5, color: gris)),
+        ]);
+
+    return _CarteFacture(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Total du mois', style: TextStyle(fontSize: 11.5, color: gris)),
+        const SizedBox(height: 2),
+        Text(
+            fact.loaded
+                ? '${NumberFormat('#,##0', 'fr_FR').format(total)} FCFA'
+                : '…',
+            style: TextStyle(
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+                color: isDark ? AppColors.accent : const Color(0xFF1F9D55))),
+        const SizedBox(height: 2),
+        PastilleStatut(label: libelleEtat, icone: iconeEtat, ton: tonEtat),
+        const SizedBox(height: 14),
+        Row(children: [
+          tuile(nRepas, 'repas'),
+          const SizedBox(width: 8),
+          tuile(retirees.length, retirees.length > 1 ? 'retirés' : 'retiré'),
+          const SizedBox(width: 8),
+          if (aRetirer.isNotEmpty)
+            tuile(aRetirer.length, 'à retirer')
+          else if (nonRetirees.isNotEmpty)
+            tuile(nonRetirees.length,
+                nonRetirees.length > 1 ? 'non retirés' : 'non retiré')
+          else
+            tuile(annulees, annulees > 1 ? 'annulés' : 'annulé'),
+        ]),
+        if (nRepas > 0) ...[
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: SizedBox(
+              height: 8,
+              child: Row(children: [
+                if (retirees.isNotEmpty)
+                  Expanded(
+                      flex: retirees.length, child: Container(color: vert)),
+                if (aRetirer.isNotEmpty)
+                  Expanded(flex: aRetirer.length, child: Container(color: or)),
+                if (nonRetirees.isNotEmpty)
+                  Expanded(
+                      flex: nonRetirees.length, child: Container(color: rouge)),
+              ]),
             ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => setState(() => _expanded = !_expanded),
-              child: Icon(
-                  _expanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  color: secColor),
-            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(spacing: 10, runSpacing: 4, children: [
+            if (retirees.isNotEmpty)
+              legende(vert,
+                  'retirés${fact.loaded ? ' ${formatFcfa(somme(retirees))}' : ''}'),
+            if (aRetirer.isNotEmpty)
+              legende(or,
+                  'à retirer${fact.loaded ? ' ${formatFcfa(somme(aRetirer))}' : ''}'),
+            if (nonRetirees.isNotEmpty)
+              legende(rouge,
+                  'non retirés${fact.loaded ? ' ${formatFcfa(somme(nonRetirees))}' : ''}'),
+            if (annulees > 0)
+              legende(isDark ? AppColors.darkTextHint : AppColors.lightTextHint,
+                  '$annulees ${annulees > 1 ? 'annulés' : 'annulé'}, non facturé${annulees > 1 ? 's' : ''}'),
           ]),
+        ],
+        const SizedBox(height: 14),
+        _BoutonPdf(
+          onPressed: actives.isEmpty
+              ? null
+              : () => _exporterPDF(
+                  context, DateFormat('yyyy-MM').format(mois), actives, fact),
         ),
+      ]),
+    );
+  }
+}
 
-        // ── Détail dépliable ──────────────────────────────────
-        if (_expanded) ...[
-          Divider(
-              height: 1,
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            itemCount: widget.commandes.length,
-            separatorBuilder: (_, __) => Divider(
+/// Carte blanche (bordure fine) de la facturation
+class _CarteFacture extends StatelessWidget {
+  final Widget child;
+  const _CarteFacture({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightCard,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// « Télécharger le relevé PDF » : marine en clair, vert en sombre
+class _BoutonPdf extends StatelessWidget {
+  final VoidCallback? onPressed;
+  const _BoutonPdf({this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const label = 'Télécharger le relevé PDF';
+    if (isDark) {
+      return BoutonVert(
+          label: label,
+          icone: Icons.download_rounded,
+          hauteur: 46,
+          onPressed: onPressed);
+    }
+    return SizedBox(
+      width: double.infinity,
+      height: 46,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          padding: EdgeInsets.zero,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+        icon: const Icon(Icons.download_rounded, size: 18),
+        label: const Text(label),
+        onPressed: onPressed,
+      ),
+    );
+  }
+}
+
+// ── Détail du mois ─────────────────────────────────────────────
+
+class _CarteDetail extends StatelessWidget {
+  final DateTime mois;
+  final List<Commande> commandes;
+  final FacturationProvider fact;
+  const _CarteDetail(
+      {required this.mois, required this.commandes, required this.fact});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final hint = isDark ? AppColors.darkTextHint : AppColors.lightTextHint;
+    final triees = List.of(commandes)
+      ..sort((a, b) =>
+          (b.jourMenu ?? DateTime(0)).compareTo(a.jourMenu ?? DateTime(0)));
+    final nomMois = DateFormat('MMMM', 'fr_FR').format(mois);
+    final de = RegExp(r'^[aeiouyéèh]', caseSensitive: false).hasMatch(nomMois)
+        ? "d'"
+        : 'de ';
+    final n = triees.length;
+
+    return _CarteFacture(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+            child: Text('Détail $de$nomMois',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+          ),
+          Text('$n ${n > 1 ? 'lignes' : 'ligne'}',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? AppColors.accent : AppColors.primaryLight)),
+        ]),
+        const SizedBox(height: 4),
+        if (triees.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Text('Aucune commande ce mois-ci',
+                style: TextStyle(fontSize: 12.5, color: gris)),
+          ),
+        for (var i = 0; i < triees.length; i++) ...[
+          if (i > 0)
+            Divider(
                 height: 1,
                 color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-            itemBuilder: (_, i) {
-              final c = widget.commandes[i];
-              final dateMenu = c.menuDetail?.dateMenu ?? '';
-              final d =
-                  dateMenu.isNotEmpty ? DateTime.tryParse(dateMenu) : null;
-              final montant = widget.tarifProvider.montant(c) ?? 0;
-
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Row(children: [
-                  Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Text(c.platDetail?.nom ?? '—',
-                            style: Theme.of(context).textTheme.titleSmall),
-                        const SizedBox(height: 2),
-                        Row(children: [
-                          Text(
-                              d != null
-                                  ? DateFormat('EEE dd/MM/yyyy', 'fr_FR')
-                                      .format(d)
-                                  : '—',
-                              style: Theme.of(context).textTheme.bodySmall),
-                          const SizedBox(width: 4),
-                          // Flexible : nom d'agence long sur petit écran
-                          Flexible(
-                            child: Text('• ${c.menuDetail?.agenceNom ?? ''}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall),
-                          ),
-                        ]),
-                      ])),
-                  const SizedBox(width: 8),
-                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Text(_fmt(montant),
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: montant > 0 ? primaryText : secColor)),
-                    const SizedBox(height: 3),
-                    StatutBadge(statut: c.statut),
-                  ]),
-                ]),
-              );
-            },
-          ),
-          // Total du mois en bas
-          Container(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppColors.accent.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.accent.withOpacity(0.3)),
+          InkWell(
+            onTap: () => DetailCommandeSheet.show(context, triees[i]),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              child: Row(children: [
+                SizedBox(
+                  width: 44,
+                  child: Text(
+                      triees[i].jourMenu == null
+                          ? '—'
+                          : DateFormat('dd/MM').format(triees[i].jourMenu!),
+                      style: TextStyle(fontSize: 11.5, color: gris)),
+                ),
+                Expanded(
+                  child: Text(triees[i].platDetail?.nom ?? '—',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyLarge
+                          ?.copyWith(fontSize: 12.5)),
+                ),
+                const SizedBox(width: 6),
+                pastilleCommande(triees[i]),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 74,
+                  child: _montant(context, triees[i], gris, hint),
+                ),
+              ]),
             ),
-            child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Flexible : pas de débordement sur un écran de 320 px
-                  Flexible(
-                    child: Text('TOTAL À PAYER CE MOIS',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: primaryText)),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(_fmt(totalMois),
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.accent)),
-                ]),
           ),
         ],
       ]),
     );
   }
 
-  Future<void> _exporterPDF(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    // Sans les montants du serveur, le PDF n'afficherait que « N/D »
-    if (!widget.tarifProvider.loaded) {
-      messenger.showSnackBar(const SnackBar(
-          content: Text('Montants en cours de chargement, réessayez.')));
-      return;
+  Widget _montant(BuildContext context, Commande c, Color gris, Color hint) {
+    if (c.statut == StatutCommande.annulee) {
+      return Text('non facturé',
+          textAlign: TextAlign.right,
+          style: TextStyle(fontSize: 11, color: hint));
     }
-    final cloture = widget.tarifProvider.estCloture(widget.commandes);
-    final moisLabel = _moisLibelle[0].toUpperCase() + _moisLibelle.substring(1);
-    final now = DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now());
-    final auth = context.read<AuthProvider>();
-    final user = auth.user;
-    final totalMois = widget.tarifProvider.calculerTotal(widget.commandes);
+    final m = fact.montant(c);
+    if (m == null) {
+      return Text(fact.loaded ? 'Tarif non défini' : '…',
+          textAlign: TextAlign.right,
+          style: TextStyle(
+              fontSize: 10.5, color: fact.loaded ? AppColors.warning : gris));
+    }
+    return Text(formatFcfa(m),
+        textAlign: TextAlign.right,
+        style: Theme.of(context)
+            .textTheme
+            .bodyLarge
+            ?.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700));
+  }
+}
 
-    // Helvetica (police PDF par défaut) n'a ni « — », ni « • », ni les
-    // espaces insécables qu'insère le format fr_FR des montants.
-    String pdfSafe(String t) => t
-        .replaceAll('\u2014', '-')
-        .replaceAll('\u2022', '-')
-        .replaceAll('\u202F', ' ')
-        .replaceAll('\u00A0', ' ');
+// ── Mois précédents ────────────────────────────────────────────
 
-    String fmtM(double m) => pdfSafe(
-        m > 0 ? '${NumberFormat('#,##0', 'fr_FR').format(m)} FCFA' : 'N/D');
+class _CartePrecedents extends StatelessWidget {
+  final List<DateTime> mois;
+  final Map<DateTime, List<Commande>> parMois;
+  final FacturationProvider fact;
+  final ValueChanged<DateTime> onChoisir;
+  const _CartePrecedents(
+      {required this.mois,
+      required this.parMois,
+      required this.fact,
+      required this.onChoisir});
 
-    final pdf = pw.Document();
-    // MultiPage : le tableau se poursuit sur plusieurs pages si besoin
-    pdf.addPage(pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(32),
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      footer: (_) => pw.Column(children: [
-        pw.Divider(color: PdfColors.grey300),
-        pw.Center(
-            child: pw.Text(
-                'Document généré par UbiFood - ${DateTime.now().year}',
-                style: const pw.TextStyle(
-                    fontSize: 8, color: PdfColors.grey500))),
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    return _CarteFacture(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Mois précédents',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        for (var i = 0; i < mois.length; i++) ...[
+          if (i > 0)
+            Divider(
+                height: 1,
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+          Builder(builder: (context) {
+            final actives = parMois[mois[i]]!
+                .where((c) => c.statut != StatutCommande.annulee)
+                .toList();
+            final n = actives.length;
+            return InkWell(
+              onTap: () => onChoisir(mois[i]),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                child: Row(children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? AppColors.darkSurface
+                          : AppColors.lightBackground,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.calendar_month_outlined,
+                        size: 17,
+                        color:
+                            isDark ? AppColors.accent : AppColors.primaryLight),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_libelleMois(mois[i]),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.copyWith(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700)),
+                          Text('$n repas',
+                              style: TextStyle(fontSize: 11.5, color: gris)),
+                        ]),
+                  ),
+                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text(
+                        fact.loaded
+                            ? formatFcfa(fact.calculerTotal(actives))
+                            : '…',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            fontSize: 13, fontWeight: FontWeight.w700)),
+                    Text(fact.estCloture(actives) ? 'terminé' : 'provisoire',
+                        style: TextStyle(fontSize: 10.5, color: gris)),
+                  ]),
+                ]),
+              ),
+            );
+          }),
+        ],
       ]),
-      build: (_) => [
-          // En-tête
-          pw.Row(
+    );
+  }
+}
+
+/// Relevé PDF du mois (impression / partage), montants du serveur
+Future<void> _exporterPDF(BuildContext context, String moisKey,
+    List<Commande> commandes, FacturationProvider tarifProvider) async {
+  final d = DateTime.tryParse('$moisKey-01');
+  final moisLibelle =
+      d == null ? moisKey : DateFormat('MMMM yyyy', 'fr_FR').format(d);
+  final messenger = ScaffoldMessenger.of(context);
+  // Sans les montants du serveur, le PDF n'afficherait que « N/D »
+  if (!tarifProvider.loaded) {
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Montants en cours de chargement, réessayez.')));
+    return;
+  }
+  final cloture = tarifProvider.estCloture(commandes);
+  final moisLabel = moisLibelle[0].toUpperCase() + moisLibelle.substring(1);
+  final now = DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now());
+  final auth = context.read<AuthProvider>();
+  final user = auth.user;
+  final totalMois = tarifProvider.calculerTotal(commandes);
+
+  // Helvetica (police PDF par défaut) n'a ni « — », ni « • », ni les
+  // espaces insécables qu'insère le format fr_FR des montants.
+  String pdfSafe(String t) => t
+      .replaceAll('\u2014', '-')
+      .replaceAll('\u2022', '-')
+      .replaceAll('\u202F', ' ')
+      .replaceAll('\u00A0', ' ');
+
+  String fmtM(double m) => pdfSafe(
+      m > 0 ? '${NumberFormat('#,##0', 'fr_FR').format(m)} FCFA' : 'N/D');
+
+  final pdf = pw.Document();
+  // MultiPage : le tableau se poursuit sur plusieurs pages si besoin
+  pdf.addPage(pw.MultiPage(
+    pageFormat: PdfPageFormat.a4,
+    margin: const pw.EdgeInsets.all(32),
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    footer: (_) => pw.Column(children: [
+      pw.Divider(color: PdfColors.grey300),
+      pw.Center(
+          child: pw.Text('Document généré par UbiFood - ${DateTime.now().year}',
+              style:
+                  const pw.TextStyle(fontSize: 8, color: PdfColors.grey500))),
+    ]),
+    build: (_) => [
+      // En-tête
+      pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Text('UbiFood - Cantine',
+                style: pw.TextStyle(
+                    fontSize: 20,
+                    fontWeight: pw.FontWeight.bold,
+                    color: const PdfColor.fromInt(0xFF092440))),
+            pw.SizedBox(height: 4),
+            pw.Text('Récapitulatif mensuel',
+                style:
+                    const pw.TextStyle(fontSize: 13, color: PdfColors.grey700)),
+          ]),
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+            pw.Text(pdfSafe(moisLabel),
+                style: pw.TextStyle(
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                    color: const PdfColor.fromInt(0xFF5BD988))),
+            pw.SizedBox(height: 4),
+            pw.Text(
+                cloture
+                    ? 'Mois clôturé : montants définitifs'
+                    : 'Mois non clôturé : montants provisoires',
+                style:
+                    const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+            pw.SizedBox(height: 2),
+            pw.Text('Généré le $now',
+                style:
+                    const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+          ]),
+        ],
+      ),
+      pw.Divider(color: const PdfColor.fromInt(0xFF092440), thickness: 2),
+      pw.SizedBox(height: 12),
+      // Infos employé
+      pw.Container(
+        padding: const pw.EdgeInsets.all(12),
+        decoration: pw.BoxDecoration(
+            color: const PdfColor.fromInt(0xFFF4F7FA),
+            borderRadius: pw.BorderRadius.circular(8)),
+        child: pw
+            .Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.Text(pdfSafe('Employé : ${user?.fullName ?? '-'}'),
+              style:
+                  pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
+          pw.SizedBox(height: 3),
+          pw.Text(pdfSafe('Badge : ${user?.username ?? '-'}'),
+              style:
+                  const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
+          pw.SizedBox(height: 3),
+          pw.Text(
+              pdfSafe(
+                  'Catégorie : ${user?.derniereCategoriesalarieLibelle ?? '-'}'),
+              style:
+                  const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
+        ]),
+      ),
+      pw.SizedBox(height: 16),
+      pw.Text('Détail des commandes',
+          style: pw.TextStyle(
+              fontSize: 12,
+              fontWeight: pw.FontWeight.bold,
+              color: const PdfColor.fromInt(0xFF092440))),
+      pw.SizedBox(height: 8),
+      // Tableau
+      pw.Table(
+        border: pw.TableBorder.all(
+            color: const PdfColor.fromInt(0xFFE2EAF4), width: 0.5),
+        columnWidths: {
+          0: const pw.FlexColumnWidth(3),
+          1: const pw.FlexColumnWidth(2),
+          2: const pw.FlexColumnWidth(2),
+          3: const pw.FlexColumnWidth(1.5),
+          4: const pw.FlexColumnWidth(2),
+        },
+        children: [
+          pw.TableRow(
+            decoration:
+                const pw.BoxDecoration(color: PdfColor.fromInt(0xFF092440)),
+            children: ['Plat', 'Agence', 'Date', 'Statut', 'Montant']
+                .map((h) => pw.Padding(
+                      padding: const pw.EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 5),
+                      child: pw.Text(h,
+                          style: pw.TextStyle(
+                              color: PdfColors.white,
+                              fontSize: 9,
+                              fontWeight: pw.FontWeight.bold)),
+                    ))
+                .toList(),
+          ),
+          ...commandes.asMap().entries.map((e) {
+            final c = e.value;
+            final dm = c.menuDetail?.dateMenu ?? '';
+            final d = dm.isNotEmpty ? DateTime.tryParse(dm) : null;
+            final montant = tarifProvider.montant(c) ?? 0;
+            final bg = e.key.isEven
+                ? PdfColors.white
+                : const PdfColor.fromInt(0xFFF4F7FA);
+            return pw.TableRow(
+              decoration: pw.BoxDecoration(color: bg),
+              children: [
+                c.platDetail?.nom ?? '-',
+                c.menuDetail?.agenceNom ?? '-',
+                d != null ? DateFormat('dd/MM/yyyy').format(d) : '-',
+                c.statut.label,
+                fmtM(montant),
+              ]
+                  .map((cell) => pw.Padding(
+                        padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 4),
+                        child: pw.Text(pdfSafe(cell),
+                            style: const pw.TextStyle(fontSize: 8)),
+                      ))
+                  .toList(),
+            );
+          }),
+        ],
+      ),
+      pw.SizedBox(height: 16),
+      // Total
+      pw.Container(
+        padding: const pw.EdgeInsets.all(14),
+        decoration: pw.BoxDecoration(
+            color: const PdfColor.fromInt(0xFFEAFBF1),
+            borderRadius: pw.BorderRadius.circular(8),
+            border: pw.Border.all(
+                color: const PdfColor.fromInt(0xFF5BD988), width: 0.8)),
+        child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('UbiFood - Cantine',
-                        style: pw.TextStyle(
-                            fontSize: 20,
-                            fontWeight: pw.FontWeight.bold,
-                            color: const PdfColor.fromInt(0xFF092440))),
-                    pw.SizedBox(height: 4),
-                    pw.Text('Récapitulatif mensuel',
-                        style: const pw.TextStyle(
-                            fontSize: 13, color: PdfColors.grey700)),
-                  ]),
-              pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    pw.Text(pdfSafe(moisLabel),
-                        style: pw.TextStyle(
-                            fontSize: 16,
-                            fontWeight: pw.FontWeight.bold,
-                            color: const PdfColor.fromInt(0xFF5BD988))),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                        cloture
-                            ? 'Mois clôturé : montants définitifs'
-                            : 'Mois non clôturé : montants provisoires',
-                        style: const pw.TextStyle(
-                            fontSize: 9, color: PdfColors.grey700)),
-                    pw.SizedBox(height: 2),
-                    pw.Text('Généré le $now',
-                        style: const pw.TextStyle(
-                            fontSize: 9, color: PdfColors.grey600)),
-                  ]),
-            ],
-          ),
-          pw.Divider(color: const PdfColor.fromInt(0xFF092440), thickness: 2),
-          pw.SizedBox(height: 12),
-          // Infos employé
-          pw.Container(
-            padding: const pw.EdgeInsets.all(12),
-            decoration: pw.BoxDecoration(
-                color: const PdfColor.fromInt(0xFFF4F7FA),
-                borderRadius: pw.BorderRadius.circular(8)),
-            child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(pdfSafe('Employé : ${user?.fullName ?? '-'}'),
-                      style: pw.TextStyle(
-                          fontWeight: pw.FontWeight.bold, fontSize: 12)),
-                  pw.SizedBox(height: 3),
-                  pw.Text(pdfSafe('Badge : ${user?.username ?? '-'}'),
-                      style: const pw.TextStyle(
-                          fontSize: 11, color: PdfColors.grey700)),
-                  pw.SizedBox(height: 3),
-                  pw.Text(
-                      pdfSafe(
-                          'Catégorie : ${user?.derniereCategoriesalarieLibelle ?? '-'}'),
-                      style: const pw.TextStyle(
-                          fontSize: 11, color: PdfColors.grey700)),
-                ]),
-          ),
-          pw.SizedBox(height: 16),
-          pw.Text('Détail des commandes',
-              style: pw.TextStyle(
-                  fontSize: 12,
-                  fontWeight: pw.FontWeight.bold,
-                  color: const PdfColor.fromInt(0xFF092440))),
-          pw.SizedBox(height: 8),
-          // Tableau
-          pw.Table(
-            border: pw.TableBorder.all(
-                color: const PdfColor.fromInt(0xFFE2EAF4), width: 0.5),
-            columnWidths: {
-              0: const pw.FlexColumnWidth(3),
-              1: const pw.FlexColumnWidth(2),
-              2: const pw.FlexColumnWidth(2),
-              3: const pw.FlexColumnWidth(1.5),
-              4: const pw.FlexColumnWidth(2),
-            },
-            children: [
-              pw.TableRow(
-                decoration:
-                    const pw.BoxDecoration(color: PdfColor.fromInt(0xFF092440)),
-                children: ['Plat', 'Agence', 'Date', 'Statut', 'Montant']
-                    .map((h) => pw.Padding(
-                          padding: const pw.EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 5),
-                          child: pw.Text(h,
-                              style: pw.TextStyle(
-                                  color: PdfColors.white,
-                                  fontSize: 9,
-                                  fontWeight: pw.FontWeight.bold)),
-                        ))
-                    .toList(),
-              ),
-              ...widget.commandes.asMap().entries.map((e) {
-                final c = e.value;
-                final dm = c.menuDetail?.dateMenu ?? '';
-                final d = dm.isNotEmpty ? DateTime.tryParse(dm) : null;
-                final montant = widget.tarifProvider.montant(c) ?? 0;
-                final bg = e.key.isEven
-                    ? PdfColors.white
-                    : const PdfColor.fromInt(0xFFF4F7FA);
-                return pw.TableRow(
-                  decoration: pw.BoxDecoration(color: bg),
-                  children: [
-                    c.platDetail?.nom ?? '-',
-                    c.menuDetail?.agenceNom ?? '-',
-                    d != null ? DateFormat('dd/MM/yyyy').format(d) : '-',
-                    c.statut.label,
-                    fmtM(montant),
-                  ]
-                      .map((cell) => pw.Padding(
-                            padding: const pw.EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 4),
-                            child: pw.Text(pdfSafe(cell),
-                                style: const pw.TextStyle(fontSize: 8)),
-                          ))
-                      .toList(),
-                );
-              }),
-            ],
-          ),
-          pw.SizedBox(height: 16),
-          // Total
-          pw.Container(
-            padding: const pw.EdgeInsets.all(14),
-            decoration: pw.BoxDecoration(
-                color: const PdfColor.fromInt(0xFFEAFBF1),
-                borderRadius: pw.BorderRadius.circular(8),
-                border: pw.Border.all(
-                    color: const PdfColor.fromInt(0xFF5BD988), width: 0.8)),
-            child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('TOTAL À PAYER CE MOIS',
-                      style: pw.TextStyle(
-                          fontSize: 12,
-                          fontWeight: pw.FontWeight.bold,
-                          color: const PdfColor.fromInt(0xFF092440))),
-                  pw.Text(fmtM(totalMois),
-                      style: pw.TextStyle(
-                          fontSize: 15,
-                          fontWeight: pw.FontWeight.bold,
-                          color: const PdfColor.fromInt(0xFF5BD988))),
-                ]),
-          ),
-      ],
-    ));
+              pw.Text('TOTAL À PAYER CE MOIS',
+                  style: pw.TextStyle(
+                      fontSize: 12,
+                      fontWeight: pw.FontWeight.bold,
+                      color: const PdfColor.fromInt(0xFF092440))),
+              pw.Text(fmtM(totalMois),
+                  style: pw.TextStyle(
+                      fontSize: 15,
+                      fontWeight: pw.FontWeight.bold,
+                      color: const PdfColor.fromInt(0xFF5BD988))),
+            ]),
+      ),
+    ],
+  ));
 
-    try {
-      await Printing.layoutPdf(
-        onLayout: (_) async => pdf.save(),
-        name: 'facture_${widget.moisKey}.pdf',
-      );
-    } catch (_) {
-      messenger.showSnackBar(const SnackBar(
-          content: Text("Impossible de générer ou d'imprimer le PDF.")));
-    }
+  try {
+    await Printing.layoutPdf(
+      onLayout: (_) async => pdf.save(),
+      name: 'facture_$moisKey.pdf',
+    );
+  } catch (_) {
+    messenger.showSnackBar(const SnackBar(
+        content: Text("Impossible de générer ou d'imprimer le PDF.")));
   }
 }

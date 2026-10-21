@@ -126,12 +126,25 @@ class Plat {
   final String? typePlatLibelle;
   final List<PlatImage> images;
 
+  /// Avis des agents, si le serveur les fournit (null : inconnu)
+  final double? noteMoyenne;
+  final int? nbAvis;
+
   const Plat(
       {required this.id,
       required this.nom,
       required this.description,
       this.typePlatLibelle,
-      required this.images});
+      required this.images,
+      this.noteMoyenne,
+      this.nbAvis});
+
+  /// Description utile : absente si elle ne fait que répéter le nom
+  String? get descriptionUtile {
+    final d = description.trim();
+    if (d.isEmpty || d.toLowerCase() == nom.trim().toLowerCase()) return null;
+    return d;
+  }
 
   String? get imageUrl {
     final principale = images.where((i) => i.isPrincipale).firstOrNull;
@@ -146,6 +159,8 @@ class Plat {
         images: (j['images'] as List? ?? [])
             .map((e) => PlatImage.fromJson(e))
             .toList(),
+        noteMoyenne: (j['note_moyenne'] as num?)?.toDouble(),
+        nbAvis: (j['nb_avis'] as num?)?.toInt(),
       );
 }
 
@@ -301,6 +316,22 @@ class Commande {
 
   bool get peutAnnuler => statut == StatutCommande.enAttente;
 
+  /// Jour du menu (sans heure), null si inconnu
+  DateTime? get jourMenu {
+    final d = DateTime.tryParse(menuDetail?.dateMenu ?? '');
+    return d == null ? null : DateTime(d.year, d.month, d.day);
+  }
+
+  /// En attente alors que le jour du menu est passé (repas non retiré),
+  /// comme « non retiré » sur l'accueil. Jour au sens du serveur (UTC+0).
+  bool estNonRetiree([DateTime? maintenant]) {
+    if (statut != StatutCommande.enAttente) return false;
+    final j = jourMenu;
+    if (j == null) return false;
+    final n = (maintenant ?? DateTime.now()).toUtc();
+    return j.isBefore(DateTime(n.year, n.month, n.day));
+  }
+
   /// Un repas retiré peut être noté (ou sa note modifiée)
   bool get peutNoter => statut == StatutCommande.retiree;
 
@@ -406,12 +437,16 @@ class RechercheParBadgeResult {
   final bool aRetire;
   final List<Commande> commandes;
 
+  /// Photo de l'agent si le serveur la fournit (sinon initiales)
+  final String? photoUrl;
+
   const RechercheParBadgeResult({
     required this.userId,
     required this.userNom,
     required this.badge,
     required this.aRetire,
     required this.commandes,
+    this.photoUrl,
   });
 
   factory RechercheParBadgeResult.fromJson(Map<String, dynamic> j) =>
@@ -423,6 +458,7 @@ class RechercheParBadgeResult {
         commandes: (j['commandes'] as List? ?? [])
             .map((e) => Commande.fromJson(e))
             .toList(),
+        photoUrl: _absoluteUrl(j['photo_url'] as String?),
       );
 }
 

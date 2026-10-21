@@ -59,9 +59,11 @@ class EtoilesNote extends StatelessWidget {
 // FEUILLE « VOTRE AVIS »
 // ══════════════════════════════════════════════════════════════
 
-/// Ouvre la feuille de notation d'une commande retirée.
+/// Ouvre la feuille de notation d'une commande retirée ([note] : étoile
+/// déjà touchée, par exemple dans la fiche de la commande).
 /// Retourne true si l'avis a été enregistré.
-Future<bool> showAvisSheet(BuildContext context, Commande commande) async {
+Future<bool> showAvisSheet(BuildContext context, Commande commande,
+    {int? note}) async {
   // Capturé avant l'await : l'appelant peut disparaître entre-temps
   final messenger = ScaffoldMessenger.of(context);
   final ok = await showModalBottomSheet<bool>(
@@ -69,7 +71,7 @@ Future<bool> showAvisSheet(BuildContext context, Commande commande) async {
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _AvisSheet(commande: commande),
+    builder: (_) => _AvisSheet(commande: commande, noteInitiale: note),
   );
   if (ok == true) {
     messenger.showSnackBar(SnackBar(
@@ -89,7 +91,8 @@ Future<bool> showAvisSheet(BuildContext context, Commande commande) async {
 
 class _AvisSheet extends StatefulWidget {
   final Commande commande;
-  const _AvisSheet({required this.commande});
+  final int? noteInitiale;
+  const _AvisSheet({required this.commande, this.noteInitiale});
 
   @override
   State<_AvisSheet> createState() => _AvisSheetState();
@@ -105,7 +108,8 @@ class _AvisSheetState extends State<_AvisSheet> {
     'Excellent !',
   ];
 
-  late int _note = widget.commande.avis?.note ?? 0;
+  late int _note =
+      (widget.noteInitiale ?? widget.commande.avis?.note ?? 0).clamp(0, 5);
   late final _commentaire =
       TextEditingController(text: widget.commande.avis?.commentaire ?? '');
   bool _envoi = false;

@@ -10,6 +10,7 @@ import '../../core/widgets/common_widgets.dart';
 import '../../core/widgets/tic_echeance.dart';
 import '../../core/services/cantine_service.dart';
 import '../avis/avis_widgets.dart';
+import '../dashboard/accueil_widgets.dart' show fermeDans, jourCourt;
 
 // Date limite de commande calculée par le serveur (délai paramétré)
 DateTime? _deadline(Menu menu) => menu.dateLimiteCommande;
@@ -109,8 +110,8 @@ class _MenuScreenState extends State<MenuScreen> {
     _menuSelectionne = trouve;
     if (_agenceSelectionnee != null &&
         _agenceSelectionnee!.id != trouve.agenceId.toString()) {
-      _agenceSelectionnee = _AgenceLocal(
-          id: trouve.agenceId.toString(), nom: trouve.agenceNom);
+      _agenceSelectionnee =
+          _AgenceLocal(id: trouve.agenceId.toString(), nom: trouve.agenceNom);
     }
     if (_equipeSelectionnee != null &&
         _equipeSelectionnee!.id != trouve.typeEquipeId.toString()) {
@@ -183,29 +184,6 @@ class _MenuScreenState extends State<MenuScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Consumer<MenuProvider>(builder: (_, menuProv, __) {
-        // Squelettes au premier chargement seulement : une actualisation
-        // garde la liste affichée
-        if (menuProv.loading && menuProv.menus.isEmpty) {
-          return ListView(
-              padding: const EdgeInsets.all(16),
-              children: List.generate(3, (_) => const ShimmerCard(height: 60)));
-        }
-
-        if (menuProv.error != null && menuProv.menus.isEmpty) {
-          return _defilable(EmptyState(
-            icon: Icons.cloud_off_rounded,
-            title: 'Chargement impossible',
-            subtitle: menuProv.error,
-            action: ElevatedButton.icon(
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Réessayer'),
-              onPressed: _recharger,
-            ),
-          ));
-        }
-
-        _appliquerCible(menuProv);
-
         final agences = <String, String>{};
         final equipes = <String, String>{};
         for (final m in menuProv.menus) {
@@ -213,14 +191,90 @@ class _MenuScreenState extends State<MenuScreen> {
           equipes[m.typeEquipeId.toString()] = m.typeEquipeLibelle;
         }
 
-        // Filtre devenu sans menu après actualisation : ignoré (sinon le
-        // DropdownButton reçoit une valeur absente de ses items → assertion)
+        // Filtre devenu sans menu après actualisation : ignoré
         final agenceSel = agences.containsKey(_agenceSelectionnee?.id)
             ? _agenceSelectionnee
             : null;
         final equipeSel = equipes.containsKey(_equipeSelectionnee?.id)
             ? _equipeSelectionnee
             : null;
+
+        void ouvrirFiltres() => _FiltresSheet.show(
+              context,
+              agences: agences,
+              equipes: equipes,
+              agenceSelectionnee: agenceSel,
+              equipeSelectionnee: equipeSel,
+              onAgenceChanged: (a) => setState(() {
+                _agenceSelectionnee = a;
+                _menuSelectionne = null;
+              }),
+              onEquipeChanged: (e) => setState(() {
+                _equipeSelectionnee = e;
+                _menuSelectionne = null;
+              }),
+            );
+
+        final enTete = EnTeteMarine(
+          titre: 'Menus',
+          sousTitre: 'Choisissez votre repas de la semaine',
+          actions: [
+            EnTeteBouton(
+              icone: Icons.tune_rounded,
+              tooltip: 'Filtrer par agence et équipe',
+              onPressed: menuProv.menus.isEmpty ? null : ouvrirFiltres,
+            ),
+          ],
+          bas: menuProv.menus.isEmpty
+              ? null
+              : Wrap(spacing: 6, runSpacing: 6, children: [
+                  EnTetePastille(
+                    icone: Icons.location_on_outlined,
+                    label: agenceSel?.nom ?? 'Toutes les agences',
+                    onTap: ouvrirFiltres,
+                  ),
+                  if (equipes.isNotEmpty)
+                    EnTetePastille(
+                      icone: Icons.groups_outlined,
+                      label: equipeSel?.nom ?? 'Toutes les équipes',
+                      onTap: ouvrirFiltres,
+                    ),
+                ]),
+        );
+
+        // Squelettes au premier chargement seulement : une actualisation
+        // garde la liste affichée
+        if (menuProv.loading && menuProv.menus.isEmpty) {
+          return Column(children: [
+            enTete,
+            Expanded(
+              child: ListView(
+                  padding: const EdgeInsets.all(14),
+                  children:
+                      List.generate(4, (_) => const ShimmerCard(height: 98))),
+            ),
+          ]);
+        }
+
+        if (menuProv.error != null && menuProv.menus.isEmpty) {
+          return Column(children: [
+            enTete,
+            Expanded(
+              child: _defilable(EmptyState(
+                icon: Icons.cloud_off_rounded,
+                title: 'Chargement impossible',
+                subtitle: menuProv.error,
+                action: ElevatedButton.icon(
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Réessayer'),
+                  onPressed: _recharger,
+                ),
+              )),
+            ),
+          ]);
+        }
+
+        _appliquerCible(menuProv);
 
         final menusFiltres = menuProv.menus.where((m) {
           final okAgence =
@@ -250,20 +304,21 @@ class _MenuScreenState extends State<MenuScreen> {
         }
 
         return Column(children: [
-          _FiltresBar(
-            agences: agences,
-            equipes: equipes,
-            agenceSelectionnee: agenceSel,
-            equipeSelectionnee: equipeSel,
-            onAgenceChanged: (a) => setState(() {
-              _agenceSelectionnee = a;
-              _menuSelectionne = null;
-            }),
-            onEquipeChanged: (e) => setState(() {
-              _equipeSelectionnee = e;
-              _menuSelectionne = null;
-            }),
-          ),
+          enTete,
+          // Actualisation en échec : les menus affichés peuvent être périmés
+          if (menuProv.error != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+              child: BandeauInfo(
+                icone: Icons.cloud_off_rounded,
+                ton: TonPastille.rouge,
+                texte: 'Actualisation impossible : ${menuProv.error}',
+                action: TextButton(
+                  onPressed: menuProv.loading ? null : _recharger,
+                  child: const Text('Réessayer'),
+                ),
+              ),
+            ),
           if (menusFiltres.isNotEmpty)
             _JoursSelector(
               menus: menusFiltres,
@@ -305,11 +360,30 @@ class _EquipeLocal {
   const _EquipeLocal({required this.id, required this.nom});
 }
 
+/// Commande active (en attente ou retirée) pour ce menu, sinon pour le même
+/// jour dans un autre menu (autre agence / équipe).
+(Commande?, Commande?) _commandesDuJour(List<Commande> commandes, Menu menu) {
+  bool active(Commande c) =>
+      c.statut == StatutCommande.enAttente ||
+      c.statut == StatutCommande.retiree;
+  final ceMenu = commandes
+      .where((c) => c.menuDetail?.id == menu.id && active(c))
+      .firstOrNull;
+  final ceJour = ceMenu ??
+      commandes
+          .where((c) => c.menuDetail?.dateMenu == menu.dateMenu && active(c))
+          .firstOrNull;
+  return (ceMenu, ceJour);
+}
+
+String _minuscule(String s) =>
+    s.isEmpty ? s : s[0].toLowerCase() + s.substring(1);
+
 // ══════════════════════════════════════════════════════════════
-// BARRE DE FILTRES
+// FILTRES (feuille ouverte depuis l'en-tête)
 // ══════════════════════════════════════════════════════════════
 
-class _FiltresBar extends StatelessWidget {
+class _FiltresSheet extends StatelessWidget {
   final Map<String, String> agences;
   final Map<String, String> equipes;
   final _AgenceLocal? agenceSelectionnee;
@@ -317,7 +391,7 @@ class _FiltresBar extends StatelessWidget {
   final ValueChanged<_AgenceLocal?> onAgenceChanged;
   final ValueChanged<_EquipeLocal?> onEquipeChanged;
 
-  const _FiltresBar({
+  const _FiltresSheet({
     required this.agences,
     required this.equipes,
     required this.agenceSelectionnee,
@@ -326,98 +400,87 @@ class _FiltresBar extends StatelessWidget {
     required this.onEquipeChanged,
   });
 
+  static Future<void> show(
+    BuildContext context, {
+    required Map<String, String> agences,
+    required Map<String, String> equipes,
+    required _AgenceLocal? agenceSelectionnee,
+    required _EquipeLocal? equipeSelectionnee,
+    required ValueChanged<_AgenceLocal?> onAgenceChanged,
+    required ValueChanged<_EquipeLocal?> onEquipeChanged,
+  }) =>
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (_) => _FiltresSheet(
+          agences: agences,
+          equipes: equipes,
+          agenceSelectionnee: agenceSelectionnee,
+          equipeSelectionnee: equipeSelectionnee,
+          onAgenceChanged: onAgenceChanged,
+          onEquipeChanged: onEquipeChanged,
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkCard : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          )
-        ],
-      ),
-      child: Column(children: [
-        Row(children: [
-          Icon(Icons.location_on_rounded, color: AppColors.accent, size: 18),
-          const SizedBox(width: 8),
-          Expanded(
-              child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: agenceSelectionnee?.id,
-              hint: const Text('Toutes les agences',
-                  style: TextStyle(fontSize: 13)),
-              isExpanded: true,
-              isDense: true,
-              icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
-              items: [
-                const DropdownMenuItem(
-                    value: null,
-                    child: Text('Toutes les agences',
-                        style: TextStyle(fontSize: 13))),
-                ...agences.entries.map((e) => DropdownMenuItem(
-                      value: e.key,
-                      child: Text(e.value,
-                          style: const TextStyle(fontSize: 13),
-                          overflow: TextOverflow.ellipsis),
-                    )),
-              ],
-              onChanged: (id) => onAgenceChanged(
-                  id == null ? null : _AgenceLocal(id: id, nom: agences[id]!)),
+    void choisir(VoidCallback appliquer) {
+      appliquer();
+      Navigator.of(context).pop();
+    }
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Filtrer les menus',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          const LibelleSection('Agence'),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            FiltrePastille(
+              label: 'Toutes les agences',
+              actif: agenceSelectionnee == null,
+              onTap: () => choisir(() => onAgenceChanged(null)),
             ),
-          )),
-        ]),
-        if (equipes.isNotEmpty) ...[
-          Divider(
-              height: 8,
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-          Row(children: [
-            Icon(Icons.groups_rounded,
-                color: isDark ? AppColors.accent : AppColors.primary, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-                child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: equipeSelectionnee?.id,
-                hint: const Text('Toutes les équipes',
-                    style: TextStyle(fontSize: 13)),
-                isExpanded: true,
-                isDense: true,
-                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
-                items: [
-                  const DropdownMenuItem(
-                      value: null,
-                      child: Text('Toutes les équipes',
-                          style: TextStyle(fontSize: 13))),
-                  ...equipes.entries.map((e) => DropdownMenuItem(
-                        value: e.key,
-                        child: Text(e.value,
-                            style: const TextStyle(fontSize: 13),
-                            overflow: TextOverflow.ellipsis),
-                      )),
-                ],
-                onChanged: (id) => onEquipeChanged(id == null
-                    ? null
-                    : _EquipeLocal(id: id, nom: equipes[id]!)),
+            for (final e in agences.entries)
+              FiltrePastille(
+                label: e.value,
+                actif: agenceSelectionnee?.id == e.key,
+                onTap: () => choisir(() =>
+                    onAgenceChanged(_AgenceLocal(id: e.key, nom: e.value))),
               ),
-            )),
           ]),
-        ],
-      ]),
+          if (equipes.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            const LibelleSection('Équipe'),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              FiltrePastille(
+                label: 'Toutes les équipes',
+                actif: equipeSelectionnee == null,
+                onTap: () => choisir(() => onEquipeChanged(null)),
+              ),
+              for (final e in equipes.entries)
+                FiltrePastille(
+                  label: e.value,
+                  actif: equipeSelectionnee?.id == e.key,
+                  onTap: () => choisir(() =>
+                      onEquipeChanged(_EquipeLocal(id: e.key, nom: e.value))),
+                ),
+            ]),
+          ],
+        ]),
+      ),
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════════
-// SÉLECTEUR JOURS
+// SÉLECTEUR JOURS (avec l'état de chaque jour)
 // ══════════════════════════════════════════════════════════════
 
 class _JoursSelector extends StatelessWidget {
@@ -435,111 +498,159 @@ class _JoursSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final commandes = context.watch<CommandeProvider>().mesCommandes;
     // Plusieurs menus le même jour (équipes / agences) : 2e ligne explicative
     final parDate = <String, int>{};
     for (final m in menus) {
       parDate[m.dateMenu] = (parDate[m.dateMenu] ?? 0) + 1;
     }
     final avecSousTitre = parDate.values.any((n) => n > 1);
-    return SizedBox(
-      height: avecSousTitre ? 80 : 68,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        itemCount: menus.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          final menu = menus[i];
-          final date = DateTime.tryParse(menu.dateMenu);
-          final isSelected = selected?.id == menu.id;
-          final isToday = menu.isToday;
-
-          final jourStr = date != null
-              ? DateFormat('EEE', 'fr_FR').format(date).toUpperCase()
-              : '—';
-          final numStr =
-              date != null ? DateFormat('d', 'fr_FR').format(date) : '—';
-          final sousTitre = (parDate[menu.dateMenu] ?? 0) > 1
-              ? (distinguerParAgence ? menu.agenceNom : menu.typeEquipeLibelle)
-              : null;
-
-          final borderColor = isSelected
-              ? AppColors.primary
-              : isToday
-                  ? AppColors.accent
-                  : (isDark ? AppColors.darkBorder : AppColors.lightBorder);
-
-          final bgColor = isSelected
-              ? AppColors.primary
-              : isToday
-                  ? AppColors.accent.withOpacity(0.15)
-                  : Colors.transparent;
-
-          final jourColor = isSelected
-              ? Colors.white
-              : isToday
-                  ? AppColors.accent
-                  : (isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary);
-
-          final numColor = isSelected
-              ? Colors.white
-              : isToday
-                  ? (isDark ? AppColors.accent : AppColors.primary)
-                  : (isDark
-                      ? AppColors.darkTextPrimary
-                      : AppColors.lightTextPrimary);
-
-          return GestureDetector(
-            onTap: () => onSelected(menu),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: avecSousTitre ? 72 : 56,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: borderColor,
-                  width: isSelected || isToday ? 2 : 1,
+    return TicEcheance(
+      echeances: [for (final m in menus) m.dateLimiteCommande],
+      builder: (context) => LayoutBuilder(builder: (_, contraintes) {
+        const marge = 14.0, ecart = 8.0;
+        final n = menus.length;
+        final dispo = contraintes.maxWidth - 2 * marge;
+        final largeur = n <= 5
+            ? ((dispo - ecart * (n - 1)) / n).clamp(56.0, 96.0)
+            : (avecSousTitre ? 74.0 : 64.0);
+        return SizedBox(
+          height: avecSousTitre ? 92 : 80,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(marge, 12, marge, 0),
+            itemCount: n,
+            separatorBuilder: (_, __) => const SizedBox(width: ecart),
+            itemBuilder: (_, i) {
+              final menu = menus[i];
+              final (_, ceJour) = _commandesDuJour(commandes, menu);
+              return SizedBox(
+                width: largeur,
+                child: _JourChip(
+                  menu: menu,
+                  selectionne: selected?.id == menu.id,
+                  reserve: ceJour != null,
+                  sousTitre: (parDate[menu.dateMenu] ?? 0) > 1
+                      ? (distinguerParAgence
+                          ? menu.agenceNom
+                          : menu.typeEquipeLibelle)
+                      : null,
+                  onTap: () => onSelected(menu),
                 ),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(jourStr,
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: jourColor)),
-                  const SizedBox(height: 2),
-                  Text(numStr,
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: numColor)),
-                  if (sousTitre != null)
-                    Text(sousTitre,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w500,
-                            color: jourColor)),
-                ],
-              ),
-            ),
-          );
-        },
+              );
+            },
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _JourChip extends StatelessWidget {
+  final Menu menu;
+  final bool selectionne;
+  final bool reserve;
+  final String? sousTitre;
+  final VoidCallback onTap;
+  const _JourChip({
+    required this.menu,
+    required this.selectionne,
+    required this.reserve,
+    required this.sousTitre,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final date = DateTime.tryParse(menu.dateMenu);
+    final ouvert = !menu.commandeFermee;
+    // Sélection : marine (vert en mode sombre, le marine y est invisible)
+    final fondSel = isDark ? AppColors.accent : AppColors.primary;
+    final texteSel = isDark ? AppColors.primary : Colors.white;
+    final texte = selectionne
+        ? texteSel
+        : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary);
+    final gris = selectionne
+        ? texteSel.withOpacity(0.75)
+        : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary);
+
+    final IconData icone;
+    final Color couleurIcone;
+    final String etat;
+    if (reserve) {
+      icone = Icons.check_circle_rounded;
+      couleurIcone = selectionne
+          ? (isDark ? AppColors.primary : AppColors.accent)
+          : (isDark ? AppColors.accent : const Color(0xFF1F9D55));
+      etat = 'réservé';
+    } else if (ouvert) {
+      icone = Icons.add_circle_outline_rounded;
+      couleurIcone = selectionne
+          ? (isDark ? AppColors.primary : AppColors.accent)
+          : AppColors.accentDark;
+      etat = 'à réserver';
+    } else {
+      icone = Icons.lock_outline_rounded;
+      couleurIcone = gris;
+      etat = 'commandes fermées';
+    }
+
+    final jour = date != null ? jourCourt(date) : '—';
+    final num = date != null ? '${date.day}' : '—';
+    return Semantics(
+      button: true,
+      selected: selectionne,
+      label: [
+        if (date != null) DateFormat('EEEE d MMMM', 'fr_FR').format(date),
+        if (menu.isToday) "aujourd'hui",
+        if (sousTitre != null) sousTitre!,
+        etat,
+      ].join(', '),
+      excludeSemantics: true,
+      child: Material(
+        color: selectionne
+            ? fondSel
+            : (isDark ? AppColors.darkCard : AppColors.lightCard),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: selectionne
+                ? fondSel
+                : menu.isToday
+                    ? AppColors.accentDark
+                    : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+            width: !selectionne && menu.isToday ? 1.6 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+            child:
+                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(jour, style: TextStyle(fontSize: 11, color: gris)),
+              Text(num,
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w800, color: texte)),
+              if (sousTitre != null)
+                Text(sousTitre!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 9, fontWeight: FontWeight.w500, color: gris)),
+              Icon(icone, size: 15, color: couleurIcone),
+            ]),
+          ),
+        ),
       ),
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════════
-// DÉTAIL DU MENU — ✅ CORRIGÉ : chaque info sur sa propre ligne
+// DÉTAIL DU MENU : statut du jour (une seule fois) + plats compacts
 // ══════════════════════════════════════════════════════════════
 
 class _MenuDetail extends StatelessWidget {
@@ -547,164 +658,359 @@ class _MenuDetail extends StatelessWidget {
 
   const _MenuDetail({required this.menu});
 
+  /// Reconstruit à l'heure limite de commande / d'annulation : bandeau,
+  /// « Réserver » et « Annuler » se ferment sans action de l'utilisateur.
   @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final iconColor =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+  Widget build(BuildContext context) => TicEcheance(
+        echeances: [menu.dateLimiteCommande, menu.dateLimiteAnnulation],
+        builder: _contenu,
+      );
 
-    if (menu.menuPlats.isEmpty) {
-      // ListView : l'actualisation par glissement reste possible
-      return ListView(children: const [
-        EmptyState(
-          icon: Icons.no_meals_rounded,
-          title: 'Aucun plat',
-          subtitle: 'Aucun plat ajouté pour ce menu',
-        ),
-      ]);
-    }
+  Widget _contenu(BuildContext context) {
+    final cmdProv = context.watch<CommandeProvider>();
+    final (ceMenu, ceJour) = _commandesDuJour(cmdProv.mesCommandes, menu);
+    final autreMenuCeJour = ceMenu == null ? ceJour : null;
+    final peutReserver =
+        ceMenu == null && autreMenuCeJour == null && !menu.commandeFermee;
+    final nb = menu.menuPlats.length;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 100),
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12, top: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Ligne 1 : Label ────────────────────────────
-              Text(
-                menu.isToday ? 'Menu du jour' : 'Menu',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: AppColors.accent, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 2),
-
-              // ── Ligne 2 : Date complète ────────────────────
-              // maxLines: 2 + ellipsis → plus jamais de overflow
-              Text(
-                _dateMenuLongue(menu),
-                style: Theme.of(context).textTheme.titleLarge,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 6),
-
-              // ── Ligne 3 : Statut commande ──────────────────
-              _DelaiBadge(menu: menu),
-              const SizedBox(height: 6),
-
-              // ── Ligne 4 : Agence + Équipe ──────────────────
-              Row(
-                children: [
-                  Icon(Icons.location_on_rounded, size: 12, color: iconColor),
-                  const SizedBox(width: 3),
-                  Flexible(
-                    child: Text(
-                      menu.agenceNom,
-                      style: Theme.of(context).textTheme.bodySmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(Icons.groups_rounded, size: 12, color: iconColor),
-                  const SizedBox(width: 3),
-                  Flexible(
-                    child: Text(
-                      menu.typeEquipeLibelle,
-                      style: Theme.of(context).textTheme.bodySmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+        if (ceMenu != null) ...[
+          _CarteVotreRepas(commande: ceMenu, menu: menu),
+          ..._bandeauAnnulation(context, cmdProv, ceMenu),
+        ] else if (autreMenuCeJour != null)
+          _bandeauAutreMenu(autreMenuCeJour)
+        else if (!menu.commandeFermee)
+          BandeauInfo(
+            icone: Icons.alarm_rounded,
+            ton: TonPastille.or,
+            texte: [
+              'Commandes ouvertes',
+              if (fermeDans(menu.dateLimiteCommande, DateTime.now()) != null)
+                _minuscule(fermeDans(menu.dateLimiteCommande, DateTime.now())!),
+            ].join(' · '),
+          )
+        else
+          const BandeauInfo(
+            icone: Icons.lock_outline_rounded,
+            ton: TonPastille.gris,
+            texte: 'Commandes fermées pour ce jour',
           ),
-        ),
-
-        // ── Plats ──────────────────────────────────────────
-        ...menu.menuPlats
-            .map((mp) => _PlatCommandeCard(plat: mp.plat, menu: menu)),
+        const SizedBox(height: 6),
+        if (nb == 0)
+          const EmptyState(
+            icon: Icons.no_meals_rounded,
+            title: 'Aucun plat',
+            subtitle: 'Aucun plat ajouté pour ce menu',
+          )
+        else ...[
+          LibelleSection(peutReserver
+              ? 'Choisissez 1 plat sur $nb'
+              : '$nb ${nb > 1 ? 'plats proposés' : 'plat proposé'}'),
+          for (final mp in menu.menuPlats)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _CartePlat(
+                plat: mp.plat,
+                menu: menu,
+                commandee: ceMenu?.platDetail?.id == mp.plat.id,
+                // Un autre repas est déjà choisi ce jour : plats grisés
+                grisee:
+                    (ceMenu != null && ceMenu.platDetail?.id != mp.plat.id) ||
+                        autreMenuCeJour != null,
+                peutReserver: peutReserver,
+              ),
+            ),
+        ],
       ],
+    );
+  }
+
+  List<Widget> _bandeauAnnulation(
+      BuildContext context, CommandeProvider cmdProv, Commande c) {
+    if (c.statut != StatutCommande.enAttente || c.estNonRetiree()) return [];
+    final Widget bandeau;
+    if (!menu.annulationFermee) {
+      final delai = fermeDans(menu.dateLimiteAnnulation, DateTime.now());
+      bandeau = BandeauInfo(
+        icone: Icons.timer_outlined,
+        ton: TonPastille.or,
+        texte: [
+          'Annulation possible',
+          if (delai != null) _minuscule(delai),
+        ].join(' · '),
+        action: TextButton(
+          style: TextButton.styleFrom(foregroundColor: AppColors.error),
+          onPressed: cmdProv.isLoading
+              ? null
+              : () =>
+                  _confirmerAnnulationCommande(context, cmdProv, menu, c.id),
+          child: const Text('Annuler',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+        ),
+      );
+    } else {
+      bandeau = BandeauInfo(
+        icone: Icons.lock_outline_rounded,
+        ton: TonPastille.gris,
+        texte: menu.commandeFermee
+            ? 'Commandes et annulations fermées pour ce jour'
+            : 'Annulation fermée pour ce jour',
+      );
+    }
+    return [const SizedBox(height: 10), bandeau];
+  }
+
+  Widget _bandeauAutreMenu(Commande c) {
+    final agence = c.menuDetail?.agenceNom ?? 'une autre agence';
+    final plat = c.platDetail?.nom ?? 'un plat';
+    final annulable = c.statut == StatutCommande.enAttente &&
+        !(c.menuDetail?.annulationFermee ?? true);
+    return BandeauInfo(
+      icone: Icons.location_off_rounded,
+      ton: TonPastille.rouge,
+      texte: 'Vous avez déjà commandé « $plat » chez $agence ce jour.'
+          '${annulable ? '\nAnnulez cette commande pour en passer une autre.' : ''}',
+    );
+  }
+}
+
+/// Carte verte « Votre repas » (le jour a déjà une commande)
+class _CarteVotreRepas extends StatelessWidget {
+  final Commande commande;
+  final Menu menu;
+  const _CarteVotreRepas({required this.commande, required this.menu});
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateTime.tryParse(menu.dateMenu);
+    final retiree = commande.statut == StatutCommande.retiree;
+    final nonRetiree = commande.estNonRetiree();
+    final plat = commande.platDetail;
+    final platDuMenu = menu.menuPlats
+        .where((mp) => mp.plat.id == plat?.id)
+        .map((mp) => mp.plat)
+        .firstOrNull;
+    final etat = retiree
+        ? 'Retiré'
+        : nonRetiree
+            ? 'Non retiré'
+            : 'À retirer au comptoir';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        // Fiche du plat commandé (avis, annulation)
+        onTap: platDuMenu == null
+            ? null
+            : () =>
+                _PlatDetailSheet.show(context, menu: menu, plat: platDuMenu),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+                colors: [Color(0xFF1F9D55), Color(0xFF3EC970)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.22),
+                  borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.restaurant_rounded,
+                  color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                        'Votre repas'
+                        '${date != null ? ' · ${DateFormat('EEEE d MMMM', 'fr_FR').format(date)}' : ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.85),
+                            fontSize: 11.5)),
+                    Text(plat?.nom ?? 'Repas commandé',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700)),
+                    Text('$etat · ${menu.agenceNom}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.85),
+                            fontSize: 11.5)),
+                  ]),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                  color: Colors.white, borderRadius: BorderRadius.circular(20)),
+              child: Text(
+                  retiree
+                      ? 'Retirée'
+                      : nonRetiree
+                          ? 'Non retirée'
+                          : 'En attente',
+                  style: const TextStyle(
+                      color: Color(0xFF1F9D55),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════════
-// CARTE PLAT
+// CARTE PLAT COMPACTE (la grande photo reste dans la fiche détaillée)
 // ══════════════════════════════════════════════════════════════
 
-class _PlatCommandeCard extends StatelessWidget {
+class _CartePlat extends StatefulWidget {
   final Plat plat;
   final Menu menu;
+  final bool commandee;
+  final bool grisee;
+  final bool peutReserver;
 
-  const _PlatCommandeCard({required this.plat, required this.menu});
+  const _CartePlat({
+    required this.plat,
+    required this.menu,
+    required this.commandee,
+    required this.grisee,
+    required this.peutReserver,
+  });
+
+  @override
+  State<_CartePlat> createState() => _CartePlatState();
+}
+
+class _CartePlatState extends State<_CartePlat> {
+  bool _envoi = false;
+
+  Future<void> _reserver(CommandeProvider cmdProv) async {
+    setState(() => _envoi = true);
+    await _reserverPlat(context, cmdProv, widget.menu, widget.plat);
+    if (mounted) setState(() => _envoi = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GestureDetector(
-      // Toute la carte ouvre la fiche détaillée du plat
-      onTap: () => _PlatDetailSheet.show(context, menu: menu, plat: plat),
-      child: Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkCard : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          )
-        ],
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          child: plat.imageUrl != null
-              ? Image.network(plat.imageUrl!,
-                  height: 200,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _imagePlaceholder())
-              : _imagePlaceholder(),
+    final cmdProv = context.watch<CommandeProvider>();
+    final plat = widget.plat;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final description = plat.descriptionUtile;
+    final type = plat.typePlatLibelle;
+
+    Widget? note;
+    if (plat.noteMoyenne != null && (plat.nbAvis ?? 1) > 0) {
+      note = Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.star_rounded, size: 14, color: kCouleurEtoile),
+        const SizedBox(width: 2),
+        Text(
+            formatNoteMoyenne(plat.noteMoyenne!) +
+                (plat.nbAvis != null ? ' · ${plat.nbAvis} avis' : ''),
+            style: TextStyle(fontSize: 11, color: gris)),
+      ]);
+    } else if (plat.nbAvis == 0) {
+      note =
+          Text('Pas encore noté', style: TextStyle(fontSize: 11, color: gris));
+    }
+
+    final Widget? droite = widget.commandee
+        ? const Icon(Icons.check_circle_rounded,
+            color: AppColors.accentDark, size: 26, semanticLabel: 'Commandé')
+        : widget.peutReserver
+            ? BoutonVert(
+                label: 'Réserver',
+                compact: true,
+                chargement: _envoi,
+                onPressed: cmdProv.isLoading ? null : () => _reserver(cmdProv),
+              )
+            : null;
+
+    final carte = Material(
+      color: isDark ? AppColors.darkCard : AppColors.lightCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: widget.commandee
+              ? AppColors.accentDark
+              : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+          width: widget.commandee ? 2 : 1,
         ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(plat.nom,
-                style: Theme.of(context)
-                    .textTheme
-                    .headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.w800)),
-            if (plat.description.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(plat.description,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-            ],
-            if (plat.typePlatLibelle != null) ...[
-              const SizedBox(height: 10),
-              _Tag(
-                  icon: Icons.eco_outlined,
-                  label: plat.typePlatLibelle!,
-                  color: AppColors.accent),
-            ],
-            const SizedBox(height: 16),
-            _BoutonCommander(plat: plat, menu: menu),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        // Toute la carte ouvre la fiche détaillée du plat
+        onTap: () =>
+            _PlatDetailSheet.show(context, menu: widget.menu, plat: plat),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(children: [
+            VignettePlat(url: plat.imageUrl, taille: 78, rayon: 12),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(plat.nom,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    if (description != null) ...[
+                      const SizedBox(height: 2),
+                      Text(description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11.5, color: gris)),
+                    ],
+                    if (type != null || note != null) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (type != null)
+                              PastilleStatut(
+                                  label: type,
+                                  ton: type.toLowerCase().contains('principal')
+                                      ? TonPastille.vert
+                                      : TonPastille.bleu),
+                            if (note != null) note,
+                          ]),
+                    ],
+                  ]),
+            ),
+            if (droite != null) ...[const SizedBox(width: 8), droite],
           ]),
         ),
-      ]),
       ),
     );
+    return widget.grisee ? Opacity(opacity: 0.55, child: carte) : carte;
   }
-
-  Widget _imagePlaceholder() => const _ImagePlaceholder(height: 200);
 }
 
 class _ImagePlaceholder extends StatelessWidget {
@@ -887,8 +1193,8 @@ class _BoutonCommander extends StatelessWidget {
               // Pas de second envoi pendant une action en cours
               onPressed: cmdProv.isLoading
                   ? null
-                  : () => _confirmerAnnulation(
-                      context, cmdProv, commandeCeMenu.id),
+                  : () => _confirmerAnnulationCommande(
+                      context, cmdProv, menu, commandeCeMenu.id),
             ),
           ),
         ],
@@ -911,7 +1217,8 @@ class _BoutonCommander extends StatelessWidget {
           bg: secBg,
         ),
         // Conseil d'annulation seulement si elle est encore possible
-        if (commandeCeMenu.statut == StatutCommande.enAttente && !annulationFermee) ...[
+        if (commandeCeMenu.statut == StatutCommande.enAttente &&
+            !annulationFermee) ...[
           const SizedBox(height: 6),
           Text(
             'Annulez "${commandeCeMenu.platDetail?.nom ?? 'votre commande'}" '
@@ -969,102 +1276,106 @@ class _BoutonCommander extends StatelessWidget {
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
           elevation: 0,
         ),
-        onPressed:
-            cmdProv.isLoading ? null : () => _commander(context, cmdProv),
+        onPressed: cmdProv.isLoading
+            ? null
+            : () => _reserverPlat(context, cmdProv, menu, plat),
       ),
     );
   }
+}
 
-  void _commander(BuildContext context, CommandeProvider cmdProv) async {
-    if (cmdProv.isLoading) return;
-    final facturation = context.read<FacturationProvider>();
-    final ok = await cmdProv.commander(menuId: menu.id, platId: plat.id);
-    // « Ma facturation » doit refléter la nouvelle commande
-    if (ok) facturation.charger();
-    if (ok && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Row(children: [
-          const Icon(Icons.check_circle_rounded, color: Colors.white),
-          const SizedBox(width: 8),
-          Expanded(child: Text('${plat.nom} — commande confirmée !')),
-        ]),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(12),
-      ));
-    } else if (!ok && context.mounted && cmdProv.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(cmdProv.error!),
-        backgroundColor: AppColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(12),
-      ));
-      cmdProv.clearMessages();
-    }
-    // Refus du serveur (commande déjà passée ailleurs, délai…) : la liste
-    // locale est peut-être périmée, on la recharge
-    if (!ok) cmdProv.loadMesCommandes();
+/// Réserve [plat] (carte compacte et fiche détaillée : mêmes messages)
+Future<void> _reserverPlat(BuildContext context, CommandeProvider cmdProv,
+    Menu menu, Plat plat) async {
+  if (cmdProv.isLoading) return;
+  final facturation = context.read<FacturationProvider>();
+  final ok = await cmdProv.commander(menuId: menu.id, platId: plat.id);
+  // « Ma facturation » doit refléter la nouvelle commande
+  if (ok) facturation.charger();
+  if (ok && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(children: [
+        const Icon(Icons.check_circle_rounded, color: Colors.white),
+        const SizedBox(width: 8),
+        Expanded(child: Text('${plat.nom} — commande confirmée !')),
+      ]),
+      backgroundColor: AppColors.success,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(12),
+    ));
+  } else if (!ok && context.mounted && cmdProv.error != null) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(cmdProv.error!),
+      backgroundColor: AppColors.error,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(12),
+    ));
+    cmdProv.clearMessages();
   }
+  // Refus du serveur (commande déjà passée ailleurs, délai…) : la liste
+  // locale est peut-être périmée, on la recharge
+  if (!ok) cmdProv.loadMesCommandes();
+}
 
-  void _confirmerAnnulation(
-      BuildContext context, CommandeProvider cmdProv, int commandeId) {
-    showDialog(
-        context: context,
-        builder: (dialogCtx) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: const Row(children: [
-                Icon(Icons.warning_amber_rounded, color: AppColors.warning),
-                SizedBox(width: 8),
-                Text('Annuler ?'),
-              ]),
-              content: Text(
-                'Voulez-vous annuler cette commande ?'
-                '${menu.dateLimiteAnnulation != null ? '\n\nAnnulation possible jusqu\'au ${libelleDateLimite(menu.dateLimiteAnnulation!)}.' : ''}',
+/// Confirmation puis annulation de sa commande (carte « Votre repas »,
+/// fiche détaillée)
+void _confirmerAnnulationCommande(
+    BuildContext context, CommandeProvider cmdProv, Menu menu, int commandeId) {
+  showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(children: [
+              Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+              SizedBox(width: 8),
+              Text('Annuler ?'),
+            ]),
+            content: Text(
+              'Voulez-vous annuler cette commande ?'
+              '${menu.dateLimiteAnnulation != null ? '\n\nAnnulation possible jusqu\'au ${libelleDateLimite(menu.dateLimiteAnnulation!)}.' : ''}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('Non, garder'),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogCtx),
-                  child: const Text('Non, garder'),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.error,
+                  foregroundColor: Colors.white,
                 ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.error,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () async {
-                    // Capturés avant l'await : la carte peut disparaître
-                    final messenger = ScaffoldMessenger.of(context);
-                    final facturation = context.read<FacturationProvider>();
-                    Navigator.pop(dialogCtx);
-                    if (cmdProv.isLoading) return;
-                    final ok = await cmdProv.annuler(commandeId);
-                    if (ok) {
-                      facturation.charger();
-                    } else {
-                      // Commande retirée / annulée entre-temps : on resynchronise
-                      cmdProv.loadMesCommandes();
-                    }
-                    messenger.showSnackBar(SnackBar(
-                      content: Text(ok
-                          ? 'Commande annulée'
-                          : (cmdProv.error ??
-                              'Impossible d\'annuler la commande')),
-                      backgroundColor:
-                          ok ? AppColors.warning : AppColors.error,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      margin: const EdgeInsets.all(12),
-                    ));
-                  },
-                  child: const Text('Oui, annuler'),
-                ),
-              ],
-            ));
-  }
+                onPressed: () async {
+                  // Capturés avant l'await : la carte peut disparaître
+                  final messenger = ScaffoldMessenger.of(context);
+                  final facturation = context.read<FacturationProvider>();
+                  Navigator.pop(dialogCtx);
+                  if (cmdProv.isLoading) return;
+                  final ok = await cmdProv.annuler(commandeId);
+                  if (ok) {
+                    facturation.charger();
+                  } else {
+                    // Commande retirée / annulée entre-temps : on resynchronise
+                    cmdProv.loadMesCommandes();
+                  }
+                  messenger.showSnackBar(SnackBar(
+                    content: Text(ok
+                        ? 'Commande annulée'
+                        : (cmdProv.error ??
+                            'Impossible d\'annuler la commande')),
+                    backgroundColor: ok ? AppColors.warning : AppColors.error,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    margin: const EdgeInsets.all(12),
+                  ));
+                },
+                child: const Text('Oui, annuler'),
+              ),
+            ],
+          ));
 }
 
 class _StatutBouton extends StatelessWidget {
@@ -1266,7 +1577,6 @@ class _PlatDetailSheetState extends State<_PlatDetailSheet> {
                           ]);
                         },
                       ),
-
                     ],
                   ),
                 ),
@@ -1369,8 +1679,7 @@ class _PhotosCarouselState extends State<_PhotosCarousel> {
                     borderRadius: BorderRadius.circular(4),
                     boxShadow: [
                       BoxShadow(
-                          color: Colors.black.withOpacity(0.25),
-                          blurRadius: 3)
+                          color: Colors.black.withOpacity(0.25), blurRadius: 3)
                     ],
                   ),
                 );

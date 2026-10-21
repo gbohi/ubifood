@@ -33,111 +33,113 @@ class _AllergiesScreenState extends State<AllergiesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canPop = Navigator.of(context).canPop();
+    final prov = context.watch<AllergieProvider>();
+    // Liste vide : un seul bouton d'ajout (celui de l'état vide)
+    final vide = prov.allergies.isEmpty;
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leading: canPop
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-                tooltip: 'Retour',
-              )
-            : null,
-        title: const Text('Mes allergies'),
-        toolbarHeight: canPop ? kToolbarHeight : 0,
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.accent,
-        foregroundColor: AppColors.primary,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Ajouter',
-            style: TextStyle(fontWeight: FontWeight.w700)),
-        onPressed: () => _showDialog(context),
-      ),
-      body: Consumer<AllergieProvider>(builder: (_, prov, __) {
-        // Squelettes au premier chargement : une actualisation garde la liste
-        if (prov.loading && prov.allergies.isEmpty) {
-          return ListView(
-              padding: const EdgeInsets.all(16),
-              children: List.generate(4, (_) => const ShimmerCard(height: 64)));
-        }
-
-        if (_echecChargement && prov.allergies.isEmpty) {
-          return EmptyState(
-            icon: Icons.cloud_off_rounded,
-            title: 'Chargement impossible',
-            subtitle: prov.error ?? 'Impossible de charger les allergies',
-            action: AppButton(
-              label: 'Réessayer',
-              icon: Icons.refresh_rounded,
-              width: 200,
-              onPressed: _charger,
-            ),
-          );
-        }
-
-        if (prov.allergies.isEmpty) {
-          return EmptyState(
-            icon: Icons.check_circle_outline_rounded,
-            title: 'Aucune allergie enregistrée',
-            subtitle:
-                'Ajoutez vos allergies alimentaires pour que\nla cantine en tienne compte.',
-            action: AppButton(
-              label: 'Ajouter une allergie',
-              icon: Icons.add_rounded,
-              width: 220,
+      floatingActionButton: vide
+          ? null
+          : FloatingActionButton.extended(
+              backgroundColor: AppColors.accent,
+              foregroundColor: AppColors.primary,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Ajouter',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
               onPressed: () => _showDialog(context),
             ),
-          );
-        }
-
-        return Column(children: [
-          // ── Bannière info ─────────────────────────────────
-          Container(
-            margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.warning.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.warning.withOpacity(0.3)),
-            ),
-            child: Row(children: [
-              const Icon(Icons.info_outline_rounded,
-                  color: AppColors.warning, size: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                  child: Text(
-                '${prov.allergies.length} allergie(s) enregistrée(s). '
-                'Ces informations sont transmises à la cantine.',
-                style: const TextStyle(fontSize: 12, color: AppColors.warning),
-              )),
-            ]),
-          ),
-
-          // ── Liste allergies ───────────────────────────────
-          Expanded(
-              child: RefreshIndicator(
-            onRefresh: _charger,
-            child: ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
-            // Marge basse : le bouton « Ajouter » ne masque pas la
-            // dernière carte (boutons modifier / supprimer)
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-            itemCount: prov.allergies.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (_, i) {
-              final a = prov.allergies[i];
-              return _AllergieCard(
-                allergie: a,
-                onEdit: () => _showDialog(context, allergie: a),
-                onDelete: () => _confirmerSuppression(context, prov, a),
-              );
-            },
-          ))),
-        ]);
-      }),
+      body: Column(children: [
+        const EnTeteMarine(
+          titre: 'Mes allergies',
+          sousTitre: 'Transmises à la cantine',
+        ),
+        Expanded(child: _contenu(context, prov)),
+      ]),
     );
+  }
+
+  Widget _contenu(BuildContext context, AllergieProvider prov) {
+    // Squelettes au premier chargement : une actualisation garde la liste
+    if (prov.loading && prov.allergies.isEmpty) {
+      return ListView(
+          padding: const EdgeInsets.all(16),
+          children: List.generate(4, (_) => const ShimmerCard(height: 64)));
+    }
+
+    if (_echecChargement && prov.allergies.isEmpty) {
+      return EmptyState(
+        icon: Icons.cloud_off_rounded,
+        title: 'Chargement impossible',
+        subtitle: prov.error ?? 'Impossible de charger les allergies',
+        action: AppButton(
+          label: 'Réessayer',
+          icon: Icons.refresh_rounded,
+          width: 200,
+          onPressed: _charger,
+        ),
+      );
+    }
+
+    if (prov.allergies.isEmpty) {
+      return EmptyState(
+        icon: Icons.warning_amber_rounded,
+        title: 'Aucune allergie enregistrée',
+        subtitle:
+            'Ajoutez vos allergies alimentaires pour que\nla cantine en tienne compte.',
+        action: SizedBox(
+          width: 240,
+          child: BoutonVert(
+            label: 'Ajouter une allergie',
+            icone: Icons.add_rounded,
+            onPressed: () => _showDialog(context),
+          ),
+        ),
+      );
+    }
+
+    return Column(children: [
+      // ── Bannière info ─────────────────────────────────
+      Container(
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.info_outline_rounded,
+              color: AppColors.warning, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+              child: Text(
+            '${prov.allergies.length} allergie(s) enregistrée(s). '
+            'Ces informations sont transmises à la cantine.',
+            style: const TextStyle(fontSize: 12, color: AppColors.warning),
+          )),
+        ]),
+      ),
+
+      // ── Liste allergies ───────────────────────────────
+      Expanded(
+          child: RefreshIndicator(
+              onRefresh: _charger,
+              child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                // Marge basse : le bouton « Ajouter » ne masque pas la
+                // dernière carte (boutons modifier / supprimer)
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+                itemCount: prov.allergies.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (_, i) {
+                  final a = prov.allergies[i];
+                  return _AllergieCard(
+                    allergie: a,
+                    onEdit: () => _showDialog(context, allergie: a),
+                    onDelete: () => _confirmerSuppression(context, prov, a),
+                  );
+                },
+              ))),
+    ]);
   }
 
   // ── Dialog ajouter / modifier ──────────────────────────────
@@ -254,7 +256,9 @@ class _AllergieCard extends StatelessWidget {
         // Bouton modifier
         IconButton(
           icon: const Icon(Icons.edit_outlined, size: 20),
-          color: AppColors.primary,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? AppColors.accent
+              : AppColors.primary,
           tooltip: 'Modifier',
           onPressed: onEdit,
         ),

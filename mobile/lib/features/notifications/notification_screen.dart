@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
+import '../../core/widgets/common_widgets.dart';
 
 // ══════════════════════════════════════════════════════════════
 // NAVIGATION DEPUIS UNE NOTIFICATION
@@ -51,9 +52,8 @@ class NotificationItem {
         lu: j['lu'] ?? false,
         // Affichage à l'heure du téléphone (date absente : pas de plantage
         // de toute la liste)
-        createdAt:
-            (DateTime.tryParse(j['created_at'] ?? '') ?? DateTime.now())
-                .toLocal(),
+        createdAt: (DateTime.tryParse(j['created_at'] ?? '') ?? DateTime.now())
+            .toLocal(),
         commandeId: j['commande_id'],
         menuId: j['menu_id'],
       );
@@ -142,7 +142,8 @@ class NotificationProvider extends ChangeNotifier {
       _erreur = null;
     } catch (e) {
       if (gen != _generation) return;
-      _erreur = messageErreurApi(e) ?? 'Impossible de charger les notifications';
+      _erreur =
+          messageErreurApi(e) ?? 'Impossible de charger les notifications';
     }
     _loading = false;
     notifyListeners();
@@ -257,6 +258,25 @@ class NotificationBell extends StatelessWidget {
 // ÉCRAN NOTIFICATIONS
 // ══════════════════════════════════════════════════════════════
 
+/// Titre sans l'emoji de tête envoyé par le serveur (« ✅ Commande
+/// confirmée ») : l'icône de la ligne le représente déjà.
+String titreSansEmoji(String titre) => titre
+    .replaceFirst(
+        RegExp(r'^(?:\p{Extended_Pictographic}|[\u{FE0F}\u{200D}\u{20E3}]|\s)+',
+            unicode: true),
+        '')
+    .trim();
+
+enum _FiltreNotif { toutes, nonLues, commandes, menus }
+
+bool _estCommande(NotificationItem n) =>
+    n.type.startsWith('commande_') || n.type.startsWith('retrait_');
+
+bool _estMenu(NotificationItem n) =>
+    n.type == 'menu_disponible' ||
+    n.type == 'rappel_48h' ||
+    (n.menuId != null && !_estCommande(n));
+
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
   @override
@@ -264,6 +284,8 @@ class NotificationScreen extends StatefulWidget {
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
+  _FiltreNotif _filtre = _FiltreNotif.toutes;
+
   @override
   void initState() {
     super.initState();
@@ -271,103 +293,160 @@ class _NotificationScreenState extends State<NotificationScreen> {
         (_) => context.read<NotificationProvider>().charger());
   }
 
+  bool _garde(NotificationItem n) => switch (_filtre) {
+        _FiltreNotif.toutes => true,
+        _FiltreNotif.nonLues => !n.lu,
+        _FiltreNotif.commandes => _estCommande(n),
+        _FiltreNotif.menus => _estMenu(n),
+      };
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final prov = context.watch<NotificationProvider>();
+    final liste = prov.notifications.where(_garde).toList();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(children: [
-          const Text('Notifications'),
-          if (prov.nonLues > 0) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: AppColors.error,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text('${prov.nonLues}',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700)),
+    // Groupes Aujourd'hui / Hier / Plus tôt (heure du téléphone)
+    final now = DateTime.now();
+    final aujourdhui = DateTime(now.year, now.month, now.day);
+    final hier = aujourdhui.subtract(const Duration(days: 1));
+    final groupes = <String, List<NotificationItem>>{};
+    for (final n in liste) {
+      final j = DateTime(n.createdAt.year, n.createdAt.month, n.createdAt.day);
+      final cle = j == aujourdhui
+          ? "Aujourd'hui"
+          : j == hier
+              ? 'Hier'
+              : 'Plus tôt';
+      groupes.putIfAbsent(cle, () => []).add(n);
+    }
+
+    final enTete = EnTeteMarine(
+      titre: 'Notifications',
+      sousTitre: prov.nonLues == 0
+          ? 'Tout est lu'
+          : '${prov.nonLues} non lue${prov.nonLues > 1 ? 's' : ''}',
+      actions: [
+        if (prov.nonLues > 0)
+          TextButton.icon(
+            style: TextButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                visualDensity: VisualDensity.compact,
+                textStyle:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            icon: const Icon(Icons.done_all_rounded, size: 16),
+            label: const Text('Tout lire'),
+            onPressed: () => prov.toutMarquerLu(),
+          ),
+        PopupMenuButton<String>(
+          tooltip: 'Plus d\'actions',
+          icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+          onSelected: (v) {
+            if (v == 'actualiser') prov.charger();
+            if (v == 'supprimer') _confirmerToutSupprimer(context, prov);
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+              value: 'actualiser',
+              child: Row(children: [
+                Icon(Icons.refresh_rounded, size: 18),
+                SizedBox(width: 8),
+                Text('Actualiser'),
+              ]),
+            ),
+            PopupMenuItem(
+              value: 'supprimer',
+              child: Row(children: [
+                Icon(Icons.delete_sweep_rounded,
+                    size: 18, color: AppColors.error),
+                SizedBox(width: 8),
+                Text('Tout supprimer',
+                    style: TextStyle(color: AppColors.error)),
+              ]),
             ),
           ],
-        ]),
-        actions: [
-          // Tout marquer lu
-          if (prov.nonLues > 0)
-            IconButton(
-              icon: const Icon(Icons.done_all_rounded),
-              tooltip: 'Tout marquer comme lu',
-              onPressed: () => prov.toutMarquerLu(),
+        ),
+      ],
+    );
+
+    Widget corps;
+    if (prov.loading && prov.notifications.isEmpty) {
+      corps = const Center(child: CircularProgressIndicator());
+    } else if (prov.notifications.isEmpty) {
+      // Vide ou en erreur : l'actualisation par glissement reste possible
+      corps = RefreshIndicator(
+        onRefresh: prov.charger,
+        color: AppColors.accent,
+        child: LayoutBuilder(
+          builder: (_, constraints) => SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: prov.erreur != null
+                  ? _ErreurNotifications(
+                      message: prov.erreur!, onReessayer: prov.charger)
+                  : _EmptyNotifications(),
             ),
-          // Menu supprimer tout
-          PopupMenuButton(
-            icon: const Icon(Icons.more_vert_rounded),
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                child: const Row(children: [
-                  Icon(Icons.refresh_rounded, size: 18),
-                  SizedBox(width: 8),
-                  Text('Actualiser'),
-                ]),
-                onTap: () => prov.charger(),
-              ),
-              PopupMenuItem(
-                child: const Row(children: [
-                  Icon(Icons.delete_sweep_rounded,
-                      size: 18, color: AppColors.error),
-                  SizedBox(width: 8),
-                  Text('Tout supprimer',
-                      style: TextStyle(color: AppColors.error)),
-                ]),
-                onTap: () => _confirmerToutSupprimer(context, prov),
-              ),
-            ],
           ),
-        ],
-      ),
-      body: prov.loading && prov.notifications.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : prov.notifications.isEmpty
-              // Vide ou en erreur : l'actualisation par glissement reste
-              // possible
-              ? RefreshIndicator(
-                  onRefresh: prov.charger,
-                  color: AppColors.accent,
-                  child: LayoutBuilder(
-                    builder: (_, constraints) => SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: ConstrainedBox(
-                        constraints:
-                            BoxConstraints(minHeight: constraints.maxHeight),
-                        child: prov.erreur != null
-                            ? _ErreurNotifications(
-                                message: prov.erreur!, onReessayer: prov.charger)
-                            : _EmptyNotifications(),
-                      ),
+        ),
+      );
+    } else {
+      final nbCommandes = prov.notifications.where(_estCommande).length;
+      final nbMenus = prov.notifications.where(_estMenu).length;
+      corps = Column(children: [
+        RangeeFiltres(filtres: [
+          for (final (f, label, n) in [
+            (_FiltreNotif.toutes, 'Toutes', prov.notifications.length),
+            (
+              _FiltreNotif.nonLues,
+              'Non lues',
+              prov.notifications.where((n) => !n.lu).length
+            ),
+            (_FiltreNotif.commandes, 'Commandes', nbCommandes),
+            (_FiltreNotif.menus, 'Menus', nbMenus),
+          ])
+            FiltrePastille(
+              label: label,
+              compte: n,
+              actif: _filtre == f,
+              onTap: () => setState(() => _filtre = f),
+            ),
+        ]),
+        // Actualisation en échec : la liste affichée peut être périmée
+        if (prov.erreur != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+            child: BandeauInfo(
+              icone: Icons.cloud_off_rounded,
+              ton: TonPastille.rouge,
+              texte: 'Actualisation impossible : ${prov.erreur}',
+              action: TextButton(
+                  onPressed: prov.charger, child: const Text('Réessayer')),
+            ),
+          ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: prov.charger,
+            color: AppColors.accent,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 32),
+              children: [
+                if (liste.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 40),
+                    child: EmptyState(
+                      icon: Icons.notifications_none_rounded,
+                      title: 'Aucune notification',
+                      subtitle: 'Rien dans cette catégorie',
                     ),
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: prov.charger,
-                  color: AppColors.accent,
-                  child: ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: prov.notifications.length,
-                    separatorBuilder: (_, __) => Divider(
-                        height: 1,
-                        color: isDark
-                            ? AppColors.darkBorder
-                            : AppColors.lightBorder),
-                    itemBuilder: (_, i) {
-                      final notif = prov.notifications[i];
-                      return _NotificationTile(
+                for (final g in groupes.entries) ...[
+                  LibelleSection(g.key),
+                  CarteListe(lignes: [
+                    for (final notif in g.value)
+                      _NotificationTile(
                         notif: notif,
+                        heure: _heure(notif.createdAt, aujourdhui, hier),
                         onTap: () {
                           if (!notif.lu) prov.marquerLu(notif.id);
                           // Retour à l'écran principal sur l'onglet utile :
@@ -388,11 +467,30 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                     'Suppression impossible, réessayez.')));
                           }
                         },
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                  ]),
+                  const SizedBox(height: 8),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ]);
+    }
+
+    return Scaffold(
+      body: Column(children: [enTete, Expanded(child: corps)]),
     );
+  }
+
+  /// « 08:12 » aujourd'hui et hier, « lun. 19 » avant
+  String _heure(DateTime d, DateTime aujourdhui, DateTime hier) {
+    final j = DateTime(d.year, d.month, d.day);
+    if (j == aujourdhui || j == hier) return DateFormat('HH:mm').format(d);
+    if (aujourdhui.difference(j).inDays < 300) {
+      return DateFormat('EEE d', 'fr_FR').format(d);
+    }
+    return DateFormat('dd/MM/yy').format(d);
   }
 
   CibleNotification? _cible(NotificationItem n) {
@@ -433,15 +531,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 }
 
-// ── Tile notification ──────────────────────────────────────────
+// ── Ligne notification ─────────────────────────────────────────
 
 class _NotificationTile extends StatelessWidget {
   final NotificationItem notif;
+  final String heure;
   final VoidCallback onTap;
   final VoidCallback onDismiss;
 
   const _NotificationTile({
     required this.notif,
+    required this.heure,
     required this.onTap,
     required this.onDismiss,
   });
@@ -449,8 +549,11 @@ class _NotificationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final config = _typeConfig(notif.type);
-    final date = _formatDate(notif.createdAt);
+    final (icone, ton) = _typeConfig(notif.type);
+    final (fondIcone, couleurIcone) = couleursPastille(ton, isDark);
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final nonLue = !notif.lu;
 
     return Dismissible(
       key: Key('notif_${notif.id}'),
@@ -462,113 +565,110 @@ class _NotificationTile extends StatelessWidget {
         child: const Icon(Icons.delete_rounded, color: Colors.white, size: 24),
       ),
       onDismissed: (_) => onDismiss(),
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          color: notif.lu
-              ? Colors.transparent
-              : (isDark
-                  ? AppColors.accent.withOpacity(0.05)
-                  : AppColors.accent.withOpacity(0.04)),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Icône type
-            Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: config.color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
+      child: Material(
+        // Seules les non lues sont surlignées
+        color: nonLue
+            ? (isDark
+                ? AppColors.accent.withOpacity(0.07)
+                : const Color(0xFFF3FBF6))
+            : Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Stack(children: [
+            if (nonLue)
+              Positioned(
+                left: 4,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                          color: AppColors.accentDark, shape: BoxShape.circle)),
                 ),
-                child: Icon(config.icon, color: config.color, size: 20)),
-
-            const SizedBox(width: 12),
-
-            // Contenu
-            Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  Row(children: [
-                    Expanded(
-                        child: Text(notif.titre,
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                        color: isDark && ton == TonPastille.bleu
+                            ? AppColors.accent.withOpacity(0.12)
+                            : fondIcone,
+                        shape: BoxShape.circle),
+                    child: Icon(icone,
+                        size: 18,
+                        color: isDark && ton == TonPastille.bleu
+                            ? AppColors.accent
+                            : couleurIcone)),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(titreSansEmoji(notif.titre),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: nonLue
+                                            ? FontWeight.w700
+                                            : FontWeight.w600,
+                                        color: nonLue
+                                            ? (isDark
+                                                ? AppColors.darkTextPrimary
+                                                : AppColors.lightTextPrimary)
+                                            : (isDark
+                                                ? AppColors.darkTextPrimary
+                                                    .withOpacity(0.8)
+                                                : const Color(0xFF3B5675)))),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(heure,
+                                  style: TextStyle(fontSize: 11, color: gris)),
+                            ]),
+                        const SizedBox(height: 2),
+                        Text(notif.message,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: notif.lu
-                                    ? FontWeight.w400
-                                    : FontWeight.w700,
-                                color: isDark
-                                    ? AppColors.darkTextPrimary
-                                    : AppColors.lightTextPrimary),
-                            overflow: TextOverflow.ellipsis)),
-                    if (!notif.lu)
-                      Container(
-                          width: 8,
-                          height: 8,
-                          margin: const EdgeInsets.only(left: 6),
-                          decoration: const BoxDecoration(
-                              color: AppColors.accent, shape: BoxShape.circle)),
-                  ]),
-                  const SizedBox(height: 3),
-                  Text(notif.message,
-                      style: TextStyle(
-                          fontSize: 13,
-                          height: 1.4,
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 4),
-                  Text(date,
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary)),
-                ])),
+                                fontSize: 12, height: 1.4, color: gris)),
+                      ]),
+                ),
+              ]),
+            ),
           ]),
         ),
       ),
     );
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-    if (diff.inMinutes < 1) return 'À l\'instant';
-    if (diff.inMinutes < 60) return 'Il y a ${diff.inMinutes} min';
-    if (diff.inHours < 24) return 'Il y a ${diff.inHours}h';
-    if (diff.inDays == 1) return 'Hier';
-    if (diff.inDays < 7) return 'Il y a ${diff.inDays} jours';
-    return DateFormat('dd/MM/yyyy').format(date);
-  }
-
-  _NotifConfig _typeConfig(String type) {
+  (IconData, TonPastille) _typeConfig(String type) {
     switch (type) {
       case 'commande_passee':
-        return _NotifConfig(Icons.check_circle_rounded, AppColors.success);
+        return (Icons.check_circle_outline_rounded, TonPastille.vert);
       case 'commande_annulee':
-        return _NotifConfig(Icons.cancel_rounded, AppColors.error);
+        return (Icons.cancel_outlined, TonPastille.rouge);
       case 'retrait_valide':
-        return _NotifConfig(Icons.restaurant_rounded, AppColors.accent);
+        return (Icons.restaurant_rounded, TonPastille.vert);
       case 'retrait_annule':
-        return const _NotifConfig(Icons.undo_rounded, AppColors.warning);
+        return (Icons.undo_rounded, TonPastille.or);
       case 'menu_disponible':
-        return _NotifConfig(Icons.restaurant_menu_rounded, AppColors.primary);
+        return (Icons.restaurant_menu_rounded, TonPastille.bleu);
       case 'rappel_48h':
-        return _NotifConfig(Icons.timer_rounded, AppColors.warning);
+        return (Icons.timer_outlined, TonPastille.or);
       default:
-        return _NotifConfig(
-            Icons.notifications_rounded, AppColors.lightTextSecondary);
+        return (Icons.notifications_none_rounded, TonPastille.bleu);
     }
   }
-}
-
-class _NotifConfig {
-  final IconData icon;
-  final Color color;
-  const _NotifConfig(this.icon, this.color);
 }
 
 // ── Erreur de chargement ───────────────────────────────────────
@@ -576,7 +676,8 @@ class _NotifConfig {
 class _ErreurNotifications extends StatelessWidget {
   final String message;
   final Future<void> Function() onReessayer;
-  const _ErreurNotifications({required this.message, required this.onReessayer});
+  const _ErreurNotifications(
+      {required this.message, required this.onReessayer});
 
   @override
   Widget build(BuildContext context) {
@@ -586,8 +687,7 @@ class _ErreurNotifications extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.cloud_off_rounded,
-              color: AppColors.error, size: 48),
+          const Icon(Icons.cloud_off_rounded, color: AppColors.error, size: 48),
           const SizedBox(height: 16),
           Text('Chargement impossible',
               style: Theme.of(context).textTheme.titleMedium),

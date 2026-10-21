@@ -109,14 +109,6 @@ class _MainShellState extends State<MainShell> {
         const ProfilScreen(),
       ];
 
-  List<String> _titles(bool isGestionnaire) => [
-        'Tableau de bord',
-        'Menus',
-        if (!isGestionnaire) ...['Mes commandes', 'Ma facturation'],
-        if (isGestionnaire) ...['Gestion commandes', 'Retrait commande'],
-        'Mon profil',
-      ];
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -124,132 +116,68 @@ class _MainShellState extends State<MainShell> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final items = _navItems(isGestionnaire);
     final screens = _screens(isGestionnaire);
-    final titles = _titles(isGestionnaire);
 
     if (_index >= items.length) _index = 0;
 
     return MainShellNavigator(
       navigateTo: (i) => setState(() => _index = i),
-      // Bouton retour Android : retour à l'accueil (comme la flèche de la
-      // barre) au lieu de quitter l'application
+      // Bouton retour Android : retour à l'accueil au lieu de quitter
+      // l'application
       child: PopScope(
         canPop: _index == 0,
         onPopInvoked: (didPop) {
           if (!didPop) setState(() => _index = 0);
         },
         child: Scaffold(
-        key: _scaffoldKey,
+          key: _scaffoldKey,
 
-        drawer: _AppDrawer(
-          currentIndex: _index,
-          isGestionnaire: isGestionnaire,
-          onNavigate: (i) {
-            setState(() => _index = i);
-            Navigator.pop(context);
-          },
-        ),
-
-        // ── AppBar ─────────────────────────────────────────────
-        appBar: _index == 0
-            ? null
-            : AppBar(
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                  onPressed: () => setState(() => _index = 0),
-                  tooltip: 'Retour',
-                ),
-                title: _index == 2 && isGestionnaire
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(titles[_index]),
-                          Text(
-                            (auth.user?.isAdmin ?? false)
-                                ? 'Toutes les agences'
-                                : (auth.user?.derniereAgence ?? ''),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.accent,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      )
-                    : Text(titles[_index]),
-                actions: [
-                  // Menu
-                  if (_index == 1)
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded),
-                      tooltip: 'Actualiser',
-                      onPressed: () {
-                        context.read<MenuProvider>().loadMenus();
-                        context.read<CommandeProvider>().loadMesCommandes();
-                      },
-                    ),
-                  // Commandes employé (index 2)
-                  if (_index == 2 && !isGestionnaire)
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded),
-                      tooltip: 'Actualiser',
-                      onPressed: () =>
-                          context.read<CommandeProvider>().loadMesCommandes(),
-                    ),
-                  // Gestion commandes gestionnaire (index 2)
-                  if (_index == 2 && isGestionnaire)
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded),
-                      tooltip: 'Actualiser',
-                      onPressed: () => _gestionKey.currentState?.charger(),
-                    ),
-                  // Facturation employé (index 3)
-                  if (_index == 3 && !isGestionnaire)
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded),
-                      tooltip: 'Actualiser',
-                      onPressed: () {
-                        context.read<CommandeProvider>().loadMesCommandes();
-                        context.read<FacturationProvider>().charger();
-                      },
-                    ),
-                ],
-              ),
-
-        body: IndexedStack(index: _index, children: screens),
-
-        // ── Bottom nav bar ─────────────────────────────────────
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-            border: Border(
-                top: BorderSide(
-                    color:
-                        isDark ? AppColors.darkBorder : AppColors.lightBorder)),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
-                  blurRadius: 16,
-                  offset: const Offset(0, -4))
-            ],
+          drawer: _AppDrawer(
+            currentIndex: _index,
+            isGestionnaire: isGestionnaire,
+            onNavigate: (i) {
+              setState(() => _index = i);
+              Navigator.pop(context);
+            },
           ),
-          child: SafeArea(
-            child: SizedBox(
-              height: 56,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List.generate(
-                    items.length,
-                    (i) => _NavBarItem(
-                          item: items[i],
-                          selected: _index == i,
-                          compact: isGestionnaire,
-                          onTap: () => setState(() => _index = i),
-                        )),
+
+          // Pas de barre d'application : chaque onglet affiche son en-tête
+          // marine (EnTeteMarine), sans flèche de retour (onglets du bas).
+          body: IndexedStack(index: _index, children: screens),
+
+          // ── Bottom nav bar ─────────────────────────────────────
+          bottomNavigationBar: Container(
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+              border: Border(
+                  top: BorderSide(
+                      color: isDark
+                          ? AppColors.darkBorder
+                          : AppColors.lightBorder)),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
+                    blurRadius: 16,
+                    offset: const Offset(0, -4))
+              ],
+            ),
+            child: SafeArea(
+              child: SizedBox(
+                height: 56,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: List.generate(
+                      items.length,
+                      (i) => _NavBarItem(
+                            item: items[i],
+                            selected: _index == i,
+                            compact: isGestionnaire,
+                            onTap: () => setState(() => _index = i),
+                          )),
+                ),
               ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
