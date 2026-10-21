@@ -36,6 +36,17 @@ String _dateMenuLongue(Menu menu) {
   return s[0].toUpperCase() + s.substring(1);
 }
 
+/// Menu à afficher à l'ouverture de l'onglet (depuis l'accueil : un jour
+/// de « Ma semaine », « Réserver » du prochain repas).
+class CibleMenu {
+  final int? menuId;
+  final DateTime? date;
+  const CibleMenu({this.menuId, this.date});
+}
+
+/// Demande d'affichage d'un menu, traitée par l'onglet Menu.
+final menuDemande = ValueNotifier<CibleMenu?>(null);
+
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
   @override
@@ -47,9 +58,78 @@ class _MenuScreenState extends State<MenuScreen> {
   _AgenceLocal? _agenceSelectionnee;
   _EquipeLocal? _equipeSelectionnee;
 
+  /// Demande de l'accueil en attente des menus ; rechargés une fois si le
+  /// menu demandé n'est pas dans la liste (menu créé depuis).
+  CibleMenu? _cible;
+  bool _cibleRechargee = false;
+
+  void _onDemande() {
+    final c = menuDemande.value;
+    if (c == null || !mounted) return;
+    menuDemande.value = null;
+    setState(() {
+      _cible = c;
+      _cibleRechargee = false;
+    });
+  }
+
+  /// Applique la demande en attente (sélection du menu, et de son agence
+  /// si le filtre l'excluait). Appelé pendant build : simples affectations.
+  void _appliquerCible(MenuProvider menuProv) {
+    final cible = _cible;
+    if (cible == null || menuProv.loading) return;
+    final menus = menuProv.menus;
+    String? jour(DateTime? d) =>
+        d == null ? null : DateFormat('yyyy-MM-dd').format(d);
+    final date = jour(cible.date);
+    final agenceId = context.read<AuthProvider>().user?.derniereAgenceId;
+    Menu? trouve;
+    if (cible.menuId != null) {
+      trouve = menus.where((m) => m.id == cible.menuId).firstOrNull;
+    }
+    if (trouve == null && date != null) {
+      final duJour = menus.where((m) => m.dateMenu == date);
+      trouve = duJour
+              .where((m) =>
+                  _agenceSelectionnee == null ||
+                  m.agenceId.toString() == _agenceSelectionnee!.id)
+              .firstOrNull ??
+          duJour.where((m) => m.agenceId == agenceId).firstOrNull ??
+          duJour.firstOrNull;
+    }
+    if (trouve == null && !_cibleRechargee) {
+      _cibleRechargee = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.read<MenuProvider>().loadMenus();
+      });
+      return;
+    }
+    _cible = null;
+    if (trouve == null) return;
+    _menuSelectionne = trouve;
+    if (_agenceSelectionnee != null &&
+        _agenceSelectionnee!.id != trouve.agenceId.toString()) {
+      _agenceSelectionnee = _AgenceLocal(
+          id: trouve.agenceId.toString(), nom: trouve.agenceNom);
+    }
+    if (_equipeSelectionnee != null &&
+        _equipeSelectionnee!.id != trouve.typeEquipeId.toString()) {
+      _equipeSelectionnee = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    menuDemande.removeListener(_onDemande);
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    menuDemande.addListener(_onDemande);
+    _cible = menuDemande.value;
+    menuDemande.value = null;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = context.read<AuthProvider>();
       final agenceId = auth.user?.derniereAgenceId;
@@ -123,6 +203,8 @@ class _MenuScreenState extends State<MenuScreen> {
             ),
           ));
         }
+
+        _appliquerCible(menuProv);
 
         final agences = <String, String>{};
         final equipes = <String, String>{};

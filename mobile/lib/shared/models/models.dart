@@ -508,3 +508,356 @@ class PopupConnexion {
         id: id, titre: (j['titre'] as String?) ?? '', imageUrl: url);
   }
 }
+
+// ══════════════════════════════════════════════════════════════
+// ÉCRAN D'ACCUEIL (GET /accueil/ : tout l'accueil en une requête)
+// ══════════════════════════════════════════════════════════════
+
+int _int(dynamic v) =>
+    v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
+
+double _double(dynamic v) =>
+    v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+
+/// Date « AAAA-MM-JJ » du serveur (jour civil, sans fuseau)
+DateTime? _jour(dynamic v) {
+  final d = DateTime.tryParse(v?.toString() ?? '');
+  return d == null ? null : DateTime(d.year, d.month, d.day);
+}
+
+List<Map<String, dynamic>> _maps(dynamic v) => (v as List? ?? [])
+    .whereType<Map>()
+    .map((e) => Map<String, dynamic>.from(e))
+    .toList();
+
+/// Commande résumée (repas du jour, récentes)
+class AccueilCommande {
+  final int id;
+  final StatutCommande statut;
+  final DateTime? dateMenu;
+  final String plat;
+  final String? platImageUrl; // URL absolue
+  final String? agence;
+  final String? equipe;
+  final int? menuId;
+
+  const AccueilCommande({
+    required this.id,
+    required this.statut,
+    this.dateMenu,
+    required this.plat,
+    this.platImageUrl,
+    this.agence,
+    this.equipe,
+    this.menuId,
+  });
+
+  factory AccueilCommande.fromJson(Map<String, dynamic> j) => AccueilCommande(
+        id: _int(j['id']),
+        statut: StatutCommandeExt.fromString(j['statut']?.toString() ?? ''),
+        dateMenu: _jour(j['date_menu']),
+        plat: j['plat']?.toString() ?? '',
+        platImageUrl: _absoluteUrl(j['plat_image_url'] as String?),
+        agence: j['agence'] as String?,
+        equipe: j['equipe'] as String?,
+        menuId: j['menu_id'] is num ? (j['menu_id'] as num).toInt() : null,
+      );
+}
+
+/// État d'un jour de la semaine pour l'utilisateur
+enum StatutJour {
+  retire,
+  aRetirer,
+  reserve,
+  nonRetire,
+  aReserver,
+  ferme,
+  pasDeMenu;
+
+  static StatutJour fromString(String? s) => switch (s) {
+        'retire' => retire,
+        'a_retirer' => aRetirer,
+        'reserve' => reserve,
+        'non_retire' => nonRetire,
+        'a_reserver' => aReserver,
+        'ferme' => ferme,
+        _ => pasDeMenu,
+      };
+
+  String get label => switch (this) {
+        retire => 'retiré',
+        aRetirer => 'à retirer',
+        reserve => 'réservé',
+        nonRetire => 'non retiré',
+        aReserver => 'à réserver',
+        ferme => 'commandes fermées',
+        pasDeMenu => 'pas de menu',
+      };
+}
+
+class JourSemaine {
+  final DateTime date;
+  final String libelle; // « lundi 19/10 »
+  final StatutJour statut;
+  final String? plat;
+  final int? commandeId;
+  final DateTime? dateLimiteCommande;
+
+  const JourSemaine({
+    required this.date,
+    required this.libelle,
+    required this.statut,
+    this.plat,
+    this.commandeId,
+    this.dateLimiteCommande,
+  });
+
+  factory JourSemaine.fromJson(Map<String, dynamic> j) => JourSemaine(
+        date: _jour(j['date']) ?? DateTime(1970),
+        libelle: j['libelle']?.toString() ?? '',
+        statut: StatutJour.fromString(j['statut'] as String?),
+        plat: j['plat'] as String?,
+        commandeId:
+            j['commande_id'] is num ? (j['commande_id'] as num).toInt() : null,
+        dateLimiteCommande:
+            DateTime.tryParse(j['date_limite_commande']?.toString() ?? '')
+                ?.toUtc(),
+      );
+}
+
+class ProchainAReserver {
+  final DateTime date;
+  final String libelle;
+  final String agence;
+  final int nbPlats;
+  final int menuId;
+  final DateTime? dateLimiteCommande;
+  final String dateLimiteLibelle;
+
+  const ProchainAReserver({
+    required this.date,
+    required this.libelle,
+    required this.agence,
+    required this.nbPlats,
+    required this.menuId,
+    this.dateLimiteCommande,
+    this.dateLimiteLibelle = '',
+  });
+
+  factory ProchainAReserver.fromJson(Map<String, dynamic> j) =>
+      ProchainAReserver(
+        date: _jour(j['date']) ?? DateTime(1970),
+        libelle: j['libelle']?.toString() ?? '',
+        agence: j['agence']?.toString() ?? '',
+        nbPlats: _int(j['nb_plats']),
+        menuId: _int(j['menu_id']),
+        dateLimiteCommande:
+            DateTime.tryParse(j['date_limite_commande']?.toString() ?? '')
+                ?.toUtc(),
+        dateLimiteLibelle: j['date_limite_libelle']?.toString() ?? '',
+      );
+}
+
+/// Chiffres du mois en cours (montant en FCFA calculé par le serveur)
+class ChiffresMois {
+  final int repas;
+  final int retires;
+  final int annules;
+  final double montant;
+  final int repasSansTarif;
+
+  const ChiffresMois({
+    this.repas = 0,
+    this.retires = 0,
+    this.annules = 0,
+    this.montant = 0,
+    this.repasSansTarif = 0,
+  });
+
+  factory ChiffresMois.fromJson(Map<String, dynamic> j) => ChiffresMois(
+        repas: _int(j['repas']),
+        retires: _int(j['retires']),
+        annules: _int(j['annules']),
+        montant: _double(j['montant']),
+        repasSansTarif: _int(j['repas_sans_tarif']),
+      );
+}
+
+class ServiceAgence {
+  final int agenceId;
+  final String agence;
+  final List<String> equipes;
+  final int nbPlats;
+  final int commandees;
+  final int servies;
+  final int aServir;
+
+  const ServiceAgence({
+    required this.agenceId,
+    required this.agence,
+    this.equipes = const [],
+    this.nbPlats = 0,
+    this.commandees = 0,
+    this.servies = 0,
+    this.aServir = 0,
+  });
+
+  /// Part des repas servis (0 → 1)
+  double get progression =>
+      commandees <= 0 ? 0 : (servies / commandees).clamp(0, 1).toDouble();
+
+  factory ServiceAgence.fromJson(Map<String, dynamic> j) => ServiceAgence(
+        agenceId: _int(j['agence_id']),
+        agence: j['agence']?.toString() ?? '',
+        equipes: (j['equipes'] as List? ?? []).map((e) => '$e').toList(),
+        nbPlats: _int(j['nb_plats']),
+        commandees: _int(j['commandees']),
+        servies: _int(j['servies']),
+        aServir: _int(j['a_servir']),
+      );
+}
+
+enum EtatJourGestion {
+  termine,
+  enCours,
+  ouvert,
+  ferme,
+  sansMenu;
+
+  static EtatJourGestion fromString(String? s) => switch (s) {
+        'termine' => termine,
+        'en_cours' => enCours,
+        'ouvert' => ouvert,
+        'sans_menu' => sansMenu,
+        _ => ferme,
+      };
+}
+
+class JourGestion {
+  final DateTime date;
+  final String libelle;
+  final EtatJourGestion etat;
+  final int commandees;
+  final int retirees;
+  final List<String> agencesSansMenu;
+
+  const JourGestion({
+    required this.date,
+    required this.libelle,
+    required this.etat,
+    this.commandees = 0,
+    this.retirees = 0,
+    this.agencesSansMenu = const [],
+  });
+
+  factory JourGestion.fromJson(Map<String, dynamic> j) => JourGestion(
+        date: _jour(j['date']) ?? DateTime(1970),
+        libelle: j['libelle']?.toString() ?? '',
+        etat: EtatJourGestion.fromString(j['etat'] as String?),
+        commandees: _int(j['commandees']),
+        retirees: _int(j['retirees']),
+        agencesSansMenu:
+            (j['agences_sans_menu'] as List? ?? []).map((e) => '$e').toList(),
+      );
+}
+
+/// Alerte du gestionnaire (« menu_manquant », « fermeture », « cloture »)
+class AFaire {
+  final String type;
+  final String titre;
+  final String detail;
+  final DateTime? date;
+
+  /// Agences concernées (menu manquant), envoyées par le serveur
+  final List<String> listeAgences;
+
+  const AFaire(
+      {required this.type,
+      required this.titre,
+      this.detail = '',
+      this.date,
+      this.listeAgences = const []});
+
+  bool get estMenuManquant => type == 'menu_manquant';
+
+  /// Agences concernées par un menu manquant (ancien serveur : début du détail)
+  String get agences => listeAgences.isNotEmpty
+      ? listeAgences.join(', ')
+      : detail.split(' · ').first.trim();
+
+  factory AFaire.fromJson(Map<String, dynamic> j) => AFaire(
+        type: j['type']?.toString() ?? '',
+        titre: j['titre']?.toString() ?? '',
+        detail: j['detail']?.toString() ?? '',
+        date: _jour(j['date']),
+        listeAgences: (j['agences'] as List? ?? [])
+            .map((e) => e.toString())
+            .toList(),
+      );
+}
+
+class AccueilGestion {
+  final List<String> agences;
+  final List<ServiceAgence> serviceDuJour;
+  final List<JourGestion> semaine;
+  final List<AFaire> aFaire;
+
+  const AccueilGestion({
+    this.agences = const [],
+    this.serviceDuJour = const [],
+    this.semaine = const [],
+    this.aFaire = const [],
+  });
+
+  List<AFaire> get menusManquants =>
+      aFaire.where((a) => a.estMenuManquant).toList();
+
+  factory AccueilGestion.fromJson(Map<String, dynamic> j) => AccueilGestion(
+        agences: (j['agences'] as List? ?? []).map((e) => '$e').toList(),
+        serviceDuJour:
+            _maps(j['service_du_jour']).map(ServiceAgence.fromJson).toList(),
+        semaine: _maps(j['semaine']).map(JourGestion.fromJson).toList(),
+        aFaire: _maps(j['a_faire']).map(AFaire.fromJson).toList(),
+      );
+}
+
+class Accueil {
+  final DateTime? date;
+  final AccueilCommande? repasDuJour;
+  final List<JourSemaine> semaine;
+  final ProchainAReserver? prochainAReserver;
+  final ChiffresMois mois;
+  final List<AccueilCommande> recentes;
+
+  /// Gestionnaire / administrateur seulement
+  final AccueilGestion? gestion;
+
+  const Accueil({
+    this.date,
+    this.repasDuJour,
+    this.semaine = const [],
+    this.prochainAReserver,
+    this.mois = const ChiffresMois(),
+    this.recentes = const [],
+    this.gestion,
+  });
+
+  factory Accueil.fromJson(Map<String, dynamic> j) {
+    Map<String, dynamic>? map(dynamic v) =>
+        v is Map ? Map<String, dynamic>.from(v) : null;
+    final repas = map(j['repas_du_jour']);
+    final prochain = map(j['prochain_a_reserver']);
+    final mois = map(j['mois']);
+    final gestion = map(j['gestion']);
+    return Accueil(
+      date: _jour(j['date']),
+      repasDuJour: repas == null ? null : AccueilCommande.fromJson(repas),
+      semaine: _maps(j['semaine']).map(JourSemaine.fromJson).toList(),
+      prochainAReserver:
+          prochain == null ? null : ProchainAReserver.fromJson(prochain),
+      mois: mois == null ? const ChiffresMois() : ChiffresMois.fromJson(mois),
+      recentes: _maps(j['recentes']).map(AccueilCommande.fromJson).toList(),
+      gestion: gestion == null ? null : AccueilGestion.fromJson(gestion),
+    );
+  }
+}

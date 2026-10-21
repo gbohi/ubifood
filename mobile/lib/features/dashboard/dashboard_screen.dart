@@ -15,6 +15,8 @@ import '../commandes/commandes_screen.dart';
 import '../facturation/facturation_screen.dart';
 import '../notifications/notification_screen.dart';
 import '../avis/avis_widgets.dart';
+import '../menu/menu_screen.dart';
+import 'accueil_widgets.dart';
 
 // ── InheritedWidget pour navigation depuis Dashboard ──────────
 class MainShellNavigator extends InheritedWidget {
@@ -40,13 +42,13 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _bannerKey = GlobalKey<_BannerSliderState>();
-  final _serviceKey = GlobalKey<_ServiceDuJourCardState>();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CommandeProvider>().loadMesCommandes();
+      context.read<AccueilProvider>().charger();
     });
   }
 
@@ -60,11 +62,120 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  void _goFactures(BuildContext context) {
+    final auth = context.read<AuthProvider>();
+    if (auth.isGestionnaire) {
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const FacturationScreen()));
+    } else {
+      MainShellNavigator.of(context)?.navigateTo(3);
+    }
+  }
+
+  /// Onglet Menu, sur le menu demandé si possible
+  void _goMenu(BuildContext context, {int? menuId, DateTime? date}) {
+    if (menuId != null || date != null) {
+      menuDemande.value = CibleMenu(menuId: menuId, date: date);
+    }
+    MainShellNavigator.of(context)?.navigateTo(1);
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isGestionnaire = auth.isGestionnaire;
     final now = DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(DateTime.now());
+
+    Widget marges(Widget child) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20), child: child);
+
+    final repasDuJour = Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
+      if (cmdProv.listLoading && cmdProv.mesCommandes.isEmpty) {
+        return const ShimmerCard(height: 130);
+      }
+      final duJour = cmdProv.mesCommandes.where((c) =>
+          c.statut != StatutCommande.annulee &&
+          (c.menuDetail?.isToday ?? false));
+      return _RepasDuJourCard(
+          commande: duJour.firstOrNull,
+          etiquette: isGestionnaire ? 'Mon repas' : "Aujourd'hui");
+    });
+
+    final recentes = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeader(
+          title: 'Récentes',
+          action: 'Tout voir',
+          onAction: () => _goCommandes(context),
+        ),
+        const SizedBox(height: 12),
+        Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
+          if (cmdProv.listLoading && cmdProv.mesCommandes.isEmpty) {
+            return Column(
+                children: List.generate(3, (_) => const ShimmerCard(height: 72)));
+          }
+          final liste = cmdProv.mesCommandes.take(3).toList();
+          if (liste.isEmpty) {
+            return EmptyState(
+              icon: Icons.receipt_outlined,
+              title: 'Aucune commande',
+              subtitle: 'Commandez depuis le menu du jour',
+              action: TextButton.icon(
+                icon: const Icon(Icons.restaurant_menu_rounded, size: 16),
+                label: const Text('Voir le menu'),
+                onPressed: () => _goMenu(context),
+              ),
+            );
+          }
+          return Column(
+              children:
+                  liste.map((c) => _CommandeItem(commande: c)).toList());
+        }),
+      ],
+    );
+
+    final List<Widget> contenu = isGestionnaire
+        ? [
+            const SizedBox(height: 14),
+            marges(_BlocGestion(
+              onScanner: () => MainShellNavigator.of(context)?.navigateTo(3),
+              onGestion: () => MainShellNavigator.of(context)?.navigateTo(2),
+            )),
+            const SizedBox(height: 8),
+            marges(repasDuJour),
+            const SizedBox(height: 12),
+            marges(_ChiffresMois(
+              gestionnaire: true,
+              onCommandes: () => _goCommandes(context),
+              onFactures: () => _goFactures(context),
+            )),
+            const SizedBox(height: 8),
+            _BannerSlider(key: _bannerKey),
+            // Ses propres commandes : seulement s'il en a (la maquette
+            // s'arrête aux chiffres)
+            Consumer<CommandeProvider>(
+              builder: (_, cmdProv, __) => cmdProv.mesCommandes.isEmpty
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: marges(recentes)),
+            ),
+          ]
+        : [
+            _BannerSlider(key: _bannerKey),
+            const SizedBox(height: 8),
+            marges(repasDuJour),
+            const SizedBox(height: 12),
+            marges(_BlocEmploye(
+              onMenu: ({int? menuId, DateTime? date}) =>
+                  _goMenu(context, menuId: menuId, date: date),
+              onCommandes: () => _goCommandes(context),
+              onFactures: () => _goFactures(context),
+            )),
+            const SizedBox(height: 24),
+            marges(recentes),
+          ];
 
     return Scaffold(
       body: RefreshIndicator(
@@ -75,8 +186,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onRefresh: () async {
           await Future.wait([
             context.read<CommandeProvider>().loadMesCommandes(),
+            context.read<AccueilProvider>().charger(),
             _bannerKey.currentState?.charger() ?? Future.value(),
-            _serviceKey.currentState?.recharger() ?? Future.value(),
           ]);
         },
         child: CustomScrollView(slivers: [
@@ -161,33 +272,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           const SizedBox(width: 4),
 
                           // QR Code
-                          GestureDetector(
-                            onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const QrCodeScreen())),
-                            child: Container(
-                              width: 52,
-                              height: 52,
-                              padding: const EdgeInsets.all(2),
-                              decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                      color: AppColors.accent, width: 2)),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(5),
-                                child: QrImageView(
-                                  data: auth.user?.username ?? '',
-                                  version: QrVersions.auto,
-                                  size: 48,
-                                  padding: EdgeInsets.zero,
-                                  eyeStyle: const QrEyeStyle(
-                                      eyeShape: QrEyeShape.square,
-                                      color: Color(0xFF092440)),
-                                  dataModuleStyle: const QrDataModuleStyle(
-                                      dataModuleShape: QrDataModuleShape.square,
-                                      color: Color(0xFF092440)),
+                          Semantics(
+                            button: true,
+                            label: 'Mon QR code',
+                            excludeSemantics: true,
+                            child: GestureDetector(
+                              onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => const QrCodeScreen())),
+                              child: Container(
+                                width: 52,
+                                height: 52,
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                        color: AppColors.accent, width: 2)),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(5),
+                                  child: QrImageView(
+                                    data: auth.user?.username ?? '',
+                                    version: QrVersions.auto,
+                                    size: 48,
+                                    padding: EdgeInsets.zero,
+                                    eyeStyle: const QrEyeStyle(
+                                        eyeShape: QrEyeShape.square,
+                                        color: Color(0xFF092440)),
+                                    dataModuleStyle: const QrDataModuleStyle(
+                                        dataModuleShape:
+                                            QrDataModuleShape.square,
+                                        color: Color(0xFF092440)),
+                                  ),
                                 ),
                               ),
                             ),
@@ -207,152 +324,161 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _BannerSlider(key: _bannerKey),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Mon repas du jour (commande du jour de l'agent)
-                    Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
-                      if (cmdProv.listLoading) {
-                        return const ShimmerCard(height: 130);
-                      }
-                      final duJour = cmdProv.mesCommandes.where((c) =>
-                          c.statut != StatutCommande.annulee &&
-                          (c.menuDetail?.isToday ?? false));
-                      return _RepasDuJourCard(commande: duJour.firstOrNull);
-                    }),
-
-                    const SizedBox(height: 24),
-
-                    // Gestionnaire : service du jour dans son agence
-                    if (auth.isGestionnaire) ...[
-                      _ServiceDuJourCard(key: _serviceKey),
-                      const SizedBox(height: 24),
-                    ],
-
-                    // Stats commandes du mois (repas facturés = non annulés)
-                    SectionHeader(
-                      title:
-                          'Mes commandes — ${DateFormat('MMMM', 'fr_FR').format(DateTime.now())}',
-                      action: 'Voir tout',
-                      onAction: () => _goCommandes(context),
-                    ),
-                    const SizedBox(height: 12),
-
-                    Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
-                      if (cmdProv.listLoading) {
-                        return GridView.count(
-                          crossAxisCount: 2,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 1.5,
-                          children: List.generate(
-                              4, (_) => const ShimmerCard(height: 100)),
-                        );
-                      }
-                      final duMois = cmdProv.commandesDuMois(DateTime.now());
-                      int nb(StatutCommande s) =>
-                          duMois.where((c) => c.statut == s).length;
-                      return GridView.count(
-                        crossAxisCount: 2,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 1.5,
-                        children: [
-                          StatCard(
-                            label: 'Repas commandés',
-                            value: (duMois.length - nb(StatutCommande.annulee))
-                                .toString(),
-                            icon: Icons.receipt_long_rounded,
-                            color: AppColors.primary,
-                            onTap: () => _goCommandes(context),
-                          ),
-                          StatCard(
-                            label: 'En attente',
-                            value: nb(StatutCommande.enAttente).toString(),
-                            icon: Icons.schedule_rounded,
-                            color: AppColors.warning,
-                            onTap: () => _goCommandes(context),
-                          ),
-                          StatCard(
-                            label: 'Retirées',
-                            value: nb(StatutCommande.retiree).toString(),
-                            icon: Icons.check_circle_rounded,
-                            color: AppColors.success,
-                            onTap: () => _goCommandes(context),
-                          ),
-                          StatCard(
-                            label: 'Annulées',
-                            value: nb(StatutCommande.annulee).toString(),
-                            icon: Icons.cancel_rounded,
-                            color: isDark
-                                ? AppColors.darkTextSecondary
-                                : AppColors.lightTextSecondary,
-                            onTap: () => _goCommandes(context),
-                          ),
-                        ],
-                      );
-                    }),
-
-                    const SizedBox(height: 24),
-
-                    // Actions rapides
-                    SectionHeader(title: 'Actions rapides'),
-                    const SizedBox(height: 12),
-                    _QuickActionsGrid(),
-
-                    const SizedBox(height: 24),
-
-                    // Dernières commandes
-                    SectionHeader(
-                      title: 'Récentes',
-                      action: 'Tout voir',
-                      onAction: () => _goCommandes(context),
-                    ),
-                    const SizedBox(height: 12),
-
-                    Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
-                      if (cmdProv.listLoading) {
-                        return Column(
-                            children:
-                                List.generate(3, (_) => const ShimmerCard()));
-                      }
-                      final recentes = cmdProv.mesCommandes.take(3).toList();
-                      if (recentes.isEmpty) {
-                        return EmptyState(
-                          icon: Icons.receipt_outlined,
-                          title: 'Aucune commande',
-                          subtitle: 'Commandez depuis le menu du jour',
-                          action: TextButton.icon(
-                            icon: const Icon(Icons.restaurant_menu_rounded,
-                                size: 16),
-                            label: const Text('Voir le menu'),
-                            onPressed: () =>
-                                MainShellNavigator.of(context)?.navigateTo(1),
-                          ),
-                        );
-                      }
-                      return Column(
-                          children: recentes
-                              .map((c) => _CommandeItem(commande: c))
-                              .toList());
-                    }),
-
-                    const SizedBox(height: 80),
-                  ],
-                ),
-              ),
+              ...contenu,
+              const SizedBox(height: 80),
             ],
           )),
         ]),
       ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// BLOCS ALIMENTÉS PAR GET /accueil/
+// ══════════════════════════════════════════════════════════════
+
+typedef _OuvrirMenu = void Function({int? menuId, DateTime? date});
+
+/// Chargement / erreur communs : [builder] reçoit les données chargées.
+class _AccueilConsumer extends StatelessWidget {
+  final Widget Function(BuildContext, Accueil, AccueilProvider) builder;
+  final List<double> squelettes;
+  const _AccueilConsumer({required this.builder, required this.squelettes});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AccueilProvider>(builder: (context, prov, _) {
+      final a = prov.accueil;
+      if (a == null) {
+        if (prov.error != null && !prov.loading) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: AccueilErreur(
+                message: prov.error!, onReessayer: prov.charger),
+          );
+        }
+        return Column(
+            children: [for (final h in squelettes) ShimmerCard(height: h)]);
+      }
+      return builder(context, a, prov);
+    });
+  }
+}
+
+class _BlocEmploye extends StatelessWidget {
+  final _OuvrirMenu onMenu;
+  final VoidCallback onCommandes;
+  final VoidCallback onFactures;
+  const _BlocEmploye(
+      {required this.onMenu,
+      required this.onCommandes,
+      required this.onFactures});
+
+  @override
+  Widget build(BuildContext context) {
+    return _AccueilConsumer(
+      squelettes: const [128, 76, 62],
+      builder: (context, a, _) {
+        final prochain = a.prochainAReserver;
+        return Column(children: [
+          if (a.semaine.isNotEmpty) ...[
+            MaSemaineCard(
+              jours: a.semaine,
+              aujourdhui: a.date,
+              onVoirMenus: () => onMenu(),
+              onJour: (j) => onMenu(date: j.date),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (prochain != null) ...[
+            ProchainRepasCard(
+              prochain: prochain,
+              onReserver: () =>
+                  onMenu(menuId: prochain.menuId, date: prochain.date),
+            ),
+            const SizedBox(height: 12),
+          ],
+          _ChiffresMois(
+              gestionnaire: false,
+              onCommandes: onCommandes,
+              onFactures: onFactures),
+        ]);
+      },
+    );
+  }
+}
+
+class _ChiffresMois extends StatelessWidget {
+  final bool gestionnaire;
+  final VoidCallback onCommandes;
+  final VoidCallback onFactures;
+  const _ChiffresMois(
+      {required this.gestionnaire,
+      required this.onCommandes,
+      required this.onFactures});
+
+  @override
+  Widget build(BuildContext context) {
+    final mois = DateFormat('MMM', 'fr_FR').format(DateTime.now());
+    Widget tuiles(ChiffresMois m) => ChiffresMoisRow(tuiles: [
+          ChiffreTuile('${m.repas}', 'repas $mois', onTap: onCommandes),
+          ChiffreTuile('${m.retires}', m.retires > 1 ? 'retirés' : 'retiré',
+              onTap: onCommandes),
+          if (!gestionnaire)
+            ChiffreTuile('${m.annules}', m.annules > 1 ? 'annulés' : 'annulé',
+                onTap: onCommandes),
+          ChiffreTuile(formatFcfa(m.montant), 'à payer',
+              montant: true, onTap: onFactures),
+        ]);
+
+    // Employé : déjà sous le chargement de _BlocEmploye
+    if (!gestionnaire) {
+      final a = context.watch<AccueilProvider>().accueil;
+      return a == null ? const SizedBox.shrink() : tuiles(a.mois);
+    }
+    return _AccueilConsumer(
+      squelettes: const [62],
+      builder: (_, a, __) => tuiles(a.mois),
+    );
+  }
+}
+
+class _BlocGestion extends StatelessWidget {
+  final VoidCallback onScanner;
+  final VoidCallback onGestion;
+  const _BlocGestion({required this.onScanner, required this.onGestion});
+
+  @override
+  Widget build(BuildContext context) {
+    return _AccueilConsumer(
+      squelettes: const [170, 90],
+      builder: (context, a, prov) {
+        final g = a.gestion;
+        if (g == null) return const SizedBox.shrink();
+        return Column(children: [
+          ServiceDuJourCard(
+            services: g.serviceDuJour,
+            actualiseLe: prov.chargeLe,
+            chargement: prov.loading,
+            onScanner: onScanner,
+            onActualiser: prov.charger,
+          ),
+          for (final alerte in g.menusManquants) ...[
+            const SizedBox(height: 10),
+            AlerteMenuManquant(alerte: alerte),
+          ],
+          if (g.semaine.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            CommandesSemaineCard(
+              jours: g.semaine,
+              aujourdhui: a.date,
+              onGestion: onGestion,
+            ),
+          ],
+          const SizedBox(height: 4),
+        ]);
+      },
     );
   }
 }
@@ -545,7 +671,8 @@ class _BannerSliderState extends State<_BannerSlider> {
 
 class _RepasDuJourCard extends StatelessWidget {
   final Commande? commande;
-  const _RepasDuJourCard({this.commande});
+  final String etiquette;
+  const _RepasDuJourCard({this.commande, this.etiquette = "Aujourd'hui"});
 
   static const _vertFonce = Color(0xFF15803D);
   static const _vert = Color(0xFF22A55A);
@@ -585,8 +712,8 @@ class _RepasDuJourCard extends StatelessWidget {
               decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20)),
-              child: const Text("Aujourd'hui",
-                  style: TextStyle(
+              child: Text(etiquette,
+                  style: const TextStyle(
                       color: Colors.white,
                       fontSize: 11,
                       fontWeight: FontWeight.w600)),
@@ -752,244 +879,6 @@ class _RepasDuJourCard extends StatelessWidget {
       ),
     );
   }
-}
-
-// ══════════════════════════════════════════════════════════════
-// GESTIONNAIRE : SERVICE DU JOUR (commandes du jour de son agence ;
-// le serveur limite déjà le gestionnaire à son agence)
-// ══════════════════════════════════════════════════════════════
-
-class _ServiceDuJourCard extends StatefulWidget {
-  const _ServiceDuJourCard({super.key});
-  @override
-  State<_ServiceDuJourCard> createState() => _ServiceDuJourCardState();
-}
-
-class _ServiceDuJourCardState extends State<_ServiceDuJourCard> {
-  late Future<List<Commande>> _commandes;
-
-  @override
-  void initState() {
-    super.initState();
-    _charger();
-  }
-
-  void _charger() {
-    // « Aujourd'hui » au sens du serveur (Africa/Abidjan = UTC+0)
-    final j = DateFormat('yyyy-MM-dd').format(DateTime.now().toUtc());
-    _commandes =
-        commandeService.getCommandesParAgencePeriode(dateDebut: j, dateFin: j);
-  }
-
-  /// Actualisation par glissement de l'accueil
-  Future<void> recharger() async {
-    if (!mounted) return;
-    setState(_charger);
-    try {
-      await _commandes;
-    } catch (_) {
-      // L'erreur est affichée par le FutureBuilder
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final agence = (auth.user?.isAdmin ?? false)
-        ? 'Toutes les agences'
-        : (auth.user?.derniereAgence ?? 'Mon agence');
-
-    return FutureBuilder<List<Commande>>(
-      future: _commandes,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const ShimmerCard(height: 110);
-        }
-        final cmds = snap.data ?? [];
-        int nb(StatutCommande s) => cmds.where((c) => c.statut == s).length;
-        final aServir = nb(StatutCommande.enAttente);
-        final servis = nb(StatutCommande.retiree);
-
-        Widget chiffre(String valeur, String libelle, Color couleur) => Expanded(
-              child: Column(children: [
-                Text(valeur,
-                    style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: couleur)),
-                const SizedBox(height: 2),
-                Text(libelle, style: Theme.of(context).textTheme.bodySmall),
-              ]),
-            );
-
-        return GestureDetector(
-          onTap: () => MainShellNavigator.of(context)?.navigateTo(3),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-                color: isDark ? AppColors.darkCard : AppColors.lightCard,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                const Icon(Icons.storefront_rounded,
-                    color: AppColors.accent, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text("Service du jour — $agence",
-                      style: Theme.of(context).textTheme.titleSmall,
-                      overflow: TextOverflow.ellipsis),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  tooltip: 'Actualiser',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => setState(_charger),
-                ),
-              ]),
-              if (snap.hasError)
-                Text('Impossible de charger les commandes du jour.',
-                    style: Theme.of(context).textTheme.bodySmall)
-              else ...[
-                const SizedBox(height: 8),
-                Row(children: [
-                  chiffre('$aServir', 'À servir', AppColors.warning),
-                  chiffre('$servis', 'Servis', AppColors.success),
-                  chiffre('${aServir + servis}', 'Repas commandés',
-                      isDark ? AppColors.accent : AppColors.primary),
-                ]),
-                const SizedBox(height: 8),
-                Text('Touchez pour ouvrir le retrait',
-                    style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ]),
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-// ACTIONS RAPIDES
-// ══════════════════════════════════════════════════════════════
-
-class _QuickActionsGrid extends StatelessWidget {
-  static Color _c(Color color, bool isDark) =>
-      (isDark && color == AppColors.primary) ? AppColors.accent : color;
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final actions = [
-      _QuickAction(
-        icon: Icons.restaurant_menu_rounded,
-        label: 'Menu',
-        color: AppColors.primary,
-        onTap: () => MainShellNavigator.of(context)?.navigateTo(1),
-      ),
-      _QuickAction(
-        icon: Icons.receipt_long_rounded,
-        label: auth.isGestionnaire ? 'Mes repas' : 'Commandes',
-        color: AppColors.success,
-        onTap: () {
-          if (auth.isGestionnaire) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const CommandesScreen()));
-          } else {
-            MainShellNavigator.of(context)?.navigateTo(2);
-          }
-        },
-      ),
-      _QuickAction(
-        icon: Icons.account_balance_wallet_rounded,
-        label: 'Factures',
-        color: AppColors.accent,
-        onTap: () {
-          if (auth.isGestionnaire) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const FacturationScreen()));
-          } else {
-            MainShellNavigator.of(context)?.navigateTo(3);
-          }
-        },
-      ),
-      if (auth.isGestionnaire) ...[
-        _QuickAction(
-          icon: Icons.admin_panel_settings_rounded,
-          label: 'Gestion',
-          color: AppColors.primary,
-          onTap: () => MainShellNavigator.of(context)?.navigateTo(2),
-        ),
-        _QuickAction(
-          icon: Icons.qr_code_scanner_rounded,
-          label: 'Retrait',
-          color: AppColors.warning,
-          onTap: () => MainShellNavigator.of(context)?.navigateTo(3),
-        ),
-      ],
-    ];
-
-    return Row(
-        children: actions
-            .map((a) => Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: GestureDetector(
-                      onTap: a.onTap,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        decoration: BoxDecoration(
-                            color: isDark
-                                ? AppColors.darkCard
-                                : AppColors.lightCard,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                                color: isDark
-                                    ? AppColors.darkBorder
-                                    : AppColors.lightBorder)),
-                        child: Column(children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                                color: _c(a.color, isDark).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12)),
-                            child: Icon(a.icon,
-                                color: _c(a.color, isDark), size: 20),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(a.label,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark
-                                      ? AppColors.darkTextPrimary
-                                      : AppColors.lightTextPrimary)),
-                        ]),
-                      ),
-                    ),
-                  ),
-                ))
-            .toList());
-  }
-}
-
-class _QuickAction {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  const _QuickAction({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
 }
 
 class _CommandeItem extends StatelessWidget {

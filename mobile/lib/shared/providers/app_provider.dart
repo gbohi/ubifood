@@ -271,6 +271,10 @@ class MenuProvider extends ChangeNotifier {
 enum CommandeState { idle, loading, success, error }
 
 class CommandeProvider extends ChangeNotifier {
+  /// Appelé après une commande, une annulation ou un retrait annulé
+  /// (rafraîchit l'accueil ; branché dans main.dart).
+  VoidCallback? apresModification;
+
   List<Commande> _mesCommandes = [];
   List<Commande> _commandesAgence = [];
   CommandeState _state = CommandeState.idle;
@@ -365,6 +369,7 @@ class CommandeProvider extends ChangeNotifier {
       _successMessage = 'Commande passée avec succès !';
       _state = CommandeState.success;
       notifyListeners();
+      apresModification?.call();
       return true;
     } catch (e) {
       _error = _parseCommandeError(e);
@@ -387,6 +392,7 @@ class CommandeProvider extends ChangeNotifier {
       _state = CommandeState.success;
       _commandeEnCours = null;
       notifyListeners();
+      apresModification?.call();
       return true;
     } catch (e) {
       _error = messageErreurApi(e) ?? 'Impossible d\'annuler la commande';
@@ -430,6 +436,7 @@ class CommandeProvider extends ChangeNotifier {
       // Sa propre commande (gestionnaire qui commande aussi) : liste à jour
       final idx = _mesCommandes.indexWhere((c) => c.id == commandeId);
       if (idx != -1) _mesCommandes[idx] = maj;
+      apresModification?.call();
       return null;
     } catch (e) {
       return messageErreurApi(e) ?? erreurParDefaut;
@@ -485,6 +492,9 @@ class CommandeProvider extends ChangeNotifier {
 // ══════════════════════════════════════════════════════════════
 
 class RetraitProvider extends ChangeNotifier {
+  /// Appelé après un retrait validé (rafraîchit l'accueil ; main.dart)
+  VoidCallback? apresRetrait;
+
   RechercheParBadgeResult? _result;
   bool _loading = false;
   String? _error;
@@ -543,6 +553,7 @@ class RetraitProvider extends ChangeNotifier {
       _successMessage = 'Retrait validé avec succès !';
       _loading = false;
       notifyListeners();
+      apresRetrait?.call();
       return true;
     } catch (e) {
       final msg = messageErreurApi(e) ?? '';
@@ -559,6 +570,78 @@ class RetraitProvider extends ChangeNotifier {
     _recherche++;
     _result = _error = _successMessage = null;
     _loading = false;
+    notifyListeners();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ACCUEIL PROVIDER (GET /accueil/)
+// ══════════════════════════════════════════════════════════════
+
+class AccueilProvider extends ChangeNotifier {
+  Accueil? _accueil;
+  bool _loading = false;
+  String? _error;
+  DateTime? _chargeLe;
+
+  Accueil? get accueil => _accueil;
+  bool get loading => _loading;
+  String? get error => _error;
+
+  /// Heure du dernier chargement réussi (« Actualisé à 10:42 »)
+  DateTime? get chargeLe => _chargeLe;
+
+  int _generation = 0;
+  Future<void>? _chargementEnCours;
+  bool _aRecharger = false;
+
+  /// Un seul appel à la fois ; une demande pendant un chargement en relance
+  /// un dernier à la fin (les données reflètent la dernière modification).
+  Future<void> charger() {
+    if (_chargementEnCours != null) {
+      _aRecharger = true;
+      return _chargementEnCours!;
+    }
+    late final Future<void> chargement;
+    chargement = _charger().whenComplete(() {
+      // Déconnexion entre-temps : un autre chargement a pu démarrer
+      if (!identical(_chargementEnCours, chargement)) return;
+      _chargementEnCours = null;
+      if (_aRecharger) {
+        _aRecharger = false;
+        charger();
+      }
+    });
+    return _chargementEnCours = chargement;
+  }
+
+  Future<void> _charger() async {
+    final gen = _generation;
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final a = await accueilService.charger();
+      if (gen != _generation) return;
+      _accueil = a;
+      _chargeLe = DateTime.now();
+    } catch (e) {
+      if (gen != _generation) return;
+      _error = messageErreurApi(e) ?? "Impossible de charger l'accueil";
+    }
+    _loading = false;
+    notifyListeners();
+  }
+
+  /// Déconnexion : rien ne doit rester du compte précédent.
+  void reset() {
+    _generation++;
+    _chargementEnCours = null;
+    _aRecharger = false;
+    _accueil = null;
+    _chargeLe = null;
+    _loading = false;
+    _error = null;
     notifyListeners();
   }
 }

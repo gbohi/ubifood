@@ -222,7 +222,7 @@ class AccueilView(APIView):
             if d.weekday() < 5:
                 manquants = sans_menu(d)
                 if manquants:
-                    manquants_a_faire.append({'type': 'menu_manquant', 'date': d,
+                    manquants_a_faire.append({'type': 'menu_manquant', 'date': d, 'agences': manquants,
                                     'titre': f"Pas de menu {_jour_libelle(d)}",
                                     'detail': f"{', '.join(manquants)} · les agents ne peuvent pas commander"})
             d += timedelta(days=1)

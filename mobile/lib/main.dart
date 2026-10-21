@@ -59,8 +59,14 @@ class CantineApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => MenuProvider()),
-        ChangeNotifierProvider(create: (_) => CommandeProvider()),
-        ChangeNotifierProvider(create: (_) => RetraitProvider()),
+        ChangeNotifierProvider(create: (_) => AccueilProvider()),
+        // Commande, annulation, retrait : l'accueil se met à jour
+        ChangeNotifierProvider(
+            create: (ctx) => CommandeProvider()
+              ..apresModification = () => ctx.read<AccueilProvider>().charger()),
+        ChangeNotifierProvider(
+            create: (ctx) => RetraitProvider()
+              ..apresRetrait = () => ctx.read<AccueilProvider>().charger()),
         ChangeNotifierProvider(create: (_) => FacturationProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
         ChangeNotifierProxyProvider<AuthProvider, AllergieProvider>(
@@ -175,6 +181,7 @@ class _AuthGateState extends State<_AuthGate> {
     context.read<NotificationProvider>().stopPolling();
     context.read<MenuProvider>().reset();
     context.read<CommandeProvider>().reset();
+    context.read<AccueilProvider>().reset();
     context.read<RetraitProvider>().reset();
     context.read<FacturationProvider>().reset();
   }

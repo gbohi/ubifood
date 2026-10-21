@@ -293,6 +293,17 @@ class PopupConnexionService {
   }
 }
 
+class AccueilService {
+  /// Tout l'écran d'accueil en une requête (semaine, prochain repas à
+  /// réserver, chiffres du mois ; service du jour pour le gestionnaire).
+  Future<Accueil> charger() async {
+    final res = await apiClient.get('/accueil/');
+    final data = res.data;
+    return Accueil.fromJson(
+        data is Map ? Map<String, dynamic>.from(data) : const {});
+  }
+}
+
 class FacturationService {
   /// Lignes de facturation de l'utilisateur connecté sur la période.
   Future<List<LigneFacturation>> mesLignes({
@@ -326,6 +337,7 @@ final banniereService = BanniereService();
 final popupConnexionService = PopupConnexionService();
 final retraitService = RetraitService();
 final facturationService = FacturationService();
+final accueilService = AccueilService();
 
 // ══════════════════════════════════════════════════════════════
 // ALLERGIE SERVICE
