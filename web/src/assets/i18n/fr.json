@@ -7,7 +7,7 @@
       "TEXT": "Accueil"
     },
     "DASHBOARD": {
-      "TEXT": "Tableaux de bord",
+      "TEXT": "Tableau de bord",
       "LIST": {
         "DASHBOARDCANTINE": "Cantine"
       }
@@ -24,20 +24,20 @@
         "SOCIETE": "Société (factures)",
         "BANNIERES": "Bannières mobile",
         "POPUPCONNEXION": "Fenêtre de connexion",
-        "AGENCE": "Agence",
-        "ETAT": "État",
-        "PRIORITE": "Priorité",
-        "STATUT": "Statut",
-        "TYPEBESOIN": "Type de besoin",
-        "DEPARTEMENT": "Département",
+        "AGENCE": "Agences",
+        "ETAT": "États",
+        "PRIORITE": "Priorités",
+        "STATUT": "Statuts",
+        "TYPEBESOIN": "Types de besoin",
+        "DEPARTEMENT": "Départements",
         "ROLE": "Rôles",
         "USER": "Utilisateurs",
-        "TYPEPLAT": "Type de plat",
-        "TYPEEQUIPE": "Type équipe",
-        "FONCTION": "Fonction",
-        "POSTE": "Poste",
-        "CATEGORIESALARIE": "Catégorie salarié",
-        "PRESTATAIRE": "Prestataire"
+        "TYPEPLAT": "Types de plat",
+        "TYPEEQUIPE": "Types d'équipe",
+        "FONCTION": "Fonctions",
+        "POSTE": "Postes",
+        "CATEGORIESALARIE": "Catégories de salarié",
+        "PRESTATAIRE": "Prestataires"
       }
     },
     "BESOINS": {
@@ -46,16 +46,17 @@
     "CANTINES": {
       "TEXT": "Cantine",
       "LIST": {
-        "PLAT": "Liste des plats",
-        "MENU": "Menu",
-        "PLANNINGMENU": "Planning menu",
+        "PLAT": "Plats",
+        "MENU": "Menus",
+        "PLANNINGMENU": "Planning des menus",
         "COMMANDE": "Commander",
-        "MESCOMMANDES": "Mes Commandes",
-        "GESTIONCOMMANDE": "Gestion des Commandes",
-        "RETRAITCOMMANDE": "Retrait commande",
-        "FACTURATIONCOMMANDE": "Facturation commande",
-        "FACTURATIONPRESTATAIRE": "Facturation prestataire",
-        "AVIS": "Avis des plats"
+        "MESCOMMANDES": "Mes commandes",
+        "GESTIONCOMMANDE": "Gestion des commandes",
+        "RETRAITCOMMANDE": "Retrait des commandes",
+        "FACTURATIONCOMMANDE": "Facturation employés",
+        "FACTURATIONPRESTATAIRE": "Facturation prestataires",
+        "AVIS": "Avis sur les plats",
+        "FACTURATION": "Facturation"
       }
     }
   }

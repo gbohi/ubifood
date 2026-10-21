@@ -1,195 +1,187 @@
-<!-- src/app/pages/cantine/planning-menus/planning-menus.component.html -->
-<app-breadcrumbs title="Planning des menus" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<div class="ce ce-planning">
 
-<div class="row">
-  <div class="col-lg-12">
-    <div class="card">
+  <!-- ── En-tête ─────────────────────────────────────────────── -->
+  <div class="ce-entete">
+    <div class="ce-entete-txt">
+      <h1><span class="ce-ic"><i class="ri-calendar-2-line"></i></span>Planning des menus</h1>
+      <p>{{ sousTitre }}</p>
+    </div>
+    <div class="ce-btns">
+      <button type="button" class="ce-btn" [disabled]="!totalMenus" (click)="exportExcel()">
+        <i class="ri-file-excel-2-line ce-c-vert"></i>Excel
+      </button>
+      <button type="button" class="ce-btn" [disabled]="!totalMenus" (click)="exportPdf()">
+        <i class="ri-file-pdf-line ce-c-rouge"></i>PDF
+      </button>
+      <a class="ce-btn ce-btn-vert" routerLink="/cantines/liste-menus"><i class="ri-add-line"></i>Nouveau menu</a>
+    </div>
+  </div>
 
-      <!-- ── Filtres ──────────────────────────────────────────── -->
-      <div class="card-header border-bottom-0 pb-0">
-        <form [formGroup]="filterForm" (ngSubmit)="loadPlanning()">
-          <div class="row g-3 align-items-end">
+  <!-- ── Navigation semaine + filtres ────────────────────────── -->
+  <div class="ce-carte ce-barre">
+    <div class="ce-nav">
+      <button type="button" class="ce-btn ce-btn-ic" (click)="semaine(-1)" aria-label="Semaine précédente">
+        <i class="ri-arrow-left-s-line"></i>
+      </button>
+      <b class="ce-nav-titre">{{ titreSemaine }}</b>
+      <button type="button" class="ce-btn ce-btn-ic" (click)="semaine(1)" aria-label="Semaine suivante">
+        <i class="ri-arrow-right-s-line"></i>
+      </button>
+      <button type="button" class="ce-btn" [disabled]="estSemaineCourante" (click)="aujourdhui()">Aujourd'hui</button>
+    </div>
+    <div class="ce-filtres">
+      <label class="ce-champ">
+        <i class="ri-building-line"></i>
+        <select [(ngModel)]="filtreAgence" (change)="charger()" aria-label="Agence">
+          <option value="">{{ libelleToutes }}</option>
+          @for (ag of agences; track ag.id) { <option [value]="ag.id">{{ ag.nom_agence }}</option> }
+        </select>
+      </label>
+      <label class="ce-champ">
+        <i class="ri-time-line"></i>
+        <select [(ngModel)]="filtreEquipe" (change)="charger()" aria-label="Équipe">
+          <option value="">Toutes les équipes</option>
+          @for (te of typeEquipes; track te.id) { <option [value]="te.id">{{ te.libelle }}</option> }
+        </select>
+      </label>
+    </div>
+  </div>
 
-            <!-- Date début -->
-            <div class="col-lg-2 col-md-4">
-              <label class="form-label fw-medium mb-1">Date début</label>
-              <input type="date" class="form-control" formControlName="date_debut">
-            </div>
+  @if (erreur) {
+    <div class="ce-alerte ce-alerte-ro"><i class="ri-error-warning-line"></i><div>{{ erreur }}</div></div>
+  }
 
-            <!-- Date fin -->
-            <div class="col-lg-2 col-md-4">
-              <label class="form-label fw-medium mb-1">Date fin</label>
-              <input type="date" class="form-control" formControlName="date_fin">
-            </div>
+  <!-- ── Calendrier ──────────────────────────────────────────── -->
+  @if (isLoading && !planning) {
+    <div class="ce-chargement"><span class="spinner-border" role="status"></span></div>
+  }
 
-            <!-- Agence -->
-            <div class="col-lg-3 col-md-4">
-              <label class="form-label fw-medium mb-1">Agence</label>
-              <select class="form-select" formControlName="agence">
-                <option value="">Toutes les agences</option>
-                @for (ag of agences; track ag.id) {
-                  <option [value]="ag.id">{{ ag.nom_agence }}</option>
-                }
-              </select>
-            </div>
-
-            <!-- Type équipe -->
-            <div class="col-lg-3 col-md-4">
-              <label class="form-label fw-medium mb-1">Équipe</label>
-              <select class="form-select" formControlName="typeequipe">
-                <option value="">Toutes les équipes</option>
-                @for (te of typeEquipes; track te.id) {
-                  <option [value]="te.id">{{ te.libelle }}</option>
-                }
-              </select>
-            </div>
-
-            <!-- Actions -->
-            <div class="col-lg-2 col-md-4">
-              <button type="submit" class="btn btn-primary w-100">
-                <i class="ph-magnifying-glass me-1"></i>
-                Rechercher
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-
-      <div class="card-body">
-
-        <!-- ── Barre d'actions ──────────────────────────────────── -->
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h6 class="mb-0 text-muted">
-            @if (!isLoading) {
-              <span class="fw-semibold text-body">{{ totalJours }}</span> jour(s) de menu
-            }
-          </h6>
-          <div class="d-flex gap-2">
-            <button class="btn btn-subtle-success btn-sm"
-                    [disabled]="totalJours === 0 || isLoading"
-                    (click)="exportExcel()">
-              <i class="ph-microsoft-excel-logo me-1"></i> Excel
-            </button>
-            <button class="btn btn-subtle-danger btn-sm"
-                    [disabled]="totalJours === 0 || isLoading"
-                    (click)="exportPdf()">
-              <i class="ph-file-pdf me-1"></i> PDF
-            </button>
-          </div>
-        </div>
-
-        <!-- ── Loader ──────────────────────────────────────────── -->
-        @if (isLoading) {
-          <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-              <span class="visually-hidden">Chargement...</span>
-            </div>
-            <p class="text-muted mt-2 mb-0">Chargement du planning...</p>
+  @if (planning) {
+    <div class="ce-cal-defile" [class.ce-attente]="isLoading">
+      <div class="ce-cal">
+        <div class="ce-cal-h ce-cal-coin">Agence</div>
+        @for (j of planning.jours; track j.date) {
+          <div class="ce-cal-h" [class.ce-auj]="estAujourdhui(j.date)">
+            {{ libelleJour(j.date) }}@if (estAujourdhui(j.date)) { · aujourd'hui }
+            <small>{{ jourCourt(j.date) }}</small>
           </div>
         }
 
-        <!-- ══════════════════════════════════════════════════════
-             Mode TOUTES AGENCES : un tableau par agence
-        ═══════════════════════════════════════════════════════ -->
-        @if (!isLoading && showAgenceColumn && planningGroups.length > 0) {
-          @for (group of planningGroups; track group.agenceId) {
-            <div class="d-flex align-items-center gap-2 mt-4 mb-2">
-              <span class="badge bg-primary fs-6 px-3 py-2">
-                <i class="ph-buildings me-1"></i>{{ group.agenceNom }}
-              </span>
-              <small class="text-muted">{{ group.rows.length }} jour(s)</small>
-            </div>
-            <div class="table-responsive mb-3">
-              <table class="table table-bordered table-planning mb-0">
-                <thead>
-                  <tr class="table-header-planning">
-                    <th class="col-date text-center">Date / Menu</th>
-                    @for (te of colonnesVisibles; track te.id) {
-                      <th class="text-center">{{ te.libelle }}</th>
-                    }
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (row of group.rows; track row.date) {
-                    <tr>
-                      <td class="col-date text-center fw-semibold align-middle bg-light">
-                        {{ formatDate(row.date) }}
-                      </td>
-                      @for (te of colonnesVisibles; track te.id) {
-                        <td class="plats-cell align-top">
-                          @if (getPlats(row, te.id).length > 0) {
-                            <ul class="list-unstyled mb-0">
-                              @for (plat of getPlats(row, te.id); track plat) {
-                                <li class="plat-item">
-                                  <i class="ph-minus me-1 text-muted" style="font-size:10px"></i>{{ plat }}
-                                </li>
-                              }
-                            </ul>
-                          } @else {
-                            <span class="text-muted fst-italic small">—</span>
-                          }
-                        </td>
-                      }
-                    </tr>
+        @for (ag of planning.agences; track ag.id) {
+          <div class="ce-cal-ag">
+            <b>{{ ag.nom }}</b>
+            @if (ag.equipes.length) { <small>{{ ag.equipes.join(' · ') }}</small> }
+            <small>{{ ag.nb_agents }} agent{{ ag.nb_agents > 1 ? 's' : '' }}</small>
+          </div>
+
+          @for (jour of ag.jours; track jour.date) {
+            <div class="ce-cal-case" [class.ce-auj]="estAujourdhui(jour.date)" [class.ce-passe]="estPasse(jour.date)">
+              @if (jour.menus.length === 0) {
+                @if (estPasse(jour.date)) {
+                  <div class="ce-cal-rien">Pas de menu</div>
+                } @else {
+                  <div class="ce-cal-vide">
+                    <i class="ri-calendar-todo-line"></i>
+                    Pas de menu
+                    <small>les agents ne peuvent pas commander</small>
+                    <button type="button" class="ce-btn ce-btn-mini" (click)="ouvrirCreation(ag, jour.date)">
+                      <i class="ri-add-line"></i>Créer
+                    </button>
+                  </div>
+                }
+              }
+              @for (m of jour.menus; track m.id) {
+                <div class="ce-cal-menu">
+                  @if (jour.menus.length > 1 && m.typeequipe) { <div class="ce-cal-equipe">{{ m.typeequipe }}</div> }
+                  @for (p of m.plats; track p.id; let i = $index) {
+                    <div class="ce-cal-plat" [title]="p.nom + ' : ' + p.commandes + ' commande(s)'">
+                      <span class="ce-pastille" [ngClass]="teinte(i)"><i class="ri-restaurant-2-line"></i></span>
+                      <span class="ce-cal-nom">{{ p.nom }}</span>
+                      <em>{{ p.commandes }}</em>
+                    </div>
                   }
-                </tbody>
-              </table>
+                  <div class="ce-cal-bas">
+                    <span class="ce-tag" [ngClass]="classeEtat(m)">
+                      @if (iconeEtat(m)) { <i [class]="iconeEtat(m)"></i> }{{ libelleEtat(m) }}
+                    </span>
+                    @switch (m.etat) {
+                      @case ('en_service') {
+                        <a class="ce-lien-ic" [routerLink]="['/cantines/retrait-commande']" [queryParams]="{ menu: m.id }" title="Ouvrir le retrait">
+                          <i class="ri-qr-scan-2-line"></i>
+                        </a>
+                      }
+                      @case ('termine') {
+                        <a class="ce-lien-ic" routerLink="/cantines/gestion-commandes" title="Voir les commandes"><i class="ri-eye-line"></i></a>
+                      }
+                      @default {
+                        <a class="ce-lien-ic" routerLink="/cantines/liste-menus" title="Modifier le menu"><i class="ri-pencil-line"></i></a>
+                      }
+                    }
+                  </div>
+                </div>
+              }
             </div>
           }
         }
-
-        <!-- ══════════════════════════════════════════════════════
-             Mode AGENCE UNIQUE : tableau simple par date
-        ═══════════════════════════════════════════════════════ -->
-        @if (!isLoading && !showAgenceColumn && planningRows.length > 0) {
-          <div class="table-responsive">
-            <table class="table table-bordered table-planning mb-0">
-              <thead>
-                <tr class="table-header-planning">
-                  <th class="col-date text-center">Date / Menu</th>
-                  @for (te of colonnesVisibles; track te.id) {
-                    <th class="text-center">{{ te.libelle }}</th>
-                  }
-                </tr>
-              </thead>
-              <tbody>
-                @for (row of planningRows; track row.date) {
-                  <tr>
-                    <td class="col-date text-center fw-semibold align-middle bg-light">
-                      {{ formatDate(row.date) }}
-                    </td>
-                    @for (te of colonnesVisibles; track te.id) {
-                      <td class="plats-cell align-top">
-                        @if (getPlats(row, te.id).length > 0) {
-                          <ul class="list-unstyled mb-0">
-                            @for (plat of getPlats(row, te.id); track plat) {
-                              <li class="plat-item">
-                                <i class="ph-minus me-1 text-muted" style="font-size:10px"></i>{{ plat }}
-                              </li>
-                            }
-                          </ul>
-                        } @else {
-                          <span class="text-muted fst-italic small">—</span>
-                        }
-                      </td>
-                    }
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
-
-        <!-- ── Aucun résultat ──────────────────────────────────── -->
-        @if (!isLoading && totalJours === 0) {
-          <div class="text-center py-5">
-            <i class="ph-calendar-x fs-1 text-muted"></i>
-            <h5 class="mt-3 text-muted">Aucun menu pour cette période</h5>
-            <p class="text-muted mb-0">Modifiez les filtres et relancez la recherche.</p>
-          </div>
-        }
-
       </div>
+    </div>
+
+    @if (planning.agences.length === 0) {
+      <div class="ce-carte ce-vide-page">
+        <i class="ri-building-line"></i>
+        <b>Aucune agence</b>
+        <span>Vous n'êtes rattaché à aucune agence : le planning est vide.</span>
+      </div>
+    }
+
+    <div class="ce-legende">
+      <span class="ce-tag ce-tag-ve">Ouvert / en service</span>
+      <span class="ce-tag ce-tag-or">Commandes fermées</span>
+      <span class="ce-tag ce-tag-gr">Terminé</span>
+      <span class="ce-tag ce-tag-ro">Menu manquant</span>
+      <span class="ce-legende-note">Le nombre à droite de chaque plat = commandes reçues (non annulées)</span>
+    </div>
+  }
+</div>
+
+<!-- ── Création rapide d'un menu ─────────────────────────────── -->
+<div bsModal #creerModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content ce-modal">
+      @if (creation) {
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="ri-calendar-2-line me-2"></i>Menu du {{ libelleJour(creation.date) }} {{ jourCourt(creation.date) }}</h5>
+          <button type="button" class="btn-close" (click)="creerModal.hide()" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          <p class="ce-muted mb-3"><i class="ri-building-line me-1"></i>{{ creation.agence.nom }}</p>
+          <label class="form-label">Équipe</label>
+          <select class="form-select mb-3" [(ngModel)]="creation.typeequipe">
+            @for (te of typeEquipes; track te.id) { <option [value]="te.id">{{ te.libelle }}</option> }
+          </select>
+          <label class="form-label">Plats ({{ creation.choisis.size }} choisi{{ creation.choisis.size > 1 ? 's' : '' }})</label>
+          <div class="ce-choix-plats">
+            @for (p of creation.plats; track p.id) {
+              <label class="ce-choix" [class.ce-on]="creation.choisis.has(p.id)">
+                <input type="checkbox" [checked]="creation.choisis.has(p.id)" (change)="basculerPlat(p.id)">
+                <span>{{ p.nom }}<small>{{ p.type_plat_libelle }}</small></span>
+              </label>
+            } @empty {
+              <div class="ce-muted small">Aucun plat pour cette agence. <a routerLink="/cantines/liste-plats" (click)="creerModal.hide()">Créer un plat</a></div>
+            }
+          </div>
+          @if (creationErreur) {
+            <div class="ce-alerte ce-alerte-ro mt-3"><i class="ri-error-warning-line"></i><div>{{ creationErreur }}</div></div>
+          }
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="ce-btn" (click)="creerModal.hide()">Annuler</button>
+          <button type="button" class="ce-btn ce-btn-vert" [disabled]="creationEnvoi" (click)="creerMenu()">
+            @if (creationEnvoi) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-check-line"></i> }
+            Créer le menu
+          </button>
+        </div>
+      }
     </div>
   </div>
 </div>

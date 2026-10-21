@@ -202,6 +202,12 @@ export class SidebarComponent {
       let matchingMenuItem = items.find((x: any) => {
         return x.pathname === pathName;
       });
+      // Pages sans entrée propre (ex. une liste de paramètres) : entrée déclarée via `actifSur`
+      if (!matchingMenuItem) {
+        matchingMenuItem = items.find((x: any) => (x.getAttribute('data-actif-sur') || '')
+          .split(' ').filter(Boolean)
+          .some((prefixe: string) => pathName === prefixe || pathName.startsWith(prefixe + '/')));
+      }
 
       if (matchingMenuItem) {
         this.activateParentDropdown(matchingMenuItem);

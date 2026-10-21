@@ -1,62 +1,53 @@
-<app-breadcrumbs title="Avis des plats" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<!-- Avis sur les plats — gabarit commun des listes -->
+<div class="lst">
+  <app-page-entete titre="Avis sur les plats" icone="ri-star-smile-line" [fil]="[{label: 'Cantine'}]"
+                   [compte]="totalItems" unite="avis|avis"></app-page-entete>
 
-<!-- ── Filtres ─────────────────────────────────────────────── -->
-<div class="card">
-  <div class="card-body">
-    <div class="row g-3 align-items-end">
-      <div class="col-md-6 col-xl-2">
-        <label class="form-label" for="avis-date-debut">Du</label>
-        <input type="date" class="form-control" id="avis-date-debut" [(ngModel)]="dateDebut">
-      </div>
-      <div class="col-md-6 col-xl-2">
-        <label class="form-label" for="avis-date-fin">Au</label>
-        <input type="date" class="form-control" id="avis-date-fin" [(ngModel)]="dateFin">
-      </div>
-      <div class="col-md-4 col-xl-2">
-        <label class="form-label" for="avis-agence">Agence</label>
-        <select class="form-select" id="avis-agence" [(ngModel)]="agenceId">
-          @if (estAdmin || agences.length !== 1) { <option value="">Toutes</option> }
-          @for (a of agences; track a.id) { <option [ngValue]="a.id">{{ a.nom }}</option> }
-        </select>
-      </div>
-      <div class="col-md-4 col-xl-3">
-        <label class="form-label" for="avis-plat">Plat</label>
-        <select class="form-select" id="avis-plat" [(ngModel)]="platId">
-          <option value="">Tous</option>
-          @for (p of plats; track p.id) { <option [ngValue]="p.id">{{ p.nom }}</option> }
-        </select>
-      </div>
-      <div class="col-md-4 col-xl-1">
-        <label class="form-label" for="avis-note">Note</label>
-        <select class="form-select" id="avis-note" [(ngModel)]="note">
-          <option value="">Toutes</option>
-          @for (n of notes; track n) { <option [ngValue]="n">{{ n }} ★</option> }
-        </select>
-      </div>
-      <div class="col-xl-2 d-flex gap-2">
-        <button class="btn btn-primary flex-grow-1" (click)="rechercher()">
-          <i class="ri-filter-3-line align-baseline me-1"></i> Filtrer
-        </button>
-        <button class="btn btn-light" (click)="reinitialiser()" title="Réinitialiser">
-          <i class="ri-refresh-line"></i>
-        </button>
+  <!-- ── Filtres ─────────────────────────────────────────────── -->
+  <div class="lst-carte">
+    <div class="lst-barre">
+      <div class="row g-2 align-items-end flex-grow-1">
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label small mb-1" for="avis-date-debut">Du</label>
+          <input type="date" class="form-control" id="avis-date-debut" [(ngModel)]="dateDebut">
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label small mb-1" for="avis-date-fin">Au</label>
+          <input type="date" class="form-control" id="avis-date-fin" [(ngModel)]="dateFin">
+        </div>
+        <div class="col-md-6 col-xl-3">
+          <label class="form-label small mb-1" for="avis-agence">Agence</label>
+          <select class="form-select" id="avis-agence" [(ngModel)]="agenceId">
+            @if (estAdmin || agences.length !== 1) { <option value="">Toutes les agences</option> }
+            @for (a of agences; track a.id) { <option [ngValue]="a.id">{{ a.nom }}</option> }
+          </select>
+        </div>
+        <div class="col-md-6 col-xl-3">
+          <label class="form-label small mb-1" for="avis-plat">Plat</label>
+          <select class="form-select" id="avis-plat" [(ngModel)]="platId">
+            <option value="">Tous les plats</option>
+            @for (p of plats; track p.id) { <option [ngValue]="p.id">{{ p.nom }}</option> }
+          </select>
+        </div>
+        <div class="col-md-6 col-xl-2 d-flex gap-2">
+          <button type="button" class="btn-ubi navy flex-grow-1" (click)="rechercher()"><i class="ri-filter-3-line"></i>Filtrer</button>
+          <button type="button" class="btn-ubi ic" (click)="reinitialiser()" title="Réinitialiser" aria-label="Réinitialiser les filtres"><i class="ri-refresh-line"></i></button>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- ── Synthèse ─────────────────────────────────────────────── -->
-<div class="row">
-  <div class="col-xl-4">
-    <div class="card card-height-100">
-      <div class="card-header"><h6 class="card-title mb-0">Note moyenne</h6></div>
-      <div class="card-body text-center d-flex flex-column justify-content-center">
+  <!-- ── Synthèse ─────────────────────────────────────────────── -->
+  <div class="row g-3 mb-3">
+    <div class="col-xl-4">
+      <div class="lst-carte h-100 mb-0 p-3 text-center d-flex flex-column justify-content-center">
+        <h3 class="fs-sm fw-semibold text-start mb-2">Note moyenne</h3>
         @if (isLoadingStats) {
           <div class="py-4"><span class="spinner-border text-primary" role="status"></span></div>
         } @else if (moyenneGlobale === null) {
           <p class="text-muted mb-0 py-4">Aucun avis sur cette période</p>
         } @else {
-          <h1 class="display-5 fw-semibold mb-1">{{ formatNote(moyenneGlobale) }}<span class="fs-5 text-muted"> / 5</span></h1>
+          <div class="display-5 fw-semibold mb-1">{{ formatNote(moyenneGlobale) }}<span class="fs-5 text-muted"> / 5</span></div>
           <div class="fs-3 text-warning mb-2">
             @for (e of etoiles(moyenneGlobale); track $index) {
               <i [class]="e === 'full' ? 'ri-star-fill' : e === 'half' ? 'ri-star-half-line' : 'ri-star-line'"></i>
@@ -66,30 +57,24 @@
         }
       </div>
     </div>
-  </div>
-  <div class="col-xl-8">
-    <div class="card card-height-100">
-      <div class="card-header"><h6 class="card-title mb-0">Par plat</h6></div>
-      <div class="card-body">
+    <div class="col-xl-8">
+      <div class="lst-carte h-100 mb-0">
+        <h3 class="fs-sm fw-semibold px-3 pt-3 mb-2">Par plat</h3>
         @if (isLoadingStats) {
-          <div class="text-center py-4"><span class="spinner-border text-primary" role="status"></span></div>
+          <div class="lst-charge"><span class="spinner-border" role="status"></span></div>
         } @else if (stats.length === 0) {
           <p class="text-muted text-center mb-0 py-4">Aucun avis sur cette période</p>
         } @else {
-          <div class="table-responsive" style="max-height: 320px;">
-            <table class="table table-sm table-centered align-middle table-nowrap mb-0">
-              <thead class="text-muted table-light">
-                <tr>
-                  <th>Plat</th>
-                  <th>Note moyenne</th>
-                  <th class="text-end">Nombre d'avis</th>
-                </tr>
+          <div class="lst-table-wrap" style="max-height: 320px;">
+            <table class="lst-table">
+              <thead>
+                <tr><th>Plat</th><th>Note moyenne</th><th class="text-end">Nombre d'avis</th></tr>
               </thead>
               <tbody>
                 @for (s of stats; track s.plat_id) {
                   <tr>
-                    <td>{{ s.plat_nom }}</td>
-                    <td>
+                    <td class="fw-medium">{{ s.plat_nom }}</td>
+                    <td class="text-nowrap">
                       <span class="text-warning me-1">
                         @for (e of etoiles(s.note_moyenne); track $index) {
                           <i [class]="e === 'full' ? 'ri-star-fill' : e === 'half' ? 'ri-star-half-line' : 'ri-star-line'"></i>
@@ -107,90 +92,79 @@
       </div>
     </div>
   </div>
-</div>
 
-<!-- ── Liste des avis ───────────────────────────────────────── -->
-<div class="card">
-  <div class="card-header">
-    <h6 class="card-title mb-0">Avis <span class="text-muted fw-normal">({{ totalItems }})</span></h6>
-  </div>
-  <div class="card-body">
-    @if (isLoading) {
-      <div class="text-center py-5"><span class="spinner-border text-primary" role="status"></span></div>
-    } @else if (avis.length === 0) {
-      <div class="text-center py-5 text-muted">
-        <i class="ri-chat-smile-2-line fs-1 d-block mb-2"></i>
-        Aucun avis sur cette période
+  <!-- ── Liste des avis ───────────────────────────────────────── -->
+  <div class="lst-carte">
+    <div class="lst-barre">
+      <div class="lst-chips" role="group" aria-label="Filtrer par note">
+        <button type="button" class="lst-chip" [class.on]="note === ''" [attr.aria-pressed]="note === ''" (click)="choisirNote('')">Toutes les notes</button>
+        @for (n of notes; track n) {
+          <button type="button" class="lst-chip" [class.on]="note === n" [attr.aria-pressed]="note === n" (click)="choisirNote(n)">{{ n }} ★</button>
+        }
       </div>
-    } @else {
-      <div class="table-responsive">
-        <table class="table table-centered align-middle mb-0">
-          <thead class="text-muted table-light">
-            <tr>
-              <th class="text-nowrap">Date du menu</th>
-              <th>Plat</th>
-              <th>Agent</th>
-              <th>Agence</th>
-              <th>Note</th>
-              <th>Commentaire</th>
-              @if (estAdmin) { <th class="text-end">Action</th> }
-            </tr>
-          </thead>
-          <tbody>
+    </div>
+    <div class="lst-table-wrap lst-cartes-wrap">
+      <table class="lst-table lst-cartes">
+        <thead>
+          <tr>
+            <th>Plat</th>
+            <th class="text-nowrap">Date du menu</th>
+            <th>Agent</th>
+            <th>Agence</th>
+            <th>Note</th>
+            <th>Commentaire</th>
+            @if (estAdmin) { <th class="lst-c-act"><span class="visually-hidden">Actions</span></th> }
+          </tr>
+        </thead>
+        <tbody>
+          @if (!isLoading) {
             @for (a of avis; track a.id) {
               <tr>
-                <td class="text-nowrap">{{ formatDate(a.date_menu) }}</td>
-                <td>{{ a.plat_nom }}</td>
-                <td>{{ a.user_nom }}</td>
-                <td>{{ a.agence_nom }}</td>
-                <td class="text-nowrap text-warning" [title]="a.note + ' / 5'">
-                  @for (e of etoiles(a.note); track $index) {
-                    <i [class]="e === 'full' ? 'ri-star-fill' : 'ri-star-line'"></i>
-                  }
+                <td class="lst-c-principal"><b>{{ a.plat_nom }}</b></td>
+                <td data-label="Date du menu" class="text-nowrap">{{ formatDate(a.date_menu) }}</td>
+                <td data-label="Agent">{{ a.user_nom }}</td>
+                <td data-label="Agence"><span class="lst-tag t-bl">{{ a.agence_nom }}</span></td>
+                <td data-label="Note" class="text-nowrap text-warning" [title]="a.note + ' / 5'">
+                  <span>
+                    @for (e of etoiles(a.note); track $index) { <i [class]="e === 'full' ? 'ri-star-fill' : 'ri-star-line'"></i> }
+                  </span>
                 </td>
-                <td style="min-width: 220px; white-space: pre-line;">
-                  @if (a.commentaire) { <span>{{ a.commentaire }}</span> } @else { <span class="text-muted">—</span> }
+                <td data-label="Commentaire" style="min-width: 220px; white-space: pre-line;">
+                  @if (a.commentaire) { <span>{{ a.commentaire }}</span> } @else { <span class="muted">—</span> }
                 </td>
                 @if (estAdmin) {
-                  <td class="text-end text-nowrap">
-                    @if (aSupprimer?.id === a.id) {
-                      <span class="small me-2">Supprimer cet avis ?</span>
-                      <button class="btn btn-sm btn-danger me-1" (click)="supprimer()" [disabled]="isDeleting">
-                        @if (isDeleting) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                        Oui
-                      </button>
-                      <button class="btn btn-sm btn-light" (click)="aSupprimer = null" [disabled]="isDeleting">Non</button>
-                    } @else {
-                      <button class="btn btn-sm btn-subtle-danger" title="Supprimer (modération)" (click)="aSupprimer = a">
-                        <i class="ph-trash"></i>
-                      </button>
-                    }
+                  <td class="lst-c-act">
+                    <div class="lst-act">
+                      @if (aSupprimer?.id === a.id) {
+                        <span class="small me-1">Supprimer ?</span>
+                        <button type="button" class="btn-ubi rouge sm" (click)="supprimer()" [disabled]="isDeleting">
+                          @if (isDeleting) { <span class="spinner-border spinner-border-sm"></span> }
+                          Oui
+                        </button>
+                        <button type="button" class="btn-ubi sm" (click)="aSupprimer = null" [disabled]="isDeleting">Non</button>
+                      } @else {
+                        <button type="button" class="lst-ic" title="Supprimer (modération)" aria-label="Supprimer l'avis" (click)="aSupprimer = a"><i class="ri-delete-bin-6-line"></i></button>
+                      }
+                    </div>
                   </td>
                 }
               </tr>
+            } @empty {
+              <tr class="lst-l-vide">
+                <td [attr.colspan]="estAdmin ? 7 : 6" class="lst-c-plein">
+                  <div class="lst-vide"><i class="ri-chat-smile-2-line"></i><h5>Aucun avis</h5><p>Aucun avis sur cette période.</p></div>
+                </td>
+              </tr>
             }
-          </tbody>
-        </table>
-      </div>
-    }
-
-    <div [class.d-none]="isLoading || totalItems <= pageSize" class="row mt-3 align-items-center">
-      <div class="col-sm">
-        <div class="text-muted text-center text-sm-start">
-          Affichage de <span class="fw-semibold">{{ avis.length }}</span>
-          sur <span class="fw-semibold">{{ totalItems }}</span> résultats
-        </div>
-      </div>
-      <div class="col-sm-auto mt-3 mt-sm-0">
-        <pagination class="pagination-wrap justify-content-center hstack gap-2"
-                    [totalItems]="totalItems"
-                    [itemsPerPage]="pageSize"
-                    [(ngModel)]="currentPage"
-                    previousText="Précédent"
-                    nextText="Suivant"
-                    (pageChanged)="pageChanged($event)">
-        </pagination>
-      </div>
+          }
+        </tbody>
+      </table>
+      @if (isLoading) {
+        <div class="lst-charge"><div class="spinner-border" role="status"><span class="visually-hidden">Chargement...</span></div></div>
+      }
     </div>
+    @if (!isLoading) {
+      <app-liste-pied [total]="totalItems" [page]="currentPage" [parPage]="pageSize" [nbAffiches]="avis.length" (pageChanged)="pageChanged($event)"></app-liste-pied>
+    }
   </div>
 </div>

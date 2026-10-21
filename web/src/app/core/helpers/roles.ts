@@ -7,6 +7,14 @@
 export type Role = 'super_admin' | 'admin' | 'gestionnaire' | 'employe';
 
 export const ADMINS: Role[] = ['super_admin', 'admin'];
+
+/** Libellés français des rôles (affichés à la place des codes) */
+export const LIBELLES_ROLES: Record<string, string> = {
+  super_admin:  'Super administrateur',
+  admin:        'Administrateur',
+  gestionnaire: 'Gestionnaire',
+  employe:      'Employé',
+};
 export const GESTIONNAIRES: Role[] = ['super_admin', 'admin', 'gestionnaire'];
 
 /** Page d'accueil d'un utilisateur sans droit de gestion */

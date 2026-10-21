@@ -1691,14 +1691,16 @@ class CommandeViewSet(BaseViewSet):
         except User.DoesNotExist:
             return Response({'detail': f'Aucun agent trouvé avec le badge "{badge}".'}, status=404)
 
-        a_retire  = Retrait.objects.filter(user=user, menu_id=menu_id).exists()
+        retrait   = Retrait.objects.filter(user=user, menu_id=menu_id).first()
         commandes = self._base_queryset().filter(user=user, menu_id=menu_id)
 
         return Response({
             'user_id':   user.id,
             'user_nom':  nom_complet(user),
             'badge':     user.username,
-            'a_retire':  a_retire,
+            'a_retire':  retrait is not None,
+            # Heure du retrait déjà enregistré (alerte « déjà retiré à 12:41 »)
+            'date_retrait': retrait.date_retrait if retrait else None,
             'commandes': CommandeSerializer(commandes, many=True, context={'request': request}).data,
         })
 
@@ -2028,6 +2030,64 @@ class RetraitViewSet(BaseViewSet):
 
     def perform_destroy(self, instance):
         annuler_retrait(instance, self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='service')
+    def service(self, request):
+        """
+        GET /retraits/service/?menu=ID   écran de comptoir : avancement du service
+        (commandés / servis / à servir, au total et par plat) et derniers retraits.
+        """
+        menu_id = request.query_params.get('menu')
+        if not menu_id or not str(menu_id).isdigit():
+            return Response({'detail': 'Paramètre menu requis.'}, status=400)
+        menu = get_object_or_404(Menu.objects.select_related('agence', 'typeequipe'), pk=menu_id)
+        verifier_menu_gere(request.user, menu)
+
+        actives = Commande.objects.filter(menu=menu, statut__in=['en_attente', 'retiree'])
+        plats = [
+            {'plat_id': r['plat_id'], 'nom': r['plat__nom'], 'commandees': r['commandees'],
+             'servies': r['servies'], 'a_servir': r['commandees'] - r['servies']}
+            for r in actives.values('plat_id', 'plat__nom')
+            .annotate(commandees=Count('id'), servies=Count('id', filter=Q(statut='retiree')))
+            .order_by('plat__nom')
+        ]
+        commandees = sum(p['commandees'] for p in plats)
+        servies = sum(p['servies'] for p in plats)
+
+        d = menu.date_menu
+        annulable = not ClotureMensuelle.objects.filter(annee=d.year, mois=d.month).exists()
+        try:
+            limite = min(max(int(request.query_params.get('limite', 8)), 1), 50)
+        except ValueError:
+            limite = 8
+        derniers = list(Retrait.objects.filter(menu=menu).select_related('user')
+                        .order_by('-date_retrait')[:limite])
+        plats_retires = {}
+        for c in (Commande.objects.filter(menu=menu, statut='retiree',
+                                          user_id__in=[r.user_id for r in derniers])
+                  .select_related('plat')):
+            plats_retires.setdefault(c.user_id, []).append({'commande_id': c.id, 'plat': c.plat.nom})
+
+        return Response({
+            'menu': {
+                'id': menu.id, 'date_menu': menu.date_menu,
+                'agence_id': menu.agence_id, 'agence_nom': menu.agence.nom_agence,
+                'typeequipe_libelle': menu.typeequipe.libelle if menu.typeequipe_id else None,
+            },
+            'commandees': commandees,
+            'servies': servies,
+            'a_servir': commandees - servies,
+            'plats': plats,
+            'annulable': annulable,
+            'derniers': [{
+                'id': r.id,
+                'user_id': r.user_id,
+                'user_nom': nom_complet(r.user),
+                'username': r.user.username,
+                'date_retrait': r.date_retrait,
+                'plats': plats_retires.get(r.user_id, []),
+            } for r in derniers],
+        })
 
 
 def annuler_retrait(retrait, par, commande=None):

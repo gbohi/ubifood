@@ -1,11 +1,16 @@
-// src/app/pages/cantine/planning-menus/planning-menus.component.ts
-import { filtrerAgencesGerees } from 'src/app/core/helpers/roles';
+// Planning des menus : calendrier de la semaine (agences × jours, lundi → vendredi).
+// Les données viennent du serveur en une requête (GET /api/api/planning/) :
+// menus, plats et nombre de commandes reçues, état des commandes selon les
+// délais paramétrés. Un gestionnaire ne voit que ses agences (règle serveur).
+
+import { filtrerAgencesGerees, agencesGerees } from 'src/app/core/helpers/roles';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
-import { Component, OnInit, DestroyRef, inject } from '@angular/core';
-import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
+import { Component, OnInit, DestroyRef, ViewChild, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { ModalDirective } from 'ngx-bootstrap/modal';
+import { ToastrService } from 'ngx-toastr';
 import { environment } from 'src/environments/environment';
 
 import { selectAllAgenceWithoutPagination } from 'src/app/store/Agence/agence-selector';
@@ -13,23 +18,43 @@ import { fetchagenceNoPaginateData } from 'src/app/store/Agence/agence.action';
 import { selectAllTypeequipeWithoutPagination } from 'src/app/store/Typeequipe/typeequipe-selector';
 import { fetchtypeequipeNoPaginateData } from 'src/app/store/Typeequipe/typeequipe.action';
 
-/**
- * Une ligne du planning = une date
- * Les plats sont groupés par typeequipe_id
- */
-export interface PlanningRow {
-  date: string;
-  equipes: { [typeequipeId: number]: string[] };
+export type EtatMenu = 'termine' | 'en_service' | 'ferme' | 'ouvert';
+
+export interface PlanningPlat { id: number; nom: string; type_plat: string | null; commandes: number; }
+export interface PlanningMenu {
+  id: number;
+  date_menu: string;
+  agence_id: number;
+  typeequipe_id: number;
+  typeequipe: string | null;
+  etat: EtatMenu;
+  date_limite_commande: string;
+  date_limite_libelle: string;
+  commandes: number;
+  retirees: number;
+  plats: PlanningPlat[];
+}
+export interface PlanningJour { date: string; etat: EtatMenu; date_limite_commande: string; }
+export interface PlanningAgence {
+  id: number;
+  nom: string;
+  nb_agents: number;
+  equipes: string[];
+  jours: { date: string; menus: PlanningMenu[] }[];
+}
+export interface PlanningReponse {
+  aujourdhui: string;
+  debut: string;
+  fin: string;
+  jours: PlanningJour[];
+  agences: PlanningAgence[];
 }
 
-/**
- * Groupe par agence — contient plusieurs lignes (dates)
- */
-export interface PlanningGroup {
-  agenceId: number;
-  agenceNom: string;
-  rows: PlanningRow[];
-}
+const JOURS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août',
+              'septembre', 'octobre', 'novembre', 'décembre'];
+/** Pastille de couleur des plats (même ordre dans toutes les cases) */
+const TEINTES = ['ce-t1', 'ce-t2', 'ce-t3', 'ce-t4', 'ce-t5'];
 
 @Component({
   selector: 'app-planning-menus',
@@ -37,340 +62,270 @@ export interface PlanningGroup {
   styleUrl: './planningmenu.component.scss',
 })
 export class PlanningMenuComponent implements OnInit {
-  // Un gestionnaire ne gère que les agences auxquelles il est rattaché
   private userConnecte = inject(TokenStorageService).getUser();
+  private http = inject(HttpClient);
+  private toastr = inject(ToastrService);
+  private destroyRef = inject(DestroyRef);
+  private apiUrl = `${environment.apiUrl}/api/api`;
 
-  breadCrumbItems = [
-    { label: 'Cantine', active: false },
-    { label: 'Planning des menus', active: true }
-  ];
-
-  // ── Données ──────────────────────────────────────────────────
   agences: any[] = [];
   typeEquipes: any[] = [];
-  planningRows: PlanningRow[] = [];   // utilisé quand une agence est filtrée
-  planningGroups: PlanningGroup[] = []; // utilisé quand toutes les agences
+  filtreAgence = '';
+  filtreEquipe = '';
+
+  /** Lundi de la semaine affichée (AAAA-MM-JJ) */
+  lundi = '';
+  planning: PlanningReponse | null = null;
   isLoading = false;
+  erreur: string | null = null;
 
-  /** true = toutes agences → affichage groupé par agence */
-  get showAgenceColumn(): boolean {
-    return !this.filterForm?.value?.agence;
-  }
+  // ── Création rapide d'un menu depuis une case vide ─────────
+  @ViewChild('creerModal', { static: false }) creerModal?: ModalDirective;
+  creation: { date: string; agence: PlanningAgence; typeequipe: string; plats: any[]; choisis: Set<number> } | null = null;
+  platsAgence: any[] | null = null;
+  creationEnvoi = false;
+  creationErreur: string | null = null;
 
-  // ── Filtres ──────────────────────────────────────────────────
-  filterForm!: UntypedFormGroup;
-
-  private apiUrl = `${environment.apiUrl}/api/api`;
-  private destroyRef = inject(DestroyRef);
-
-  constructor(
-    private fb: UntypedFormBuilder,
-    private http: HttpClient,
-    public store: Store,
-  ) {}
+  constructor(public store: Store) {}
 
   ngOnInit(): void {
-    this.filterForm = this.fb.group({
-      date_debut: [''],
-      date_fin: [''],
-      agence: [''],
-      typeequipe: [''],
-    });
-
-    this.store.select(selectAllAgenceWithoutPagination).pipe(
-      takeUntilDestroyed(this.destroyRef)
-    ).subscribe(data => { if (data) this.agences = filtrerAgencesGerees(data, this.userConnecte); });
-
-    this.store.select(selectAllTypeequipeWithoutPagination).pipe(
-      takeUntilDestroyed(this.destroyRef)
-    ).subscribe(data => {
-      if (data) {
-        this.typeEquipes = data;
-      }
-    });
-
+    this.store.select(selectAllAgenceWithoutPagination).pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(data => { if (data) this.agences = filtrerAgencesGerees(data, this.userConnecte); });
+    this.store.select(selectAllTypeequipeWithoutPagination).pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(data => { if (data) this.typeEquipes = data; });
     this.store.dispatch(fetchagenceNoPaginateData());
     this.store.dispatch(fetchtypeequipeNoPaginateData());
 
-    // Charger le planning du mois courant par défaut
-    const today = new Date();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const lastDay  = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-    this.filterForm.patchValue({
-      date_debut: this.toDateStr(firstDay),
-      date_fin:   this.toDateStr(lastDay),
-    });
-
-    this.loadPlanning();
+    this.lundi = this.lundiDe(new Date());
+    this.charger();
   }
 
   // ── Chargement ───────────────────────────────────────────────
 
-  loadPlanning(): void {
+  charger(): void {
+    let params = new HttpParams().set('debut', this.lundi);
+    if (this.filtreAgence) params = params.set('agence', this.filtreAgence);
+    if (this.filtreEquipe) params = params.set('typeequipe', this.filtreEquipe);
     this.isLoading = true;
-    const { date_debut, date_fin, agence, typeequipe } = this.filterForm.value;
+    this.erreur = null;
+    this.http.get<PlanningReponse>(`${this.apiUrl}/planning/`, { params })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: data => { this.planning = data; this.isLoading = false; },
+        error: err => {
+          this.isLoading = false;
+          this.erreur = typeof err === 'string' ? err : 'Le planning n\'a pas pu être chargé.';
+        },
+      });
+  }
 
-    let url = `${this.apiUrl}/menus/?page_size=1000&gerees=1`;
-    if (date_debut)  url += `&date_menu__gte=${date_debut}`;   // double underscore requis par django-filter
-    if (date_fin)    url += `&date_menu__lte=${date_fin}`;     // double underscore requis par django-filter
-    if (agence)      url += `&agence=${agence}`;
-    if (typeequipe)  url += `&typeequipe=${typeequipe}`;
+  semaine(decalage: number): void {
+    const d = this.versDate(this.lundi);
+    d.setDate(d.getDate() + 7 * decalage);
+    this.lundi = this.lundiDe(d);
+    this.charger();
+  }
 
-    this.http.get<any>(url).subscribe({
-      next: (response) => {
-        const menus = response.results ?? response;
-        this.buildPlanning(menus);
-        this.isLoading = false;
-      },
-      error: () => { this.isLoading = false; }
+  aujourdhui(): void {
+    this.lundi = this.lundiDe(new Date());
+    this.charger();
+  }
+
+  get estSemaineCourante(): boolean {
+    return this.lundi === this.lundiDe(new Date());
+  }
+
+  // ── Affichage ────────────────────────────────────────────────
+
+  get titreSemaine(): string {
+    const debut = this.versDate(this.lundi);
+    const fin = new Date(debut); fin.setDate(fin.getDate() + 4);
+    const memeMois = debut.getMonth() === fin.getMonth();
+    return `Semaine du ${debut.getDate()}${memeMois ? '' : ' ' + MOIS[debut.getMonth()]} au ` +
+           `${fin.getDate()} ${MOIS[fin.getMonth()]} ${fin.getFullYear()}`;
+  }
+
+  get sousTitre(): string {
+    const gerees = agencesGerees(this.userConnecte);
+    if (gerees === null) return 'Toutes les agences · commandes reçues par plat et par jour';
+    const noms = this.agences.map(a => a.nom_agence).join(', ');
+    return noms ? `Vos agences : ${noms}` : 'Vos agences';
+  }
+
+  /** Option « toutes » du filtre agence */
+  get libelleToutes(): string {
+    if (agencesGerees(this.userConnecte) === null) return 'Toutes les agences';
+    return this.agences.length === 1 ? this.agences[0].nom_agence : 'Toutes mes agences';
+  }
+
+  libelleJour(date: string): string {
+    return JOURS[this.versDate(date).getDay()];
+  }
+
+  jourCourt(date: string): string {
+    const [, m, d] = date.split('-');
+    return `${d}/${m}`;
+  }
+
+  estAujourdhui(date: string): boolean {
+    return !!this.planning && date === this.planning.aujourdhui;
+  }
+
+  estPasse(date: string): boolean {
+    return !!this.planning && date < this.planning.aujourdhui;
+  }
+
+  teinte(index: number): string {
+    return TEINTES[index % TEINTES.length];
+  }
+
+  libelleEtat(m: PlanningMenu): string {
+    switch (m.etat) {
+      case 'termine':    return `Terminé · ${m.commandes}`;
+      case 'en_service': return `En service · ${m.retirees}/${m.commandes} retirés`;
+      case 'ferme':      return `Fermé · ${m.commandes}`;
+      default:           return `Ouvert jusqu'au ${this.jourCourt(this.limiteJour(m.date_limite_commande))}`;
+    }
+  }
+
+  /** Jour affiché pour une date limite (00:00 = minuit du jour précédent) */
+  private limiteJour(iso: string): string {
+    let d = new Date(iso);
+    if (d.getHours() === 0 && d.getMinutes() === 0) d = new Date(d.getTime() - 86400000);
+    return this.iso(d);
+  }
+
+  classeEtat(m: PlanningMenu): string {
+    return { termine: 'ce-tag-gr', en_service: 'ce-tag-ve', ferme: 'ce-tag-or', ouvert: 'ce-tag-ve' }[m.etat];
+  }
+
+  iconeEtat(m: PlanningMenu): string {
+    return { termine: '', en_service: '', ferme: 'ri-lock-line', ouvert: 'ri-time-line' }[m.etat];
+  }
+
+  get totalMenus(): number {
+    return this.planning?.agences.reduce((n, a) => n + a.jours.reduce((k, j) => k + j.menus.length, 0), 0) ?? 0;
+  }
+
+  // ── Création rapide d'un menu ────────────────────────────────
+
+  ouvrirCreation(agence: PlanningAgence, date: string): void {
+    this.creationErreur = null;
+    this.creation = {
+      date, agence,
+      typeequipe: this.filtreEquipe || String(this.typeEquipes[0]?.id ?? ''),
+      plats: [], choisis: new Set<number>(),
+    };
+    this.creerModal?.show();
+    const charger = this.platsAgence
+      ? Promise.resolve(this.platsAgence)
+      : new Promise<any[]>(ok => this.http.get<any[]>(`${this.apiUrl}/allnopagin/plats/?gerees=1`)
+          .subscribe({ next: p => ok(this.platsAgence = p ?? []), error: () => ok([]) }));
+    charger.then(plats => {
+      if (this.creation) this.creation.plats = plats.filter(p => Number(p.agence_id ?? p.agence) === agence.id);
     });
   }
 
-  /**
-   * Transforme la liste de menus en planning.
-   * - Si une agence est filtrée : planningRows (liste plate par date)
-   * - Si toutes agences        : planningGroups (groupé par agence, puis par date)
-   */
-  private buildPlanning(menus: any[]): void {
-    // Mettre à jour typeEquipes depuis les menus si pas encore chargés
-    if (this.typeEquipes.length === 0) {
-      const teMap: { [id: number]: string } = {};
-      menus.forEach(m => {
-        if (m.typeequipe && m.typeequipe_libelle) teMap[m.typeequipe] = m.typeequipe_libelle;
-      });
-      this.typeEquipes = Object.entries(teMap).map(([id, libelle]) => ({ id: +id, libelle }));
-    }
-
-    if (this.showAgenceColumn) {
-      // ── Mode toutes agences : grouper par agence puis par date ──
-      const agenceMap: { [agId: number]: { nom: string; dates: { [date: string]: { [teId: number]: string[] } } } } = {};
-
-      menus.forEach(menu => {
-        const agId = menu.agence;
-        const agNom = menu.agence_nom ?? `Agence ${agId}`;
-        const date = menu.date_menu;
-        const teId = menu.typeequipe;
-
-        if (!agenceMap[agId]) agenceMap[agId] = { nom: agNom, dates: {} };
-        if (!agenceMap[agId].dates[date]) agenceMap[agId].dates[date] = {};
-        if (!agenceMap[agId].dates[date][teId]) agenceMap[agId].dates[date][teId] = [];
-
-        const plats = menu.menu_plats?.map((mp: any) => mp.plat?.nom).filter(Boolean) ?? [];
-        agenceMap[agId].dates[date][teId].push(...plats);
-      });
-
-      this.planningGroups = Object.entries(agenceMap).map(([agId, val]) => ({
-        agenceId: +agId,
-        agenceNom: val.nom,
-        rows: Object.keys(val.dates).sort().map(date => ({
-          date,
-          equipes: val.dates[date]
-        }))
-      }));
-      this.planningRows = [];
-
-    } else {
-      // ── Mode agence unique : liste plate par date ──
-      const map: { [date: string]: { [teId: number]: string[] } } = {};
-
-      menus.forEach(menu => {
-        const date = menu.date_menu;
-        const teId = menu.typeequipe;
-        if (!map[date]) map[date] = {};
-        if (!map[date][teId]) map[date][teId] = [];
-        const plats = menu.menu_plats?.map((mp: any) => mp.plat?.nom).filter(Boolean) ?? [];
-        map[date][teId].push(...plats);
-      });
-
-      this.planningRows = Object.keys(map).sort().map(date => ({ date, equipes: map[date] }));
-      this.planningGroups = [];
-    }
+  basculerPlat(id: number): void {
+    const s = this.creation?.choisis;
+    if (!s) return;
+    s.has(id) ? s.delete(id) : s.add(id);
   }
 
-  // ── Colonnes visibles ────────────────────────────────────────
+  creerMenu(): void {
+    const c = this.creation;
+    if (!c || this.creationEnvoi) return;
+    if (!c.typeequipe) { this.creationErreur = 'Choisissez l\'équipe.'; return; }
+    if (c.choisis.size === 0) { this.creationErreur = 'Sélectionnez au moins un plat.'; return; }
+    this.creationEnvoi = true;
+    this.creationErreur = null;
+    this.http.post(`${this.apiUrl}/menus/`, {
+      date_menu: c.date, agence: c.agence.id, typeequipe: Number(c.typeequipe), plat_ids: [...c.choisis],
+    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => {
+        this.creationEnvoi = false;
+        this.creerModal?.hide();
+        this.toastr.success(`Menu du ${this.jourCourt(c.date)} créé pour ${c.agence.nom}.`, 'Succès');
+        this.charger();
+      },
+      error: err => {
+        this.creationEnvoi = false;
+        this.creationErreur = typeof err === 'string' ? err : 'Le menu n\'a pas pu être créé.';
+      },
+    });
+  }
 
-  get colonnesVisibles(): any[] {
-    const filterTE = this.filterForm.value.typeequipe;
-    if (filterTE) {
-      return this.typeEquipes.filter(te => te.id === +filterTE);
+  // ── Exports (semaine affichée) ───────────────────────────────
+
+  private lignesExport(): string[][] {
+    const lignes: string[][] = [];
+    for (const ag of this.planning?.agences ?? []) {
+      const cellules = ag.jours.map(j => j.menus.length === 0 ? ['Pas de menu'] :
+        j.menus.flatMap(m => [
+          ...(j.menus.length > 1 && m.typeequipe ? [`[${m.typeequipe}]`] : []),
+          ...m.plats.map(p => `- ${p.nom} (${p.commandes})`),
+        ]));
+      const hauteur = Math.max(1, ...cellules.map(c => c.length));
+      for (let i = 0; i < hauteur; i++) {
+        lignes.push([i === 0 ? ag.nom : '', ...cellules.map(c => c[i] ?? '')]);
+      }
     }
-    return this.typeEquipes;
+    return lignes;
   }
 
-  getPlats(row: PlanningRow, teId: number): string[] {
-    return row.equipes[teId] ?? [];
+  private entetes(): string[] {
+    return ['Agence', ...(this.planning?.jours ?? []).map(j => `${this.libelleJour(j.date)} ${this.jourCourt(j.date)}`)];
   }
-
-  // ── Nombre total de jours affichés ──────────────────────────
-
-  get totalJours(): number {
-    if (this.showAgenceColumn) {
-      return this.planningGroups.reduce((acc, g) => acc + g.rows.length, 0);
-    }
-    return this.planningRows.length;
-  }
-
-  // ── Export Excel ─────────────────────────────────────────────
 
   exportExcel(): void {
     import('xlsx').then(XLSX => {
-      const wsData: any[][] = [];
-      const cols = this.colonnesVisibles;
-
-      if (this.showAgenceColumn) {
-        // En-tête avec colonne Agence
-        wsData.push(['Agence', 'Date / Menu', ...cols.map(te => te.libelle)]);
-
-        this.planningGroups.forEach(group => {
-          group.rows.forEach(row => {
-            const maxPlats = Math.max(1, ...cols.map(te => this.getPlats(row, te.id).length));
-            for (let i = 0; i < maxPlats; i++) {
-              const line: any[] = [];
-              line.push(i === 0 ? group.agenceNom : '');
-              line.push(i === 0 ? this.formatDate(row.date) : '');
-              cols.forEach(te => {
-                const plats = this.getPlats(row, te.id);
-                line.push(plats[i] ? `- ${plats[i]}` : '');
-              });
-              wsData.push(line);
-            }
-          });
-          // Ligne vide entre agences
-          wsData.push([]);
-        });
-
-        const ws = XLSX.utils.aoa_to_sheet(wsData);
-        ws['!cols'] = [{ wch: 20 }, { wch: 16 }, ...cols.map(() => ({ wch: 30 }))];
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Planning menus');
-        XLSX.writeFile(wb, `planning-menus-toutes-agences.xlsx`);
-
-      } else {
-        wsData.push(['Date / Menu', ...cols.map(te => te.libelle)]);
-
-        this.planningRows.forEach(row => {
-          const maxPlats = Math.max(1, ...cols.map(te => this.getPlats(row, te.id).length));
-          for (let i = 0; i < maxPlats; i++) {
-            const line: any[] = [];
-            line.push(i === 0 ? this.formatDate(row.date) : '');
-            cols.forEach(te => {
-              const plats = this.getPlats(row, te.id);
-              line.push(plats[i] ? `- ${plats[i]}` : '');
-            });
-            wsData.push(line);
-          }
-        });
-
-        const ws = XLSX.utils.aoa_to_sheet(wsData);
-        ws['!cols'] = [{ wch: 16 }, ...cols.map(() => ({ wch: 30 }))];
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Planning menus');
-        const agenceLabel = this.agences.find(a => a.id === +this.filterForm.value.agence)?.nom_agence ?? 'agence';
-        XLSX.writeFile(wb, `planning-menus-${agenceLabel}.xlsx`);
-      }
+      const ws = XLSX.utils.aoa_to_sheet([this.entetes(), ...this.lignesExport()]);
+      ws['!cols'] = [{ wch: 20 }, ...Array(5).fill({ wch: 28 })];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Planning menus');
+      XLSX.writeFile(wb, `planning-menus-${this.lundi}.xlsx`);
     });
   }
-
-  // ── Export PDF ───────────────────────────────────────────────
 
   exportPdf(): void {
-    import('jspdf').then(({ jsPDF }) => {
-      import('jspdf-autotable').then((autoTableModule) => {
-        const autoTable = autoTableModule.default;
-        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-        const cols = this.colonnesVisibles;
-
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(14);
-        doc.text('Planning des menus', 14, 15);
-
-        const { date_debut, date_fin } = this.filterForm.value;
-        if (date_debut || date_fin) {
-          doc.setFontSize(9);
-          doc.setFont('helvetica', 'normal');
-          doc.text(`Période : ${date_debut ?? '...'} au ${date_fin ?? '...'}`, 14, 22);
-        }
-
-        const body: any[][] = [];
-
-        if (this.showAgenceColumn) {
-          const head = [['Agence', 'Date / Menu', ...cols.map(te => te.libelle)]];
-
-          this.planningGroups.forEach(group => {
-            group.rows.forEach(row => {
-              const maxPlats = Math.max(1, ...cols.map(te => this.getPlats(row, te.id).length));
-              for (let i = 0; i < maxPlats; i++) {
-                const line: any[] = [];
-                line.push(i === 0 ? group.agenceNom : '');
-                line.push(i === 0 ? this.formatDate(row.date) : '');
-                cols.forEach(te => {
-                  const plats = this.getPlats(row, te.id);
-                  line.push(plats[i] ? `- ${plats[i]}` : '');
-                });
-                body.push(line);
-              }
-            });
-            // Ligne séparatrice entre agences
-            body.push(new Array(2 + cols.length).fill(''));
-          });
-
-          autoTable(doc, {
-            head,
-            body,
-            startY: 27,
-            styles: { fontSize: 9, cellPadding: 3 },
-            headStyles: { fillColor: [41, 98, 255], textColor: 255, fontStyle: 'bold' },
-            alternateRowStyles: { fillColor: [245, 247, 255] },
-            columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 }, 1: { fontStyle: 'bold', cellWidth: 25 } },
-          });
-
-          doc.save(`planning-menus-toutes-agences.pdf`);
-
-        } else {
-          const head = [['Date / Menu', ...cols.map(te => te.libelle)]];
-
-          this.planningRows.forEach(row => {
-            const maxPlats = Math.max(1, ...cols.map(te => this.getPlats(row, te.id).length));
-            for (let i = 0; i < maxPlats; i++) {
-              const line: any[] = [];
-              line.push(i === 0 ? this.formatDate(row.date) : '');
-              cols.forEach(te => {
-                const plats = this.getPlats(row, te.id);
-                line.push(plats[i] ? `- ${plats[i]}` : '');
-              });
-              body.push(line);
-            }
-          });
-
-          autoTable(doc, {
-            head,
-            body,
-            startY: 27,
-            styles: { fontSize: 9, cellPadding: 3 },
-            headStyles: { fillColor: [41, 98, 255], textColor: 255, fontStyle: 'bold' },
-            alternateRowStyles: { fillColor: [245, 247, 255] },
-            columnStyles: { 0: { fontStyle: 'bold', cellWidth: 25 } },
-          });
-
-          const agenceLabel = this.agences.find(a => a.id === +this.filterForm.value.agence)?.nom_agence ?? 'agence';
-          doc.save(`planning-menus-${agenceLabel}.pdf`);
-        }
+    import('jspdf').then(({ jsPDF }) => import('jspdf-autotable').then(mod => {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text(`Planning des menus — ${this.titreSemaine}`, 14, 15);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text('Entre parenthèses : commandes reçues (non annulées)', 14, 21);
+      mod.default(doc, {
+        head: [this.entetes()],
+        body: this.lignesExport(),
+        startY: 26,
+        styles: { fontSize: 8.5, cellPadding: 2.5 },
+        headStyles: { fillColor: [9, 36, 64], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 32 } },
       });
-    });
+      doc.save(`planning-menus-${this.lundi}.pdf`);
+    }));
   }
 
-  // ── Utilitaires ──────────────────────────────────────────────
+  // ── Dates ────────────────────────────────────────────────────
 
-  formatDate(dateStr: string): string {
-    if (!dateStr) return '';
-    const [y, m, d] = dateStr.split('-');
-    return `${d}/${m}/${y}`;
+  private versDate(iso: string): Date {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d);
   }
 
-  private toDateStr(d: Date): string {
-    // Date locale : toISOString passerait en UTC et pourrait reculer d'un jour
+  private iso(d: Date): string {
     const p = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  private lundiDe(d: Date): string {
+    const l = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const jour = (l.getDay() + 6) % 7;       // lundi = 0
+    // Samedi / dimanche : on affiche la semaine qui vient
+    l.setDate(l.getDate() - jour + (jour >= 5 ? 7 : 0));
+    return this.iso(l);
   }
 }

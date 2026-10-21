@@ -8,18 +8,12 @@ export const MENU: MenuItem[] = [
         isTitle: true
     },
     {
+        // Tableau de bord de la cantine (gestionnaires et administrateurs)
         id: 2,
         label: 'MENUITEMS.DASHBOARD.TEXT',
-        icon: 'ph-gauge',
-        subItems: [
-            {
-                id: 191,
-                label: 'MENUITEMS.DASHBOARD.LIST.DASHBOARDCANTINE',
-                link: '/',
-                roles: GESTIONNAIRES,
-                parentId: 2
-            },
-        ]
+        icon: 'ri-dashboard-line',
+        link: '/',
+        roles: GESTIONNAIRES
     },
     {
         id: 8,
@@ -30,7 +24,7 @@ export const MENU: MenuItem[] = [
         // Accueil de l'employé ; les gestionnaires ont le tableau de bord
         id: 9,
         label: 'MENUITEMS.ACCUEIL.TEXT',
-        icon: 'ph-house',
+        icon: 'ri-home-4-line',
         link: '/cantines/accueil',
         sansRoles: GESTIONNAIRES,
         parentId: 8
@@ -39,7 +33,7 @@ export const MENU: MenuItem[] = [
         // Besoins : réservé aux administrateurs
         id: 182,
         label: 'MENUITEMS.BESOINS.TEXT',
-        icon: 'ph-ticket',
+        icon: 'ri-ticket-line',
         parentId: 8,
         roles: ADMINS,
         subItems: [
@@ -55,7 +49,7 @@ export const MENU: MenuItem[] = [
     {
         id: 210,
         label: 'MENUITEMS.CANTINES.TEXT',
-        icon: 'ph-fork-knife-light',
+        icon: 'ri-restaurant-line',
         parentId: 8,
         subItems: [
             {
@@ -106,16 +100,12 @@ export const MENU: MenuItem[] = [
                 parentId: 210
             },
             {
+                // Une seule entrée : la page de facturation regroupe employés et
+                // prestataires en onglets (l'ancienne adresse prestataire reste valide)
                 id: 218,
-                label: 'MENUITEMS.CANTINES.LIST.FACTURATIONCOMMANDE',
+                label: 'MENUITEMS.CANTINES.LIST.FACTURATION',
                 link: '/cantines/facturation-commande',
-                roles: GESTIONNAIRES,
-                parentId: 210
-            },
-            {
-                id: 219,
-                label: 'MENUITEMS.CANTINES.LIST.FACTURATIONPRESTATAIRE',
-                link: '/cantines/facturation-prestataire',
+                actifSur: ['/cantines/facturation-prestataire'],
                 roles: GESTIONNAIRES,
                 parentId: 210
             },
@@ -128,133 +118,14 @@ export const MENU: MenuItem[] = [
             }
         ]
     },
-
-    //Menu ubici
     {
+        // Une seule entrée vers l'accueil des paramètres (cartes par thème,
+        // filtrées selon le rôle : le gestionnaire n'y voit que la cantine)
         id: 175,
         label: 'MENUITEMS.PARAMETRES.TEXT',
-        icon: 'ph-gear-light',
-        subItems: [
-            {
-                id: 199,
-                label: 'MENUITEMS.PARAMETRES.LIST.SOCIETE',
-                link: '/parametres/societe',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 198,
-                label: 'MENUITEMS.PARAMETRES.LIST.BANNIERES',
-                link: '/parametres/bannieres',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 1991,
-                label: 'MENUITEMS.PARAMETRES.LIST.POPUPCONNEXION',
-                link: '/parametres/popup-connexion',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 176,
-                label: 'MENUITEMS.PARAMETRES.LIST.AGENCE',
-                link: '/parametres/agence',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 177,
-                label: 'MENUITEMS.PARAMETRES.LIST.ETAT',
-                link: '/parametres/etat',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 178,
-                label: 'MENUITEMS.PARAMETRES.LIST.PRIORITE',
-                link: '/parametres/priorite',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 179,
-                label: 'MENUITEMS.PARAMETRES.LIST.DEPARTEMENT',
-                link: '/parametres/departement',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 180,
-                label: 'MENUITEMS.PARAMETRES.LIST.STATUT',
-                link: '/parametres/statut',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 181,
-                label: 'MENUITEMS.PARAMETRES.LIST.TYPEBESOIN',
-                link: '/parametres/typebesoin',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 1992,
-                label: 'MENUITEMS.PARAMETRES.LIST.ROLE',
-                link: '/parametres/role',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 183,
-                label: 'MENUITEMS.PARAMETRES.LIST.USER',
-                link: '/parametres/user',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 184,
-                label: 'MENUITEMS.PARAMETRES.LIST.TYPEPLAT',
-                link: '/parametres/typeplat',
-                roles: GESTIONNAIRES,
-                parentId: 175
-            },
-            {
-                id: 186,
-                label: 'MENUITEMS.PARAMETRES.LIST.TYPEEQUIPE',
-                link: '/parametres/type-equipe',
-                roles: GESTIONNAIRES,
-                parentId: 175
-            },
-            {
-                id: 187,
-                label: 'MENUITEMS.PARAMETRES.LIST.FONCTION',
-                link: '/parametres/fonction',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 188,
-                label: 'MENUITEMS.PARAMETRES.LIST.CATEGORIESALARIE',
-                link: '/parametres/categorie-salarie',
-                roles: ADMINS,
-                parentId: 175
-            },
-            {
-                id: 189,
-                label: 'MENUITEMS.PARAMETRES.LIST.PRESTATAIRE',
-                link: '/parametres/prestataire',
-                roles: GESTIONNAIRES,
-                parentId: 175
-            },
-            {
-                id: 190,
-                label: 'MENUITEMS.PARAMETRES.LIST.POSTE',
-                link: '/parametres/poste',
-                roles: ADMINS,
-                parentId: 175
-            }
-        ]
+        icon: 'ri-settings-3-line',
+        link: '/parametres/accueil',
+        actifSur: ['/parametres'],
+        roles: GESTIONNAIRES
     },
-    
 ]

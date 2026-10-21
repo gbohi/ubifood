@@ -1,322 +1,262 @@
-<!-- src/app/pages/cantine/retrait-commande/retrait-commande.component.html -->
-<app-breadcrumbs [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<div class="ce ce-retrait" [class.ce-plein]="pleinEcran">
 
-<div class="row">
-  <div class="col-12">
+  <!-- ── En-tête ─────────────────────────────────────────────── -->
+  <div class="ce-entete">
+    <div class="ce-entete-txt">
+      <h1><span class="ce-ic"><i class="ri-qr-scan-2-line"></i></span>Retrait des repas</h1>
+      <p>Scannez le badge de l'agent, vérifiez le plat, validez.</p>
+    </div>
+    <div class="ce-btns">
+      <button type="button" class="ce-btn" (click)="basculerPleinEcran()">
+        <i [class]="pleinEcran ? 'ri-fullscreen-exit-line' : 'ri-fullscreen-line'"></i>
+        {{ pleinEcran ? 'Quitter le mode comptoir' : 'Mode plein écran comptoir' }}
+      </button>
+    </div>
+  </div>
 
-    <!-- ── Alertes ──────────────────────────────────────────── -->
-    @if (error) {
-      <div class="alert alert-danger alert-dismissible fade show">
-        <i class="ph-warning me-2"></i>{{ error }}
-        <button type="button" class="btn-close" (click)="dismissAlert()"></button>
-      </div>
-    }
-    @if (successMessage) {
-      <div class="alert alert-success alert-dismissible fade show">
-        <i class="ph-check-circle me-2"></i>{{ successMessage }}
-        <button type="button" class="btn-close" (click)="dismissAlert()"></button>
-      </div>
-    }
-
-    <div class="row g-3">
-
-      <!-- ════════════════════════════════════════════════════
-           COLONNE GAUCHE — Sélection menu
-      ════════════════════════════════════════════════════ -->
-      <div class="col-lg-4">
-        <div class="card h-100">
-          <div class="card-header">
-            <h6 class="mb-0"><i class="ph-calendar-blank me-2"></i>Sélection du menu</h6>
-          </div>
-          <div class="card-body">
-            <form [formGroup]="filterForm">
-
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Date début</label>
-                <input type="date" class="form-control form-control-sm" formControlName="date_debut">
-              </div>
-
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Date fin</label>
-                <input type="date" class="form-control form-control-sm" formControlName="date_fin">
-              </div>
-
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Agence</label>
-                <select class="form-select form-select-sm" formControlName="agence">
-                  <option value="">Toutes</option>
-                  @for (a of agences; track a.id) {
-                    <option [value]="a.id">{{ a.nom_agence }}</option>
-                  }
-                </select>
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label form-label-sm">Équipe</label>
-                <select class="form-select form-select-sm" formControlName="typeequipe">
-                  <option value="">Toutes</option>
-                  @for (t of typeEquipes; track t.id) {
-                    <option [value]="t.id">{{ t.libelle }}</option>
-                  }
-                </select>
-              </div>
-
-            </form>
-
-            @if (menusFiltres.length === 0) {
-              <div class="text-center py-3 text-muted small">
-                <i class="ph-calendar-x fs-3"></i>
-                <p class="mb-0 mt-1">Aucun menu trouvé</p>
-              </div>
-            }
-
-            <div class="list-group list-group-flush">
-              @for (m of menusFiltres; track m.id) {
-                <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-start py-2"
-                        [class.active]="selectedMenuId === m.id"
-                        type="button"
-                        (click)="selectionnerMenu(m.id)">
-                  <div>
-                    <div class="fw-semibold small">{{ formatDate(m.date_menu) }}</div>
-                    <small [class.text-white-50]="selectedMenuId === m.id"
-                           [class.text-muted]="selectedMenuId !== m.id">
-                      {{ m.agence_nom }}
-                    </small>
-                  </div>
-                  <span class="badge"
-                        [class.bg-white]="selectedMenuId === m.id"
-                        [class.text-primary]="selectedMenuId === m.id"
-                        [class.bg-info-subtle]="selectedMenuId !== m.id"
-                        [class.text-info]="selectedMenuId !== m.id">
-                    {{ m.typeequipe_libelle }}
-                  </span>
-                </button>
-              }
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      <!-- ════════════════════════════════════════════════════
-           COLONNE DROITE — Scan / Saisie badge + résultat
-      ════════════════════════════════════════════════════ -->
-      <div class="col-lg-8">
-
-        <!-- ── Zone badge ──────────────────────────────────── -->
-        <div class="card mb-3">
-          <div class="card-header d-flex align-items-center justify-content-between">
-            <h6 class="mb-0">
-              <i class="ph-scan me-2"></i>Identification agent
-            </h6>
-            @if (selectedMenuId) {
-              <div class="d-flex align-items-center gap-2">
-                <span class="badge bg-primary">
-                  <i class="ph-calendar-blank me-1"></i>
-                  {{ formatDate(getMenuSelectionne()?.date_menu) }}
-                </span>
-                <span class="badge bg-light text-dark border">
-                  {{ getMenuSelectionne()?.agence_nom }}
-                </span>
-                <span class="badge bg-info-subtle text-info">
-                  {{ getMenuSelectionne()?.typeequipe_libelle }}
-                </span>
-              </div>
-            }
-          </div>
-          <div class="card-body">
-
-            @if (!selectedMenuId) {
-              <div class="text-center py-4 text-muted">
-                <i class="ph-arrow-left fs-2"></i>
-                <p class="mb-0 mt-2">Sélectionnez un menu pour commencer</p>
-              </div>
-            }
-
-            @if (selectedMenuId) {
-              <div class="row g-3 align-items-end">
-
-                <div class="col-md-8">
-                  <label class="form-label fw-semibold">
-                    <i class="ph-identification-badge me-1"></i>
-                    Badge / Matricule (saisie ou scan)
-                  </label>
-                  <div class="input-group">
-                    <input #badgeField
-                           type="text"
-                           class="form-control"
-                           placeholder="Scannez ou saisissez le badge..."
-                           [(ngModel)]="badgeInput"
-                           (keyup)="onBadgeKeyup($event)"
-                           [disabled]="isSearching"
-                           autocomplete="off"
-                           autofocus>
-                    @if (badgeInput) {
-                      <button class="btn btn-outline-secondary"
-                              type="button"
-                              (click)="resetRecherche()"
-                              title="Effacer">
-                        <i class="ph-x"></i>
-                      </button>
-                    }
-                  </div>
-                  <small class="text-muted">
-                    <i class="ph-info me-1"></i>
-                    Le scanner USB déclenche automatiquement la recherche.
-                    Pour la saisie manuelle, appuyez sur <kbd>Entrée</kbd>.
-                  </small>
-                </div>
-
-                <div class="col-md-4">
-                  <button class="btn btn-primary w-100"
-                          type="button"
-                          [disabled]="!badgeInput.trim() || isSearching"
-                          (click)="lancerRecherche()">
-                    @if (isSearching) {
-                      <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                      Recherche...
-                    } @else {
-                      <i class="ph-magnifying-glass me-1"></i>Rechercher
-                    }
-                  </button>
-                </div>
-
-              </div>
-
-              @if (badgeError) {
-                <div class="alert alert-warning mt-3 mb-0 py-2">
-                  <i class="ph-warning me-2"></i>{{ badgeError }}
-                </div>
-              }
-            }
-
-          </div>
-        </div>
-
-        <!-- ── Résultat recherche ───────────────────────────── -->
-        @if (resultatBadge) {
-
-          <div class="card">
-            <div class="card-header d-flex align-items-center justify-content-between">
-
-              <div class="d-flex align-items-center gap-3">
-                <div class="avatar-sm rounded-circle bg-primary d-flex align-items-center justify-content-center">
-                  <i class="ph-user text-white fs-5"></i>
-                </div>
-                <div>
-                  <h6 class="mb-0 fw-bold">{{ resultatBadge.user_nom }}</h6>
-                  <small class="text-muted">Badge : <code>{{ resultatBadge.badge }}</code></small>
-                </div>
-              </div>
-
-              <!-- Statut retrait global -->
-              @if (resultatBadge.a_retire) {
-                <span class="badge bg-success fs-6 px-3 py-2">
-                  <i class="ph-check-circle me-1"></i>Déjà retiré
-                </span>
-              } @else {
-                <span class="badge bg-warning-subtle text-warning fs-6 px-3 py-2">
-                  <i class="ph-clock me-1"></i>{{ nbPlatsADistribuer }} plat(s) à distribuer
-                </span>
-              }
-
-            </div>
-
-            <div class="card-body">
-
-              <!-- Aucune commande active -->
-              @if (commandesAffichees.length === 0 && !resultatBadge.a_retire) {
-                <div class="text-center py-4 text-muted">
-                  <i class="ph-receipt fs-2"></i>
-                  <p class="mb-0 mt-2">
-                    Aucune commande active pour cet agent sur ce menu.
-                  </p>
-                  <small class="text-muted">
-                    L'agent a peut-être annulé toutes ses commandes.
-                  </small>
-                </div>
-              }
-
-              <!-- Message déjà retiré -->
-              @if (resultatBadge.a_retire) {
-                <div class="alert alert-success py-2 mb-3">
-                  <i class="ph-check-circle me-2"></i>
-                  Cet agent a déjà retiré son repas pour ce menu.
-                </div>
-              }
-
-              <!-- ── Liste des commandes (en_attente + retiree uniquement) ── -->
-              @if (commandesAffichees.length > 0) {
-                <h6 class="text-muted mb-3 small text-uppercase">
-                  @if (resultatBadge.a_retire) {
-                    Plat(s) distribué(s) — {{ commandesAffichees.length }}
-                  } @else {
-                    Plat(s) à distribuer — {{ nbPlatsADistribuer }}
-                  }
-                </h6>
-                <div class="row g-3 mb-4">
-                  @for (c of commandesAffichees; track c.id) {
-                    <div class="col-md-6">
-                      <div class="d-flex align-items-center gap-3 p-3 border rounded"
-                           [class.border-warning]="c.statut === 'en_attente'"
-                           [class.border-success]="c.statut === 'retiree'"
-                           [class.bg-success-subtle]="c.statut === 'retiree'">
-                        <img [src]="getImageUrl(c)"
-                             class="rounded"
-                             style="width:56px; height:56px; object-fit:cover;"
-                             [alt]="getPlatNom(c)">
-                        <div class="flex-fill">
-                          <div class="fw-semibold">{{ getPlatNom(c) }}</div>
-                          <small class="text-muted">{{ c.plat_detail?.type_plat_libelle }}</small>
-                        </div>
-                        <span class="badge" [ngClass]="statutCss(c.statut)">
-                          {{ statutLabel(c.statut) }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-                </div>
-              }
-
-              <!-- Bouton confirmer retrait -->
-              @if (!resultatBadge.a_retire && commandesEnAttente.length > 0) {
-                <div class="d-flex justify-content-end gap-2">
-                  <button class="btn btn-outline-secondary"
-                          type="button"
-                          (click)="resetRecherche()">
-                    <i class="ph-x me-1"></i>Annuler
-                  </button>
-                  <button class="btn btn-success btn-lg"
-                          type="button"
-                          [disabled]="isSubmitting"
-                          (click)="confirmerRetrait()">
-                    @if (isSubmitting) {
-                      <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                    }
-                    <i class="ph-check-circle me-2"></i>
-                    Confirmer le retrait ({{ nbPlatsADistribuer }} plat(s))
-                  </button>
-                </div>
-              }
-
-              <!-- Bouton nouvel agent -->
-              @if (resultatBadge.a_retire || commandesEnAttente.length === 0) {
-                <div class="d-flex justify-content-end">
-                  <button class="btn btn-primary"
-                          type="button"
-                          (click)="resetRecherche()">
-                    <i class="ph-arrow-clockwise me-1"></i>Agent suivant
-                  </button>
-                </div>
-              }
-
-            </div>
-          </div>
-
+  <!-- ── Bandeau : menu choisi + avancement du service ───────── -->
+  <div class="ce-bandeau">
+    <button type="button" class="ce-bandeau-sel" (click)="selecteurOuvert = !selecteurOuvert"
+            [attr.aria-expanded]="selecteurOuvert">
+      <i class="ri-calendar-check-line ce-bandeau-ic"></i>
+      <span class="ce-bandeau-sel-txt">
+        @if (menuSelectionne) {
+          <b>{{ libelleMenu(menuSelectionne) }}</b>
+          <small>{{ menuSelectionne.typeequipe_libelle }} · {{ menusJour.length > 1 ? menusJour.length + ' menus ce jour, changer' : 'menu du jour choisi automatiquement' }}</small>
+        } @else {
+          <b>Choisir un menu</b>
+          <small>{{ menusCharges ? 'Aucun menu ce jour pour vos agences' : 'Chargement…' }}</small>
         }
+      </span>
+      <i class="ri-arrow-down-s-line"></i>
+    </button>
+    <div class="ce-bandeau-prog">
+      <div class="ce-bandeau-prog-l"><span>Avancement du service</span><span>{{ avancement }} %</span></div>
+      <div class="ce-jauge"><i [style.width.%]="avancement"></i></div>
+    </div>
+    <div class="ce-bandeau-chif">
+      <span><b>{{ service?.servies ?? 0 }}</b>servis</span>
+      <span><b>{{ service?.a_servir ?? 0 }}</b>à servir</span>
+      <span><b>{{ service?.commandees ?? 0 }}</b>commandés</span>
+    </div>
+  </div>
 
+  @if (selecteurOuvert) {
+    <div class="ce-carte ce-selecteur">
+      <div class="ce-filtres">
+        <label class="ce-champ">
+          <i class="ri-calendar-line"></i>
+          <input type="date" [(ngModel)]="selDate" (change)="chargerMenus()" aria-label="Date du menu">
+        </label>
+        <label class="ce-champ">
+          <i class="ri-building-line"></i>
+          <select [(ngModel)]="selAgence" (change)="chargerMenus()" aria-label="Agence">
+            <option value="">Toutes mes agences</option>
+            @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
+          </select>
+        </label>
+        <label class="ce-champ">
+          <i class="ri-time-line"></i>
+          <select [(ngModel)]="selEquipe" (change)="chargerMenus()" aria-label="Équipe">
+            <option value="">Toutes les équipes</option>
+            @for (t of typeEquipes; track t.id) { <option [value]="t.id">{{ t.libelle }}</option> }
+          </select>
+        </label>
+      </div>
+      <div class="ce-menus-choix">
+        @for (m of menusJour; track m.id) {
+          <button type="button" class="ce-chip" [class.ce-on]="m.id === selectedMenuId" (click)="selectionnerMenu(m)">
+            {{ m.agence_nom }} · {{ m.typeequipe_libelle }}
+          </button>
+        } @empty {
+          @if (menusCharges) { <span class="ce-muted"><i class="ri-calendar-todo-line me-1"></i>Aucun menu trouvé pour ce jour.</span> }
+        }
       </div>
     </div>
+  }
 
+  <!-- ── Alertes (store) ─────────────────────────────────────── -->
+  @if (error) {
+    <div class="ce-alerte ce-alerte-ro">
+      <i class="ri-error-warning-line"></i><div>{{ error }}</div>
+      <button type="button" class="btn-close ms-auto" (click)="dismissAlert()" aria-label="Fermer"></button>
+    </div>
+  }
+
+  <div class="ce-g-comptoir">
+    <div class="ce-pile">
+
+      <!-- ── Champ de scan ──────────────────────────────────── -->
+      <div class="ce-scan" [class.ce-off]="!selectedMenuId">
+        <i class="ri-qr-scan-2-line ce-scan-ic"></i>
+        <div class="ce-scan-in">
+          <input #badgeField
+                 type="text"
+                 [(ngModel)]="badgeInput"
+                 (keyup)="onBadgeKeyup($event)"
+                 [disabled]="isSearching || !selectedMenuId"
+                 [placeholder]="selectedMenuId ? 'Scannez ou saisissez le badge…' : 'Choisissez d\'abord un menu'"
+                 aria-label="Badge ou identifiant"
+                 autocomplete="off"
+                 autofocus>
+          <small>Badge ou identifiant — le scanner valide tout seul, sinon <span class="ce-kbd">Entrée</span></small>
+        </div>
+        @if (isSearching) {
+          <span class="spinner-border spinner-border-sm ce-c-gris" role="status"></span>
+        } @else if (badgeInput) {
+          <button class="ce-btn" type="button" (click)="lancerRecherche()"><i class="ri-search-line"></i>Rechercher</button>
+          <button class="ce-btn ce-btn-ic" type="button" (click)="resetRecherche()" title="Effacer" aria-label="Effacer">
+            <i class="ri-close-line"></i>
+          </button>
+        }
+      </div>
+
+      @if (badgeError) {
+        <div class="ce-alerte ce-alerte-or ce-alerte-grande">
+          <i class="ri-error-warning-line"></i><div>{{ badgeError }}</div>
+        </div>
+      }
+
+      <!-- ── Alerte « déjà retiré » ───────────────────────────── -->
+      @if (dejaRetire && resultatBadge) {
+        <div class="ce-alerte ce-alerte-or ce-alerte-grande" role="alert">
+          <i class="ri-error-warning-line"></i>
+          <div>
+            <b>{{ resultatBadge.user_nom }} a déjà retiré son repas@if (resultatBadge.date_retrait) { à {{ heure(resultatBadge.date_retrait) }}}.</b>
+            <span>Cet agent a déjà retiré son repas pour ce menu : ne rien remettre.</span>
+          </div>
+          <button class="ce-btn ms-auto" type="button" (click)="resetRecherche()"><i class="ri-refresh-line"></i>Agent suivant</button>
+        </div>
+      }
+
+      <!-- ── Résultat : agent + plat + valider ─────────────────── -->
+      @if (resultatBadge && !dejaRetire) {
+        <div class="ce-res" [class.ce-res-ok]="vientDEtreValide">
+          <div class="ce-res-hd">
+            <span class="ce-av ce-av-xl" [style.background]="couleur(resultatBadge.user_id)">{{ initiales(resultatBadge.user_nom) }}</span>
+            <div class="ce-res-qui">
+              <h2>{{ resultatBadge.user_nom }}</h2>
+              <small>{{ resultatBadge.badge }}@if (menuSelectionne) { · {{ menuSelectionne.agence_nom }} }</small>
+            </div>
+            @if (vientDEtreValide) {
+              <span class="ce-tag ce-tag-ve ce-tag-l"><i class="ri-check-double-line"></i>Retrait enregistré</span>
+            } @else if (nbPlatsADistribuer > 0) {
+              <span class="ce-tag ce-tag-or ce-tag-l"><i class="ri-time-line"></i>{{ nbPlatsADistribuer }} plat{{ nbPlatsADistribuer > 1 ? 's' : '' }} à remettre</span>
+            }
+          </div>
+
+          @if (commandesAffichees.length === 0) {
+            <div class="ce-res-vide">
+              <i class="ri-file-list-3-line"></i>
+              <b>Aucune commande active pour cet agent sur ce menu.</b>
+              <span>L'agent a peut-être annulé toutes ses commandes.</span>
+            </div>
+          }
+
+          @for (c of commandesAffichees; track c.id; let premier = $first) {
+            <div class="ce-res-plat">
+              <div class="ce-photo">
+                @if (getImageUrl(c); as url) { <img [src]="url" [alt]="getPlatNom(c)"> }
+                @else { <i class="ri-restaurant-2-line"></i> }
+              </div>
+              <div class="ce-res-plat-txt">
+                <p>Commande n° {{ c.id }} · passée le {{ formatDateHeure(c.date_commande) }}</p>
+                <h3>{{ getPlatNom(c) }}</h3>
+                <p>{{ c.plat_detail?.type_plat_libelle }}</p>
+              </div>
+              @if (premier) {
+                @if (vientDEtreValide) {
+                  <button type="button" class="ce-valider ce-valider-fait" (click)="resetRecherche()">
+                    <i class="ri-checkbox-circle-line"></i>
+                    <span>Servi<small>agent suivant : scannez</small></span>
+                  </button>
+                } @else if (commandesEnAttente.length > 0) {
+                  <button type="button" class="ce-valider" [disabled]="isSubmitting" (click)="confirmerRetrait()">
+                    @if (isSubmitting) { <span class="spinner-border spinner-border-sm"></span> }
+                    @else { <i class="ri-check-double-line"></i> }
+                    <span>Valider le retrait<small>ou appuyer sur Entrée</small></span>
+                  </button>
+                }
+              }
+            </div>
+          }
+
+          @if (successMessage && vientDEtreValide) {
+            <div class="ce-res-pied ce-c-vert"><i class="ri-checkbox-circle-line"></i>{{ successMessage }}</div>
+          }
+        </div>
+      }
+
+      @if (!resultatBadge && !badgeError && selectedMenuId) {
+        <div class="ce-attente-scan">
+          <i class="ri-user-search-line"></i>
+          <span>En attente d'un badge…</span>
+        </div>
+      }
+    </div>
+
+    <!-- ── Colonne droite : reste à servir + derniers retraits ─── -->
+    <div class="ce-pile">
+      <div class="ce-carte">
+        <h3><i class="ri-restaurant-2-line"></i>Reste à servir <small>par plat</small></h3>
+        <div class="ce-reste">
+          @for (p of service?.plats ?? []; track p.plat_id) {
+            <div class="ce-reste-l">
+              <b>{{ p.nom }}</b>
+              <span class="ce-muted">{{ p.a_servir }} / {{ p.commandees }}</span>
+              <div class="ce-jauge ce-jauge-fine"><i [style.width.%]="pourcent(p.a_servir, p.commandees)"></i></div>
+            </div>
+          } @empty {
+            <span class="ce-muted">{{ selectedMenuId ? 'Aucune commande pour ce menu.' : '—' }}</span>
+          }
+        </div>
+      </div>
+
+      <div class="ce-carte">
+        <h3><i class="ri-history-line"></i>Derniers retraits
+          <small>{{ service?.annulable === false ? 'mois clôturé' : 'annulables' }}</small>
+        </h3>
+        <ul class="ce-fil">
+          @for (r of service?.derniers ?? []; track r.id) {
+            <li>
+              <span class="ce-av ce-av-s" [style.background]="couleur(r.user_id)">{{ initiales(r.user_nom) }}</span>
+              <div class="ce-fil-txt">
+                <b>{{ r.user_nom }}</b>
+                <small>{{ platsRetires(r) }}</small>
+              </div>
+              <span class="ce-fil-h">{{ heure(r.date_retrait) }}</span>
+              @if (service?.annulable) {
+                <button type="button" class="ce-lien-ic" title="Annuler ce retrait" aria-label="Annuler ce retrait"
+                        (click)="demanderAnnulation(r)"><i class="ri-arrow-go-back-line"></i></button>
+              }
+            </li>
+          } @empty {
+            <li class="ce-muted">Aucun retrait pour l'instant.</li>
+          }
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Confirmation d'annulation d'un retrait ─────────────────── -->
+<div bsModal #annulerModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4 text-center">
+        <i class="ri-error-warning-line text-warning display-5"></i>
+        <h5 class="mt-3">Annuler ce retrait ?</h5>
+        <p class="text-muted mb-4">
+          Le repas de « {{ retraitAAnnuler?.user_nom }} » repassera « en attente » et l'agent sera prévenu.
+        </p>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn btn-light" (click)="annulerModal.hide()">Non</button>
+          <button type="button" class="btn btn-danger" [disabled]="annulationEnvoi" (click)="confirmerAnnulation()">
+            @if (annulationEnvoi) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            Oui, annuler le retrait
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>

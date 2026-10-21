@@ -56,8 +56,8 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit {
   readonly tri = new TriServeur({ id: 'id', libelle: 'libelle' });
 
   breadCrumbItems = [
-    { label: 'Catégorie salarié', active: false },
-    { label: 'Liste', active: true },
+    { label: 'Paramètres', active: false },
+    { label: 'Catégories de salarié', active: true },
   ];
 
   // ── Categoriesalarie ──────────────────────────────────────

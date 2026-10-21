@@ -1,0 +1,104 @@
+// Accueil des paramètres (maquette « web-2-parametres ») : cartes par thème.
+
+.prm-recherche { width: 320px; max-width: 100%; }
+
+.prm-grp {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 22px;
+
+  > h2 {
+    font-size: 11px;
+    letter-spacing: .08em;
+    color: var(--ubi-gris);
+    text-transform: uppercase;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin: 0;
+    font-weight: 600;
+    i { font-size: 14px; }
+  }
+}
+
+.prm-cartes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.prm-carte {
+  background: #fff;
+  border: 1px solid var(--ubi-bord);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  position: relative;
+  color: var(--ubi-navy);
+  min-height: 84px;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+
+  &:hover, &:focus-visible {
+    color: var(--ubi-navy);
+    transform: translateY(-2px);
+    border-color: #C9D6E6;
+    box-shadow: 0 8px 20px rgba(9, 36, 64, .08);
+    .prm-fl { opacity: 1; transform: translateX(0); }
+  }
+  &:focus-visible { outline: 2px solid var(--ubi-navy2); outline-offset: 2px; }
+}
+
+.prm-pa {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  flex-shrink: 0;
+  &.p-ve { background: #EAFBF1; color: var(--ubi-vert2); }
+  &.p-or { background: #FEF4E4; color: #C98A16; }
+  &.p-ro { background: #FDE8E4; color: var(--ubi-rouge); }
+  &.p-bl { background: #E8F0FD; color: var(--ubi-navy2); }
+}
+
+.prm-txt {
+  min-width: 0;
+  padding-right: 30px;
+  b { display: block; font-size: 13.5px; font-weight: 600; }
+  small { color: var(--ubi-gris); font-size: 11.5px; line-height: 1.4; display: block; margin-top: 2px; }
+}
+
+.prm-n {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  font-size: 11px;
+  color: var(--ubi-gris);
+  background: var(--ubi-fond);
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-weight: 600;
+}
+
+.prm-fl {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  color: var(--ubi-gris);
+  font-size: 18px;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity .15s ease, transform .15s ease;
+}
+
+@media (max-width: 1399.98px) { .prm-cartes { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 991.98px) { .prm-cartes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 575.98px) {
+  .prm-cartes { grid-template-columns: 1fr; gap: 8px; }
+  .prm-recherche { width: 100%; }
+  .prm .pe-actions { width: 100%; }
+  .prm-carte { min-height: 0; padding: 12px; }
+}

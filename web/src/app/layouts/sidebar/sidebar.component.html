@@ -79,7 +79,7 @@
                                     </ul>
                                 </div>
                                 }@else {
-                                <a [routerLink]="subitem.link" class="nav-link" [attr.data-parent]="subitem.parentId" (click)="updateActive($event)">
+                                <a [routerLink]="subitem.link" class="nav-link" [attr.data-parent]="subitem.parentId" [attr.data-actif-sur]="subitem.actifSur?.join(' ')" (click)="updateActive($event)">
                                     {{ subitem.label | translate}}
                                     <span class="badge badge-pill bg-success" *ngIf="subitem.isNew">New</span>
                                 </a>
@@ -89,10 +89,10 @@
                         </ul>
                     </div>
                     }@else {
-                    <a [routerLink]="item.link" class="side-nav-link-ref nav-link menu-link" (click)="toggleParentItem($event,item)">
-                        @if(item.icon){<i class="bx {{ item.icon }} icon nav-icon" class=""></i>}
-                        <span class=""> {{ item.label | translate }} </span>
-                        <span class="badge badge-pill bg-secondary">{{item.badge | translate}}</span>
+                    <a [routerLink]="item.link" class="side-nav-link-ref nav-link menu-link" [attr.data-actif-sur]="item.actifSur?.join(' ')" (click)="toggleParentItem($event,item)">
+                        @if(item.icon){<i class="{{ item.icon }}"></i>}
+                        <span> {{ item.label | translate }} </span>
+                        @if(item.badge){<span class="badge badge-pill bg-secondary">{{item.badge | translate}}</span>}
                     </a>
                     }
                 </li>

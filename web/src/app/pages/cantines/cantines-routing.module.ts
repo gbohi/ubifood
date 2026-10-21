@@ -1,5 +1,5 @@
-import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
+import { NgModule, inject } from '@angular/core';
+import { Router, RouterModule, Routes } from '@angular/router';
 import { RoleGuard } from 'src/app/core/guards/role.guard';
 import { GESTIONNAIRES } from 'src/app/core/helpers/roles';
 
@@ -13,7 +13,6 @@ import { MesCommandesComponent } from './mes-commandes/mes-commandes.component';
 import { GestionCommandesComponent } from './gestion-commandes/gestion-commandes.component';
 import { RetraitCommandeComponent } from './retrait-commande/retrait-commande/retrait-commande.component';
 import { FacturationCommandeComponent } from './facturation-commande/facturation-commande.component';
-import { FacturationPrestataireComponent } from './facturation-prestataire/facturation-prestataire.component';
 import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
 import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.component';
 
@@ -30,7 +29,8 @@ const routes: Routes = [
   { path: 'gestion-commandes', component: GestionCommandesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'retrait-commande', component: RetraitCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'facturation-commande', component: FacturationCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
-  { path: 'facturation-prestataire', component: FacturationPrestataireComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  // Ancienne page : c'est désormais l'onglet « Prestataires » de la page Facturation
+  { path: 'facturation-prestataire', redirectTo: () => inject(Router).createUrlTree(['/cantines/facturation-commande'], { queryParams: { onglet: 'prestataires' } }) },
   { path: 'avis-plats', component: AvisPlatsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } }
 ];
 

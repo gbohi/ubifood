@@ -21,6 +21,8 @@ import {
   deleteuserFailure, deletemultipleuserFailure,
   activerUserFailure, desactiverUserFailure,
   activerMultipleUsersFailure, desactiverMultipleUsersFailure,
+  adduserDataSuccess, updateuserDataSuccess, deleteuserSuccess, deletemultipleuserSuccess,
+  activerUserSuccess, desactiverUserSuccess, activerMultipleUsersSuccess, desactiverMultipleUsersSuccess,
 } from 'src/app/store/User/user.action';
 import {
   selectuserData, selectTotalItems, selectLoading, selectCurrentPage,
@@ -59,6 +61,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { TriServeur } from 'src/app/shared/tri-serveur';
 import { environment } from 'src/environments/environment';
+import { HttpClient } from '@angular/common/http';
+import { LIBELLES_ROLES } from 'src/app/core/helpers/roles';
 
 // ============================================================
 // VALIDATORS
@@ -93,7 +97,7 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly tri = new TriServeur({ id: 'id', nom: 'nom,prenom', username: 'username' });
 
   breadCrumbItems = [
-    { label: 'RH', active: false },
+    { label: 'Paramètres', active: false },
     { label: 'Utilisateurs', active: true },
   ];
 
@@ -164,6 +168,7 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
     private userCategoriesalarieService: UserCategoriesalarieService,
     private userAllergieService: UserAllergieService,
     private tokenStorage: TokenStorageService,
+    private http: HttpClient,
   ) {}
 
   ngOnInit(): void {
@@ -231,7 +236,18 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
     this.store.dispatch(fetchcategoriesalarieNoPaginateData());
     this.store.select(selectAllCategoriesalarieWithoutPagination).pipe(takeUntil(this.destroy$)).subscribe(d => this.categoriesalaries = d ?? []);
 
-    this.roleService.getAllRolesNoPaginate().pipe(takeUntil(this.destroy$)).subscribe(data => this.groupes = data ?? []);
+    this.roleService.getAllRolesNoPaginate().pipe(takeUntil(this.destroy$)).subscribe(data => {
+      this.groupes = data ?? [];
+      this.chargerComptesRoles();
+    });
+
+    // Compteurs des filtres rapides : recalculés après chaque modification
+    this.actions$.pipe(
+      ofType(adduserDataSuccess, updateuserDataSuccess, deleteuserSuccess, deletemultipleuserSuccess,
+             activerUserSuccess, desactiverUserSuccess, activerMultipleUsersSuccess, desactiverMultipleUsersSuccess),
+      debounceTime(500),
+      takeUntil(this.destroy$),
+    ).subscribe(() => this.chargerComptesRoles());
 
     this.connectedUserId = this.tokenStorage.getUser()?.id ?? null;
 
@@ -512,7 +528,83 @@ getDerniereCategorie(user: any): any | null {
   // HELPERS GROUPES
   // ══════════════════════════════════════════════════════════
 
-  getGroupeName(id: number): string { return this.groupes.find(g => g.id === Number(id))?.name ?? `#${id}`; }
+  /** Libellé français du rôle (comme la page Rôles), sinon son nom */
+  getGroupeName(id: number): string {
+    const nom = this.groupes.find(g => g.id === Number(id))?.name;
+    return nom ? (LIBELLES_ROLES[nom] ?? nom) : `#${id}`;
+  }
+
+  /** Couleur et icône du badge d'un rôle */
+  styleRole(id: number): { classe: string; icone: string } {
+    switch (this.groupes.find(g => g.id === Number(id))?.name) {
+      case 'super_admin':  return { classe: 't-na', icone: 'ri-shield-star-line' };
+      case 'admin':        return { classe: 't-bl', icone: 'ri-shield-user-line' };
+      case 'gestionnaire': return { classe: 't-ve', icone: 'ri-restaurant-line' };
+      default:             return { classe: 't-gr', icone: 'ri-user-line' };
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // FILTRES RAPIDES (pastilles) — mêmes filtres serveur que la recherche avancée
+  // ══════════════════════════════════════════════════════════
+
+  readonly filtresRapides: { cle: string; libelle: string }[] = [
+    { cle: 'tous',         libelle: 'Tous' },
+    { cle: 'employe',      libelle: 'Employés' },
+    { cle: 'gestionnaire', libelle: 'Gestionnaires' },
+    { cle: 'admin',        libelle: 'Administrateurs' },
+    { cle: 'super_admin',  libelle: 'Super administrateurs' },
+    { cle: 'desactive',    libelle: 'Désactivés' },
+  ];
+
+  /** Nombre de comptes par pastille (absent tant qu'il n'est pas connu) */
+  comptesRoles: Record<string, number> = {};
+
+  private idGroupe(nom: string): number | null {
+    return this.groupes.find(g => g.name === nom)?.id ?? null;
+  }
+
+  /** Pastille correspondant aux filtres rôle / compte en cours ('' = combinaison libre) */
+  get filtreRapideActif(): string {
+    const v = this.searchForm?.value ?? {};
+    const groupe = `${v.groupe ?? ''}`;
+    const actif = `${v.is_active ?? ''}`;
+    if (!groupe && !actif) return 'tous';
+    if (!groupe && actif === 'false') return 'desactive';
+    if (groupe && !actif) {
+      const nom = this.groupes.find(g => `${g.id}` === groupe)?.name;
+      if (nom && this.filtresRapides.some(f => f.cle === nom)) return nom;
+    }
+    return '';
+  }
+
+  choisirFiltreRapide(cle: string): void {
+    const patch = { groupe: '', is_active: '' } as Record<string, any>;
+    if (cle === 'desactive') patch['is_active'] = 'false';
+    else if (cle !== 'tous') patch['groupe'] = `${this.idGroupe(cle) ?? ''}`;
+    this.searchForm.patchValue(patch);
+    this.applySearch();
+  }
+
+  /** Liste « Toutes les agences » de la barre de filtres */
+  choisirAgence(id: any): void {
+    this.searchForm.patchValue({ agence: id ?? '' });
+    this.applySearch();
+  }
+
+  /** Compte des utilisateurs par pastille (requêtes légères : page_size=1) */
+  private chargerComptesRoles(): void {
+    const url = `${environment.apiUrl}/api/api/users/?page_size=1`;
+    const requetes: Record<string, string> = { tous: url, desactive: `${url}&is_active=false` };
+    for (const f of this.filtresRapides) {
+      const id = this.idGroupe(f.cle);
+      if (id != null) requetes[f.cle] = `${url}&groupe=${id}`;
+    }
+    for (const [cle, u] of Object.entries(requetes)) {
+      this.http.get<any>(u).pipe(catchError(() => of(null)), takeUntil(this.destroy$))
+        .subscribe(r => { if (r && typeof r.count === 'number') this.comptesRoles = { ...this.comptesRoles, [cle]: r.count }; });
+    }
+  }
   getGroupesLibelle(ids: number[]): string { return !ids || !ids.length ? '—' : ids.map(id => this.getGroupeName(id)).join(', '); }
   isGroupSelected(groupId: number): boolean { return (this.userForm.get('groups')?.value || []).map(Number).includes(Number(groupId)); }
   toggleGroup(groupId: number): void {

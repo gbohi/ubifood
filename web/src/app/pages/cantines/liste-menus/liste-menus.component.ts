@@ -127,7 +127,7 @@ export class ListeMenusComponent implements OnInit {
   ngOnInit(): void {
     this.breadCrumbItems = [
       { label: 'Cantine', active: false },
-      { label: 'Liste des menus', active: true }
+      { label: 'Menus', active: true }
     ];
 
     this.menuForm = this.formBuilder.group({
@@ -451,5 +451,12 @@ export class ListeMenusComponent implements OnInit {
 
   getFullUrl(path: string): string {
     return this.baseUrl + path;
+  }
+
+  /** Jour de la semaine en français (« lundi ») d'une date AAAA-MM-JJ */
+  jourSemaine(d?: string | null): string {
+    if (!d) return '';
+    const j = new Date(`${String(d).slice(0, 10)}T12:00:00`);
+    return isNaN(j.getTime()) ? '' : j.toLocaleDateString('fr-FR', { weekday: 'long' });
   }
 }

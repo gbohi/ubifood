@@ -41,7 +41,7 @@ export class AvisPlatsComponent implements OnInit {
 
   breadCrumbItems = [
     { label: 'Cantine', active: false },
-    { label: 'Avis des plats', active: true },
+    { label: 'Avis sur les plats', active: true },
   ];
 
   readonly pageSize = 20;
@@ -115,6 +115,12 @@ export class AvisPlatsComponent implements OnInit {
     }
     this.chargerStats();
     this.chargerAvis(1);
+  }
+
+  /** Pastilles de note : appliquées immédiatement */
+  choisirNote(n: number | ''): void {
+    this.note = n;
+    this.rechercher();
   }
 
   reinitialiser(): void {

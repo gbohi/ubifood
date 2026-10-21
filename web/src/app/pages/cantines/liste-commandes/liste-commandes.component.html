@@ -1,258 +1,196 @@
-<!-- src/app/pages/cantine/liste-commandes/liste-commandes.component.html -->
-<app-breadcrumbs title="Commander" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<div class="ce ce-commander">
 
-<div class="row">
-  <div class="col-12">
+  <!-- ── En-tête ─────────────────────────────────────────────── -->
+  <div class="ce-entete">
+    <div class="ce-entete-txt">
+      <h1><span class="ce-ic"><i class="ri-shopping-basket-2-line"></i></span>Commander mes repas</h1>
+      <p>@if (nomAgence) { {{ nomAgence }} · }choisissez un plat par jour</p>
+    </div>
+    <div class="ce-btns">
+      <button type="button" class="ce-btn" (click)="semaine(-1)"><i class="ri-arrow-left-s-line"></i>Semaine précédente</button>
+      <button type="button" class="ce-btn" (click)="semaine(1)">Semaine suivante<i class="ri-arrow-right-s-line"></i></button>
+    </div>
+  </div>
 
-    <!-- ── Alertes ──────────────────────────────────────────── -->
-    @if (error) {
-      <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        <i class="ph-warning me-2"></i>{{ error }}
-        <button type="button" class="btn-close" (click)="dismissAlert()"></button>
-      </div>
-    }
-    @if (successMessage) {
-      <div class="alert alert-success alert-dismissible fade show" role="alert">
-        <i class="ph-check-circle me-2"></i>{{ successMessage }}
-        <button type="button" class="btn-close" (click)="dismissAlert()"></button>
-      </div>
-    }
-
-    <!-- ── Filtres ───────────────────────────────────────────── -->
-    <div class="card mb-3">
-      <div class="card-body">
-        <form [formGroup]="filterForm">
-          <div class="row g-3 align-items-end">
-            <div class="col-md-2">
-              <label class="form-label">Date début</label>
-              <input type="date" class="form-control form-control-sm" formControlName="date_debut">
-            </div>
-            <div class="col-md-2">
-              <label class="form-label">Date fin</label>
-              <input type="date" class="form-control form-control-sm" formControlName="date_fin">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Agence</label>
-              <select class="form-select form-select-sm" formControlName="agence">
-                <option value="">Toutes les agences</option>
-                @for (a of agences; track a.id) {
-                  <option [value]="a.id">{{ a.nom_agence }}</option>
-                }
-              </select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Équipe</label>
-              <select class="form-select form-select-sm" formControlName="typeequipe">
-                <option value="">Toutes les équipes</option>
-                @for (e of equipes; track e.id) {
-                  <option [value]="e.id">{{ e.libelle }}</option>
-                }
-              </select>
-            </div>
-            <div class="col-md-2">
-              <button class="btn btn-subtle-secondary btn-sm w-100"
-                      type="button"
-                      (click)="resetFilters()">
-                <i class="ph-arrows-clockwise me-1"></i> Réinitialiser
-              </button>
-            </div>
-          </div>
-        </form>
+  <!-- Agence / équipe : gestionnaires et administrateurs (ou agent sans agence) -->
+  @if (estGestion || !nomAgence && agences.length) {
+    <div class="ce-carte ce-barre">
+      <div class="ce-filtres">
+        <label class="ce-champ">
+          <i class="ri-building-line"></i>
+          <select [(ngModel)]="filtreAgence" (change)="changerFiltre()" aria-label="Agence">
+            <option value="">Toutes les agences</option>
+            @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
+          </select>
+        </label>
+        <label class="ce-champ">
+          <i class="ri-time-line"></i>
+          <select [(ngModel)]="filtreEquipe" (change)="changerFiltre()" aria-label="Équipe">
+            <option value="">Toutes les équipes</option>
+            @for (e of equipes; track e.id) { <option [value]="e.id">{{ e.libelle }}</option> }
+          </select>
+        </label>
       </div>
     </div>
+  }
 
-    <!-- ── Loading ───────────────────────────────────────────── -->
-    @if (isLoading) {
-      <div class="text-center py-5">
-        <div class="spinner-border text-primary avatar-sm" role="status">
-          <span class="visually-hidden">Chargement...</span>
+  <!-- ── Alertes ──────────────────────────────────────────────── -->
+  @if (error) {
+    <div class="ce-alerte ce-alerte-ro" role="alert">
+      <i class="ri-error-warning-line"></i><div>{{ error }}</div>
+      <button type="button" class="btn-close ms-auto" (click)="dismissAlert()" aria-label="Fermer"></button>
+    </div>
+  }
+  @if (successMessage && !derniereCommande) {
+    <div class="ce-alerte ce-alerte-ve" role="status">
+      <i class="ri-checkbox-circle-line"></i><div>{{ successMessage }}</div>
+      <button type="button" class="btn-close ms-auto" (click)="dismissAlert()" aria-label="Fermer"></button>
+    </div>
+  }
+  @if (erreurMenus) {
+    <div class="ce-alerte ce-alerte-ro"><i class="ri-error-warning-line"></i><div>{{ erreurMenus }}</div></div>
+  }
+
+  <!-- ── Bandeau de la semaine ───────────────────────────────── -->
+  <div class="ce-jours" role="tablist">
+    @for (j of jours; track j) {
+      <button type="button" role="tab" class="ce-jour"
+              [class.ce-on]="j === jourSelectionne"
+              [class.ce-off]="etatJour(j) === 'pas_de_menu'"
+              [attr.aria-selected]="j === jourSelectionne"
+              (click)="choisirJour(j)">
+        <b>{{ jourCourt(j) }}@if (estAujourdhui(j)) { <em>auj.</em> }</b>
+        <small>
+          @if (etatJour(j) === 'commande' || etatJour(j) === 'retire') { <i class="ri-checkbox-circle-fill ce-c-vert"></i> }
+          {{ texteJour(j) }}
+        </small>
+        <span class="ce-tag" [ngClass]="tagJour(j).classe">
+          @if (tagJour(j).icone) { <i [class]="tagJour(j).icone"></i> }{{ tagJour(j).texte }}
+        </span>
+      </button>
+    }
+  </div>
+
+  <!-- ── Le jour choisi ──────────────────────────────────────── -->
+  @if (isLoading) {
+    <div class="ce-chargement"><span class="spinner-border" role="status"></span><span>Chargement des menus…</span></div>
+  } @else if (jourSelectionne) {
+    <div class="ce-carte ce-jour-detail">
+      <h3>
+        <i class="ri-calendar-event-line"></i>{{ titreJour(jourSelectionne) }}
+        @if (nbPlatsJour(jourSelectionne)) {
+          <small>
+            {{ nbPlatsJour(jourSelectionne) }} plat{{ nbPlatsJour(jourSelectionne) > 1 ? 's' : '' }} au choix
+            @if (limiteAnnulationJour(jourSelectionne); as lim) {
+              · annulation possible jusqu'au {{ libelleLimite(lim) }}
+            }
+          </small>
+        }
+      </h3>
+
+      @if (allergies.length && nbPlatsJour(jourSelectionne)) {
+        <div class="ce-alerte ce-alerte-or ce-alerte-fine">
+          <i class="ri-alert-line"></i>
+          <div>Rappel de vos allergies : <b>{{ allergies.join(', ') }}</b>. Vérifiez la composition avant de choisir.</div>
         </div>
-        <p class="text-muted mt-2 mb-0">Chargement des menus...</p>
+      }
+
+      @for (menu of menusDuJour(jourSelectionne); track menu.id) {
+        @if (menusDuJour(jourSelectionne).length > 1 || estGestion) {
+          <div class="ce-menu-ss-titre">
+            <i class="ri-building-line"></i>{{ menu.agence_nom }} · {{ menu.typeequipe_libelle }}
+          </div>
+        }
+        @if (commandeOuverte(menu) && !aDejaCommandePourDate(menu.date_menu)) {
+          <div class="ce-delai">
+            <i class="ri-time-line"></i>
+            Commandes ouvertes jusqu'au {{ libelleLimite(menu.date_limite_commande) }}
+            @if (compteARebours(menu.date_limite_commande); as reste) { <b class="ce-c-orange">· {{ reste }}</b> }
+          </div>
+        } @else if (!commandeOuverte(menu) && !aDejaCommandePourDate(menu.date_menu)) {
+          <div class="ce-delai ce-c-gris">
+            <i class="ri-lock-line"></i>Commandes fermées depuis le {{ libelleLimite(menu.date_limite_commande) }}
+          </div>
+        }
+
+        <div class="ce-plats">
+          @for (plat of getPlats(menu); track plat.id; let i = $index) {
+            <div class="ce-pc"
+                 [class.ce-choisi]="isPlatCommande(menu.id!, plat.id!)"
+                 [class.ce-retire]="isPlatRetire(menu.id!, plat.id!)">
+              <div class="ce-pc-ph" [style.background]="getImageUrl(plat) ? null : degrade(i)">
+                @if (getImageUrl(plat); as url) { <img [src]="url" [alt]="plat.nom"> }
+                @else { <i class="ri-restaurant-2-line"></i> }
+                @if (plat.type_plat_libelle) { <span class="ce-pc-type">{{ plat.type_plat_libelle }}</span> }
+                @if (note(plat)) {
+                  <span class="ce-pc-note" [title]="$any(plat).nb_avis + ' avis'"><i class="ri-star-fill"></i> {{ note(plat) }}</span>
+                }
+              </div>
+              <div class="ce-pc-bd">
+                <h4>{{ plat.nom }}</h4>
+                @if (plat.description) { <p>{{ plat.description }}</p> }
+
+                @if (isPlatRetire(menu.id!, plat.id!)) {
+                  <button type="button" class="ce-cta ce-cta-info" disabled>
+                    <i class="ri-checkbox-circle-line"></i>Repas retiré
+                  </button>
+                } @else if (isPlatCommande(menu.id!, plat.id!)) {
+                  @if (annulationOuverte(menu)) {
+                    <button type="button" class="ce-cta ce-cta-choisi" [disabled]="isSubmitting"
+                            (click)="demanderAnnulation(menu.id!, plat.id!, plat.nom, menu.date_limite_annulation)">
+                      <i class="ri-check-line"></i>Votre choix · annuler jusqu'au {{ jourLimite(menu.date_limite_annulation) }}
+                    </button>
+                  } @else {
+                    <button type="button" class="ce-cta ce-cta-choisi" disabled>
+                      <i class="ri-check-line"></i>Votre choix · confirmé
+                    </button>
+                  }
+                } @else if (!commandeOuverte(menu)) {
+                  <button type="button" class="ce-cta" disabled><i class="ri-lock-line"></i>Commandes fermées</button>
+                } @else if (aDejaCommandePourDate(menu.date_menu)) {
+                  <button type="button" class="ce-cta" disabled>Déjà commandé ce jour</button>
+                } @else {
+                  <button type="button" class="ce-cta ce-cta-choix" [disabled]="isSubmitting" (click)="commander(menu, plat)">
+                    @if (isSubmitting) { <span class="spinner-border spinner-border-sm"></span> }
+                    {{ isPlatAnnule(menu.id!, plat.id!) ? 'Commander à nouveau' : 'Choisir ce plat' }}
+                  </button>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      } @empty {
+        <div class="ce-vide-page">
+          <i class="ri-calendar-todo-line"></i>
+          <b>{{ texteJour(jourSelectionne) }}</b>
+          <span>Aucun menu n'est proposé ce jour{{ nomAgence ? ' à ' + nomAgence : '' }}.</span>
+          @if (commandeDuJour(jourSelectionne); as c) {
+            <span>Votre commande : {{ c.plat_detail?.nom }} ({{ c.menu_detail?.agence_nom }})</span>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- ── Bandeau « jour suivant » après une commande ─────────── -->
+    @if (derniereCommande) {
+      <div class="ce-suivant" role="status">
+        <i class="ri-checkbox-circle-line"></i>
+        <div><b>Commande enregistrée : {{ derniereCommande.platNom }} le {{ jourLong(derniereCommande.date) }}.</b>
+          {{ jourSuivantAReserver ? 'Passez au jour suivant pour continuer.' : 'Plus aucun jour à réserver cette semaine.' }}</div>
+        <button type="button" class="ce-btn ce-btn-vert" (click)="allerJourSuivant()">
+          {{ jourSuivantAReserver ? jourLong(jourSuivantAReserver) : 'Semaine suivante' }}<i class="ri-arrow-right-line"></i>
+        </button>
       </div>
     }
-
-    <!-- ── Liste des menus ──────────────────────────────────── -->
-    @if (!isLoading) {
-
-      @if (menusFiltres.length === 0) {
-        <div class="text-center py-5">
-          <i class="ph-calendar-x fs-1 text-muted"></i>
-          <h5 class="mt-3 text-muted">Aucun menu disponible</h5>
-          <p class="text-muted mb-0">Modifiez les filtres pour afficher les menus.</p>
-        </div>
-      }
-
-      @for (menu of menusFiltres; track menu.id) {
-        <div class="card mb-3">
-
-          <!-- En-tête menu -->
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <div>
-              <h5 class="mb-0">
-                <i class="ph-calendar-blank me-2 text-primary"></i>
-                Menu du {{ formatDate(menu.date_menu!) }}
-              </h5>
-              <small class="text-muted">
-                {{ menu.agence_nom }} —
-                <span class="badge bg-info-subtle text-info">{{ menu.typeequipe_libelle }}</span>
-              </small>
-            </div>
-
-            <div class="d-flex align-items-center gap-2">
-
-              <!-- Badge déjà commandé ce jour (autre menu/agence) -->
-              @if (aDejaCommandePourDate(menu.date_menu!) && !aDejaCommandeDansCeMenu(menu.id!)) {
-                <span class="badge bg-warning-subtle text-warning fs-12">
-                  <i class="ph-warning me-1"></i>Déjà commandé ce jour
-                </span>
-              }
-
-             <!-- Badge repas retiré -->
-            @if (aUnPlatRetireDansCeMenu(menu.id!)) {
-              <span class="badge bg-info-subtle text-info fs-12">
-                <i class="ph-check-circle me-1"></i>Repas retiré
-              </span>
-            }
-
-              <!-- Indicateur délai -->
-              @if (!commandeOuverte(menu)) {
-                <span class="badge bg-danger-subtle text-danger fs-12">
-                  <i class="ph-lock me-1"></i>Commandes fermées
-                </span>
-              } @else {
-                <span class="badge bg-success-subtle text-success fs-12">
-                  <i class="ph-clock me-1"></i>Commande ouverte
-                  @if (menu.date_limite_commande) { jusqu'au {{ libelleLimite(menu.date_limite_commande) }} }
-                </span>
-              }
-
-            </div>
-          </div>
-
-          <div class="card-body">
-            <div class="row g-3">
-              @for (plat of getPlats(menu); track plat.id) {
-                <div class="col-md-4 col-lg-3">
-                  <div class="card h-100 border"
-                       [class.border-success]="isPlatCommande(menu.id!, plat.id!)"
-                       [class.border-secondary]="isPlatAnnule(menu.id!, plat.id!)"
-                       [class.border-info]="isPlatRetire(menu.id!, plat.id!)">
-
-                    <!-- Image plat -->
-                    <img [src]="getImageUrl(plat)"
-                         class="card-img-top"
-                         style="height:140px; object-fit:cover;"
-                         [alt]="plat.nom">
-
-                    <div class="card-body p-2">
-                      <h6 class="card-title mb-1 fw-semibold">{{ plat.nom }}</h6>
-                      @if (plat.description) {
-                        <p class="card-text text-muted small mb-2" style="line-height:1.3">
-                          {{ plat.description | slice:0:60 }}{{ plat.description.length > 60 ? '…' : '' }}
-                        </p>
-                      }
-
-                      <!-- Badge statut commande -->
-                      @if (isPlatRetire(menu.id!, plat.id!)) {
-                        <span class="badge bg-info-subtle text-info mb-2 d-block">
-                          <i class="ph-check-circle me-1"></i>Retiré
-                        </span>
-                      } @else if (isPlatCommande(menu.id!, plat.id!)) {
-                        <span class="badge bg-success-subtle text-success mb-2 d-block">
-                          <i class="ph-check me-1"></i>Commandé
-                        </span>
-                      }
-
-                      <!-- Message délai dépassé -->
-                      @if (isPlatCommande(menu.id!, plat.id!)) {
-                        @if (!annulationOuverte(menu)) {
-                          <small class="text-danger d-block mb-1">
-                            <i class="ph-lock me-1"></i>Annulation impossible (date limite dépassée)
-                          </small>
-                        }
-                      } @else if (!commandeOuverte(menu)) {
-                        <small class="text-danger d-block mb-1">
-                          <i class="ph-lock me-1"></i>Commandes fermées
-                        </small>
-                      }
-
-                      <!-- Message déjà commandé ce jour (autre plat/menu) -->
-                      @if (isPlatBloquePourDate(menu.date_menu!, menu.id!, plat.id!)) {
-                        <small class="text-warning d-block mb-1">
-                          <i class="ph-warning me-1"></i>Déjà commandé ce jour
-                        </small>
-                      }
-
-                      <!-- ════════════════════════════════════════
-                           BOUTONS — ordre de priorité :
-                           1. retiree  → lecture seule
-                           2. annulee  → peut recommander
-                           3. en_attente → peut annuler
-                           4. (rien)   → peut commander
-                      ════════════════════════════════════════ -->
-
-                      @if (isPlatRetire(menu.id!, plat.id!)) {
-                        <!-- Repas déjà retiré — aucune action possible -->
-                        <button class="btn btn-outline-info btn-sm w-100" disabled>
-                          <i class="ph-check-circle me-1"></i>Repas retiré
-                        </button>
-
-                      } @else if (isPlatAnnule(menu.id!, plat.id!)) {
-                        <!-- Commande annulée → peut recommander -->
-                        <button class="btn btn-primary btn-sm w-100"
-                                [disabled]="!commandeOuverte(menu) || isSubmitting
-                                            || isPlatBloquePourDate(menu.date_menu!, menu.id!, plat.id!)"
-                                (click)="commander(menu.id!, plat.id!)">
-                          @if (isSubmitting) {
-                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                          }
-                          <i class="ph-shopping-cart me-1"></i>Commander à nouveau
-                        </button>
-
-                      } @else if (isPlatCommande(menu.id!, plat.id!)) {
-                        <!-- Plat commandé (en_attente) → peut annuler -->
-                        <button class="btn btn-outline-danger btn-sm w-100"
-                                [disabled]="!annulationOuverte(menu) || isSubmitting"
-                                (click)="demanderAnnulation(menu.id!, plat.id!, plat.nom, menu.date_limite_annulation)">
-                          @if (isSubmitting) {
-                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                          }
-                          <i class="ph-x me-1"></i>Annuler
-                        </button>
-
-                      } @else {
-                        <!-- Plat non commandé → peut commander -->
-                        <button class="btn btn-primary btn-sm w-100"
-                                [disabled]="!commandeOuverte(menu) || isSubmitting
-                                            || aDejaCommandePourDate(menu.date_menu!)"
-                                (click)="commander(menu.id!, plat.id!)">
-                          @if (isSubmitting) {
-                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                          }
-                          <i class="ph-shopping-cart me-1"></i>Commander
-                        </button>
-                      }
-
-                    </div>
-                  </div>
-                </div>
-              }
-            </div>
-          </div>
-        </div>
-      }
-
-    }
-
-  </div>
+  }
 </div>
 
-<!-- ── Confirmation d'annulation (comme sur l'application mobile) ── -->
+<!-- ── Confirmation d'annulation ─────────────────────────────── -->
 <div bsModal #annulationModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-body p-4 text-center">
-        <i class="ph-warning-circle text-warning display-5"></i>
+        <i class="ri-error-warning-line text-warning display-5"></i>
         <h5 class="mt-3">Annuler ?</h5>
         <p class="text-muted mb-1">Votre commande « {{ annulationEnCours?.platNom }} » sera annulée.</p>
         @if (annulationEnCours?.limite) {

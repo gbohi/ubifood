@@ -25,8 +25,9 @@ const LIENS_UTILES: { libelle: string; icone: string; lien: string; roles?: stri
   { libelle: 'Menus',            icone: 'ri-file-list-3-line',    lien: '/cantines/liste-menus',             roles: GESTIONNAIRES },
   { libelle: 'Commandes',        icone: 'ri-shopping-cart-line',  lien: '/cantines/liste-commandes',         roles: GESTIONNAIRES },
   { libelle: 'Retrait',          icone: 'ri-calendar-check-fill', lien: '/cantines/retrait-commande',        roles: GESTIONNAIRES },
-  { libelle: 'Fac. employés',    icone: 'ri-wallet-3-line',       lien: '/cantines/facturation-commande',    roles: GESTIONNAIRES },
-  { libelle: 'Fac. prestataires', icone: 'ri-bank-card-2-line',   lien: '/cantines/facturation-prestataire', roles: GESTIONNAIRES },
+  // Facturation employés et prestataires : une seule page à onglets
+  { libelle: 'Facturation',      icone: 'ri-wallet-3-line',       lien: '/cantines/facturation-commande',    roles: GESTIONNAIRES },
+  { libelle: 'Paramètres',       icone: 'ri-settings-3-line',     lien: '/parametres/accueil',               roles: GESTIONNAIRES },
 ];
 
 @Component({

@@ -1,243 +1,130 @@
+<!-- Besoins — gabarit commun des listes -->
+<div class="lst">
+  <app-page-entete titre="Besoins" icone="ri-ticket-line"
+                   [compte]="totalItems" unite="besoin|besoins">
+    <button type="button" class="btn-ubi vert" (click)="openAddModal()"><i class="ri-add-line"></i><span class="pe-lib">Nouveau besoin</span></button>
+  </app-page-entete>
 
-<!-- Start Breadcrumbs -->
-<app-breadcrumbs title="Besoins" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
-<!-- End Breadcrumbs -->
-
-<!-- ── Statistiques ─────────────────────────────────────── -->
-<div class="row">
-  <div class="col-xl-7">
-    <div class="card">
-      <div class="card-body">
-        <div class="row g-4">
+  <!-- ── Statistiques ─────────────────────────────────────── -->
+  <div class="row g-3 mb-3">
+    <div class="col-xl-7">
+      <div class="lst-carte h-100 mb-0 p-3">
+        <div class="row g-3">
           @for (data of statistiques?.par_etat; track data.etat) {
-            <div class="col-lg-3 col-sm-6 border-end-sm">
-              <div>
-                <div class="d-flex align-items-center gap-2 mb-4">
-                  <div class="avatar-xs flex-shrink-0">
-                    <div
-                      class="avatar-title bg-body-secondary rounded-circle"
-                      [ngClass]="[
-                        getEtatStyle(data.etat).borderClass,
-                        getEtatStyle(data.etat).textClass
-                      ]"
-                    >
-                      <i class="bi" [ngClass]="getEtatStyle(data.etat).icon"></i>
-                    </div>
-                  </div>
-                  <div class="flex-grow-1">
-                    <p class="text-muted mb-0">{{ data.etat || 'Sans état' }}</p>
-                  </div>
-                </div>
-                <h3 class="mb-0">
-                  <span class="counter-value" [countUp]="data.nombre"></span>
-                </h3>
+            <div class="col-6 col-lg-3">
+              <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="lst-av carre" style="width:30px;height:30px;font-size:15px" [ngClass]="getEtatStyle(data.etat).textClass">
+                  <i [ngClass]="getEtatStyle(data.etat).icon"></i>
+                </span>
+                <span class="muted">{{ data.etat || 'Sans état' }}</span>
               </div>
+              <div class="fs-3 fw-semibold"><span class="counter-value" [countUp]="data.nombre"></span></div>
             </div>
           } @empty {
-            <div class="col-12 text-muted">Aucune statistique disponible.</div>
+            <div class="col-12 muted">Aucune statistique disponible.</div>
           }
         </div>
       </div>
     </div>
-  </div>
-
-  <div class="col-xl-5">
-    <div class="card">
-      <div class="card-body">
-        <div class="d-flex mb-4 pb-1">
-          <div class="flex-grow-1">
-            <h6 class="card-title">
-              Besoins non clôturés
-              <i class="bi bi-exclamation-circle align-baseline ms-1 fs-sm" tooltip="Hors besoins clôturés et annulés"></i>
-            </h6>
-            <p class="text-muted mb-0">
-              <b>{{ statistiques?.total_non_cloture ?? 0 }}</b> sur {{ statistiques?.total_besoin ?? 0 }} besoins
-            </p>
-          </div>
-        </div>
+    <div class="col-xl-5">
+      <div class="lst-carte h-100 mb-0 p-3">
+        <h3 class="fs-sm fw-semibold mb-1">
+          Besoins non clôturés
+          <i class="ri-information-line align-baseline ms-1 muted" tooltip="Hors besoins clôturés et annulés"></i>
+        </h3>
+        <p class="muted mb-3"><b class="text-body">{{ statistiques?.total_non_cloture ?? 0 }}</b> sur {{ statistiques?.total_besoin ?? 0 }} besoins</p>
         <div tooltip="Part des besoins non clôturés">
           <progressbar [value]="getPourcentageNonCloture()" [striped]="true" [animate]="true"></progressbar>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- ── Liste des besoins ────────────────────────────────── -->
-<div class="row">
-  <div class="col-lg-12">
-    <div class="card" id="besoinList">
-      <div class="card-header">
-        <div class="row align-items-center gy-3">
-          <div class="col-lg-3 me-auto">
-            <h6 class="card-title mb-0">Liste des besoins</h6>
-          </div>
-          <div class="col-xl-3 col-md-4">
-            <div class="search-box">
-              <input
-                type="text"
-                class="form-control search"
-                placeholder="Rechercher par référence, titre, description..."
-                [(ngModel)]="term"
-                (ngModelChange)="onSearchChange($event)"
-              />
-              <i class="ri-search-line search-icon"></i>
-            </div>
-          </div>
-          <div class="col-md-auto col-6 text-end">
-            <div class="d-flex flex-wrap align-items-start gap-2">
-              <button
-                class="btn btn-subtle-danger"
-                [class.d-none]="checkedValGet.length === 0"
-                (click)="removeSelected()"
-              >
-                <i class="ri-delete-bin-2-line"></i> Supprimer ({{ checkedValGet.length }})
-              </button>
-              <button class="btn btn-primary" (click)="openAddModal()">
-                <i class="bi bi-plus-circle align-baseline me-1"></i> Ajouter un besoin
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card-body">
-        <div class="table-responsive">
-          <table class="table table-centered align-middle table-custom-effect table-nowrap mb-0">
-            <thead class="text-muted table-light">
-              <tr>
-                <th>
-                  <div class="form-check">
-                    <input
-                      class="form-check-input"
-                      type="checkbox"
-                      id="checkAll"
-                      [checked]="masterSelected"
-                      (change)="checkUncheckAll($event)"
-                    />
-                    <label class="form-check-label" for="checkAll"></label>
-                  </div>
-                </th>
-                <th>N°</th>
-                <th (click)="onSort('reference')"        class="sort cursor-pointer">Référence</th>
-                <th (click)="onSort('created_at')"       class="sort cursor-pointer">Date de création</th>
-                <th (click)="onSort('titre')"            class="sort cursor-pointer">Titre</th>
-                <th (click)="onSort('typebesoin_libelle')" class="sort cursor-pointer">Type</th>
-                <th (click)="onSort('priorite_libelle')" class="sort cursor-pointer">Priorité</th>
-                <th (click)="onSort('etat_libelle')"     class="sort cursor-pointer">État</th>
-                <th (click)="onSort('user_nom')"         class="sort cursor-pointer">Demandeur</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody class="list form-check-all">
-              @for (data of besoins; track data.id; let idx = $index) {
-                <tr>
-                  <td>
-                    <div class="form-check">
-                      <input
-                        class="form-check-input"
-                        type="checkbox"
-                        name="checkAll"
-                        [value]="data.id"
-                        [(ngModel)]="data.state"
-                        (change)="onCheckboxChange()"
-                      />
-                      <label class="form-check-label"></label>
-                    </div>
-                  </td>
-                  <td>{{ (currentPage - 1) * 10 + idx + 1 }}</td>
-                  <td>
-                    <a href="javascript:void(0);" (click)="viewDetails(data.id)" class="fw-medium link-primary">{{ data.reference }}</a>
-                  </td>
-                  <td>{{ data.created_at | date: 'dd/MM/yyyy HH:mm' }}</td>
-                  <td>{{ data.titre }}</td>
-                  <td>{{ data.typebesoin_libelle }}</td>
-                  <td>{{ data.priorite_libelle }}</td>
-                  <td>
-                    <span class="badge" [ngClass]="getBadgeClass(data.etat_libelle)">
-                      {{ data.etat_libelle }}
-                    </span>
-                  </td>
-                  <td>{{ data.user_prenom }} {{ data.user_nom }}</td>
-                  <td>
-                    <ul class="d-flex gap-2 list-unstyled mb-0">
-                      <li>
-                        <a href="javascript:void(0);" (click)="viewDetails(data.id)"
-                          class="btn btn-subtle-primary btn-icon btn-sm" title="Détails">
-                          <i class="ph-eye"></i>
-                        </a>
-                      </li>
-                      <li>
-                        <a href="javascript:void(0);" (click)="editList(data.id)"
-                          class="btn btn-subtle-secondary btn-icon btn-sm" title="Modifier">
-                          <i class="ph-pencil"></i>
-                        </a>
-                      </li>
-                      <li>
-                        <a href="javascript:void(0);" (click)="removeItem(data.id)"
-                          class="btn btn-subtle-danger btn-icon btn-sm" title="Supprimer">
-                          <i class="ph-trash"></i>
-                        </a>
-                      </li>
-                    </ul>
-                  </td>
-                </tr>
-              }
-
-              @if (besoins.length === 0 && !isLoading) {
-                <tr>
-                  <td colspan="10" class="text-center py-4">
-                    @if (term) {
-                      <i class="ph-magnifying-glass fs-1 text-primary"></i>
-                      <h5 class="mt-2">Aucun résultat trouvé</h5>
-                      <p class="text-muted mb-0">Aucun besoin ne correspond à votre recherche.</p>
-                    } @else {
-                      <i class="ph-file-x fs-1 text-primary"></i>
-                      <h5 class="mt-2">Aucun besoin disponible</h5>
-                      <p class="text-muted mb-0">Veuillez ajouter un besoin pour commencer.</p>
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-
-          @if (isLoading) {
-            <div class="text-center py-3">
-              <div class="spinner-border text-primary avatar-sm" role="status">
-                <span class="visually-hidden">Chargement...</span>
-              </div>
-            </div>
-          }
-        </div>
-
-        <div [ngClass]="besoins.length === 0 ? 'd-none' : ''" class="row mt-3 align-items-center">
-          <div class="col-sm">
-            <div class="text-muted text-center text-sm-start">
-              Affichage de
-              <span class="fw-semibold">{{ besoins.length || 0 }}</span>
-              sur
-              <span class="fw-semibold">{{ totalItems || 0 }}</span>
-              résultats
-            </div>
-          </div>
-          <div class="col-sm-auto mt-3 mt-sm-0">
-            <pagination
-              class="pagination-wrap justify-content-center hstack gap-2"
-              [totalItems]="totalItems"
-              [itemsPerPage]="10"
-              previousText="Précédent"
-              nextText="Suivant"
-              [(ngModel)]="currentPage"
-              (pageChanged)="pageChanged($event)"
-            ></pagination>
-          </div>
-        </div>
+  <!-- ── Liste des besoins ────────────────────────────────── -->
+  <div class="lst-carte" id="besoinList">
+    <div class="lst-barre">
+      <div class="lst-recherche">
+        <i class="ri-search-line"></i>
+        <input type="search" placeholder="Référence, titre, description…" aria-label="Rechercher un besoin" [(ngModel)]="term" (ngModelChange)="onSearchChange($event)">
       </div>
     </div>
+    @if (checkedValGet.length > 0) {
+      <div class="lst-selection">
+        <span><b>{{ checkedValGet.length }}</b> sélectionné(s)</span>
+        <button type="button" class="btn-ubi rouge sm" (click)="removeSelected()"><i class="ri-delete-bin-6-line"></i>Supprimer la sélection</button>
+      </div>
+    }
+    <div class="lst-table-wrap lst-cartes-wrap">
+      <table class="lst-table lst-cartes">
+        <thead>
+          <tr>
+            <th class="lst-c-sel">
+              <div class="form-check"><input class="form-check-input" type="checkbox" id="checkAll" aria-label="Tout sélectionner" [checked]="masterSelected" (change)="checkUncheckAll($event)"></div>
+            </th>
+            <th class="tri" (click)="onSort('titre')">Besoin</th>
+            <th class="tri" (click)="onSort('created_at')">Créé le</th>
+            <th class="tri" (click)="onSort('typebesoin_libelle')">Type</th>
+            <th class="tri" (click)="onSort('priorite_libelle')">Priorité</th>
+            <th class="tri" (click)="onSort('etat_libelle')">État</th>
+            <th class="tri" (click)="onSort('user_nom')">Demandeur</th>
+            <th class="lst-c-act"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (data of besoins; track data.id) {
+            <tr>
+              <td class="lst-c-sel">
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="checkAll" [attr.aria-label]="'Sélectionner ' + data.reference" [value]="data.id" [(ngModel)]="data.state" (change)="onCheckboxChange()"></div>
+              </td>
+              <td class="lst-c-principal">
+                <div>
+                  <b>{{ data.titre }}</b>
+                  <small class="d-block"><a href="javascript:void(0);" (click)="viewDetails(data.id)" class="link-primary fw-medium">{{ data.reference }}</a></small>
+                </div>
+              </td>
+              <td data-label="Créé le"><span class="lst-nowrap">{{ data.created_at | date: 'dd/MM/yyyy HH:mm' }}</span></td>
+              <td data-label="Type">{{ data.typebesoin_libelle }}</td>
+              <td data-label="Priorité"><span class="lst-tag t-gr"><i class="ri-flag-line"></i>{{ data.priorite_libelle }}</span></td>
+              <td data-label="État"><span class="lst-tag" [ngClass]="tagEtat(data.etat_libelle)">{{ data.etat_libelle }}</span></td>
+              <td data-label="Demandeur">{{ data.user_prenom }} {{ data.user_nom }}</td>
+              <td class="lst-c-act">
+                <div class="lst-act">
+                  <button type="button" class="lst-ic" title="Modifier" aria-label="Modifier" (click)="editList(data.id)"><i class="ri-pencil-line"></i></button>
+                  <div class="btn-group" dropdown container="body" placement="bottom end">
+                    <button type="button" dropdownToggle class="lst-ic" title="Plus d'actions" aria-label="Plus d'actions"><i class="ri-more-2-fill"></i></button>
+                    <ul *dropdownMenu class="dropdown-menu dropdown-menu-end lst-menu" role="menu">
+                      <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="viewDetails(data.id)"><i class="ri-eye-line"></i>Voir le détail</a></li>
+                      <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="editList(data.id)"><i class="ri-pencil-line"></i>Modifier</a></li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li role="menuitem"><a class="dropdown-item rg" href="javascript:void(0);" (click)="removeItem(data.id)"><i class="ri-delete-bin-6-line"></i>Supprimer</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+          @if (besoins.length === 0 && !isLoading) {
+            <tr class="lst-l-vide">
+              <td colspan="8" class="lst-c-plein">
+                <div class="lst-vide">
+                  @if (term) {
+                    <i class="ri-search-line"></i><h5>Aucun résultat</h5><p>Aucun besoin ne correspond à « {{ term }} ».</p>
+                  } @else {
+                    <i class="ri-ticket-line"></i><h5>Aucun besoin pour le moment</h5><p>Ajoutez un besoin pour commencer.</p>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      @if (isLoading) {
+        <div class="lst-charge"><div class="spinner-border" role="status"><span class="visually-hidden">Chargement...</span></div></div>
+      }
+    </div>
+    <app-liste-pied [total]="totalItems" [page]="currentPage" [nbAffiches]="besoins.length" (pageChanged)="pageChanged($event)"></app-liste-pied>
   </div>
 </div>
-
 <!-- ── Modal Ajouter / Modifier ─────────────────────────── -->
 <div bsModal #addBesoin="bs-modal" class="modal fade" id="addBesoin"
   [config]="{ backdrop: 'static', keyboard: false, ignoreBackdropClick: true }">
@@ -376,13 +263,13 @@
                   @for (file of rawFiles; track $index) {
                     <li class="mt-1">
                       <div class="border rounded p-2 d-flex align-items-center gap-2 bg-light">
-                        <i class="bi" [ngClass]="file.type.startsWith('image/') ? 'bi-file-earmark-image' : 'bi-file-earmark-text'"></i>
+                        <i [ngClass]="file.type.startsWith('image/') ? 'ri-image-line' : 'ri-file-text-line'"></i>
                         <div class="flex-grow-1">
                           <span class="fw-medium">{{ file.name }}</span>
                           <small class="text-muted ms-2">{{ (file.size / 1024) | number: '1.1-1' }} Ko</small>
                         </div>
                         <button type="button" (click)="removeFile(file)" class="btn btn-sm btn-outline-danger" title="Retirer">
-                          <i class="bi bi-x"></i>
+                          <i class="ri-close-line"></i>
                         </button>
                       </div>
                     </li>
@@ -399,7 +286,7 @@
                   @for (doc of existingDocuments; track doc.id) {
                     <li class="mt-1">
                       <div class="border rounded p-2 d-flex align-items-center gap-2">
-                        <i class="bi" [ngClass]="isImage(doc.document) ? 'bi-file-earmark-image' : 'bi-file-earmark-text'"></i>
+                        <i [ngClass]="isImage(doc.document) ? 'ri-image-line' : 'ri-file-text-line'"></i>
                         <div class="flex-grow-1">
                           <a [href]="getFullUrl(doc.document)" target="_blank" rel="noopener" class="text-decoration-none">
                             {{ getFileName(doc.document) }}
@@ -411,7 +298,7 @@
                           (click)="markDocumentForDeletion(doc)"
                           title="Supprimer ce document"
                         >
-                          <i class="bi bi-trash"></i>
+                          <i class="ri-delete-bin-6-line"></i>
                         </button>
                       </div>
                     </li>
@@ -424,7 +311,7 @@
             @if (removedDocuments.length > 0) {
               <div class="mt-2 alert alert-warning py-2 d-flex align-items-center gap-2">
                 <small class="flex-grow-1">
-                  <i class="bi bi-exclamation-triangle me-1"></i>
+                  <i class="ri-alert-line me-1"></i>
                   {{ removedDocuments.length }} document(s) seront supprimés à l'enregistrement.
                 </small>
                 <button type="button" class="btn btn-sm btn-light" (click)="restoreDocuments()">Annuler</button>
@@ -436,7 +323,7 @@
         <div class="modal-footer">
           <div class="hstack gap-2 justify-content-end">
             <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()">
-              <i class="bi bi-x-lg me-1"></i> Fermer
+              <i class="ri-close-line me-1"></i> Fermer
             </button>
             <button type="submit" class="btn btn-primary" [disabled]="isSaving">
               @if (isSaving) {
@@ -462,7 +349,7 @@
       <div class="modal-body p-md-5">
         <div class="text-center">
           <div class="text-danger">
-            <i class="bi bi-trash display-5"></i>
+            <i class="ri-delete-bin-6-line display-5"></i>
           </div>
           <div class="mt-4">
             <h4 class="mb-2">Confirmer la suppression</h4>
@@ -554,7 +441,7 @@
                   <small class="text-muted">{{ bs.date_creation | date: 'dd/MM/yyyy' }}</small>
                   <button type="button" class="btn btn-sm btn-outline-danger" [disabled]="isSavingService"
                     (click)="removeService(bs)" title="Retirer ce service">
-                    <i class="bi bi-x"></i>
+                    <i class="ri-close-line"></i>
                   </button>
                 </li>
               }
@@ -571,7 +458,7 @@
             </select>
             <button type="button" class="btn btn-primary text-nowrap"
               [disabled]="selectedServiceId == null || isSavingService" (click)="assignService()">
-              <i class="bi bi-plus-lg me-1"></i> Affecter
+              <i class="ri-add-line me-1"></i> Affecter
             </button>
           </div>
         </div>
@@ -595,7 +482,7 @@
                       </a>
                     } @else {
                       <a [href]="getFullUrl(doc.document)" target="_blank" rel="noopener" class="d-block mb-2 text-break">
-                        <i class="bi bi-file-earmark-text me-1"></i>{{ getFileName(doc.document) }}
+                        <i class="ri-file-text-line me-1"></i>{{ getFileName(doc.document) }}
                       </a>
                     }
                     @if (documentASupprimer === doc.id) {
@@ -617,7 +504,7 @@
                         class="btn btn-sm btn-outline-danger w-100"
                         (click)="documentASupprimer = doc.id"
                       >
-                        <i class="bi bi-trash me-1"></i> Supprimer
+                        <i class="ri-delete-bin-6-line me-1"></i> Supprimer
                       </button>
                     }
                   </div>
@@ -646,7 +533,7 @@
             <div class="d-flex gap-2 align-items-center">
               <small class="text-muted">{{ detailRawFiles.length }} fichier(s) sélectionné(s)</small>
               <button type="button" class="btn btn-sm btn-primary" [disabled]="isUploadingDetail" (click)="uploadDocumentsToDetail()">
-                <i class="bi bi-upload me-1"></i> Envoyer
+                <i class="ri-upload-2-line me-1"></i> Envoyer
               </button>
               <button type="button" class="btn btn-sm btn-outline-secondary" (click)="clearDetailFiles()">
                 Annuler

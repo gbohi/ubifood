@@ -1,158 +1,91 @@
-<!-- src/app/pages/poste/poste.component.html -->
-<app-breadcrumbs title="Postes" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<!-- Gabarit commun des listes : en-tête + barre de recherche + tableau (cartes sur téléphone) -->
+<div class="lst">
+  <app-page-entete titre="Postes" icone="ri-briefcase-4-line"
+                   [fil]="[{label: 'Paramètres', lien: '/parametres/accueil'}, {label: 'Personnel'}]"
+                   [compte]="totalItems" unite="poste|postes">
+    <button type="button" class="btn-ubi vert" (click)="openAddModal()"><i class="ri-add-line"></i><span class="pe-lib">Nouveau poste</span></button>
+  </app-page-entete>
 
-<div class="row">
-  <div class="col-lg-12">
-    <div class="card" id="posteList">
-
-      <div class="card-header">
-        <div class="row align-items-center gy-3">
-          <div class="col-lg-3 col-md-6 order-last order-md-first me-auto">
-            <div class="search-box">
-              <input type="text" class="form-control search"
-                     placeholder="Rechercher par libellé..."
-                     [(ngModel)]="term" (ngModelChange)="filterdata($event)">
-              <i class="ri-search-line search-icon"></i>
-            </div>
-          </div>
-          <div class="col-md-auto col-6 text-end">
-            <div class="d-flex flex-wrap align-items-start gap-2">
-              @if (checkedValGet.length > 0) {
-                <button class="btn btn-subtle-danger" (click)="openBulkDelete()">
-                  <i class="ri-delete-bin-2-line"></i>
-                  Supprimer ({{ checkedValGet.length }})
-                </button>
-              }
-              <button class="btn btn-secondary" (click)="openAddModal()">
-                <i class="bi bi-plus-circle align-baseline me-1"></i>
-                Ajouter un poste
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card-body">
-        <div class="table-responsive">
-          <table class="table table-borderless table-centered align-middle table-nowrap mb-0">
-            <thead class="text-muted table-light">
-              <tr>
-                <th>
-                  <div class="form-check">
-                    <input class="form-check-input" type="checkbox"
-                           [(ngModel)]="masterSelected" (change)="checkUncheckAll($event)">
-                  </div>
-                </th>
-                <th class="cursor-pointer" [class.sort]="!tri.estActif('id')" (click)="onSort('id')">#<i class="ms-1 align-middle" [ngClass]="tri.icone('id')"></i></th>
-                <th class="cursor-pointer" [class.sort]="!tri.estActif('libelle')" (click)="onSort('libelle')">Libellé<i class="ms-1 align-middle" [ngClass]="tri.icone('libelle')"></i></th>
-                <th>Fonction</th>
-                <th>Service</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody class="list form-check-all">
-
-              @for (data of postes; track data.id) {
-                <tr id="l_{{ data.id }}">
-                  <td>
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox"
-                             [value]="data.id" [(ngModel)]="data.state"
-                             (change)="onCheckboxChange()">
-                    </div>
-                  </td>
-                  <td>
-                    <a href="javascript:void(0);" class="fw-medium link-primary">#{{ data.id }}</a>
-                  </td>
-                  <td>{{ data.libelle }}</td>
-                  <td>
-                    <span class="badge bg-primary-subtle text-primary">
-                      {{ data.fonction_libelle || getFonctionLibelle(data.fonction) }}
-                    </span>
-                  </td>
-                  <td>
-                    <span class="badge bg-info-subtle text-info">
-                      {{ data.service_libelle || getServiceLibelle(data.service) }}
-                    </span>
-                  </td>
-                  <td>
-                    <ul class="d-flex gap-2 list-unstyled mb-0">
-                      <li>
-                        <a href="javascript:void(0);" (click)="viewDetails(data.id)"
-                           class="btn btn-subtle-primary btn-icon btn-sm" title="Voir">
-                          <i class="ph-eye"></i>
-                        </a>
-                      </li>
-                      <li>
-                        <a href="javascript:void(0);" (click)="editList(data.id)"
-                           class="btn btn-subtle-secondary btn-icon btn-sm" title="Modifier">
-                          <i class="ph-pencil"></i>
-                        </a>
-                      </li>
-                      <li>
-                        <a href="javascript:void(0);" (click)="removeItem(data.id)"
-                           class="btn btn-subtle-danger btn-icon btn-sm" title="Supprimer">
-                          <i class="ph-trash"></i>
-                        </a>
-                      </li>
-                    </ul>
-                  </td>
-                </tr>
-              }
-
-              @if (postes.length === 0 && !term && !isLoading) {
-                <tr>
-                  <td colspan="6" class="text-center py-4">
-                    <i class="ph-file-x fs-1 text-primary"></i>
-                    <h5 class="mt-2">Aucun poste disponible</h5>
-                    <p class="text-muted mb-0">Veuillez ajouter un poste pour commencer.</p>
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-
-          @if (isLoading) {
-            <div class="text-center py-4">
-              <div class="spinner-border text-primary avatar-sm" role="status">
-                <span class="visually-hidden">Chargement...</span>
-              </div>
-            </div>
-          }
-
-          <div class="noresult" [style.display]="term && postes.length === 0 && !isLoading ? 'block' : 'none'">
-            <div class="text-center py-4">
-              <i class="ph-magnifying-glass fs-1 text-primary"></i>
-              <h5 class="mt-2">Aucun résultat trouvé</h5>
-              <p class="text-muted mb-0">Aucun poste ne correspond à votre recherche.</p>
-            </div>
-          </div>
-        </div>
-
-        @if (postes.length > 0) {
-          <div class="row mt-3 align-items-center">
-            <div class="col-sm">
-              <div class="text-muted text-center text-sm-start">
-                Affichage de <span class="fw-semibold">{{ postes.length }}</span>
-                sur <span class="fw-semibold">{{ totalItems }}</span> résultat(s)
-              </div>
-            </div>
-            <div class="col-sm-auto mt-3 mt-sm-0">
-              <pagination previousText="Précédent" nextText="Suivant" class="pagination-wrap justify-content-center hstack gap-2"
-                          [totalItems]="totalItems" [itemsPerPage]="10"
-                          [(ngModel)]="currentPage" (pageChanged)="pageChanged($event)">
-              </pagination>
-            </div>
-          </div>
-        }
+  <div class="lst-carte" id="posteList">
+    <div class="lst-barre">
+      <div class="lst-recherche">
+        <i class="ri-search-line"></i>
+        <input type="search" placeholder="Rechercher…" aria-label="Rechercher" [(ngModel)]="term" (ngModelChange)="filterdata($event)">
       </div>
     </div>
+    @if (checkedValGet.length > 0) {
+      <div class="lst-selection">
+        <span><b>{{ checkedValGet.length }}</b> sélectionné(s)</span>
+        <button type="button" class="btn-ubi rouge sm" (click)="openBulkDelete()"><i class="ri-delete-bin-6-line"></i>Supprimer la sélection</button>
+      </div>
+    }
+    <div class="lst-table-wrap lst-cartes-wrap">
+      <table class="lst-table lst-cartes">
+        <thead>
+          <tr>
+            <th class="lst-c-sel">
+              <div class="form-check"><input class="form-check-input" type="checkbox" aria-label="Tout sélectionner" [(ngModel)]="masterSelected" (change)="checkUncheckAll($event)"></div>
+            </th>
+            <th class="tri" [class.actif]="tri.estActif('libelle')" (click)="onSort('libelle')">Libellé<i class="ms-1" [ngClass]="tri.icone('libelle')"></i></th>
+            <th>Fonction</th>
+            <th>Service</th>
+            <th class="lst-c-act"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (data of postes; track data.id) {
+            <tr id="l_{{ data.id }}">
+              <td class="lst-c-sel">
+                <div class="form-check"><input class="form-check-input" type="checkbox" [attr.aria-label]="'Sélectionner ' + data.libelle" [value]="data.id" [(ngModel)]="data.state" (change)="onCheckboxChange()"></div>
+              </td>
+              <td class="lst-c-principal">
+                <div class="lst-qui"><span class="lst-av carre"><i class="ri-briefcase-4-line"></i></span><b>{{ data.libelle }}</b></div>
+              </td>
+              <td data-label="Fonction"><span class="lst-tag t-bl">{{ data.fonction_libelle || getFonctionLibelle(data.fonction) }}</span></td>
+              <td data-label="Service"><span class="lst-tag t-gr">{{ data.service_libelle || getServiceLibelle(data.service) }}</span></td>
+              <td class="lst-c-act">
+                <div class="lst-act">
+                  <button type="button" class="lst-ic" title="Modifier" aria-label="Modifier" (click)="editList(data.id)"><i class="ri-pencil-line"></i></button>
+                  <div class="btn-group" dropdown container="body" placement="bottom end">
+                    <button type="button" dropdownToggle class="lst-ic" title="Plus d'actions" aria-label="Plus d'actions"><i class="ri-more-2-fill"></i></button>
+                    <ul *dropdownMenu class="dropdown-menu dropdown-menu-end lst-menu" role="menu">
+                      <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="viewDetails(data.id)"><i class="ri-eye-line"></i>Voir le détail</a></li>
+                      <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="editList(data.id)"><i class="ri-pencil-line"></i>Modifier</a></li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li role="menuitem"><a class="dropdown-item rg" href="javascript:void(0);" (click)="removeItem(data.id)"><i class="ri-delete-bin-6-line"></i>Supprimer</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+          @if (postes.length === 0 && !isLoading) {
+            <tr class="lst-l-vide">
+              <td colspan="5" class="lst-c-plein">
+                <div class="lst-vide">
+                  @if (term) {
+                    <i class="ri-search-line"></i>
+                    <h5>Aucun résultat</h5>
+                    <p>Aucun élément ne correspond à « {{ term }} ».</p>
+                  } @else {
+                    <i class="ri-briefcase-4-line"></i>
+                    <h5>Aucun poste pour le moment</h5>
+                    <p>Ajoutez un poste pour commencer.</p>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      @if (isLoading) {
+        <div class="lst-charge"><div class="spinner-border" role="status"><span class="visually-hidden">Chargement...</span></div></div>
+      }
+    </div>
+    <app-liste-pied [total]="totalItems" [page]="currentPage" [nbAffiches]="postes.length" (pageChanged)="pageChanged($event)"></app-liste-pied>
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════
-     Modal — Ajouter / Modifier
-═══════════════════════════════════════════════════════════ -->
 <div bsModal #addPoste="bs-modal" class="modal fade"
      [config]="{backdrop: 'static', keyboard: false, ignoreBackdropClick: true}">
   <div class="modal-dialog">
@@ -225,7 +158,7 @@
         <div class="modal-footer">
           <div class="hstack gap-2 justify-content-end">
             <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()">
-              <i class="bi bi-x-lg me-1"></i>Fermer
+              <i class="ri-close-line me-1"></i>Fermer
             </button>
             <button type="submit" class="btn btn-primary" id="add-btn"
                     [disabled]="posteForm.invalid || saving">
@@ -251,7 +184,7 @@
       </div>
       <div class="modal-body p-md-5">
         <div class="text-center">
-          <div class="text-danger"><i class="bi bi-trash display-5"></i></div>
+          <div class="text-danger"><i class="ri-delete-bin-6-line display-5"></i></div>
           <div class="mt-4">
             <h4 class="mb-2">Êtes-vous sûr ?</h4>
             <p class="text-muted fs-md mx-3 mb-0">

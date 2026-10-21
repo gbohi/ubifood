@@ -1,366 +1,270 @@
-<!-- src/app/pages/cantine/facturation-commande/facturation-commande.component.html -->
-<app-breadcrumbs [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<div class="ce ce-facturation">
 
-<div class="row">
-  <div class="col-12">
+  <!-- ── En-tête ─────────────────────────────────────────────── -->
+  <div class="ce-entete">
+    <div class="ce-entete-txt">
+      <h1><span class="ce-ic"><i class="ri-bill-line"></i></span>Facturation</h1>
+      <p>Ce que chaque agent doit, et ce que nous devons aux prestataires</p>
+    </div>
+    @if (onglet === 'agents') {
+      <div class="ce-btns">
+        <button type="button" class="ce-btn" [disabled]="!lignesFacturation.length" (click)="exportExcel()">
+          <i class="ri-file-excel-2-line ce-c-vert"></i>Excel
+        </button>
+        <button type="button" class="ce-btn" [disabled]="!lignesFacturation.length" (click)="exportPdf()">
+          <i class="ri-file-pdf-line ce-c-rouge"></i>PDF
+        </button>
+      </div>
+    }
+  </div>
+
+  <!-- ── Onglets + période ───────────────────────────────────── -->
+  <div class="ce-carte ce-barre ce-barre-onglets">
+    <div class="ce-onglets" role="tablist">
+      <button type="button" role="tab" [class.ce-on]="onglet === 'agents'" [attr.aria-selected]="onglet === 'agents'"
+              (click)="changerOnglet('agents')"><i class="ri-team-line"></i>Agents</button>
+      <button type="button" role="tab" [class.ce-on]="onglet === 'prestataires'" [attr.aria-selected]="onglet === 'prestataires'"
+              (click)="changerOnglet('prestataires')"><i class="ri-truck-line"></i>Prestataires</button>
+    </div>
+    <div class="ce-filtres">
+      @if (!periodeLibre) {
+        <div class="ce-nav">
+          <button type="button" class="ce-btn ce-btn-ic" (click)="changerMois(-1)" aria-label="Mois précédent"><i class="ri-arrow-left-s-line"></i></button>
+          <b class="ce-nav-titre ce-nav-mois">{{ libelleMoisCourant }}</b>
+          <button type="button" class="ce-btn ce-btn-ic" (click)="changerMois(1)" aria-label="Mois suivant"><i class="ri-arrow-right-s-line"></i></button>
+        </div>
+      } @else {
+        <form [formGroup]="filterForm" class="ce-nav">
+          <label class="ce-champ"><span class="ce-muted">Du</span><input type="date" formControlName="date_debut" aria-label="Date de début"></label>
+          <label class="ce-champ"><span class="ce-muted">au</span><input type="date" formControlName="date_fin" aria-label="Date de fin"></label>
+          <button type="button" class="ce-btn ce-btn-navy" [disabled]="isLoadingAll" (click)="rechercher()">
+            <i class="ri-calculator-line"></i>Calculer
+          </button>
+        </form>
+      }
+      @if (onglet === 'agents') {
+        <span class="ce-tag" [class.ce-tag-gr]="etatPeriode === 'cloturee'" [class.ce-tag-or]="etatPeriode !== 'cloturee'">
+          <i [class]="etatPeriode === 'cloturee' ? 'ri-lock-line' : 'ri-time-line'"></i>{{ libelleEtat(etatPeriode) }}
+        </span>
+        <form [formGroup]="filterForm" class="ce-filtres">
+          <label class="ce-champ">
+            <i class="ri-building-line"></i>
+            <select formControlName="agence" (change)="rechercher()" aria-label="Agence du menu">
+              <option value="">{{ agences.length === 1 ? agences[0].nom_agence : 'Toutes mes agences' }}</option>
+              @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
+            </select>
+          </label>
+          <label class="ce-champ">
+            <i class="ri-time-line"></i>
+            <select formControlName="typeequipe" (change)="rechercher()" aria-label="Équipe">
+              <option value="">Toutes équipes</option>
+              @for (t of typeEquipes; track t.id) { <option [value]="t.id">{{ t.libelle }}</option> }
+            </select>
+          </label>
+        </form>
+      }
+      <button type="button" class="ce-lien" (click)="basculerPeriodeLibre()">
+        {{ periodeLibre ? 'Revenir au mois' : 'Période personnalisée' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ ONGLET PRESTATAIRES : écran existant, intégré ═════════ -->
+  @if (onglet === 'prestataires') {
+    <app-facturation-prestataire [integre]="true" [periode]="periode"></app-facturation-prestataire>
+  }
+
+  <!-- ══ ONGLET AGENTS ═════════════════════════════════════════ -->
+  @if (onglet === 'agents') {
 
     @if (error) {
-      <div class="alert alert-danger alert-dismissible fade show">
-        <i class="ph-warning me-2"></i>{{ error }}
-        <button type="button" class="btn-close" (click)="dismissAlert()"></button>
+      <div class="ce-alerte ce-alerte-ro">
+        <i class="ri-error-warning-line"></i><div>{{ error }}</div>
+        <button type="button" class="btn-close ms-auto" (click)="dismissAlert()" aria-label="Fermer"></button>
       </div>
     }
 
-    <!-- ══ FILTRES ══════════════════════════════════════════════ -->
-    <div class="card mb-3">
-      <div class="card-header">
-        <h6 class="mb-0">
-          <i class="ph-funnel me-2"></i>Filtres — Période de facturation
-          <small class="text-muted fw-normal ms-2">(Agence = agence du menu)</small>
-        </h6>
+    <!-- 4 chiffres clés -->
+    <div class="ce-kpis" [class.ce-attente]="isLoadingAll">
+      <div class="ce-k">
+        <span class="ce-k-ic ce-p-bl"><i class="ri-restaurant-2-line"></i></span>
+        <div><small>Repas facturés</small><b>{{ formatMontant(totalNbCommandes) }}</b><small>commandés, non annulés</small></div>
       </div>
-      <div class="card-body">
-        <form [formGroup]="filterForm">
-          <div class="row g-3 align-items-end">
-
-            <div class="col-md-2">
-              <label class="form-label">Date début <span class="text-danger">*</span></label>
-              <input type="date" class="form-control form-control-sm" formControlName="date_debut">
-            </div>
-            <div class="col-md-2">
-              <label class="form-label">Date fin</label>
-              <input type="date" class="form-control form-control-sm" formControlName="date_fin">
-            </div>
-            <div class="col-md-2">
-              <label class="form-label">Agence du menu</label>
-              <select class="form-select form-select-sm" formControlName="agence">
-                <option value="">Toutes</option>
-                @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
-              </select>
-            </div>
-            <div class="col-md-2">
-              <label class="form-label">Équipe</label>
-              <select class="form-select form-select-sm" formControlName="typeequipe">
-                <option value="">Toutes</option>
-                @for (t of typeEquipes; track t.id) { <option [value]="t.id">{{ t.libelle }}</option> }
-              </select>
-            </div>
-            <div class="col-md-2 d-flex gap-2 align-items-end">
-              <button class="btn btn-primary btn-sm flex-fill" type="button"
-                      [disabled]="isLoadingAll" (click)="rechercher()">
-                @if (isLoadingAll) { <span class="spinner-border spinner-border-sm me-1" role="status"></span> }
-                @else { <i class="ph-calculator me-1"></i> }
-                Calculer
-              </button>
-              <button class="btn btn-subtle-secondary btn-sm" type="button"
-                      (click)="resetFilters()" title="Réinitialiser">
-                <i class="ph-arrows-clockwise"></i>
-              </button>
-            </div>
-
-          </div>
-        </form>
-
-        <div class="alert alert-info py-2 mt-3 mb-0 small">
-          <i class="ph-info me-1"></i>
-          <strong>Règle de facturation</strong> (calculée par le serveur) :
-          {{ regle || 'repas commandés et non annulés, au tarif de la catégorie salarié en vigueur à la date du menu' }}.
-          Les mois <strong>clôturés</strong> ont des montants figés ; les autres sont <strong>provisoires</strong>.
+      <div class="ce-k">
+        <span class="ce-k-ic ce-p-ve"><i class="ri-wallet-3-line"></i></span>
+        <div><small>Montant total</small><b>{{ formatMontant(totalMontant) }} F</b><small>{{ libelleEtat(etatPeriode) }}</small></div>
+      </div>
+      <div class="ce-k">
+        <span class="ce-k-ic ce-p-bl"><i class="ri-team-line"></i></span>
+        <div><small>Agents facturés</small><b>{{ lignesFacturation.length }}</b><small>moy. {{ formatMontant(moyenneParAgent) }} F / agent</small></div>
+      </div>
+      <div class="ce-k" [class.ce-k-alerte]="repasSansTarif > 0">
+        <span class="ce-k-ic" [class.ce-p-ro]="repasSansTarif > 0" [class.ce-p-gr]="repasSansTarif === 0"><i class="ri-error-warning-line"></i></span>
+        <div>
+          <small>Repas sans tarif</small><b>{{ repasSansTarif }}</b>
+          <small>{{ repasSansTarif > 0 ? 'catégorie ou tarif manquant → corriger' : 'tous les repas ont un tarif' }}</small>
         </div>
       </div>
     </div>
 
-    <!-- ══ RÉSULTATS ════════════════════════════════════════════ -->
-    <div class="card">
-      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-          <h5 class="mb-0"><i class="ph-invoice me-2"></i>Facturation par agent</h5>
-          @if (lignesFacturation.length > 0) {
-            <span class="badge bg-primary">{{ lignesFacturation.length }} agent(s)</span>
-            <span class="badge bg-success">{{ totalNbCommandes }} commande(s)</span>
-            @if (totalMontant > 0) {
-              <span class="badge bg-warning text-dark">
-                Total : {{ formatMontant(totalMontant) }} FCFA
-              </span>
-            }
-          }
+    <div class="ce-g-factu">
+      <!-- Détail par agent -->
+      <div class="ce-carte ce-carte-table">
+        <div class="ce-table-hd">
+          <b>Détail par agent</b>
+          <label class="ce-champ ce-champ-recherche">
+            <i class="ri-search-line"></i>
+            <input type="search" [(ngModel)]="recherche" (ngModelChange)="page = 1" placeholder="Rechercher un agent…" aria-label="Rechercher un agent">
+          </label>
         </div>
 
-        @if (lignesFacturation.length > 0) {
-          <div class="d-flex gap-2">
-            <button class="btn btn-subtle-success btn-sm" (click)="exportExcel()">
-              <i class="ph-microsoft-excel-logo me-1"></i>Excel
-            </button>
-            <button class="btn btn-subtle-danger btn-sm" (click)="exportPdf()">
-              <i class="ph-file-pdf me-1"></i>PDF
-            </button>
-          </div>
-        }
-
-      </div>
-
-      <div class="card-body p-0">
-
         @if (isLoadingAll) {
-          <div class="text-center py-5">
-            <div class="spinner-border text-primary avatar-sm" role="status"></div>
-            <p class="text-muted mt-2 mb-0">Calcul en cours...</p>
+          <div class="ce-chargement"><span class="spinner-border" role="status"></span><span>Calcul en cours…</span></div>
+        } @else if (lignesFacturation.length === 0) {
+          <div class="ce-vide-page">
+            <i class="ri-file-list-3-line"></i>
+            <b>Aucune commande sur cette période</b>
+            <span>Changez de mois ou de filtres.</span>
           </div>
-        }
-
-        @if (!isLoadingAll && !hasSearched) {
-          <div class="text-center py-5">
-            <i class="ph-calculator fs-1 text-muted"></i>
-            <h5 class="mt-3 text-muted">Prêt à facturer</h5>
-            <p class="text-muted mb-0">Sélectionnez une période et cliquez sur "Calculer".</p>
-          </div>
-        }
-
-        @if (!isLoadingAll && hasSearched && lignesFacturation.length === 0) {
-          <div class="text-center py-5">
-            <i class="ph-receipt fs-1 text-muted"></i>
-            <h5 class="mt-3 text-muted">Aucune commande sur cette période</h5>
-            <p class="text-muted mb-0">Modifiez la période et recalculez.</p>
-          </div>
-        }
-
-        @if (!isLoadingAll && lignesFacturation.length > 0) {
+        } @else {
           <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-              <thead class="table-light">
+            <table class="ce-table">
+              <thead>
                 <tr>
-                  <th>#</th>
-                  <!-- ✅ Username + Nom & Prénom -->
-                  <th>Username</th>
-                  <th>Nom & Prénom</th>
-                  <th>Agence menu</th>
-                  <th>Agence agent</th>
-                  <th>Équipe</th>
-                  <th>Service</th>
-                  <th>Poste</th>
-                  <th>Catégorie salarié</th>
-                  <th class="text-end">Montant unit. (FCFA)</th>
-                  <th class="text-center">Nb cmd</th>
-                  <th class="text-center" title="En attente">
-                    <span class="badge bg-warning-subtle text-warning">Att.</span>
-                  </th>
-                  <th class="text-center" title="Retirées">
-                    <span class="badge bg-success-subtle text-success">Ret.</span>
-                  </th>
-                  <th class="text-center" title="Clôturée = montant figé ; Provisoire = mois non clôturé">État</th>
-                  <th class="text-end">Total (FCFA)</th>
+                  <th>Agent</th>
+                  <th>Agence</th>
+                  <th>Catégorie</th>
+                  <th class="ce-n">Repas</th>
+                  <th class="ce-n">Tarif</th>
+                  <th class="ce-n">Montant</th>
+                  <th class="ce-c">État</th>
                 </tr>
               </thead>
               <tbody>
-                @for (l of lignesFacturation; track l.username; let i = $index) {
+                @for (l of lignesPage; track l.username; let i = $index) {
                   <tr>
-                    <td class="text-muted">{{ i + 1 }}</td>
-
-                    <!-- ✅ Username (badge) -->
                     <td>
-                      <span class="fw-medium text-primary">{{ l.username }}</span>
+                      <div class="ce-qui">
+                        <span class="ce-av" [style.background]="couleur(i)">{{ initiales(l.nomPrenom) }}</span>
+                        <div><b>{{ l.nomPrenom }}</b><small>{{ l.username }}</small></div>
+                      </div>
                     </td>
-
-                    <!-- ✅ Nom & Prénom -->
-                    <td class="fw-semibold">{{ l.nomPrenom }}</td>
-
-                    <td>
-                      <span class="badge bg-info-subtle text-info">{{ l.agenceMenu }}</span>
-                    </td>
-                    <td>
-                      @if (l.agenceAgent !== '—') {
-                        <span class="badge bg-primary-subtle text-primary">{{ l.agenceAgent }}</span>
-                      } @else { <span class="text-muted small">—</span> }
-                    </td>
-                    <td>{{ l.equipe }}</td>
-                    <td>
-                      @if (l.service !== '—') {
-                        <span class="badge bg-secondary-subtle text-secondary">{{ l.service }}</span>
-                      } @else { <span class="text-muted small">—</span> }
-                    </td>
-                    <td>
-                      @if (l.poste !== '—') {
-                        <span class="badge bg-warning-subtle text-warning">{{ l.poste }}</span>
-                      } @else { <span class="text-muted small">—</span> }
-                    </td>
+                    <td>{{ l.agenceMenu }}</td>
                     <td>
                       @if (l.categoriesalarie !== '—') {
-                        <span class="badge bg-success-subtle text-success">{{ l.categoriesalarie }}</span>
-                      } @else { <span class="text-muted small">—</span> }
-                    </td>
-                    <td class="text-end">
-                      @if (l.montant > 0 && l.repasSansTarif === 0) {
-                        <span class="fw-medium">{{ formatMontant(l.montant) }}</span>
-                      } @else if (l.montant > 0) {
-                        <span class="fw-medium">{{ formatMontant(l.montant) }}</span>
-                        <span class="text-danger small d-block">{{ l.repasSansTarif }} repas sans tarif</span>
+                        <span class="ce-tag ce-tag-bl">{{ l.categoriesalarie }}</span>
                       } @else {
-                        <span class="text-danger small">
-                          <i class="ph-warning me-1"></i>Non défini
-                        </span>
+                        <span class="ce-tag ce-tag-ro"><i class="ri-error-warning-line"></i>Sans catégorie</span>
                       }
                     </td>
-                    <td class="text-center">
-                      <span class="badge bg-primary rounded-pill">{{ l.nbCommandes }}</span>
+                    <td class="ce-n">
+                      {{ l.nbCommandes }}
+                      @if (l.statuts.retiree) { <small class="ce-muted d-block">{{ l.statuts.retiree }} retiré{{ l.statuts.retiree > 1 ? 's' : '' }}</small> }
                     </td>
-                    <td class="text-center">
-                      @if (l.statuts.en_attente > 0) { <span class="badge bg-warning-subtle text-warning">{{ l.statuts.en_attente }}</span> }
-                      @else { <span class="text-muted small">0</span> }
+                    <td class="ce-n">
+                      @if (l.montant > 0) { {{ formatMontant(l.montant) }} F } @else { — }
+                      @if (l.montant > 0 && l.repasSansTarif > 0) {
+                        <small class="ce-c-rouge d-block">{{ l.repasSansTarif }} sans tarif</small>
+                      }
                     </td>
-                    <td class="text-center">
-                      @if (l.statuts.retiree > 0) { <span class="badge bg-success-subtle text-success">{{ l.statuts.retiree }}</span> }
-                      @else { <span class="text-muted small">0</span> }
+                    <td class="ce-n">
+                      @if (l.total > 0) { <b>{{ formatMontant(l.total) }} F</b> }
+                      @else { <b class="ce-c-rouge">à compléter</b> }
                     </td>
-                    <td class="text-center">
-                      <span class="badge"
-                            [class.bg-success-subtle]="l.etat === 'cloturee'" [class.text-success]="l.etat === 'cloturee'"
-                            [class.bg-warning-subtle]="l.etat !== 'cloturee'" [class.text-warning]="l.etat !== 'cloturee'">
+                    <td class="ce-c">
+                      <span class="ce-tag" [class.ce-tag-gr]="l.etat === 'cloturee'" [class.ce-tag-or]="l.etat !== 'cloturee'">
                         {{ libelleEtat(l.etat) }}
                       </span>
                     </td>
-                    <td class="text-end">
-                      @if (l.total > 0) {
-                        <span class="fw-bold text-primary">{{ formatMontant(l.total) }}</span>
-                      } @else { <span class="text-muted small">—</span> }
-                    </td>
                   </tr>
                 }
-              </tbody>
-
-              <tfoot>
-                <tr class="fw-bold" style="border-top: 2px solid #dee2e6; background: #f0f4ff;">
-                  <td colspan="10" class="text-end py-3">TOTAL GÉNÉRAL</td>
-                  <td class="text-center py-3">
-                    <span class="badge bg-primary fs-6 rounded-pill">{{ totalNbCommandes }}</span>
-                  </td>
-                  <td colspan="3"></td>
-                  <td class="text-end py-3">
-                    @if (totalMontant > 0) {
-                      <span class="text-primary fs-6">{{ formatMontant(totalMontant) }}</span>
-                    } @else { <span class="text-muted">—</span> }
-                  </td>
+                <tr class="ce-total">
+                  <td colspan="3">Total · {{ lignesFacturation.length }} agent{{ lignesFacturation.length > 1 ? 's' : '' }}</td>
+                  <td class="ce-n">{{ formatMontant(totalNbCommandes) }}</td>
+                  <td></td>
+                  <td class="ce-n">{{ formatMontant(totalMontant) }} F</td>
+                  <td></td>
                 </tr>
-              </tfoot>
+              </tbody>
             </table>
-          </div>
-
-          <!-- Résumé statistique -->
-          <div class="px-4 py-3 border-top">
-            <div class="row g-3">
-              <div class="col-md-3">
-                <div class="p-3 border rounded text-center bg-primary-subtle">
-                  <div class="fs-4 fw-bold text-primary">{{ lignesFacturation.length }}</div>
-                  <small class="text-muted">Agent(s) concerné(s)</small>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="p-3 border rounded text-center bg-success-subtle">
-                  <div class="fs-4 fw-bold text-success">{{ totalNbCommandes }}</div>
-                  <small class="text-muted">Total commandes</small>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="p-3 border rounded text-center bg-info-subtle">
-                  <div class="fs-4 fw-bold text-info">
-                    {{ lignesFacturation.length > 0 ? (totalNbCommandes / lignesFacturation.length | number:'1.1-1') : 0 }}
-                  </div>
-                  <small class="text-muted">Moy. commandes / agent</small>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="p-3 border rounded text-center bg-warning-subtle">
-                  <div class="fs-4 fw-bold text-warning">
-                    @if (totalMontant > 0) { {{ formatMontant(totalMontant) }} }
-                    @else { N/D }
-                  </div>
-                  <small class="text-muted">Montant total (FCFA)</small>
-                </div>
-              </div>
-            </div>
-
-            @if (hasAgentsSansMontant) {
-              <div class="alert alert-warning py-2 mt-3 mb-0 small">
-                <i class="ph-warning me-1"></i>
-                {{ repasSansTarif }} repas n'ont pas de tarif (agent sans catégorie salarié à la
-                date du menu, ou catégorie sans tarif). Le total est incomplet et le mois ne
-                pourra pas être clôturé tant que ce n'est pas corrigé.
-              </div>
-            }
           </div>
         }
 
+        <div class="ce-pied">
+          <span class="ce-info"><i class="ri-information-line"></i>
+            {{ regle || 'Repas commandés et non annulés, au tarif de la catégorie salarié en vigueur à la date du menu' }} · montants figés après clôture
+          </span>
+          @if (nbPages > 1) {
+            <div class="ce-pages">
+              @for (p of pages; track p) {
+                <button type="button" [class.ce-on]="p === page" (click)="page = p">{{ p }}</button>
+              }
+            </div>
+          }
+        </div>
       </div>
-    </div>
 
-    <!-- ══ CLÔTURES MENSUELLES ══════════════════════════════════ -->
-    <div class="card mt-3">
-      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="mb-0"><i class="ph-lock-key me-2"></i>Clôtures mensuelles</h5>
+      <!-- Clôtures mensuelles : frise -->
+      <div class="ce-carte">
+        <h3><i class="ri-lock-2-line"></i>Clôtures mensuelles</h3>
+
+        @if (clotureMessage) {
+          <div class="ce-alerte ce-alerte-ve mb-2"><i class="ri-checkbox-circle-line"></i><div>{{ clotureMessage }}</div></div>
+        }
+        @if (clotureErreur) {
+          <div class="ce-alerte ce-alerte-ro mb-2"><i class="ri-error-warning-line"></i><div>{{ clotureErreur }}</div></div>
+        }
+
+        <ul class="ce-frise">
+          @for (f of frise; track f.annee * 100 + f.mois) {
+            <li>
+              @if (f.cloture) {
+                <span class="ce-pt ce-p-gr"><i class="ri-lock-line"></i></span>
+                <div>
+                  <button type="button" class="ce-frise-mois" (click)="allerAuMois(f.annee, f.mois)">{{ libelleMois(f.annee, f.mois) }}</button>
+                  <small>Clôturé le {{ f.cloture.cloturee_le | date:'dd/MM' }} · {{ formatMontant(+f.cloture.montant_total) }} F</small>
+                  <small>{{ f.cloture.nb_repas }} repas · prestataires {{ formatMontant(+f.cloture.montant_total_prestataires) }} F</small>
+                </div>
+              } @else if (f.enCours) {
+                <span class="ce-pt ce-p-or"><i class="ri-time-line"></i></span>
+                <div>
+                  <button type="button" class="ce-frise-mois" (click)="allerAuMois(f.annee, f.mois)">{{ libelleMois(f.annee, f.mois) }}</button>
+                  <small>En cours · provisoire</small>
+                  <small>Clôture possible le 1er {{ moisSuivantLibelle }}</small>
+                </div>
+              } @else {
+                <span class="ce-pt ce-p-ve"><i class="ri-check-line"></i></span>
+                <div>
+                  <button type="button" class="ce-frise-mois" (click)="allerAuMois(f.annee, f.mois)">{{ libelleMois(f.annee, f.mois) }}</button>
+                  <small>Terminé · prêt à clôturer</small>
+                  @if (estAdmin) {
+                    <button type="button" class="ce-btn ce-btn-mini mt-1" [disabled]="isCloturing"
+                            (click)="cloturer(f.annee + '-' + (f.mois < 10 ? '0' : '') + f.mois)">
+                      @if (isCloturing) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-lock-2-line"></i> }
+                      Clôturer
+                    </button>
+                  }
+                </div>
+              }
+            </li>
+          }
+        </ul>
+
         @if (estAdmin) {
-          <div class="d-flex gap-2 align-items-center">
-            <input type="month" class="form-control form-control-sm" style="width: 170px"
-                   [(ngModel)]="moisACloturer" [ngModelOptions]="{standalone: true}">
-            <button class="btn btn-danger btn-sm" type="button" [disabled]="isCloturing || !moisACloturer"
-                    (click)="cloturer()">
-              @if (isCloturing) { <span class="spinner-border spinner-border-sm me-1" role="status"></span> }
-              @else { <i class="ph-lock me-1"></i> }
-              Clôturer le mois
+          <div class="ce-autre-mois">
+            <small class="ce-muted">Autre mois :</small>
+            <input type="month" class="form-control form-control-sm" [(ngModel)]="moisACloturer" aria-label="Mois à clôturer">
+            <button class="ce-btn ce-btn-mini" type="button" [disabled]="isCloturing || !moisACloturer" (click)="cloturer()">
+              <i class="ri-lock-2-line"></i>Clôturer
             </button>
           </div>
         }
-      </div>
-      <div class="card-body">
-        <p class="text-muted small mb-3">
-          La clôture fige la facture de chaque agent et de chaque prestataire pour le mois :
-          les changements ultérieurs de tarif, de catégorie ou de rattachement d'agence ne
-          les modifient plus. Seul un mois terminé peut être clôturé,
-          et une seule fois.
+        <p class="ce-muted ce-petit mt-2 mb-0">
+          Une clôture fige les factures des agents et des prestataires du mois : les changements
+          ultérieurs de tarif, de catégorie ou d'agence ne les modifient plus. Seul un mois terminé
+          peut être clôturé, une seule fois.
         </p>
-
-        @if (clotureMessage) {
-          <div class="alert alert-success py-2 small"><i class="ph-check-circle me-1"></i>{{ clotureMessage }}</div>
-        }
-        @if (clotureErreur) {
-          <div class="alert alert-danger py-2 small mb-3">
-            <i class="ph-warning me-1"></i>{{ clotureErreur }}
-          </div>
-        }
-
-        @if (clotures.length === 0) {
-          <div class="text-muted small">Aucun mois clôturé pour l'instant.</div>
-        } @else {
-          <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th>Mois</th>
-                  <th class="text-center">Factures</th>
-                  <th class="text-center">Repas</th>
-                  <th class="text-end">Agents (FCFA)</th>
-                  <th class="text-end">Prestataires (FCFA)</th>
-                  <th>Clôturé le</th>
-                  <th>Par</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (c of clotures; track c.id) {
-                  <tr>
-                    <td class="fw-medium text-capitalize">{{ libelleMois(c.annee, c.mois) }}</td>
-                    <td class="text-center">{{ c.nb_factures }}</td>
-                    <td class="text-center">{{ c.nb_repas }}</td>
-                    <td class="text-end fw-semibold">{{ formatMontant(+c.montant_total) }}</td>
-                    <td class="text-end fw-semibold">{{ formatMontant(+c.montant_total_prestataires) }}</td>
-                    <td>{{ c.cloturee_le | date:'dd/MM/yyyy HH:mm' }}</td>
-                    <td>{{ c.cloturee_par_nom || '—' }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
       </div>
     </div>
-
-  </div>
+  }
 </div>

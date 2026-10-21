@@ -1316,3 +1316,107 @@ class AccueilTests(BaseAPITestCase):
         self.assertEqual(g['service_du_jour'][0]['a_servir'], 1)
         self.assertTrue(any(a['type'] == 'menu_manquant' for a in g['a_faire']))
         self.assertEqual(self.client_pour().get(f'{API}/accueil/').status_code, 401)
+
+
+class PlanningEtComptoirTests(BaseAPITestCase):
+    """Planning de la semaine, écran de comptoir (retraits) et notes des plats."""
+
+    def setUp(self):
+        aujourdhui = timezone.localdate()
+        # Lundi de la semaine prochaine : jours tous à venir
+        self.lundi = aujourdhui - timedelta(days=aujourdhui.weekday()) + timedelta(days=7)
+        self.menu = Menu.objects.create(date_menu=self.lundi, agence=self.agence, typeequipe=self.typeequipe)
+        for plat in (self.plat1, self.plat2):
+            MenuPlat.objects.create(menu=self.menu, plat=plat)
+        Commande.objects.create(user=self.employe, menu=self.menu, plat=self.plat1)
+        Commande.objects.create(user=self.employe2, menu=self.menu, plat=self.plat1)
+        Commande.objects.create(user=self.gestionnaire, menu=self.menu, plat=self.plat2, statut='annulee')
+        self.autre = Agence.objects.create(nom_agence='Yopougon')
+        self.menu_autre = Menu.objects.create(date_menu=self.lundi + timedelta(days=2), agence=self.autre,
+                                              typeequipe=self.typeequipe)
+
+    def test_planning_semaine_avec_commandes_par_plat(self):
+        r = self.client_pour(self.gestionnaire).get(f'{API}/planning/', {'debut': str(self.lundi + timedelta(days=3))})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['debut'], self.lundi)
+        self.assertEqual(len(r.data['jours']), 5)
+        # Gestionnaire : uniquement ses agences
+        self.assertEqual([a['nom'] for a in r.data['agences']], ['Siège'])
+        siege = r.data['agences'][0]
+        self.assertEqual(siege['nb_agents'], 2)   # employé + gestionnaire rattachés
+        lundi = siege['jours'][0]
+        self.assertEqual(len(lundi['menus']), 1)
+        m = lundi['menus'][0]
+        self.assertEqual(m['commandes'], 2)        # la commande annulée ne compte pas
+        self.assertEqual({p['nom']: p['commandes'] for p in m['plats']}, {'Garba': 2, 'Attiéké poulet': 0})
+        self.assertIn(m['etat'], ('ouvert', 'ferme'))
+        self.assertEqual(siege['jours'][1]['menus'], [])
+
+    def test_planning_admin_toutes_agences_et_droits(self):
+        r = self.client_pour(self.admin).get(f'{API}/planning/', {'debut': str(self.lundi)})
+        self.assertEqual([a['nom'] for a in r.data['agences']], ['Siège', 'Yopougon'])
+        yop = r.data['agences'][1]
+        self.assertEqual(yop['jours'][2]['menus'][0]['id'], self.menu_autre.id)
+        r = self.client_pour(self.admin).get(f'{API}/planning/', {'debut': str(self.lundi), 'agence': self.autre.id})
+        self.assertEqual([a['nom'] for a in r.data['agences']], ['Yopougon'])
+        self.assertEqual(self.client_pour(self.employe).get(f'{API}/planning/').status_code, 403)
+        self.assertEqual(self.client_pour(self.admin).get(f'{API}/planning/', {'debut': 'x'}).status_code, 400)
+
+    def test_planning_etats(self):
+        from .planning import etat_menu
+        from .models import ParametresSociete
+        p = ParametresSociete.charger()
+        aujourdhui, maintenant = timezone.localdate(), timezone.now()
+        self.assertEqual(etat_menu(aujourdhui - timedelta(days=1), aujourdhui, maintenant, p), 'termine')
+        self.assertEqual(etat_menu(aujourdhui, aujourdhui, maintenant, p), 'en_service')
+        self.assertEqual(etat_menu(aujourdhui + timedelta(days=1), aujourdhui, maintenant, p), 'ferme')
+        self.assertEqual(etat_menu(aujourdhui + timedelta(days=10), aujourdhui, maintenant, p), 'ouvert')
+
+    def test_service_du_comptoir(self):
+        menu = self.creer_menu(jours=0)
+        Commande.objects.create(user=self.employe, menu=menu, plat=self.plat1)
+        Commande.objects.create(user=self.employe2, menu=menu, plat=self.plat2)
+        gest = self.client_pour(self.gestionnaire)
+        r = gest.post(f'{API}/retraits/', {'user_id': self.employe.id, 'menu_id': menu.id, 'badge_matricule': 'emp1'})
+        self.assertEqual(r.status_code, 201, r.data)
+
+        r = gest.get(f'{API}/retraits/service/', {'menu': menu.id})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual((r.data['commandees'], r.data['servies'], r.data['a_servir']), (2, 1, 1))
+        self.assertEqual({p['nom']: p['a_servir'] for p in r.data['plats']}, {'Garba': 0, 'Attiéké poulet': 1})
+        self.assertTrue(r.data['annulable'])
+        self.assertEqual(len(r.data['derniers']), 1)
+        dernier = r.data['derniers'][0]
+        self.assertEqual(dernier['username'], 'emp1')
+        self.assertEqual(dernier['plats'][0]['plat'], 'Garba')
+
+        # La recherche par badge donne l'heure du retrait déjà fait
+        r = gest.get(f'{API}/commandes/recherche-par-badge/', {'badge': 'emp1', 'menu': menu.id})
+        self.assertTrue(r.data['a_retire'])
+        self.assertIsNotNone(r.data['date_retrait'])
+
+        # Annulation depuis la liste des derniers retraits
+        self.assertEqual(gest.delete(f'{API}/retraits/{dernier["id"]}/').status_code, 204)
+        r = gest.get(f'{API}/retraits/service/', {'menu': menu.id})
+        self.assertEqual((r.data['servies'], r.data['derniers']), (0, []))
+
+    def test_service_reserve_aux_agences_gerees(self):
+        menu = Menu.objects.create(date_menu=timezone.localdate(), agence=self.autre, typeequipe=self.typeequipe)
+        self.assertEqual(self.client_pour(self.gestionnaire).get(
+            f'{API}/retraits/service/', {'menu': menu.id}).status_code, 403)
+        self.assertEqual(self.client_pour(self.employe).get(
+            f'{API}/retraits/service/', {'menu': menu.id}).status_code, 403)
+        self.assertEqual(self.client_pour(self.admin).get(f'{API}/retraits/service/').status_code, 400)
+
+    def test_note_moyenne_des_plats_dans_les_menus(self):
+        from .models import AvisPlat
+        passe = self.creer_menu(jours=-1)
+        for user, note in ((self.employe, 4), (self.employe2, 5)):
+            c = Commande.objects.create(user=user, menu=passe, plat=self.plat1, statut='retiree')
+            AvisPlat.objects.create(commande=c, user=user, plat=self.plat1, note=note)
+        r = self.client_pour(self.employe).get(f'{API}/menus/', {'date_menu': str(self.lundi)})
+        plats = {mp['plat']['nom']: mp['plat'] for mp in r.data['results'][0]['menu_plats']}
+        self.assertEqual((plats['Garba']['note_moyenne'], plats['Garba']['nb_avis']), (4.5, 2))
+        self.assertEqual((plats['Attiéké poulet']['note_moyenne'], plats['Attiéké poulet']['nb_avis']), (None, 0))
+        r = self.client_pour(self.employe).get(f'{API}/plats/{self.plat1.id}/')
+        self.assertEqual(r.data['note_moyenne'], 4.5)

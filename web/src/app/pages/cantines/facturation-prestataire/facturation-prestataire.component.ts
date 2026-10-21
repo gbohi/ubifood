@@ -11,7 +11,7 @@
 
 import { filtrerAgencesGerees } from 'src/app/core/helpers/roles';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
-import { Component, OnInit, DestroyRef, inject } from '@angular/core';
+import { Component, OnInit, OnChanges, SimpleChanges, Input, DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
@@ -60,7 +60,12 @@ export interface LigneFacturationPrestataire {
   templateUrl: './facturation-prestataire.component.html',
   styleUrl: './facturation-prestataire.component.scss',
 })
-export class FacturationPrestataireComponent implements OnInit {
+export class FacturationPrestataireComponent implements OnInit, OnChanges {
+  /** Intégré à la page Facturation (onglet Prestataires) : pas d'en-tête ni de dates propres */
+  @Input() integre = false;
+  /** Période imposée par la page Facturation (navigation par mois) */
+  @Input() periode: { debut: string; fin: string } | null = null;
+
   // Un gestionnaire ne gère que les agences auxquelles il est rattaché
   private userConnecte = inject(TokenStorageService).getUser();
 
@@ -127,9 +132,31 @@ export class FacturationPrestataireComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(t => this.typeEquipes = t ?? []);
 
+    this.appliquerPeriode();
     this.http.get<any[]>(`${this.apiUrl}/allnopagin/prestataires/`)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(p => this.prestataires = p ?? []);
+      .subscribe(p => {
+        this.prestataires = p ?? [];
+        // Un seul prestataire : il est choisi et calculé d'office (pas de page vide)
+        if (this.prestataires.length === 1 && !this.filterForm.value.prestataire) {
+          this.filterForm.patchValue({ prestataire: String(this.prestataires[0].id) });
+          this.onPrestataireChange();
+          this.rechercher();
+        }
+      });
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['periode'] && !changes['periode'].firstChange && this.filterForm) {
+      this.appliquerPeriode();
+      if (this.filterForm.value.prestataire) this.rechercher();
+    }
+  }
+
+  private appliquerPeriode(): void {
+    if (this.periode?.debut) {
+      this.filterForm.patchValue({ date_debut: this.periode.debut, date_fin: this.periode.fin ?? '' });
+    }
   }
 
   private _moisCourant(): { debut: string; fin: string } {
@@ -243,6 +270,7 @@ export class FacturationPrestataireComponent implements OnInit {
   resetFilters(): void {
     const { debut, fin } = this._moisCourant();
     this.filterForm.reset({ date_debut: debut, date_fin: fin, prestataire: '', agence: '', typeequipe: '' });
+    this.appliquerPeriode();
     this.hasSearched            = false;
     this.lignesFacturation      = [];
     this.totalNbCommandes       = 0;

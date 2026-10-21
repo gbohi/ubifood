@@ -1,332 +1,275 @@
-<!-- src/app/pages/user/user.component.html -->
-<app-breadcrumbs title="Utilisateurs" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<!-- src/app/pages/user/user.component.html — gabarit commun des listes (maquette « web-1-listes ») -->
+<div class="lst">
+  <app-page-entete titre="Utilisateurs" icone="ri-team-line"
+                   [fil]="[{label: 'Paramètres', lien: '/parametres/accueil'}, {label: 'Personnel'}]"
+                   [compte]="comptesRoles['tous'] !== undefined ? comptesRoles['tous'] : totalItems" unite="compte|comptes"
+                   [complement]="comptesRoles['desactive'] ? comptesRoles['desactive'] + ' désactivé' + (comptesRoles['desactive'] > 1 ? 's' : '') : ''">
+    <button type="button" class="btn-ubi" [class.actif]="showSearchPanel" (click)="toggleSearchPanel()" [attr.aria-expanded]="showSearchPanel">
+      <i class="ri-filter-3-line"></i><span class="pe-lib">Filtres</span>
+      @if (hasActiveSearch()) { <span class="badge rounded-pill bg-danger ms-1" style="font-size:.6rem;">●</span> }
+    </button>
+    <div class="btn-group" dropdown placement="bottom end">
+      <button type="button" dropdownToggle class="btn-ubi" aria-label="Exporter"><i class="ri-download-2-line"></i><span class="pe-lib">Exporter</span><i class="ri-arrow-down-s-line"></i></button>
+      <ul *dropdownMenu class="dropdown-menu dropdown-menu-end lst-menu" role="menu">
+        <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="exportExcel()"><i class="ri-file-excel-2-line"></i>Excel (page affichée)</a></li>
+        <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="exportPdf()"><i class="ri-file-pdf-line"></i>PDF (page affichée)</a></li>
+      </ul>
+    </div>
+    <button type="button" class="btn-ubi vert" (click)="openAddModal()"><i class="ri-user-add-line"></i><span class="pe-lib">Nouvel utilisateur</span></button>
+  </app-page-entete>
 
-<div class="row">
-  <div class="col-lg-12">
-    <div class="card" id="userList">
-
-      <!-- ══ EN-TÊTE ═══════════════════════════════════════════ -->
-      <div class="card-header">
-        <div class="row align-items-center gy-3">
-
-          <!-- Recherche rapide -->
-          <div class="col-lg-3 col-md-5 order-last order-md-first me-auto">
-            <div class="search-box">
-              <input type="text" class="form-control search"
-                     placeholder="Nom, prénom, username..."
-                     [(ngModel)]="term" (keyup)="filterdata()">
-              <i class="ri-search-line search-icon"></i>
-            </div>
-          </div>
-
-          <!-- Boutons -->
-          <div class="col-md-auto text-end">
-            <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
-              @if (checkedValGet.length > 0) {
-                <button class="btn btn-subtle-success btn-sm" (click)="activerSelection()">
-                  <i class="ph-check-circle me-1"></i>Activer ({{ checkedValGet.length }})
-                </button>
-                <button class="btn btn-subtle-warning btn-sm" (click)="desactiverSelection()">
-                  <i class="ph-x-circle me-1"></i>Désactiver ({{ checkedValGet.length }})
-                </button>
-                <button class="btn btn-subtle-danger btn-sm" (click)="deleteRecordModal?.show()">
-                  <i class="ri-delete-bin-2-line me-1"></i>Supprimer ({{ checkedValGet.length }})
-                </button>
-              }
-              <!-- Filtres avancés -->
-              <button class="btn btn-sm"
-                      [class.btn-outline-primary]="!showSearchPanel"
-                      [class.btn-primary]="showSearchPanel"
-                      (click)="toggleSearchPanel()">
-                <i class="ph-funnel me-1"></i>Filtres
-                @if (hasActiveSearch()) {
-                  <span class="badge bg-danger ms-1" style="font-size:.6rem;">●</span>
-                }
-              </button>
-              <!-- Export -->
-              <button class="btn btn-subtle-success btn-sm" (click)="exportExcel()">
-                <i class="ph-microsoft-excel-logo me-1"></i>Excel
-              </button>
-              <button class="btn btn-subtle-danger btn-sm" (click)="exportPdf()">
-                <i class="ph-file-pdf me-1"></i>PDF
-              </button>
-              <!-- Ajouter -->
-              <button class="btn btn-secondary btn-sm" (click)="openAddModal()">
-                <i class="bi bi-plus-circle me-1"></i>Ajouter
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- ══ PANNEAU RECHERCHE AVANCÉE ═══════════════════════ -->
-        @if (showSearchPanel) {
-          <div class="border rounded p-3 mt-3" style="background:#f8f9fa;">
-            <form [formGroup]="searchForm" (ngSubmit)="applySearch()" novalidate>
-
-              <!-- Ligne 1 : Informations personnelles -->
-              <p class="text-muted small fw-medium mb-2 text-uppercase">
-                <i class="ph-user me-1"></i>Informations personnelles
-              </p>
-              <div class="row g-2 mb-3">
-                <div class="col-md-2">
-                  <label class="form-label small mb-1">Nom</label>
-                  <input type="text" class="form-control form-control-sm" formControlName="nom" placeholder="Nom...">
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small mb-1">Prénom</label>
-                  <input type="text" class="form-control form-control-sm" formControlName="prenom" placeholder="Prénom...">
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small mb-1">Username</label>
-                  <input type="text" class="form-control form-control-sm" formControlName="username" placeholder="Username...">
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small mb-1">Email</label>
-                  <input type="email" class="form-control form-control-sm" formControlName="email" placeholder="Email...">
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small mb-1">Statut</label>
-                  <select class="form-select form-select-sm" formControlName="statut">
-                    <option value="">Tous</option>
-                    @for (s of statuts; track s.id) { <option [value]="s.id">{{ s.libelle_statut }}</option> }
-                  </select>
-                </div>
-                <div class="col-md-1">
-                  <label class="form-label small mb-1">État</label>
-                  <select class="form-select form-select-sm" formControlName="is_active">
-                    <option value="">Tous</option>
-                    <option value="true">Actif</option>
-                    <option value="false">Inactif</option>
-                  </select>
-                </div>
-                <div class="col-md-1">
-                  <label class="form-label small mb-1">Rôle</label>
-                  <select class="form-select form-select-sm" formControlName="groupe">
-                    <option value="">Tous</option>
-                    @for (g of groupes; track g.id) { <option [value]="g.id">{{ g.name }}</option> }
-                  </select>
-                </div>
-              </div>
-
-              <!-- Ligne 2 : Affectations RH -->
-              <p class="text-muted small fw-medium mb-2 text-uppercase">
-                <i class="ph-identification-card me-1"></i>Affectations RH (dernière ligne)
-              </p>
-              <div class="row g-2 align-items-end">
-                <div class="col-md-2">
-                  <label class="form-label small mb-1">Service</label>
-                  <select class="form-select form-select-sm" formControlName="service">
-                    <option value="">Tous</option>
-                    @for (s of services; track s.id) { <option [value]="s.id">{{ s.libelle_service }}</option> }
-                  </select>
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small mb-1">Agence</label>
-                  <select class="form-select form-select-sm" formControlName="agence">
-                    <option value="">Toutes</option>
-                    @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
-                  </select>
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small mb-1">Poste</label>
-                  <select class="form-select form-select-sm" formControlName="poste">
-                    <option value="">Tous</option>
-                    @for (p of postes; track p.id) { <option [value]="p.id">{{ p.libelle }}</option> }
-                  </select>
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small mb-1">Catégorie salarié</label>
-                  <select class="form-select form-select-sm" formControlName="categoriesalarie">
-                    <option value="">Toutes</option>
-                    @for (c of categoriesalaries; track c.id) { <option [value]="c.id">{{ c.libelle }}</option> }
-                  </select>
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small mb-1">Allergie (contient)</label>
-                  <input type="text" class="form-control form-control-sm" formControlName="allergie" placeholder="Ex: lactose...">
-                </div>
-                <!-- Boutons recherche -->
-                <div class="col-md-2 d-flex gap-2">
-                  <button type="submit" class="btn btn-primary btn-sm flex-fill">
-                    <i class="ph-magnifying-glass me-1"></i>Rechercher
-                  </button>
-                  <button type="button" class="btn btn-light btn-sm" (click)="resetSearch()" title="Réinitialiser">
-                    <i class="ph-arrow-counter-clockwise"></i>
-                  </button>
-                </div>
-              </div>
-
-            </form>
-          </div>
-        }
-      </div><!-- fin card-header -->
-
-      <!-- ══ TABLEAU ════════════════════════════════════════════ -->
-      <div class="card-body">
-        <div class="table-responsive">
-          <table class="table table-borderless table-centered align-middle table-nowrap mb-0">
-            <thead class="text-muted table-light">
-              <tr>
-                <th>
-                  <div class="form-check">
-                    <input class="form-check-input" type="checkbox"
-                           [(ngModel)]="masterSelected" (change)="checkUncheckAll($event)">
-                  </div>
-                </th>
-                <th class="cursor-pointer" [class.sort]="!tri.estActif('id')" (click)="onSort('id')">#<i class="ms-1 align-middle" [ngClass]="tri.icone('id')"></i></th>
-                <th class="cursor-pointer" [class.sort]="!tri.estActif('nom')" (click)="onSort('nom')">Nom & Prénom<i class="ms-1 align-middle" [ngClass]="tri.icone('nom')"></i></th>
-                <th class="cursor-pointer" [class.sort]="!tri.estActif('username')" (click)="onSort('username')">Username<i class="ms-1 align-middle" [ngClass]="tri.icone('username')"></i></th>
-                <th>Email</th>
-                <th>Service</th>
-                <th>Agence</th>
-                <th>Poste</th>
-                <th>Rôle(s)</th>
-                <th>Statut</th>
-                <th>État</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (data of users; track data.id) {
-                <tr id="l_{{ data.id }}">
-                  <td>
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox"
-                             [value]="data.id" [(ngModel)]="data.state" (change)="onCheckboxChange()">
-                    </div>
-                  </td>
-                  <td><a href="javascript:void(0);" class="fw-medium link-primary">#{{ data.id }}</a></td>
-                  <td>
-                    <div class="d-flex align-items-center gap-2">
-                      @if (photoUrl(data); as photo) {
-                        <img [src]="photo" alt="Photo de {{ data.prenom }} {{ data.nom }}"
-                             class="rounded-circle flex-shrink-0"
-                             style="width:32px;height:32px;min-width:32px;object-fit:cover;"
-                             loading="lazy" (error)="onPhotoErreur(data)">
-                      } @else {
-                        <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center
-                                    text-white fw-bold flex-shrink-0"
-                             style="width:32px;height:32px;font-size:12px;min-width:32px;">
-                          {{ initiales(data) }}
-                        </div>
-                      }
-                      <div>
-                        <div class="fw-medium">{{ data.nom }} {{ data.prenom }}</div>
-                        <small class="text-muted">{{ data.contact || '' }}</small>
-                      </div>
-                    </div>
-                  </td>
-                  <td>{{ data.username }}</td>
-                  <td>{{ data.email }}</td>
-                  <!-- ✅ Dernière affectation service -->
-                  <td>
-                    @if (getDernierService(data); as svc) {
-                      <span class="badge bg-primary-subtle text-primary">
-                        {{ getServiceLibelle(svc.service) }}
-                      </span>
-                    } @else { <span class="text-muted small">—</span> }
-                  </td>
-                  <!-- ✅ Dernière affectation agence -->
-                  <td>
-                    @if (getDerniereAgence(data); as agc) {
-                      <span class="badge bg-info-subtle text-info">
-                        {{ getAgenceLibelle(agc.agence) }}
-                      </span>
-                    } @else { <span class="text-muted small">—</span> }
-                  </td>
-                  <!-- ✅ Dernier poste -->
-                  <td>
-                    @if (getDernierPoste(data); as pst) {
-                      <span class="badge bg-warning-subtle text-warning">
-                        {{ getPosteLibelle(pst.poste) }}
-                      </span>
-                    } @else { <span class="text-muted small">—</span> }
-                  </td>
-                  <!-- Rôles -->
-                  <td>
-                    @if (data.groups && data.groups.length > 0) {
-                      @for (gid of data.groups; track gid) {
-                        <span class="badge bg-secondary-subtle text-secondary me-1">{{ getGroupeName(gid) }}</span>
-                      }
-                    } @else { <span class="text-muted small">—</span> }
-                  </td>
-                  <td>
-                    <span class="badge bg-info-subtle text-info">{{ getStatutLibelle(data.statut) }}</span>
-                  </td>
-                  <td>
-                    @if (data.is_active) { <span class="badge bg-success-subtle text-success">Actif</span> }
-                    @else { <span class="badge bg-danger-subtle text-danger">Inactif</span> }
-                  </td>
-                  <td>
-                    <ul class="d-flex gap-1 list-unstyled mb-0">
-                      <li><a href="javascript:void(0);" (click)="viewDetails(data.id)" class="btn btn-subtle-primary btn-icon btn-sm" title="Voir"><i class="ph-eye"></i></a></li>
-                      <li><a href="javascript:void(0);" (click)="editList(data.id)" class="btn btn-subtle-secondary btn-icon btn-sm" title="Modifier"><i class="ph-pencil"></i></a></li>
-                      <li><a href="javascript:void(0);" (click)="openMdpModal(data)" class="btn btn-subtle-info btn-icon btn-sm" title="Mot de passe"><i class="ph-key"></i></a></li>
-                      <li>
-                        <a href="javascript:void(0);" (click)="toggleActivation(data)"
-                           class="btn btn-icon btn-sm"
-                           [class.btn-subtle-success]="!data.is_active"
-                           [class.btn-subtle-warning]="data.is_active"
-                           [title]="data.is_active ? 'Désactiver' : 'Activer'">
-                          <i [class]="data.is_active ? 'ph-x-circle' : 'ph-check-circle'"></i>
-                        </a>
-                      </li>
-                      <li><a href="javascript:void(0);" (click)="removeItem(data.id)" class="btn btn-subtle-danger btn-icon btn-sm" title="Supprimer"><i class="ph-trash"></i></a></li>
-                    </ul>
-                  </td>
-                </tr>
-              }
-              @if (users.length === 0 && !isLoading) {
-                <tr>
-                  <td colspan="12" class="text-center py-4">
-                    <i class="ph-file-x fs-1 text-primary"></i>
-                    <h5 class="mt-2">Aucun utilisateur trouvé</h5>
-                    <p class="text-muted mb-0">
-                      @if (hasActiveSearch() || term) { Aucun utilisateur ne correspond aux critères. }
-                      @else { Veuillez ajouter un utilisateur pour commencer. }
-                    </p>
-                    @if (hasActiveSearch() || term) {
-                      <button class="btn btn-link btn-sm mt-2" (click)="resetSearch()">
-                        <i class="ph-arrow-counter-clockwise me-1"></i>Réinitialiser les filtres
-                      </button>
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-
-          @if (isLoading) {
-            <div class="text-center py-4">
-              <div class="spinner-border text-primary avatar-sm" role="status"></div>
-              <p class="text-muted mt-2 mb-0">Chargement...</p>
-            </div>
-          }
-          <div class="noresult" style="display:none;">
-            <div class="text-center py-4">
-              <i class="ph-magnifying-glass fs-1 text-primary"></i>
-              <h5 class="mt-2">Aucun résultat</h5>
-            </div>
-          </div>
-        </div>
-
-        @if (users.length > 0) {
-          <div class="row mt-3 align-items-center">
-            <div class="col-sm">
-              <div class="text-muted text-center text-sm-start">
-                <span class="fw-semibold">{{ users.length }}</span> / <span class="fw-semibold">{{ totalItems }}</span>
-              </div>
-            </div>
-            <div class="col-sm-auto mt-3 mt-sm-0">
-              <pagination class="pagination-wrap justify-content-center hstack gap-2"
-                          [totalItems]="totalItems" [itemsPerPage]="10"
-                          [(ngModel)]="currentPage" (pageChanged)="pageChanged($event)">
-              </pagination>
-            </div>
-          </div>
+  <div class="lst-carte" id="userList">
+    <!-- Filtres rapides + recherche -->
+    <div class="lst-barre">
+      <div class="lst-chips" role="group" aria-label="Filtres rapides">
+        @for (f of filtresRapides; track f.cle) {
+          <button type="button" class="lst-chip" [class.on]="filtreRapideActif === f.cle" [attr.aria-pressed]="filtreRapideActif === f.cle"
+                  (click)="choisirFiltreRapide(f.cle)">
+            {{ f.libelle }}@if (comptesRoles[f.cle] !== undefined) {<em>{{ comptesRoles[f.cle] }}</em>}
+          </button>
         }
       </div>
+      <div class="lst-filtres">
+        <div class="lst-recherche">
+          <i class="ri-search-line"></i>
+          <input type="search" placeholder="Nom, identifiant, e-mail…" aria-label="Rechercher un utilisateur"
+                 [(ngModel)]="term" (ngModelChange)="filterdata()">
+        </div>
+        <select class="form-select" aria-label="Agence" [ngModel]="searchForm.value.agence" (ngModelChange)="choisirAgence($event)">
+          <option value="">Toutes les agences</option>
+          @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
+        </select>
+      </div>
     </div>
+
+    <!-- ══ PANNEAU RECHERCHE AVANCÉE ═══════════════════════ -->
+    @if (showSearchPanel) {
+      <div class="border-top px-3 py-3" style="background:#F8FAFC;">
+        <form [formGroup]="searchForm" (ngSubmit)="applySearch()" novalidate>
+          <p class="text-muted small fw-medium mb-2 text-uppercase">
+            <i class="ri-user-line me-1"></i>Informations personnelles
+          </p>
+          <div class="row g-2 mb-3">
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Nom</label>
+              <input type="text" class="form-control form-control-sm" formControlName="nom" placeholder="Nom…">
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Prénom</label>
+              <input type="text" class="form-control form-control-sm" formControlName="prenom" placeholder="Prénom…">
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Identifiant</label>
+              <input type="text" class="form-control form-control-sm" formControlName="username" placeholder="Identifiant…">
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">E-mail</label>
+              <input type="email" class="form-control form-control-sm" formControlName="email" placeholder="E-mail…">
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Statut</label>
+              <select class="form-select form-select-sm" formControlName="statut">
+                <option value="">Tous</option>
+                @for (s of statuts; track s.id) { <option [value]="s.id">{{ s.libelle_statut }}</option> }
+              </select>
+            </div>
+            <div class="col-6 col-md-1">
+              <label class="form-label small mb-1">Compte</label>
+              <select class="form-select form-select-sm" formControlName="is_active">
+                <option value="">Tous</option>
+                <option value="true">Actif</option>
+                <option value="false">Désactivé</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-1">
+              <label class="form-label small mb-1">Rôle</label>
+              <select class="form-select form-select-sm" formControlName="groupe">
+                <option value="">Tous</option>
+                @for (g of groupes; track g.id) { <option [value]="g.id">{{ getGroupeName(g.id) }}</option> }
+              </select>
+            </div>
+          </div>
+
+          <p class="text-muted small fw-medium mb-2 text-uppercase">
+            <i class="ri-profile-line me-1"></i>Affectations en cours
+          </p>
+          <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Service</label>
+              <select class="form-select form-select-sm" formControlName="service">
+                <option value="">Tous</option>
+                @for (s of services; track s.id) { <option [value]="s.id">{{ s.libelle_service }}</option> }
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Agence</label>
+              <select class="form-select form-select-sm" formControlName="agence">
+                <option value="">Toutes</option>
+                @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Poste</label>
+              <select class="form-select form-select-sm" formControlName="poste">
+                <option value="">Tous</option>
+                @for (p of postes; track p.id) { <option [value]="p.id">{{ p.libelle }}</option> }
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Catégorie de salarié</label>
+              <select class="form-select form-select-sm" formControlName="categoriesalarie">
+                <option value="">Toutes</option>
+                @for (c of categoriesalaries; track c.id) { <option [value]="c.id">{{ c.libelle }}</option> }
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Allergie (contient)</label>
+              <input type="text" class="form-control form-control-sm" formControlName="allergie" placeholder="Ex. : lactose…">
+            </div>
+            <div class="col-6 col-md-2 d-flex gap-2">
+              <button type="submit" class="btn-ubi navy sm flex-fill"><i class="ri-search-line"></i>Rechercher</button>
+              <button type="button" class="btn-ubi sm" (click)="resetSearch()" title="Réinitialiser" aria-label="Réinitialiser les filtres"><i class="ri-arrow-go-back-line"></i></button>
+            </div>
+          </div>
+        </form>
+      </div>
+    }
+
+    <!-- Actions sur la sélection -->
+    @if (checkedValGet.length > 0) {
+      <div class="lst-selection">
+        <span><b>{{ checkedValGet.length }}</b> sélectionné(s)</span>
+        <button type="button" class="btn-ubi vert-doux sm" (click)="activerSelection()"><i class="ri-checkbox-circle-line"></i>Activer</button>
+        <button type="button" class="btn-ubi orange sm" (click)="desactiverSelection()"><i class="ri-forbid-line"></i>Désactiver</button>
+        <button type="button" class="btn-ubi rouge sm" (click)="deleteRecordModal?.show()"><i class="ri-delete-bin-6-line"></i>Supprimer</button>
+      </div>
+    }
+
+    <!-- ══ TABLEAU (cartes sur téléphone) ═══════════════════ -->
+    <div class="lst-table-wrap lst-cartes-wrap">
+      <table class="lst-table lst-cartes">
+        <thead>
+          <tr>
+            <th class="lst-c-sel">
+              <div class="form-check"><input class="form-check-input" type="checkbox" aria-label="Tout sélectionner" [(ngModel)]="masterSelected" (change)="checkUncheckAll($event)"></div>
+            </th>
+            <th>
+              <span class="tri" [class.actif]="tri.estActif('nom')" (click)="onSort('nom')" role="button">Agent<i class="ms-1" [ngClass]="tri.icone('nom')"></i></span>
+              <span class="text-lowercase fw-normal"> · </span>
+              <span class="tri text-lowercase fw-normal" [class.actif]="tri.estActif('username')" (click)="onSort('username')" role="button">identifiant<i class="ms-1" [ngClass]="tri.icone('username')"></i></span>
+            </th>
+            <th>Contact</th>
+            <th>Agence</th>
+            <th>Poste · Service</th>
+            <th>Rôle</th>
+            <th>Compte</th>
+            <th class="lst-c-act"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (data of users; track data.id) {
+            <tr id="l_{{ data.id }}">
+              <td class="lst-c-sel">
+                <div class="form-check"><input class="form-check-input" type="checkbox" [attr.aria-label]="'Sélectionner ' + data.nom + ' ' + data.prenom" [value]="data.id" [(ngModel)]="data.state" (change)="onCheckboxChange()"></div>
+              </td>
+              <td class="lst-c-principal">
+                <div class="lst-qui">
+                  @if (photoUrl(data); as photo) {
+                    <img [src]="photo" alt="Photo de {{ data.prenom }} {{ data.nom }}" class="lst-av" loading="lazy" (error)="onPhotoErreur(data)">
+                  } @else {
+                    <span class="lst-av" [style.background]="data.is_active ? null : '#9AA9BE'">{{ initiales(data) }}</span>
+                  }
+                  <div class="min-w-0">
+                    <b>{{ data.nom }} {{ data.prenom }}</b>
+                    <small>{{ data.username }}</small>
+                  </div>
+                </div>
+              </td>
+              <td data-label="Contact">
+                <div>
+                  {{ data.contact || '—' }}
+                  @if (data.email) { <small class="d-block">{{ data.email }}</small> }
+                </div>
+              </td>
+              <td data-label="Agence">
+                @if (getDerniereAgence(data); as agc) {
+                  <span class="lst-tag t-bl">{{ getAgenceLibelle(agc.agence) }}</span>
+                } @else {
+                  <span class="lst-tag t-or"><i class="ri-error-warning-line"></i>Aucune agence</span>
+                }
+              </td>
+              <td data-label="Poste">
+                @if (getDernierPoste(data); as pst) {
+                  <div>
+                    {{ getPosteLibelle(pst.poste) }}
+                    @if (getDernierService(data); as svc) { <small class="d-block">{{ getServiceLibelle(svc.service) }}</small> }
+                  </div>
+                } @else if (getDernierService(data)) {
+                  <span>{{ getServiceLibelle(getDernierService(data).service) }}</span>
+                } @else {
+                  <span class="muted">—</span>
+                }
+              </td>
+              <td data-label="Rôle">
+                <div class="lst-tags">
+                  @for (gid of data.groups || []; track gid) {
+                    <span class="lst-tag" [ngClass]="styleRole(gid).classe"><i [class]="styleRole(gid).icone"></i>{{ getGroupeName(gid) }}</span>
+                  } @empty {
+                    <span class="muted">—</span>
+                  }
+                </div>
+              </td>
+              <td data-label="Compte">
+                <div>
+                  @if (data.is_active) { <span class="lst-etat ok">Actif</span> } @else { <span class="lst-etat ko">Désactivé</span> }
+                  @if (data.statut && getStatutLibelle(data.statut) !== (data.is_active ? 'Actif' : 'Désactivé')) { <small class="d-block">{{ getStatutLibelle(data.statut) }}</small> }
+                </div>
+              </td>
+              <td class="lst-c-act">
+                <div class="lst-act">
+                  <button type="button" class="lst-ic" title="Modifier" aria-label="Modifier" (click)="editList(data.id)"><i class="ri-pencil-line"></i></button>
+                  <div class="btn-group" dropdown container="body" placement="bottom end">
+                    <button type="button" dropdownToggle class="lst-ic" title="Plus d'actions" aria-label="Plus d'actions"><i class="ri-more-2-fill"></i></button>
+                    <ul *dropdownMenu class="dropdown-menu dropdown-menu-end lst-menu" role="menu">
+                      <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="viewDetails(data.id)"><i class="ri-eye-line"></i>Voir la fiche</a></li>
+                      <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="openMdpModal(data)"><i class="ri-lock-password-line"></i>Changer le mot de passe</a></li>
+                      <li role="menuitem">
+                        <a class="dropdown-item" href="javascript:void(0);" (click)="toggleActivation(data)">
+                          @if (data.is_active) { <i class="ri-forbid-line"></i>Désactiver le compte } @else { <i class="ri-checkbox-circle-line"></i>Activer le compte }
+                        </a>
+                      </li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li role="menuitem"><a class="dropdown-item rg" href="javascript:void(0);" (click)="removeItem(data.id)"><i class="ri-delete-bin-6-line"></i>Supprimer</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+          @if (users.length === 0 && !isLoading) {
+            <tr class="lst-l-vide">
+              <td colspan="8" class="lst-c-plein">
+                <div class="lst-vide">
+                  <i class="ri-user-search-line"></i>
+                  <h5>Aucun utilisateur trouvé</h5>
+                  <p>
+                    @if (hasActiveSearch() || term) { Aucun utilisateur ne correspond aux critères. }
+                    @else { Ajoutez un utilisateur pour commencer. }
+                  </p>
+                  @if (hasActiveSearch() || term) {
+                    <button type="button" class="btn-ubi sm mt-3" (click)="resetSearch()"><i class="ri-arrow-go-back-line"></i>Réinitialiser les filtres</button>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      @if (isLoading) {
+        <div class="lst-charge"><div class="spinner-border" role="status"><span class="visually-hidden">Chargement...</span></div></div>
+      }
+    </div>
+    <app-liste-pied [total]="totalItems" [page]="currentPage" [nbAffiches]="users.length" (pageChanged)="pageChanged($event)"></app-liste-pied>
   </div>
 </div>
 
@@ -343,7 +286,7 @@
         <div class="modal-body">
 
           <!-- Informations -->
-          <h6 class="text-muted text-uppercase mb-3 small"><i class="ph-user me-1"></i>Informations personnelles</h6>
+          <h6 class="text-muted text-uppercase mb-3 small"><i class="ri-user-line me-1"></i>Informations personnelles</h6>
           <div class="row g-3 mb-4">
             <input type="hidden" formControlName="id">
             <div class="col-md-4">
@@ -392,12 +335,12 @@
 
           <!-- Rôles -->
           <h6 class="text-muted text-uppercase mb-3 small">
-            <i class="ph-shield-check me-1"></i>Rôle(s)
+            <i class="ri-shield-check-line me-1"></i>Rôle(s)
             <span class="text-muted fw-normal" style="font-size:.75rem;">(optionnel)</span>
           </h6>
           <div class="row g-2 mb-4">
             @if (groupes.length === 0) {
-              <div class="col-12"><p class="text-muted small mb-0"><i class="ph-info me-1"></i>Aucun rôle disponible.</p></div>
+              <div class="col-12"><p class="text-muted small mb-0"><i class="ri-information-line me-1"></i>Aucun rôle disponible.</p></div>
             } @else {
               @for (g of groupes; track g.id) {
                 <div class="col-md-3 col-sm-4 col-6">
@@ -407,7 +350,7 @@
                     <input class="form-check-input" type="checkbox"
                            [id]="'group_'+g.id" [checked]="isGroupSelected(g.id)" (change)="toggleGroup(g.id)">
                     <label class="form-check-label fw-medium" [for]="'group_'+g.id" style="cursor:pointer;">
-                      <i class="ph-shield-check me-1 text-primary"></i>{{ g.name }}
+                      <i class="ri-shield-check-line me-1 text-primary"></i>{{ g.name }}
                     </label>
                   </div>
                 </div>
@@ -418,7 +361,7 @@
           <!-- Mot de passe création -->
           @if (!f['id'].value) {
             <h6 class="text-muted text-uppercase mb-3 small">
-              <i class="ph-lock me-1"></i>Mot de passe
+              <i class="ri-lock-line me-1"></i>Mot de passe
               <span class="text-muted fw-normal" style="font-size:.75rem;">(obligatoire — 8 car. min, 1 maj., 1 chiffre, 1 spécial)</span>
             </h6>
             <div class="row g-3 mb-4">
@@ -426,25 +369,25 @@
                 <label class="form-label">Mot de passe <span class="text-danger">*</span></label>
                 <input type="password" class="form-control" [class.is-invalid]="pwdErrors&&pwdTouched" formControlName="password" placeholder="Mot de passe">
                 @if (pwdTouched&&pwdErrors) {
-                  @if (pwdErrors['required'])   { <div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>Le mot de passe est obligatoire</small></div> }
-                  @if (pwdErrors['minLength'])  { <div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>8 caractères minimum</small></div> }
-                  @if (pwdErrors['majuscule'])  { <div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>1 majuscule requise</small></div> }
-                  @if (pwdErrors['chiffre'])    { <div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>1 chiffre requis</small></div> }
-                  @if (pwdErrors['special'])    { <div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>1 caractère spécial requis</small></div> }
+                  @if (pwdErrors['required'])   { <div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>Le mot de passe est obligatoire</small></div> }
+                  @if (pwdErrors['minLength'])  { <div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>8 caractères minimum</small></div> }
+                  @if (pwdErrors['majuscule'])  { <div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>1 majuscule requise</small></div> }
+                  @if (pwdErrors['chiffre'])    { <div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>1 chiffre requis</small></div> }
+                  @if (pwdErrors['special'])    { <div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>1 caractère spécial requis</small></div> }
                 }
               </div>
               <div class="col-md-6">
                 <label class="form-label">Confirmer</label>
                 <input type="password" class="form-control" [class.is-invalid]="passwordMismatch" formControlName="password2" placeholder="Confirmer">
-                @if (passwordMismatch) { <div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>Les mots de passe ne correspondent pas</small></div> }
+                @if (passwordMismatch) { <div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>Les mots de passe ne correspondent pas</small></div> }
               </div>
             </div>
           }
 
           <!-- TABLEAU Services -->
           <div class="d-flex align-items-center justify-content-between mb-2 mt-2">
-            <h6 class="text-muted text-uppercase mb-0 small"><i class="ph-buildings me-1"></i>Services @if(isServicesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
-            <button type="button" class="btn btn-subtle-primary btn-sm" [disabled]="isServicesLoading" (click)="ajouterService()"><i class="ph-plus me-1"></i>Ajouter</button>
+            <h6 class="text-muted text-uppercase mb-0 small"><i class="ri-building-line me-1"></i>Services @if(isServicesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
+            <button type="button" class="btn btn-subtle-primary btn-sm" [disabled]="isServicesLoading" (click)="ajouterService()"><i class="ri-add-line me-1"></i>Ajouter</button>
           </div>
           @if (isServicesLoading) { <div class="text-center py-3 border rounded mb-2"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div> }
           @else if (serviceLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">@if(currentUserId){Aucun service.}@else{Enregistrez d'abord l'utilisateur.}</div> }
@@ -457,7 +400,7 @@
                   <td style="min-width:140px;"><input type="date" class="form-control form-control-sm" [class.is-invalid]="ligne._hasError&&!ligne.date_debut" [(ngModel)]="ligne.date_debut" [ngModelOptions]="{standalone:true}"></td>
                   <td style="min-width:140px;"><input type="date" class="form-control form-control-sm" [(ngModel)]="ligne.date_fin" [ngModelOptions]="{standalone:true}"></td>
                   <td style="min-width:140px;"><select class="form-select form-select-sm" [class.is-invalid]="ligne._hasError&&!ligne.statut" [(ngModel)]="ligne.statut" [ngModelOptions]="{standalone:true}"><option [value]="undefined">—</option>@for(s of statuts;track s.id){<option [value]="s.id">{{s.libelle_statut}}</option>}</select></td>
-                  <td class="text-center"><button type="button" class="btn btn-subtle-danger btn-icon btn-sm" (click)="supprimerService(serviceLignes.indexOf(ligne))"><i class="ph-trash"></i></button></td>
+                  <td class="text-center"><button type="button" class="btn btn-subtle-danger btn-icon btn-sm" (click)="supprimerService(serviceLignes.indexOf(ligne))"><i class="ri-delete-bin-6-line"></i></button></td>
                 </tr>
               }</tbody>
             </table></div>
@@ -465,8 +408,8 @@
 
           <!-- TABLEAU Agences -->
           <div class="d-flex align-items-center justify-content-between mb-2 mt-3">
-            <h6 class="text-muted text-uppercase mb-0 small"><i class="ph-buildings me-1"></i>Agences @if(isAgencesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
-            <button type="button" class="btn btn-subtle-success btn-sm" [disabled]="isAgencesLoading" (click)="ajouterAgence()"><i class="ph-plus me-1"></i>Ajouter</button>
+            <h6 class="text-muted text-uppercase mb-0 small"><i class="ri-building-line me-1"></i>Agences @if(isAgencesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
+            <button type="button" class="btn btn-subtle-success btn-sm" [disabled]="isAgencesLoading" (click)="ajouterAgence()"><i class="ri-add-line me-1"></i>Ajouter</button>
           </div>
           @if (isAgencesLoading) { <div class="text-center py-3 border rounded mb-2"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div> }
           @else if (agenceLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">@if(currentUserId){Aucune agence.}@else{Enregistrez d'abord l'utilisateur.}</div> }
@@ -479,7 +422,7 @@
                   <td style="min-width:140px;"><input type="date" class="form-control form-control-sm" [class.is-invalid]="ligne._hasError&&!ligne.date_debut" [(ngModel)]="ligne.date_debut" [ngModelOptions]="{standalone:true}"></td>
                   <td style="min-width:140px;"><input type="date" class="form-control form-control-sm" [(ngModel)]="ligne.date_fin" [ngModelOptions]="{standalone:true}"></td>
                   <td style="min-width:140px;"><select class="form-select form-select-sm" [class.is-invalid]="ligne._hasError&&!ligne.statut" [(ngModel)]="ligne.statut" [ngModelOptions]="{standalone:true}"><option [value]="undefined">—</option>@for(s of statuts;track s.id){<option [value]="s.id">{{s.libelle_statut}}</option>}</select></td>
-                  <td class="text-center"><button type="button" class="btn btn-subtle-danger btn-icon btn-sm" (click)="supprimerAgence(agenceLignes.indexOf(ligne))"><i class="ph-trash"></i></button></td>
+                  <td class="text-center"><button type="button" class="btn btn-subtle-danger btn-icon btn-sm" (click)="supprimerAgence(agenceLignes.indexOf(ligne))"><i class="ri-delete-bin-6-line"></i></button></td>
                 </tr>
               }</tbody>
             </table></div>
@@ -487,8 +430,8 @@
 
           <!-- TABLEAU Postes -->
           <div class="d-flex align-items-center justify-content-between mb-2 mt-3">
-            <h6 class="text-muted text-uppercase mb-0 small"><i class="ph-briefcase me-1"></i>Postes @if(isPostesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
-            <button type="button" class="btn btn-subtle-warning btn-sm" [disabled]="isPostesLoading" (click)="ajouterPoste()"><i class="ph-plus me-1"></i>Ajouter</button>
+            <h6 class="text-muted text-uppercase mb-0 small"><i class="ri-briefcase-line me-1"></i>Postes @if(isPostesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
+            <button type="button" class="btn btn-subtle-warning btn-sm" [disabled]="isPostesLoading" (click)="ajouterPoste()"><i class="ri-add-line me-1"></i>Ajouter</button>
           </div>
           @if (isPostesLoading) { <div class="text-center py-3 border rounded mb-2"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div> }
           @else if (posteLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">@if(currentUserId){Aucun poste.}@else{Enregistrez d'abord l'utilisateur.}</div> }
@@ -501,7 +444,7 @@
                   <td style="min-width:140px;"><input type="date" class="form-control form-control-sm" [class.is-invalid]="ligne._hasError&&!ligne.date_debut" [(ngModel)]="ligne.date_debut" [ngModelOptions]="{standalone:true}"></td>
                   <td style="min-width:140px;"><input type="date" class="form-control form-control-sm" [(ngModel)]="ligne.date_fin" [ngModelOptions]="{standalone:true}"></td>
                   <td style="min-width:140px;"><select class="form-select form-select-sm" [class.is-invalid]="ligne._hasError&&!ligne.statut" [(ngModel)]="ligne.statut" [ngModelOptions]="{standalone:true}"><option [value]="undefined">—</option>@for(s of statuts;track s.id){<option [value]="s.id">{{s.libelle_statut}}</option>}</select></td>
-                  <td class="text-center"><button type="button" class="btn btn-subtle-danger btn-icon btn-sm" (click)="supprimerPoste(posteLignes.indexOf(ligne))"><i class="ph-trash"></i></button></td>
+                  <td class="text-center"><button type="button" class="btn btn-subtle-danger btn-icon btn-sm" (click)="supprimerPoste(posteLignes.indexOf(ligne))"><i class="ri-delete-bin-6-line"></i></button></td>
                 </tr>
               }</tbody>
             </table></div>
@@ -509,8 +452,8 @@
 
           <!-- TABLEAU Catégories salarié -->
           <div class="d-flex align-items-center justify-content-between mb-2 mt-3">
-            <h6 class="text-muted text-uppercase mb-0 small"><i class="ph-currency-circle-dollar me-1"></i>Catégories salarié @if(isCategoriesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
-            <button type="button" class="btn btn-subtle-info btn-sm" [disabled]="isCategoriesLoading" (click)="ajouterCategorie()"><i class="ph-plus me-1"></i>Ajouter</button>
+            <h6 class="text-muted text-uppercase mb-0 small"><i class="ri-money-dollar-circle-line me-1"></i>Catégories salarié @if(isCategoriesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
+            <button type="button" class="btn btn-subtle-info btn-sm" [disabled]="isCategoriesLoading" (click)="ajouterCategorie()"><i class="ri-add-line me-1"></i>Ajouter</button>
           </div>
           @if (isCategoriesLoading) { <div class="text-center py-3 border rounded mb-2"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div> }
           @else if (categorieLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">@if(currentUserId){Aucune catégorie.}@else{Enregistrez d'abord l'utilisateur.}</div> }
@@ -523,7 +466,7 @@
                   <td style="min-width:140px;"><input type="date" class="form-control form-control-sm" [class.is-invalid]="ligne._hasError&&!ligne.date_debut" [(ngModel)]="ligne.date_debut" [ngModelOptions]="{standalone:true}"></td>
                   <td style="min-width:140px;"><input type="date" class="form-control form-control-sm" [(ngModel)]="ligne.date_fin" [ngModelOptions]="{standalone:true}"></td>
                   <td style="min-width:140px;"><select class="form-select form-select-sm" [class.is-invalid]="ligne._hasError&&!ligne.statut" [(ngModel)]="ligne.statut" [ngModelOptions]="{standalone:true}"><option [value]="undefined">—</option>@for(s of statuts;track s.id){<option [value]="s.id">{{s.libelle_statut}}</option>}</select></td>
-                  <td class="text-center"><button type="button" class="btn btn-subtle-danger btn-icon btn-sm" (click)="supprimerCategorie(categorieLignes.indexOf(ligne))"><i class="ph-trash"></i></button></td>
+                  <td class="text-center"><button type="button" class="btn btn-subtle-danger btn-icon btn-sm" (click)="supprimerCategorie(categorieLignes.indexOf(ligne))"><i class="ri-delete-bin-6-line"></i></button></td>
                 </tr>
               }</tbody>
             </table></div>
@@ -531,8 +474,8 @@
 
           <!-- TABLEAU Allergies -->
           <div class="d-flex align-items-center justify-content-between mb-2 mt-3">
-            <h6 class="text-muted text-uppercase mb-0 small"><i class="ph-warning me-1"></i>Allergies @if(isAllergiesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
-            <button type="button" class="btn btn-subtle-danger btn-sm" [disabled]="isAllergiesLoading" (click)="ajouterAllergie()"><i class="ph-plus me-1"></i>Ajouter</button>
+            <h6 class="text-muted text-uppercase mb-0 small"><i class="ri-error-warning-line me-1"></i>Allergies @if(isAllergiesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
+            <button type="button" class="btn btn-subtle-danger btn-sm" [disabled]="isAllergiesLoading" (click)="ajouterAllergie()"><i class="ri-add-line me-1"></i>Ajouter</button>
           </div>
           @if (isAllergiesLoading) { <div class="text-center py-3 border rounded mb-2"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div> }
           @else if (allergieLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">Aucune allergie.</div> }
@@ -542,7 +485,7 @@
               <tbody>@for(ligne of allergieLignesVisibles;track $index){
                 <tr [class.table-danger]="ligne._hasError">
                   <td><input type="text" class="form-control form-control-sm" [class.is-invalid]="ligne._hasError&&!ligne.libelle?.trim()" [(ngModel)]="ligne.libelle" [ngModelOptions]="{standalone:true}" placeholder="Ex: Arachides..."></td>
-                  <td class="text-center"><button type="button" class="btn btn-subtle-danger btn-icon btn-sm" (click)="supprimerAllergie(allergieLignes.indexOf(ligne))"><i class="ph-trash"></i></button></td>
+                  <td class="text-center"><button type="button" class="btn btn-subtle-danger btn-icon btn-sm" (click)="supprimerAllergie(allergieLignes.indexOf(ligne))"><i class="ri-delete-bin-6-line"></i></button></td>
                 </tr>
               }</tbody>
             </table></div>
@@ -551,7 +494,7 @@
         </div><!-- fin modal-body -->
         <div class="modal-footer">
           <div class="hstack gap-2 justify-content-end">
-            <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()"><i class="bi bi-x-lg me-1"></i>Fermer</button>
+            <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()"><i class="ri-close-line me-1"></i>Fermer</button>
             <button type="submit" class="btn btn-primary" id="add-btn"
                     [disabled]="userForm.invalid || isSaving">Enregistrer</button>
           </div>
@@ -581,17 +524,17 @@
             <label class="form-label">Nouveau mot de passe <span class="text-danger">*</span></label>
             <input type="password" class="form-control" [class.is-invalid]="mdpErrors&&mdpTouched" formControlName="password" placeholder="Nouveau mot de passe">
             @if(mdpTouched&&mdpErrors){
-              @if(mdpErrors['required'])  {<div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>Requis</small></div>}
-              @if(mdpErrors['minLength']) {<div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>8 caractères minimum</small></div>}
-              @if(mdpErrors['majuscule']) {<div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>1 majuscule requise</small></div>}
-              @if(mdpErrors['chiffre'])   {<div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>1 chiffre requis</small></div>}
-              @if(mdpErrors['special'])   {<div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>1 caractère spécial requis</small></div>}
+              @if(mdpErrors['required'])  {<div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>Requis</small></div>}
+              @if(mdpErrors['minLength']) {<div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>8 caractères minimum</small></div>}
+              @if(mdpErrors['majuscule']) {<div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>1 majuscule requise</small></div>}
+              @if(mdpErrors['chiffre'])   {<div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>1 chiffre requis</small></div>}
+              @if(mdpErrors['special'])   {<div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>1 caractère spécial requis</small></div>}
             }
           </div>
           <div class="mb-3">
             <label class="form-label">Confirmer <span class="text-danger">*</span></label>
             <input type="password" class="form-control" [class.is-invalid]="mdpMismatch" formControlName="password2" placeholder="Confirmer">
-            @if(mdpMismatch){<div class="text-danger mt-1"><small><i class="ph-x-circle me-1"></i>Les mots de passe ne correspondent pas</small></div>}
+            @if(mdpMismatch){<div class="text-danger mt-1"><small><i class="ri-close-circle-line me-1"></i>Les mots de passe ne correspondent pas</small></div>}
           </div>
         </div>
         <div class="modal-footer">
@@ -610,7 +553,7 @@
       <div class="modal-header"><button type="button" class="btn-close" (click)="closeDeleteModal()"></button></div>
       <div class="modal-body p-md-5">
         <div class="text-center">
-          <div class="text-danger"><i class="bi bi-trash display-5"></i></div>
+          <div class="text-danger"><i class="ri-delete-bin-6-line display-5"></i></div>
           <div class="mt-4">
             <h4 class="mb-2">Êtes-vous sûr ?</h4>
             <p class="text-muted fs-md mx-3 mb-0">Voulez-vous vraiment supprimer {{ checkedValGet.length>1?'ces utilisateurs':'cet utilisateur' }} ?</p>
@@ -657,11 +600,11 @@
           <div class="col-md-4"><label class="form-label fw-medium">Poste tél. :</label><p>{{selectedUser?.poste_telephone||'—'}}</p></div>
           <div class="col-md-2"><label class="form-label fw-medium">Statut :</label><p><span class="badge bg-info-subtle text-info">{{getStatutLibelle(selectedUser?.statut)}}</span></p></div>
           <div class="col-md-2"><label class="form-label fw-medium">État :</label><p>@if(selectedUser?.is_active){<span class="badge bg-success-subtle text-success">Actif</span>}@else{<span class="badge bg-danger-subtle text-danger">Inactif</span>}</p></div>
-          <div class="col-12"><label class="form-label fw-medium">Rôle(s) :</label><p class="mb-0">@if(selectedUser?.groups&&selectedUser.groups.length>0){@for(gid of selectedUser.groups;track gid){<span class="badge bg-secondary-subtle text-secondary me-1"><i class="ph-shield-check me-1"></i>{{getGroupeName(gid)}}</span>}}@else{<span class="text-muted small">Aucun</span>}</p></div>
+          <div class="col-12"><label class="form-label fw-medium">Rôle(s) :</label><p class="mb-0">@if(selectedUser?.groups&&selectedUser.groups.length>0){@for(gid of selectedUser.groups;track gid){<span class="badge bg-secondary-subtle text-secondary me-1"><i class="ri-shield-check-line me-1"></i>{{getGroupeName(gid)}}</span>}}@else{<span class="text-muted small">Aucun</span>}</p></div>
         </div>
 
         <!-- Services -->
-        <h6 class="text-muted text-uppercase mb-2 small"><i class="ph-buildings me-1"></i>Services</h6>
+        <h6 class="text-muted text-uppercase mb-2 small"><i class="ri-building-line me-1"></i>Services</h6>
         @if(isServicesLoading){<div class="text-center py-2 border rounded mb-3"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div>}
         @else if(serviceLignesVisibles.length===0){<p class="text-muted small mb-3">Aucun.</p>}
         @else{<div class="table-responsive border rounded mb-3"><table class="table table-sm align-middle mb-0"><thead class="table-light text-muted"><tr><th>#</th><th>Service</th><th>Début</th><th>Fin</th><th>Statut</th></tr></thead><tbody>
@@ -669,7 +612,7 @@
         </tbody></table></div>}
 
         <!-- Agences -->
-        <h6 class="text-muted text-uppercase mb-2 small"><i class="ph-buildings me-1"></i>Agences</h6>
+        <h6 class="text-muted text-uppercase mb-2 small"><i class="ri-building-line me-1"></i>Agences</h6>
         @if(isAgencesLoading){<div class="text-center py-2 border rounded mb-3"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div>}
         @else if(agenceLignesVisibles.length===0){<p class="text-muted small mb-3">Aucune.</p>}
         @else{<div class="table-responsive border rounded mb-3"><table class="table table-sm align-middle mb-0"><thead class="table-light text-muted"><tr><th>#</th><th>Agence</th><th>Début</th><th>Fin</th><th>Statut</th></tr></thead><tbody>
@@ -677,7 +620,7 @@
         </tbody></table></div>}
 
         <!-- Postes -->
-        <h6 class="text-muted text-uppercase mb-2 small"><i class="ph-briefcase me-1"></i>Postes</h6>
+        <h6 class="text-muted text-uppercase mb-2 small"><i class="ri-briefcase-line me-1"></i>Postes</h6>
         @if(isPostesLoading){<div class="text-center py-2 border rounded mb-3"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div>}
         @else if(posteLignesVisibles.length===0){<p class="text-muted small mb-3">Aucun.</p>}
         @else{<div class="table-responsive border rounded mb-3"><table class="table table-sm align-middle mb-0"><thead class="table-light text-muted"><tr><th>#</th><th>Poste</th><th>Début</th><th>Fin</th><th>Statut</th></tr></thead><tbody>
@@ -685,7 +628,7 @@
         </tbody></table></div>}
 
         <!-- Catégories -->
-        <h6 class="text-muted text-uppercase mb-2 small"><i class="ph-currency-circle-dollar me-1"></i>Catégories salarié</h6>
+        <h6 class="text-muted text-uppercase mb-2 small"><i class="ri-money-dollar-circle-line me-1"></i>Catégories salarié</h6>
         @if(isCategoriesLoading){<div class="text-center py-2 border rounded mb-3"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div>}
         @else if(categorieLignesVisibles.length===0){<p class="text-muted small mb-3">Aucune.</p>}
         @else{<div class="table-responsive border rounded mb-3"><table class="table table-sm align-middle mb-0"><thead class="table-light text-muted"><tr><th>#</th><th>Catégorie</th><th>Début</th><th>Fin</th><th>Statut</th></tr></thead><tbody>
@@ -693,10 +636,10 @@
         </tbody></table></div>}
 
         <!-- Allergies -->
-        <h6 class="text-muted text-uppercase mb-2 small"><i class="ph-warning me-1"></i>Allergies</h6>
+        <h6 class="text-muted text-uppercase mb-2 small"><i class="ri-error-warning-line me-1"></i>Allergies</h6>
         @if(isAllergiesLoading){<div class="text-center py-2 border rounded"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div>}
         @else if(allergieLignesVisibles.length===0){<p class="text-muted small">Aucune.</p>}
-        @else{<div class="d-flex flex-wrap gap-2 mt-1">@for(a of allergieLignesVisibles;track a.id){<span class="badge bg-danger-subtle text-danger" style="font-size:.85rem;"><i class="ph-warning me-1"></i>{{a.libelle}}</span>}</div>}
+        @else{<div class="d-flex flex-wrap gap-2 mt-1">@for(a of allergieLignesVisibles;track a.id){<span class="badge bg-danger-subtle text-danger" style="font-size:.85rem;"><i class="ri-error-warning-line me-1"></i>{{a.libelle}}</span>}</div>}
       </div>
       <div class="modal-footer"><button type="button" class="btn btn-secondary" (click)="closeViewModal()">Fermer</button></div>
     </div>

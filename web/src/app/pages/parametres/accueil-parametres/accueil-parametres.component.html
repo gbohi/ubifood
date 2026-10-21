@@ -1,0 +1,40 @@
+<!-- Accueil des paramètres : cartes regroupées par thème (maquette « web-2-parametres ») -->
+<div class="lst prm">
+  <app-page-entete titre="Paramètres" icone="ri-settings-3-line"
+                   sousTitre="Tout ce qui configure UbiFood, regroupé par thème">
+    <div class="lst-recherche prm-recherche">
+      <i class="ri-search-line"></i>
+      <input type="search" placeholder="Chercher un paramètre (ex. « tarif »)" aria-label="Chercher un paramètre"
+             [(ngModel)]="recherche">
+    </div>
+  </app-page-entete>
+
+  @for (g of groupesFiltres; track g.titre) {
+    <section class="prm-grp" [attr.aria-label]="g.titre">
+      <h2><i [class]="g.icone" aria-hidden="true"></i>{{ g.titre }}</h2>
+      <div class="prm-cartes">
+        @for (c of g.cartes; track c.lien) {
+          <a class="prm-carte" [routerLink]="c.lien">
+            <span class="prm-pa" [ngClass]="g.teinte" aria-hidden="true"><i [class]="c.icone"></i></span>
+            <span class="prm-txt">
+              <b>{{ c.titre }}</b>
+              <small>{{ c.description }}</small>
+            </span>
+            @if (comptes[c.lien] !== undefined) {
+              <span class="prm-n" [attr.aria-label]="comptes[c.lien] + ' élément(s)'">{{ comptes[c.lien] }}</span>
+            }
+            <i class="ri-arrow-right-s-line prm-fl" aria-hidden="true"></i>
+          </a>
+        }
+      </div>
+    </section>
+  } @empty {
+    <div class="lst-carte">
+      <div class="lst-vide">
+        <i class="ri-search-line"></i>
+        <h5>Aucun paramètre trouvé</h5>
+        <p>Aucun paramètre ne correspond à « {{ recherche }} ».</p>
+      </div>
+    </div>
+  }
+</div>

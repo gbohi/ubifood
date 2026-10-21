@@ -6,7 +6,6 @@ import { ADMINS, GESTIONNAIRES } from 'src/app/core/helpers/roles';
 import { AgenceComponent } from './agence/agence.component';
 import { EtatComponent } from './etat/etat.component';
 import { PrioriteComponent } from './priorite/priorite.component';
-import { ServiceComponent } from './service/service.component';
 import { StatutComponent } from './statut/statut.component';
 import { TypebesoinComponent } from './typebesoin/typebesoin.component';
 import { DepartementComponent } from './departement/departement.component';
@@ -21,9 +20,23 @@ import { PosteComponent } from './poste/poste.component';
 import { SocieteComponent } from './societe/societe.component';
 import { BannieresComponent } from './bannieres/bannieres.component';
 import { PopupConnexionComponent } from './popup-connexion/popup-connexion.component';
+import { AccueilParametresComponent } from './accueil-parametres/accueil-parametres.component';
 
 
 const routes: Routes = [
+  // Accueil des paramètres : cartes par thème, filtrées selon les routes ci-dessous
+  { path: '', pathMatch: 'full', redirectTo: 'accueil' },
+  {
+    path: 'accueil',
+    component: AccueilParametresComponent,
+    canActivate: [RoleGuard],
+    data: { roles: GESTIONNAIRES }
+  },
+  {
+    // Les « services » (modèle Service de l'API) sont gérés par la page Départements
+    path: 'service',
+    redirectTo: 'departement'
+  },
   {
     // Image de la fenêtre affichée après la connexion (web et mobile)
     path: 'popup-connexion',

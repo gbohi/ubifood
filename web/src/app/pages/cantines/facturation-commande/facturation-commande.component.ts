@@ -7,6 +7,7 @@
 
 import { filtrerAgencesGerees } from 'src/app/core/helpers/roles';
 import { Component, OnInit, DestroyRef, inject } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
 import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
@@ -70,10 +71,21 @@ export class FacturationCommandeComponent implements OnInit {
   // Un gestionnaire ne gère que les agences auxquelles il est rattaché
   private userConnecte = inject(TokenStorageService).getUser();
 
-  breadCrumbItems = [
-    { label: 'Cantine', active: false },
-    { label: 'Facturation commandes', active: true },
-  ];
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+
+  /** Onglet affiché : agents (ce qu'ils doivent) ou prestataires (ce que nous leur devons) */
+  onglet: 'agents' | 'prestataires' = 'agents';
+
+  /** Mois affiché (navigation par flèches) ; périodeLibre = dates saisies */
+  annee = new Date().getFullYear();
+  mois = new Date().getMonth() + 1;
+  periodeLibre = false;
+
+  // Tableau des agents : recherche et pagination côté client
+  recherche = '';
+  page = 1;
+  readonly parPage = 15;
 
   agences:     any[] = [];
   typeEquipes: any[] = [];
@@ -127,6 +139,12 @@ export class FacturationCommandeComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(t => this.typeEquipes = t ?? []);
 
+    this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(q => {
+      this.onglet = q.get('onglet') === 'prestataires' ? 'prestataires' : 'agents';
+    });
+    // Pas de page vide : le mois en cours est calculé dès l'arrivée
+    this.rechercher();
+
     this.estAdmin = aUnRole(this.tokenStorage.getUser(), ADMINS);
     const precedent = new Date();
     precedent.setDate(1);
@@ -158,6 +176,10 @@ export class FacturationCommandeComponent implements OnInit {
     if (typeequipe) params = params.set('typeequipe', typeequipe);
 
     this.hasSearched = true;
+    this.page = 1;
+    if (this.periode?.debut !== date_debut || this.periode?.fin !== date_fin) {
+      this.periode = { debut: date_debut, fin: date_fin };
+    }
     this.isLoading = true;
     this.error = null;
     this.http.get<any>(`${this.apiUrl}/facturation/`, { params })
@@ -197,11 +219,123 @@ export class FacturationCommandeComponent implements OnInit {
   resetFilters(): void {
     const { debut, fin } = this._moisCourant();
     this.filterForm.reset({ date_debut: debut, date_fin: fin, agence: '', typeequipe: '' });
-    this.hasSearched       = false;
-    this.lignesFacturation = [];
-    this.totalNbCommandes  = 0;
-    this.totalMontant      = 0;
-    this.repasSansTarif    = 0;
+    this.annee = new Date().getFullYear();
+    this.mois = new Date().getMonth() + 1;
+    this.periodeLibre = false;
+    this.rechercher();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // ONGLETS ET NAVIGATION PAR MOIS
+  // ══════════════════════════════════════════════════════════
+
+  changerOnglet(o: 'agents' | 'prestataires'): void {
+    this.router.navigate([], { relativeTo: this.route, queryParams: { onglet: o === 'agents' ? null : o },
+                               queryParamsHandling: 'merge', replaceUrl: true });
+  }
+
+  changerMois(decalage: number): void {
+    const d = new Date(this.annee, this.mois - 1 + decalage, 1);
+    this.allerAuMois(d.getFullYear(), d.getMonth() + 1);
+  }
+
+  allerAuMois(annee: number, mois: number): void {
+    this.annee = annee;
+    this.mois = mois;
+    this.periodeLibre = false;
+    const iso = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    this.filterForm.patchValue({
+      date_debut: iso(new Date(annee, mois - 1, 1)),
+      date_fin:   iso(new Date(annee, mois, 0)),
+    });
+    this.rechercher();
+  }
+
+  basculerPeriodeLibre(): void {
+    this.periodeLibre = !this.periodeLibre;
+    if (!this.periodeLibre) this.allerAuMois(this.annee, this.mois);
+  }
+
+  get libelleMoisCourant(): string {
+    const l = this.libelleMois(this.annee, this.mois);
+    return l.charAt(0).toUpperCase() + l.slice(1);
+  }
+
+  get estMoisActuel(): boolean {
+    const n = new Date();
+    return this.annee === n.getFullYear() && this.mois === n.getMonth() + 1;
+  }
+
+  /** Dates transmises à l'onglet prestataires (même période), mises à jour à chaque calcul */
+  periode: { debut: string; fin: string } | null = null;
+
+  /** État de la période affichée : mois clôturé (figé) ou provisoire */
+  get etatPeriode(): 'cloturee' | 'provisoire' | 'partielle' {
+    if (!this.periodeLibre) {
+      return this.clotures.some(c => c.annee === this.annee && c.mois === this.mois) ? 'cloturee' : 'provisoire';
+    }
+    const etats = new Set(this.lignesFacturation.map(l => l.etat));
+    if (etats.size === 1) return [...etats][0];
+    return etats.size ? 'partielle' : 'provisoire';
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // TABLEAU DES AGENTS
+  // ══════════════════════════════════════════════════════════
+
+  get lignesFiltrees(): LigneFacturation[] {
+    const q = this.recherche.trim().toLowerCase();
+    if (!q) return this.lignesFacturation;
+    return this.lignesFacturation.filter(l =>
+      `${l.nomPrenom} ${l.username} ${l.agenceMenu} ${l.categoriesalarie}`.toLowerCase().includes(q));
+  }
+
+  get lignesPage(): LigneFacturation[] {
+    const debut = (this.page - 1) * this.parPage;
+    return this.lignesFiltrees.slice(debut, debut + this.parPage);
+  }
+
+  get nbPages(): number {
+    return Math.max(1, Math.ceil(this.lignesFiltrees.length / this.parPage));
+  }
+
+  get pages(): number[] {
+    return Array.from({ length: this.nbPages }, (_, i) => i + 1);
+  }
+
+  get moyenneParAgent(): number {
+    return this.lignesFacturation.length ? this.totalMontant / this.lignesFacturation.length : 0;
+  }
+
+  initiales(nom: string): string {
+    return (nom ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase() || '?';
+  }
+
+  couleur(i: number): string {
+    return ['#0F3A6E', '#C77B2A', '#3EC970', '#9AA9BE', '#2F80ED', '#7B61FF'][i % 6];
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // FRISE DES CLÔTURES
+  // ══════════════════════════════════════════════════════════
+
+  /** Mois en cours et les 5 précédents, plus les mois clôturés plus anciens (6 au plus) */
+  get frise(): { annee: number; mois: number; cloture: ClotureMensuelle | null; enCours: boolean }[] {
+    const n = new Date();
+    const mois: { annee: number; mois: number; cloture: ClotureMensuelle | null; enCours: boolean }[] = [];
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(n.getFullYear(), n.getMonth() - i, 1);
+      const a = d.getFullYear(), m = d.getMonth() + 1;
+      mois.push({ annee: a, mois: m, enCours: i === 0,
+                  cloture: this.clotures.find(c => c.annee === a && c.mois === m) ?? null });
+    }
+    return mois;
+  }
+
+  get moisSuivantLibelle(): string {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth() + 1, 1).toLocaleDateString('fr-FR', { month: 'long' });
   }
 
   libelleEtat(etat: EtatFacture): string {
@@ -222,9 +356,9 @@ export class FacturationCommandeComponent implements OnInit {
     return new Date(annee, mois - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
   }
 
-  cloturer(): void {
-    if (!this.moisACloturer) return;
-    const [annee, mois] = this.moisACloturer.split('-').map(Number);
+  cloturer(moisAAAAMM: string = this.moisACloturer): void {
+    if (!moisAAAAMM) return;
+    const [annee, mois] = moisAAAAMM.split('-').map(Number);
     if (!confirm(`Clôturer définitivement la facturation de ${this.libelleMois(annee, mois)} ?\n` +
                  'Les montants de ce mois ne pourront plus être modifiés.')) {
       return;
@@ -387,12 +521,12 @@ export class FacturationCommandeComponent implements OnInit {
       body,
       startY: 26,
       styles:     { fontSize: 7, cellPadding: 1.5 },
-      headStyles: { fillColor: [41, 98, 255], textColor: 255, fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [245, 247, 255] },
+      headStyles: { fillColor: [9, 36, 64], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
       didParseCell: (data) => {
         if (data.row.index === body.length - 1) {
           data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [230, 235, 255];
+          data.cell.styles.fillColor = [234, 251, 241];
         }
       },
       columnStyles: {

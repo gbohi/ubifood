@@ -1,10 +1,10 @@
-<app-breadcrumbs title="Société" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<app-page-entete titre="Société" icone="ri-building-2-line" [fil]="[{label: 'Paramètres', lien: '/parametres/accueil'}, {label: 'Société & affichage'}]"
+                 sousTitre="En-tête des factures et délais de la cantine"></app-page-entete>
 
 <div class="row">
   <div class="col-xl-9">
     <div class="card">
       <div class="card-header">
-        <h5 class="mb-0"><i class="ph-buildings me-2"></i>Société — en-tête des factures et délais de la cantine</h5>
         <small class="text-muted">
           Ces informations apparaissent sur les factures PDF des prestataires. Elles peuvent
           être modifiées à tout moment ; les montants des factures, eux, restent figés.
@@ -12,10 +12,10 @@
       </div>
       <div class="card-body">
         @if (message) {
-          <div class="alert alert-success py-2 small"><i class="ph-check-circle me-1"></i>{{ message }}</div>
+          <div class="alert alert-success py-2 small"><i class="ri-checkbox-circle-line me-1"></i>{{ message }}</div>
         }
         @if (erreur) {
-          <div class="alert alert-danger py-2 small"><i class="ph-warning me-1"></i>{{ erreur }}</div>
+          <div class="alert alert-danger py-2 small"><i class="ri-error-warning-line me-1"></i>{{ erreur }}</div>
         }
 
         @if (isLoading) {
@@ -65,7 +65,7 @@
               </div>
 
               <div class="col-12 mt-4">
-                <h6 class="mb-1"><i class="ph-clock me-1"></i>Cantine — délais</h6>
+                <h6 class="mb-1"><i class="ri-time-line me-1"></i>Cantine — délais</h6>
                 <small class="text-muted">
                   En heures avant le début du jour du menu. 0 = jusqu'à la veille à minuit ;
                   24 = jusqu'à l'avant-veille à minuit ; 48 = jusqu'à trois jours avant, à minuit.
@@ -101,7 +101,7 @@
                          accept="image/png,image/jpeg" (change)="onLogoChoisi($event)">
                   @if ((logoUrl && !supprimerLogo) || apercuNouveauLogo) {
                     <button type="button" class="btn btn-subtle-danger btn-sm" (click)="retirerLogo()">
-                      <i class="ph-trash me-1"></i>Retirer le logo
+                      <i class="ri-delete-bin-6-line me-1"></i>Retirer le logo
                     </button>
                   }
                 </div>
@@ -114,7 +114,7 @@
               </small>
               <button type="submit" class="btn btn-primary" [disabled]="isSaving || form.invalid">
                 @if (isSaving) { <span class="spinner-border spinner-border-sm me-1" role="status"></span> }
-                @else { <i class="ph-floppy-disk me-1"></i> }
+                @else { <i class="ri-save-line me-1"></i> }
                 Enregistrer
               </button>
             </div>

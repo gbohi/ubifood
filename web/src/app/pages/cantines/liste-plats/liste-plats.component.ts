@@ -125,7 +125,7 @@ export class ListePlatsComponent implements OnInit {
   ngOnInit(): void {
     this.breadCrumbItems = [
       { label: 'Cantine', active: false },
-      { label: 'Liste des plats', active: true }
+      { label: 'Plats', active: true }
     ];
 
     this.platForm = this.formBuilder.group({
@@ -500,6 +500,14 @@ export class ListePlatsComponent implements OnInit {
     return ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].some(
       ext => path?.toLowerCase().endsWith(ext)
     );
+  }
+
+  /** Image principale du plat (ou la première), null s'il n'en a pas */
+  vignette(plat: any): string | null {
+    const img = plat?.images?.find((i: any) => i.is_principale) ?? plat?.images?.[0];
+    const url: string | undefined = img?.url ?? img?.image;
+    if (!url) return null;
+    return /^https?:\/\//.test(url) ? url : this.getFullUrl(url);
   }
 
   getFullUrl(path: string): string {

@@ -109,6 +109,11 @@ export class MesCommandesComponent implements OnInit {
       || String(b.date_commande ?? '').localeCompare(String(a.date_commande ?? '')));
   }
 
+  /** Pastilles de statut */
+  choisirStatut(statut: string): void {
+    this.filterForm.patchValue({ statut });
+  }
+
   resetFilters(): void {
     this.filterForm.reset({ statut: '', date_debut: '', date_fin: '' });
   }
@@ -153,10 +158,10 @@ export class MesCommandesComponent implements OnInit {
 
   getStatutBadgeClass(statut: string): string {
     switch (statut) {
-      case 'en_attente': return 'bg-success-subtle text-success';
-      case 'annulee':    return 'bg-secondary-subtle text-secondary';
-      case 'retiree':    return 'bg-info-subtle text-info';
-      default:           return 'bg-light text-muted';
+      case 'en_attente': return 't-or';
+      case 'annulee':    return 't-gr';
+      case 'retiree':    return 't-ve';
+      default:           return 't-gr';
     }
   }
 
@@ -178,10 +183,10 @@ export class MesCommandesComponent implements OnInit {
 
   getStatutIcon(statut: string): string {
     switch (statut) {
-      case 'en_attente': return 'ph-clock';
-      case 'annulee':    return 'ph-x-circle';
-      case 'retiree':    return 'ph-check-circle';
-      default:           return 'ph-question';
+      case 'en_attente': return 'ri-time-line';
+      case 'annulee':    return 'ri-close-circle-line';
+      case 'retiree':    return 'ri-checkbox-circle-line';
+      default:           return 'ri-question-line';
     }
   }
 

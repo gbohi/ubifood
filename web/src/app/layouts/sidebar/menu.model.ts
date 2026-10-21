@@ -13,4 +13,6 @@ export interface MenuItem {
     roles?: string[];
     /** Rôles pour lesquels l'entrée est masquée (ex. « Accueil » employé caché aux gestionnaires) */
     sansRoles?: string[];
+    /** Autres adresses (préfixes) pour lesquelles l'entrée est affichée comme active */
+    actifSur?: string[];
 }

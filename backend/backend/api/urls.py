@@ -5,6 +5,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import *
 from .accueil import AccueilView
+from .planning import PlanningView
 
 
 class ConnexionSerializer(TokenObtainPairSerializer):
@@ -92,6 +93,7 @@ urlpatterns = [
     path('api/allnopagin/users/', AllUserNopginListAPIView.as_view(), name='allnopagin-user-list'),
     path('api/dashboard-cantine/', DashboardCantineView.as_view(), name='dashboard-cantine'),
     path('api/accueil/', AccueilView.as_view(), name='accueil'),
+    path('api/planning/', PlanningView.as_view(), name='planning'),
     path('api/facturation/', FacturationView.as_view(), name='facturation'),
     path('api/facturation/prestataires/', FacturationPrestataireView.as_view(), name='facturation-prestataires'),
     path('api/parametres-societe/', ParametresSocieteView.as_view(), name='parametres-societe'),

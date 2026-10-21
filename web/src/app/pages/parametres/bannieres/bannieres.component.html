@@ -1,17 +1,16 @@
-<app-breadcrumbs title="Bannières" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<app-page-entete titre="Bannières mobile" icone="ri-image-line" [fil]="[{label: 'Paramètres', lien: '/parametres/accueil'}, {label: 'Société & affichage'}]"
+                 sousTitre="Images de l'accueil de l'application mobile">
+  <button type="button" class="btn-ubi vert" (click)="ouvrir(null)" [disabled]="formulaireOuvert"><i class="ri-add-line"></i><span class="pe-lib">Nouvelle bannière</span></button>
+</app-page-entete>
 
 <div class="card">
   <div class="card-header d-flex align-items-center flex-wrap gap-2">
     <div class="flex-grow-1">
-      <h5 class="mb-0"><i class="ph-images me-2"></i>Bannières de l'accueil mobile</h5>
       <small class="text-muted">
         Elles défilent en haut de l'écran d'accueil de l'application, dans l'ordre indiqué.
         Format conseillé : image paysage d'environ 1200 × 520 px (PNG, JPEG ou WebP, 5 Mo maximum).
       </small>
     </div>
-    <button class="btn btn-primary" (click)="ouvrir(null)" [disabled]="formulaireOuvert">
-      <i class="ri-add-line align-baseline me-1"></i> Ajouter une bannière
-    </button>
   </div>
 
   <div class="card-body">
@@ -29,7 +28,7 @@
                   <img [src]="apercu || imageUrl(enEdition)" alt="Aperçu" class="w-100 h-100" style="object-fit: cover;">
                 } @else {
                   <div class="d-flex h-100 align-items-center justify-content-center text-muted">
-                    <span><i class="ph-image me-1"></i>Aucune image</span>
+                    <span><i class="ri-image-line me-1"></i>Aucune image</span>
                   </div>
                 }
               </div>
@@ -85,7 +84,7 @@
       <div class="text-center py-5"><span class="spinner-border text-primary" role="status"></span></div>
     } @else if (bannieres.length === 0) {
       <div class="text-center text-muted py-5">
-        <i class="ph-images display-6 d-block mb-2"></i>
+        <i class="ri-image-2-line display-6 d-block mb-2"></i>
         Aucune bannière : l'accueil de l'application n'en affiche aucune.
       </div>
     } @else {
@@ -103,7 +102,7 @@
                 </div>
                 <div class="small text-muted mb-2">
                   @if (b.date_debut || b.date_fin) {
-                    <i class="ph-calendar me-1"></i>
+                    <i class="ri-calendar-line me-1"></i>
                     {{ b.date_debut ? 'Du ' + formatDate(b.date_debut) : 'Jusqu\'' }}{{ b.date_fin ? (b.date_debut ? ' au ' : 'au ') + formatDate(b.date_fin) : '' }}
                   } @else {
                     Sans date de fin
@@ -118,11 +117,11 @@
                 }
               </div>
               <div class="card-footer d-flex gap-2">
-                <button class="btn btn-sm btn-subtle-secondary" (click)="ouvrir(b)"><i class="ph-pencil me-1"></i>Modifier</button>
+                <button class="btn btn-sm btn-subtle-secondary" (click)="ouvrir(b)"><i class="ri-pencil-line me-1"></i>Modifier</button>
                 <button class="btn btn-sm btn-subtle-primary" (click)="basculerActif(b)">
                   {{ b.actif ? 'Désactiver' : 'Activer' }}
                 </button>
-                <button class="btn btn-sm btn-subtle-danger ms-auto" (click)="aSupprimer = b"><i class="ph-trash"></i></button>
+                <button class="btn btn-sm btn-subtle-danger ms-auto" (click)="aSupprimer = b"><i class="ri-delete-bin-6-line"></i></button>
               </div>
               @if (aSupprimer?.id === b.id) {
                 <div class="card-footer bg-danger-subtle d-flex align-items-center gap-2">

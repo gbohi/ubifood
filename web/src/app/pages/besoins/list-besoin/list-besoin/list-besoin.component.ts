@@ -310,16 +310,16 @@ export class ListBesoinComponent implements OnInit, AfterViewInit {
       case 'clôturé':
       case 'cloturé':
       case 'clôturés':
-        return { icon: 'bi-patch-check-fill', textClass: 'text-success', borderClass: 'border border-success-subtle' };
+        return { icon: 'ri-checkbox-circle-fill', textClass: 'text-success', borderClass: 'border border-success-subtle' };
       case 'en attente':
-        return { icon: 'bi-file-earmark-text', textClass: 'text-primary', borderClass: 'border border-primary-subtle' };
+        return { icon: 'ri-file-text-line', textClass: 'text-primary', borderClass: 'border border-primary-subtle' };
       case 'en cours':
-        return { icon: 'bi-clock-history', textClass: 'text-warning', borderClass: 'border border-warning-subtle' };
+        return { icon: 'ri-history-line', textClass: 'text-warning', borderClass: 'border border-warning-subtle' };
       case 'annulé':
       case 'annulés':
-        return { icon: 'bi-x-circle', textClass: 'text-danger', borderClass: 'border border-danger-subtle' };
+        return { icon: 'ri-close-circle-line', textClass: 'text-danger', borderClass: 'border border-danger-subtle' };
       default:
-        return { icon: 'bi-question-circle', textClass: 'text-secondary', borderClass: 'border border-secondary-subtle' };
+        return { icon: 'ri-question-line', textClass: 'text-secondary', borderClass: 'border border-secondary-subtle' };
     }
   }
 
@@ -334,7 +334,19 @@ export class ListBesoinComponent implements OnInit, AfterViewInit {
     }
   }
 
-  getPourcentageNonCloture(): number {
+  /** Couleur du badge d'état dans la liste (gabarit commun) */
+  tagEtat(etat: string | null | undefined): string {
+    switch ((etat ?? '').toLowerCase()) {
+      case 'clôturé':
+      case 'cloturé':    return 't-ve';
+      case 'annulé':     return 't-ro';
+      case 'en cours':   return 't-or';
+      case 'en attente': return 't-bl';
+      default:           return 't-gr';
+    }
+  }
+
+    getPourcentageNonCloture(): number {
     if (!this.statistiques || !this.statistiques.total_besoin) return 0;
     return Math.round((this.statistiques.total_non_cloture / this.statistiques.total_besoin) * 100);
   }

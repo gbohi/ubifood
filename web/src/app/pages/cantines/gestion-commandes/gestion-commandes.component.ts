@@ -288,6 +288,28 @@ export class GestionCommandesComponent implements OnInit, OnDestroy {
     return this.statutsSelectionnes.includes(value);
   }
 
+  /** Pastille de statut : ajoute / retire le statut de la sélection (plusieurs possibles) */
+  basculerStatut(value: string): void {
+    this.statutsSelectionnes = this.isStatutSelected(value)
+      ? this.statutsSelectionnes.filter(s => s !== value)
+      : [...this.statutsSelectionnes, value];
+  }
+
+  readonly libellesPastilles: Record<string, string> = { en_attente: 'En attente', retiree: 'Retirées', annulee: 'Annulées' };
+
+  /** « Poste · Catégorie » de l'agent (parties connues seulement), '' sinon */
+  posteCategorie(c: CommandeModel): string {
+    const pst = this.getDernierPoste(c);
+    const cat = this.getDerniereCategorie(c);
+    return [pst ? this.getPosteLibelle(pst.poste) : '', cat ? this.getCategorieLibelle(cat.categoriesalarie) : '']
+      .filter(x => x && x !== '—').join(' · ');
+  }
+
+  /** Nombre de commandes chargées ayant ce statut */
+  compteStatut(value: string): number {
+    return this.commandes.filter(c => c.statut === value).length;
+  }
+
   rechercher(): void {
     const { date_debut, date_fin, agence, typeequipe } = this.filterForm.value;
     this.hasSearched = true;
@@ -361,11 +383,11 @@ export class GestionCommandesComponent implements OnInit, OnDestroy {
 
   statutCss(statut: string): string {
     const map: Record<string, string> = {
-      en_attente: 'bg-warning-subtle text-warning',
-      annulee:    'bg-secondary-subtle text-secondary',
-      retiree:    'bg-success-subtle text-success',
+      en_attente: 'lst-tag t-or',
+      annulee:    'lst-tag t-gr',
+      retiree:    'lst-tag t-ve',
     };
-    return map[statut] ?? 'bg-light';
+    return map[statut] ?? 'lst-tag';
   }
 
   statutLabel(statut: string): string {

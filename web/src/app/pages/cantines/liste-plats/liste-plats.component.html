@@ -1,168 +1,97 @@
-<!-- Start Breadcrumbs -->
-<app-breadcrumbs title="Plats" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
-<!-- End Breadcrumbs -->
+<!-- Plats — gabarit commun des listes -->
+<div class="lst">
+  <app-page-entete titre="Plats" icone="ri-restaurant-2-line" [fil]="[{label: 'Cantine'}]"
+                   [compte]="totalItems" unite="plat|plats">
+    <button type="button" class="btn-ubi vert" (click)="addPlat?.show()"><i class="ri-add-line"></i><span class="pe-lib">Nouveau plat</span></button>
+  </app-page-entete>
 
-<div class="row">
-    <div class="col-lg-12">
-        <div class="card" id="platList">
-            <div class="card-header">
-                <div class="row align-items-center gy-3">
-                    <div class="col-lg-3 me-auto">
-                        <h6 class="card-title mb-0">Liste des plats</h6>
-                    </div>
-                    <div class="col-xl-2 col-md-3">
-                        <div class="search-box">
-                            <input type="text" class="form-control search"
-                                   placeholder="Rechercher par libellé ou ID..."
-                                   [(ngModel)]="term"
-                                   (keyup)="filterdata()">
-                            <i class="ri-search-line search-icon"></i>
-                        </div>
-                    </div>
-                    <div class="col-md-auto col-6 text-end">
-                        <div class="d-flex flex-wrap align-items-start gap-2">
-                            <button class="btn btn-subtle-danger"
-                                    [class.d-none]="checkedValGet.length === 0"
-                                    id="remove-actions"
-                                    (click)="deleteRecordModal?.show()">
-                                <i class="ri-delete-bin-2-line"></i> Supprimer ({{checkedValGet.length}})
-                            </button>
-                            <button class="btn btn-secondary" (click)="addPlat?.show()">
-                                <i class="ri-add-line align-baseline me-1"></i> Ajouter un plat
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-centered align-middle table-custom-effect table-nowrap mb-0">
-                        <thead class="text-muted table-light">
-                            <tr>
-                                <th>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="option"
-                                               id="checkAll"
-                                               [(ngModel)]="masterSelected"
-                                               (change)="checkUncheckAll($event)">
-                                        <label class="form-check-label" for="checkAll"></label>
-                                    </div>
-                                </th>
-                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('id')" (click)="onSort('id')">N°<i class="ms-1 align-middle" [ngClass]="tri.icone('id')"></i></th>
-                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('nom')" (click)="onSort('nom')">Nom<i class="ms-1 align-middle" [ngClass]="tri.icone('nom')"></i></th>
-                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('type_plat_libelle')" (click)="onSort('type_plat_libelle')">Type<i class="ms-1 align-middle" [ngClass]="tri.icone('type_plat_libelle')"></i></th>
-                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('agence_nom')" (click)="onSort('agence_nom')">Proposé par<i class="ms-1 align-middle" [ngClass]="tri.icone('agence_nom')"></i></th>
-                                <th scope="col" class="cursor-pointer" [class.sort]="!tri.estActif('created_at')" (click)="onSort('created_at')">Date création<i class="ms-1 align-middle" [ngClass]="tri.icone('created_at')"></i></th>
-                                <th scope="col">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="list form-check-all" id="invoice-list-data">
-
-                            @for (data of plats; track data.id) {
-                            <tr id="l_{{data.id}}">
-                                <td>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox"
-                                               name="checkAll"
-                                               value="{{data.id}}"
-                                               [(ngModel)]="data.state"
-                                               (change)="onCheckboxChange($event)" />
-                                        <label class="form-check-label"></label>
-                                    </div>
-                                </td>
-                                <td class="plat_id">
-                                    <a href="javascript:void(0);" class="fw-medium link-primary">{{ data.id }}</a>
-                                </td>
-                                <td class="nom">{{data.nom}}</td>
-                                <td class="type_plat">{{data.type_plat_libelle}}</td>
-                                <td class="agence">{{data.agence_nom}}</td>
-                                <td class="created_at">{{ data.created_at | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
-                                <td>
-                                    <ul class="d-flex gap-2 list-unstyled mb-0">
-                                        <li>
-                                            <a href="javascript:void(0);"
-                                               (click)="viewDetails(data.id)"
-                                               class="btn btn-subtle-primary btn-icon btn-sm">
-                                                <i class="ph-eye"></i>
-                                            </a>
-                                        </li>
-                                        <li>
-                                            <a href="javascript:void(0);"
-                                               (click)="editList(data.id)"
-                                               class="btn btn-subtle-secondary btn-icon btn-sm edit-item-btn">
-                                                <i class="ph-pencil"></i>
-                                            </a>
-                                        </li>
-                                        <li>
-                                            <a href="javascript:void(0);"
-                                               (click)="removeItem(data.id)"
-                                               class="btn btn-subtle-danger btn-icon btn-sm remove-item-btn">
-                                                <i class="ph-trash"></i>
-                                            </a>
-                                        </li>
-                                    </ul>
-                                </td>
-                            </tr>
-                            }
-
-                            <!-- Message si liste vide (sans recherche active) -->
-                            <tr *ngIf="plats?.length === 0 && !term && !isLoading">
-                                <td colspan="7" class="text-center py-4">
-                                    <i class="ph-file-x fs-1 text-primary"></i>
-                                    <h5 class="mt-2">Aucun plat disponible</h5>
-                                    <p class="text-muted mb-0">Veuillez ajouter un plat pour commencer.</p>
-                                </td>
-                            </tr>
-
-                        </tbody>
-                    </table>
-
-                    <!-- Spinner de chargement -->
-                    <div id="elmLoader" *ngIf="isLoading" class="text-center py-4">
-                        <div class="spinner-border text-primary avatar-sm" role="status">
-                            <span class="visually-hidden">Chargement...</span>
-                        </div>
-                    </div>
-
-                    <!-- Aucun résultat de recherche -->
-                    <div class="noresult" style="display: none;">
-                        <div class="text-center py-4">
-                            <i class="ph-magnifying-glass fs-1 text-primary"></i>
-                            <h5 class="mt-2">Aucun résultat trouvé</h5>
-                            <p class="text-muted mb-0">Nous n'avons trouvé aucun plat correspondant à votre recherche.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Pagination -->
-                <div [ngClass]="(plats.length === 0) ? 'd-none' : ''"
-                     class="row mt-3 align-items-center"
-                     id="pagination-element">
-                    <div class="col-sm">
-                        <div class="text-muted text-center text-sm-start">
-                            Affichage de <span class="fw-semibold">{{plats.length || 0}}</span>
-                            sur <span class="fw-semibold">{{totalItems || 0}}</span> résultats
-                        </div>
-                    </div>
-                    <div class="col-sm-auto mt-3 mt-sm-0">
-                        <pagination
-                            class="pagination-wrap justify-content-center hstack gap-2"
-                            [totalItems]="totalItems"
-                            [itemsPerPage]="10"
-                            [(ngModel)]="currentPage"
-                            previousText="Précédent"
-                            nextText="Suivant"
-                            (pageChanged)="pageChanged($event)">
-                        </pagination>
-                    </div>
-                </div>
-
-            </div><!-- end card-body -->
-        </div>
+  <div class="lst-carte" id="platList">
+    <div class="lst-barre">
+      <div class="lst-recherche">
+        <i class="ri-search-line"></i>
+        <input type="search" placeholder="Rechercher un plat…" aria-label="Rechercher un plat" [(ngModel)]="term" (keyup)="filterdata()" (search)="filterdata()">
+      </div>
     </div>
+    @if (checkedValGet.length > 0) {
+      <div class="lst-selection">
+        <span><b>{{ checkedValGet.length }}</b> sélectionné(s)</span>
+        <button type="button" class="btn-ubi rouge sm" (click)="deleteRecordModal?.show()"><i class="ri-delete-bin-6-line"></i>Supprimer la sélection</button>
+      </div>
+    }
+    <div class="lst-table-wrap lst-cartes-wrap">
+      <table class="lst-table lst-cartes">
+        <thead>
+          <tr>
+            <th class="lst-c-sel">
+              <div class="form-check"><input class="form-check-input" type="checkbox" id="checkAll" aria-label="Tout sélectionner" [(ngModel)]="masterSelected" (change)="checkUncheckAll($event)"></div>
+            </th>
+            <th class="tri" [class.actif]="tri.estActif('nom')" (click)="onSort('nom')">Plat<i class="ms-1" [ngClass]="tri.icone('nom')"></i></th>
+            <th class="tri" [class.actif]="tri.estActif('type_plat_libelle')" (click)="onSort('type_plat_libelle')">Type<i class="ms-1" [ngClass]="tri.icone('type_plat_libelle')"></i></th>
+            <th class="tri" [class.actif]="tri.estActif('agence_nom')" (click)="onSort('agence_nom')">Proposé par<i class="ms-1" [ngClass]="tri.icone('agence_nom')"></i></th>
+            <th class="tri" [class.actif]="tri.estActif('created_at')" (click)="onSort('created_at')">Créé le<i class="ms-1" [ngClass]="tri.icone('created_at')"></i></th>
+            <th class="lst-c-act"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (data of plats; track data.id) {
+            <tr id="l_{{ data.id }}">
+              <td class="lst-c-sel">
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="checkAll" [attr.aria-label]="'Sélectionner ' + data.nom" value="{{ data.id }}" [(ngModel)]="data.state" (change)="onCheckboxChange($event)"></div>
+              </td>
+              <td class="lst-c-principal">
+                <div class="lst-qui">
+                  @if (vignette(data); as img) {
+                    <img [src]="img" alt="" class="lst-av carre" loading="lazy">
+                  } @else {
+                    <span class="lst-av carre"><i class="ri-restaurant-line"></i></span>
+                  }
+                  <div>
+                    <b>{{ data.nom }}</b>
+                    @if (data.description) { <small class="text-truncate d-block" style="max-width:280px">{{ data.description }}</small> }
+                  </div>
+                </div>
+              </td>
+              <td data-label="Type"><span class="lst-tag t-or">{{ data.type_plat_libelle || '—' }}</span></td>
+              <td data-label="Proposé par"><span class="lst-tag t-bl">{{ data.agence_nom || '—' }}</span></td>
+              <td data-label="Créé le"><span class="lst-nowrap">{{ data.created_at | date: 'dd/MM/yyyy HH:mm' }}</span></td>
+              <td class="lst-c-act">
+                <div class="lst-act">
+                  <button type="button" class="lst-ic" title="Modifier" aria-label="Modifier" (click)="editList(data.id)"><i class="ri-pencil-line"></i></button>
+                  <div class="btn-group" dropdown container="body" placement="bottom end">
+                    <button type="button" dropdownToggle class="lst-ic" title="Plus d'actions" aria-label="Plus d'actions"><i class="ri-more-2-fill"></i></button>
+                    <ul *dropdownMenu class="dropdown-menu dropdown-menu-end lst-menu" role="menu">
+                      <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="viewDetails(data.id)"><i class="ri-eye-line"></i>Voir la fiche</a></li>
+                      <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="editList(data.id)"><i class="ri-pencil-line"></i>Modifier</a></li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li role="menuitem"><a class="dropdown-item rg" href="javascript:void(0);" (click)="removeItem(data.id)"><i class="ri-delete-bin-6-line"></i>Supprimer</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+          @if (plats.length === 0 && !isLoading) {
+            <tr class="lst-l-vide">
+              <td colspan="6" class="lst-c-plein">
+                <div class="lst-vide">
+                  @if (term) {
+                    <i class="ri-search-line"></i><h5>Aucun résultat</h5><p>Aucun plat ne correspond à « {{ term }} ».</p>
+                  } @else {
+                    <i class="ri-restaurant-2-line"></i><h5>Aucun plat pour le moment</h5><p>Ajoutez un plat pour commencer.</p>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      @if (isLoading) {
+        <div class="lst-charge"><div class="spinner-border" role="status"><span class="visually-hidden">Chargement...</span></div></div>
+      }
+    </div>
+    <app-liste-pied [total]="totalItems" [page]="currentPage" [nbAffiches]="plats.length" (pageChanged)="pageChanged($event)"></app-liste-pied>
+  </div>
 </div>
-
 
 <!-- ══════════════════════════════════════════════════════════
      Modal Ajouter / Modifier
@@ -325,7 +254,7 @@
                 <div class="modal-footer">
                     <div class="hstack gap-2 justify-content-end">
                         <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()">
-                            <i class="bi bi-x-lg align-baseline me-1"></i> Fermer
+                            <i class="ri-close-line align-baseline me-1"></i> Fermer
                         </button>
                         <button type="submit" class="btn btn-primary" id="add-btn"
                                 [disabled]="platForm.invalid || isLoading">
@@ -357,7 +286,7 @@
             <div class="modal-body p-md-5">
                 <div class="text-center">
                     <div class="text-danger">
-                        <i class="bi bi-trash display-5"></i>
+                        <i class="ri-delete-bin-6-line display-5"></i>
                     </div>
                     <div class="mt-4">
                         <h4 class="mb-2">Êtes-vous sûr ?</h4>

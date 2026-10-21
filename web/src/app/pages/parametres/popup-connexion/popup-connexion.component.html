@@ -1,28 +1,27 @@
-<app-breadcrumbs title="Fenêtre de connexion" [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+<app-page-entete titre="Fenêtre de connexion" icone="ri-window-line" [fil]="[{label: 'Paramètres', lien: '/parametres/accueil'}, {label: 'Société & affichage'}]"
+                 sousTitre="Image affichée juste après la connexion (web et mobile)">
+  <button type="button" class="btn-ubi vert" (click)="ouvrir(null)" [disabled]="formulaireOuvert"><i class="ri-add-line"></i><span class="pe-lib">Nouvelle image</span></button>
+</app-page-entete>
 
 <div class="card">
   <div class="card-header d-flex align-items-center flex-wrap gap-2">
     <div class="flex-grow-1">
-      <h5 class="mb-0"><i class="ph-picture-in-picture me-2"></i>Fenêtre affichée après la connexion</h5>
       <small class="text-muted">
         L'image active s'affiche dans une fenêtre juste après la connexion, sur le web et sur l'application.
         Une seule image peut être active : en activer une désactive les autres. Aucune image active → pas de fenêtre.
         Format conseillé : portrait ou carré (PNG, JPEG ou WebP, 5 Mo maximum).
       </small>
     </div>
-    <button class="btn btn-primary" (click)="ouvrir(null)" [disabled]="formulaireOuvert">
-      <i class="ri-add-line align-baseline me-1"></i> Ajouter une image
-    </button>
   </div>
 
   <div class="card-body">
 
     @if (!isLoading) {
       @if (active) {
-        <div class="alert alert-success py-2 small"><i class="ph-check-circle me-1"></i>
+        <div class="alert alert-success py-2 small"><i class="ri-checkbox-circle-line me-1"></i>
           Image affichée après la connexion : <strong>{{ active.titre }}</strong></div>
       } @else {
-        <div class="alert alert-secondary py-2 small"><i class="ph-info me-1"></i>
+        <div class="alert alert-secondary py-2 small"><i class="ri-information-line me-1"></i>
           Aucune image active : la fenêtre ne s'affiche pas.</div>
       }
     }
@@ -39,7 +38,7 @@
                 @if (apercu || imageUrl(enEdition)) {
                   <img [src]="apercu || imageUrl(enEdition)" alt="Aperçu" class="mw-100 mh-100" style="object-fit: contain;">
                 } @else {
-                  <span class="text-muted"><i class="ph-image me-1"></i>Aucune image</span>
+                  <span class="text-muted"><i class="ri-image-line me-1"></i>Aucune image</span>
                 }
               </div>
               <input type="file" class="form-control" id="popup-image"
@@ -73,7 +72,7 @@
       <div class="text-center py-5"><span class="spinner-border text-primary" role="status"></span></div>
     } @else if (popups.length === 0) {
       <div class="text-center text-muted py-5">
-        <i class="ph-picture-in-picture display-6 d-block mb-2"></i>
+        <i class="ri-picture-in-picture-line display-6 d-block mb-2"></i>
         Aucune image enregistrée.
       </div>
     } @else {
@@ -95,13 +94,13 @@
                 }
               </div>
               <div class="card-footer d-flex gap-2">
-                <button class="btn btn-sm btn-subtle-secondary" (click)="ouvrir(p)"><i class="ph-pencil me-1"></i>Modifier</button>
+                <button class="btn btn-sm btn-subtle-secondary" (click)="ouvrir(p)"><i class="ri-pencil-line me-1"></i>Modifier</button>
                 <button class="btn btn-sm" [class.btn-subtle-success]="!p.actif" [class.btn-subtle-warning]="p.actif"
                         [disabled]="enCours !== null" (click)="basculerActif(p)">
                   @if (enCours === p.id) { <span class="spinner-border spinner-border-sm me-1"></span> }
                   {{ p.actif ? 'Désactiver' : 'Activer' }}
                 </button>
-                <button class="btn btn-sm btn-subtle-danger ms-auto" (click)="aSupprimer = p" aria-label="Supprimer"><i class="ph-trash"></i></button>
+                <button class="btn btn-sm btn-subtle-danger ms-auto" (click)="aSupprimer = p" aria-label="Supprimer"><i class="ri-delete-bin-6-line"></i></button>
               </div>
               @if (aSupprimer?.id === p.id) {
                 <div class="card-footer bg-danger-subtle d-flex align-items-center gap-2">

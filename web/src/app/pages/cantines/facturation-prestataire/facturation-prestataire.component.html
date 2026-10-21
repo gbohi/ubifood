@@ -1,13 +1,20 @@
 
 <!-- src/app/pages/cantine/facturation-prestataire/facturation-prestataire.component.html -->
-<app-breadcrumbs [breadcrumbItems]="breadCrumbItems"></app-breadcrumbs>
+@if (!integre) {
+  <div class="ce ce-entete mb-3">
+    <div class="ce-entete-txt">
+      <h1><span class="ce-ic"><i class="ri-truck-line"></i></span>Facturation des prestataires</h1>
+      <p>Ce que nous devons à chaque prestataire, par agent et par repas</p>
+    </div>
+  </div>
+}
 
 <div class="row">
   <div class="col-12">
 
     @if (error) {
       <div class="alert alert-danger alert-dismissible fade show">
-        <i class="ph-warning me-2"></i>{{ error }}
+        <i class="ri-error-warning-line me-2"></i>{{ error }}
         <button type="button" class="btn-close" (click)="dismissAlert()"></button>
       </div>
     }
@@ -16,7 +23,7 @@
     <div class="card mb-3">
       <div class="card-header">
         <h6 class="mb-0">
-          <i class="ph-funnel me-2"></i>Filtres
+          <i class="ri-filter-3-line me-2"></i>Filtres
           <small class="text-muted fw-normal ms-2">
             (Sélectionnez un prestataire pour calculer ce que nous lui devons)
           </small>
@@ -27,7 +34,7 @@
           <div class="row g-3 align-items-end">
 
             <!-- ✅ Prestataire — obligatoire -->
-            <div class="col-md-2">
+            <div [class.col-md-3]="integre" [class.col-md-2]="!integre">
               <label class="form-label">
                 Prestataire <span class="text-danger">*</span>
               </label>
@@ -44,6 +51,7 @@
               }
             </div>
 
+            @if (!integre) {
             <div class="col-md-2">
               <label class="form-label">Date début <span class="text-danger">*</span></label>
               <input type="date" class="form-control form-control-sm" formControlName="date_debut">
@@ -54,7 +62,9 @@
               <input type="date" class="form-control form-control-sm" formControlName="date_fin">
             </div>
 
-            <div class="col-md-2">
+            }
+
+            <div [class.col-md-3]="integre" [class.col-md-2]="!integre">
               <label class="form-label">Agence du menu</label>
               <select class="form-select form-select-sm" formControlName="agence">
                 <option value="">Toutes</option>
@@ -62,7 +72,7 @@
               </select>
             </div>
 
-            <div class="col-md-2">
+            <div [class.col-md-3]="integre" [class.col-md-2]="!integre">
               <label class="form-label">Équipe</label>
               <select class="form-select form-select-sm" formControlName="typeequipe">
                 <option value="">Toutes</option>
@@ -70,16 +80,17 @@
               </select>
             </div>
 
-            <div class="col-md-1 d-flex gap-2 align-items-end">
+            <div class="col-md-3 col-lg-2 d-flex gap-2 align-items-end">
               <button class="btn btn-primary btn-sm flex-fill" type="button"
                       [disabled]="isLoadingAll || filterForm.get('prestataire')?.invalid"
                       (click)="rechercher()">
-                @if (isLoadingAll) { <span class="spinner-border spinner-border-sm" role="status"></span> }
-                @else { <i class="ph-calculator"></i> }
+                @if (isLoadingAll) { <span class="spinner-border spinner-border-sm me-1" role="status"></span> }
+                @else { <i class="ri-calculator-line me-1"></i> }
+                Calculer
               </button>
               <button class="btn btn-subtle-secondary btn-sm" type="button"
                       (click)="resetFilters()" title="Réinitialiser">
-                <i class="ph-arrows-clockwise"></i>
+                <i class="ri-refresh-line"></i>
               </button>
             </div>
 
@@ -88,7 +99,7 @@
 
         @if (prestataireSelectionne) {
           <div class="alert alert-info py-2 mt-3 mb-0 small">
-            <i class="ph-info me-1"></i>
+            <i class="ri-information-line me-1"></i>
             Prestataire sélectionné : <strong>{{ prestataireSelectionne.libelle }}</strong>.
             Règle (calculée par le serveur) : repas commandés et non annulés des agences
             rattachées à ce prestataire, à son tarif en vigueur à la date du menu.
@@ -102,14 +113,14 @@
     @if (prestataireSelectionne) {
       <div class="card mb-3">
         <div class="card-header d-flex align-items-center gap-2">
-          <h6 class="mb-0"><i class="ph-file-pdf me-2"></i>Factures officielles — {{ prestataireSelectionne.libelle }}</h6>
+          <h6 class="mb-0"><i class="ri-file-pdf-line me-2"></i>Factures officielles — {{ prestataireSelectionne.libelle }}</h6>
           <span class="badge bg-secondary-subtle text-secondary">{{ facturesOfficielles.length }}</span>
         </div>
         <div class="card-body">
           @if (facturesOfficielles.length === 0) {
             <div class="text-muted small">
               Aucune facture officielle : elles sont créées à la clôture d'un mois
-              (page « Facturation commandes », bloc « Clôtures mensuelles »).
+              (onglet « Agents », bloc « Clôtures mensuelles »).
             </div>
           } @else {
             <div class="table-responsive">
@@ -137,7 +148,7 @@
                                 [disabled]="telechargementEnCours === f.id" (click)="telechargerFacture(f)">
                           @if (telechargementEnCours === f.id) {
                             <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                          } @else { <i class="ph-download-simple me-1"></i> }
+                          } @else { <i class="ri-download-2-line me-1"></i> }
                           Télécharger la facture
                         </button>
                       </td>
@@ -157,7 +168,7 @@
 
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <h5 class="mb-0">
-            <i class="ph-invoice me-2"></i>
+            <i class="ri-bill-line me-2"></i>
             Facture prestataire
             @if (prestataireNom) {
               <span class="text-primary"> — {{ prestataireNom }}</span>
@@ -175,10 +186,10 @@
         @if (lignesFacturation.length > 0) {
           <div class="d-flex gap-2">
             <button class="btn btn-subtle-success btn-sm" (click)="exportExcel()">
-              <i class="ph-microsoft-excel-logo me-1"></i>Excel
+              <i class="ri-file-excel-2-line me-1"></i>Excel
             </button>
             <button class="btn btn-subtle-danger btn-sm" (click)="exportPdf()">
-              <i class="ph-file-pdf me-1"></i>PDF
+              <i class="ri-file-pdf-line me-1"></i>PDF
             </button>
             <button class="btn btn-subtle-info btn-sm" (click)="exportPdfSynthetique()">
                 <i class="ri-file-list-3-line"></i> Synthèse
@@ -199,7 +210,7 @@
 
         @if (!isLoadingAll && !hasSearched) {
           <div class="text-center py-5">
-            <i class="ph-receipt fs-1 text-muted"></i>
+            <i class="ri-file-list-3-line fs-1 text-muted"></i>
             <h5 class="mt-3 text-muted">Sélectionnez un prestataire et une période</h5>
             <p class="text-muted mb-0">Puis cliquez sur le bouton calculer.</p>
           </div>
@@ -207,7 +218,7 @@
 
         @if (!isLoadingAll && hasSearched && lignesFacturation.length === 0) {
           <div class="text-center py-5">
-            <i class="ph-receipt fs-1 text-muted"></i>
+            <i class="ri-file-list-3-line fs-1 text-muted"></i>
             <h5 class="mt-3 text-muted">Aucune commande sur cette période</h5>
             <p class="text-muted mb-0">Modifiez les filtres et recalculez.</p>
           </div>
@@ -248,7 +259,7 @@
                       <button class="btn btn-link btn-sm p-0"
                               (click)="toggleDetail(l.username)"
                               [title]="isDetailOuvert(l.username) ? 'Masquer le détail' : 'Voir le détail par plat'">
-                        <i class="ph-caret-{{ isDetailOuvert(l.username) ? 'up' : 'down' }} text-primary"></i>
+                        <i class="ri-arrow-{{ isDetailOuvert(l.username) ? 'up' : 'down' }}-s-line text-primary"></i>
                       </button>
                     </td>
                     <td class="text-muted">{{ i + 1 }}</td>
@@ -293,7 +304,7 @@
                       @if (l.totalMontant > 0) {
                         <span class="fw-bold text-primary">{{ formatMontant(l.totalMontant) }}</span>
                       } @else {
-                        <span class="text-danger small"><i class="ph-warning me-1"></i>Non défini</span>
+                        <span class="text-danger small"><i class="ri-error-warning-line me-1"></i>Non défini</span>
                       }
                     </td>
                   </tr>
@@ -305,9 +316,9 @@
                         <td></td>
                         <td colspan="2"></td>
                         <td colspan="5" class="text-muted small ps-4">
-                          <i class="ph-arrow-bend-down-right me-1 text-primary"></i>
+                          <i class="ri-arrow-right-down-line me-1 text-primary"></i>
                           <span class="badge bg-light text-dark border me-2">
-                            <i class="ph-calendar-blank me-1"></i>{{ formatDate(d.dateMenu) }}
+                            <i class="ri-calendar-line me-1"></i>{{ formatDate(d.dateMenu) }}
                           </span>
                           <span class="fw-medium">{{ d.platNom }}</span>
                         </td>
@@ -319,7 +330,7 @@
                           @if (d.montant > 0) {
                             <span class="text-primary">{{ formatMontant(d.sousTotal) }}</span>
                           } @else {
-                            <span class="text-danger small"><i class="ph-warning me-1"></i>Non défini</span>
+                            <span class="text-danger small"><i class="ri-error-warning-line me-1"></i>Non défini</span>
                           }
                         </td>
                       </tr>
@@ -383,14 +394,14 @@
 
             @if (hasPlatsSansMontant) {
               <div class="alert alert-warning py-2 mt-3 mb-0 small">
-                <i class="ph-warning me-1"></i>
+                <i class="ri-error-warning-line me-1"></i>
                 {{ repasSansTarif }} repas n'ont pas de tarif défini pour ce prestataire
                 à leur date. Le total est incomplet et le mois ne pourra pas être clôturé.
               </div>
             }
             @if (anomalies.length > 0) {
               <div class="alert alert-warning py-2 mt-3 mb-0 small">
-                <i class="ph-warning me-1"></i>
+                <i class="ri-error-warning-line me-1"></i>
                 <strong>{{ anomalies.length }} journée(s) d'agence sans prestataire ou sans tarif</strong>
                 sur la période (repas non attribués à un prestataire) :
                 <ul class="mb-0 mt-1">

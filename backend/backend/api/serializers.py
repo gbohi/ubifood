@@ -642,11 +642,35 @@ class PlatSerializer(serializers.ModelSerializer):
     agence_id         = serializers.ReadOnlyField(source='agence.id')
     agence_nom        = serializers.ReadOnlyField(source='agence.nom_agence')
     images = PlatImageSerializer(many=True, read_only=True)
+    # Avis des agents : note moyenne (1 décimale, None sans avis) et nombre d'avis
+    note_moyenne = serializers.SerializerMethodField()
+    nb_avis      = serializers.SerializerMethodField()
 
     class Meta:
         model = Plat
         fields = '__all__'
         read_only_fields = ['user_created', 'user_updated']
+
+    def _stats_avis(self, plat_id):
+        """
+        Moyenne et nombre d'avis par plat, lus en une seule requête pour toute
+        la réponse (listes de menus, plats imbriqués) grâce au contexte partagé.
+        """
+        from django.db.models import Avg, Count
+        ctx = self.context if isinstance(self.context, dict) else {}
+        if '_stats_avis' not in ctx:
+            ctx['_stats_avis'] = {
+                r['plat_id']: (r['moyenne'], r['nombre']) for r in
+                AvisPlat.objects.values('plat_id').annotate(moyenne=Avg('note'), nombre=Count('id'))
+            }
+        return ctx['_stats_avis'].get(plat_id, (None, 0))
+
+    def get_note_moyenne(self, obj):
+        moyenne, _ = self._stats_avis(obj.id)
+        return round(moyenne, 1) if moyenne is not None else None
+
+    def get_nb_avis(self, obj):
+        return self._stats_avis(obj.id)[1]
 
     def validate(self, attrs):
         verifier_agence_geree(self, attrs.get('agence', getattr(self.instance, 'agence', None)), 'Plat')

@@ -50,6 +50,8 @@ export interface RechercheParBadgeResult {
   user_nom:  string;
   badge:     string;
   a_retire:  boolean;
+  /** Heure du retrait déjà enregistré (si a_retire) */
+  date_retrait?: string | null;
   commandes: CommandeModel[];
 }
 

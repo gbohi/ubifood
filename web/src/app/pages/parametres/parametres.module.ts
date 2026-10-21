@@ -31,9 +31,11 @@ import { PosteComponent } from './poste/poste.component';
 import { SocieteComponent } from './societe/societe.component';
 import { BannieresComponent } from './bannieres/bannieres.component';
 import { PopupConnexionComponent } from './popup-connexion/popup-connexion.component';
+import { AccueilParametresComponent } from './accueil-parametres/accueil-parametres.component';
 
 @NgModule({
   declarations: [
+    AccueilParametresComponent,
     SocieteComponent,
     BannieresComponent,
     PopupConnexionComponent,
