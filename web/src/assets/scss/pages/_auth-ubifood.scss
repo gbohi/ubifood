@@ -1,0 +1,219 @@
+// ============================================================
+// Pages d'authentification UbiFood (connexion, mot de passe oublié)
+// Panneau de marque bleu marine à gauche, formulaire à droite ;
+// sur petit écran, le panneau devient un bandeau en haut.
+// ============================================================
+
+$ub-marine:   #092440;
+$ub-marine-2: #0F3A6E;
+$ub-vert:     #5BD988;
+$ub-vert-2:   #3EC970;
+$ub-gris:     #5A7090;
+$ub-indice:   #9BB0C5;
+$ub-bord:     #E2EAF4;
+
+.auth-ub {
+  display: flex;
+  min-height: 100vh;
+  background: #F7F9FC;
+  color: $ub-marine;
+}
+
+// ── Panneau de marque ─────────────────────────────────────────
+// L'élément <app-auth-panneau> est l'enfant flex : il porte la largeur
+.auth-ub > app-auth-panneau { flex: 1.15; display: flex; }
+
+.auth-ub-panneau {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px 56px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 85% 15%, rgba($ub-vert, .18), transparent 40%),
+    linear-gradient(140deg, $ub-marine 0%, $ub-marine-2 100%);
+}
+
+.auth-ub-rond {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid rgba($ub-vert, .18);
+  pointer-events: none;
+}
+.auth-ub-rond-1 { width: 520px; height: 520px; right: -180px; bottom: -200px; }
+.auth-ub-rond-2 { width: 340px; height: 340px; right: -90px; bottom: -110px; border-color: rgba($ub-vert, .28); }
+
+.auth-ub-logo { height: 44px; align-self: flex-start; position: relative; }
+
+.auth-ub-message { position: relative; }
+
+.auth-ub-titre {
+  font-size: 40px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #fff;
+  max-width: 480px;
+  margin: 0;
+  span { color: $ub-vert; }
+}
+.auth-ub-titre-court { display: none; }
+
+.auth-ub-sous-titre {
+  margin: 14px 0 0;
+  font-size: 16px;
+  color: rgba(#fff, .75);
+  max-width: 440px;
+}
+
+.auth-ub-atouts {
+  list-style: none;
+  padding: 0;
+  margin: 36px 0 0;
+  display: grid;
+  gap: 16px;
+  max-width: 440px;
+
+  li {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(#fff, .06);
+    border: 1px solid rgba(#fff, .1);
+  }
+  b { display: block; font-size: 14px; font-weight: 600; }
+  small { font-size: 12.5px; color: rgba(#fff, .65); }
+}
+
+.auth-ub-ico {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba($ub-vert, .18);
+  color: $ub-vert;
+  font-size: 21px;
+}
+
+.auth-ub-copyright { position: relative; margin: 0; font-size: 12px; color: rgba(#fff, .5); }
+
+// ── Zone du formulaire ────────────────────────────────────────
+.auth-ub-zone {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+}
+
+.auth-ub-carte { width: 100%; max-width: 400px; }
+
+.auth-ub-h2 { font-size: 26px; font-weight: 700; color: $ub-marine; margin: 0; }
+.auth-ub-aide { color: $ub-gris; font-size: 14px; margin: 6px 0 28px; }
+
+.auth-ub .form-label { font-size: 13px; font-weight: 600; color: $ub-marine; }
+
+.auth-ub-champ {
+  position: relative;
+
+  .form-control {
+    height: 50px;
+    padding: 0 46px;
+    border: 1.5px solid $ub-bord;
+    border-radius: 12px;
+    background: #fff;
+    font-size: 14px;
+    color: $ub-marine;
+
+    &::placeholder { color: $ub-indice; }
+    &:focus {
+      border-color: $ub-vert;
+      box-shadow: 0 0 0 4px rgba($ub-vert, .15);
+    }
+    &.is-invalid { border-color: var(--#{$prefix}danger); background-image: none; }
+  }
+  .invalid-feedback { margin-top: 6px; }
+}
+
+.auth-ub-champ-ico {
+  position: absolute;
+  left: 15px;
+  top: 25px;
+  transform: translateY(-50%);
+  font-size: 18px;
+  color: $ub-indice;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.auth-ub-oeil {
+  position: absolute;
+  right: 6px;
+  top: 25px;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: $ub-indice;
+  font-size: 18px;
+  &:hover, &:focus-visible { color: $ub-marine; background: rgba($ub-marine, .05); }
+}
+
+.auth-ub-lien {
+  font-size: 13px;
+  font-weight: 500;
+  color: $ub-marine-2;
+  &:hover { color: $ub-vert-2; }
+}
+
+.auth-ub-bouton {
+  width: 100%;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 15px;
+  color: $ub-marine;
+  background: linear-gradient(90deg, $ub-vert 0%, $ub-vert-2 100%);
+  box-shadow: 0 10px 24px rgba($ub-vert-2, .35);
+  transition: transform .15s ease, box-shadow .15s ease;
+
+  &:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 14px 28px rgba($ub-vert-2, .4); }
+  &:focus-visible { outline: 3px solid rgba($ub-marine, .35); outline-offset: 2px; }
+  &:disabled { opacity: .75; }
+}
+
+.auth-ub-securite {
+  margin: 22px 0 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: $ub-gris;
+  i { color: $ub-vert-2; font-size: 15px; }
+}
+
+.auth-ub-contact { margin: 36px 0 0; font-size: 12px; color: $ub-indice; text-align: center; }
+
+// ── Petit écran : bandeau en haut ─────────────────────────────
+@media (max-width: 991.98px) {
+  .auth-ub { flex-direction: column; }
+  .auth-ub > app-auth-panneau { flex: none; }
+  .auth-ub-panneau { flex: none; width: 100%; padding: 28px 24px 32px; }
+  .auth-ub-logo { height: 36px; }
+  .auth-ub-titre, .auth-ub-sous-titre, .auth-ub-atouts, .auth-ub-copyright, .auth-ub-rond-1 { display: none; }
+  .auth-ub-titre-court { display: block; margin: 20px 0 0; font-size: 22px; font-weight: 700; line-height: 1.25; color: #fff; }
+  .auth-ub-zone { padding: 28px 20px 36px; align-items: flex-start; }
+}

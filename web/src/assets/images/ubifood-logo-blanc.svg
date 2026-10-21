@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 80" width="260" height="80">
+  <!-- Icône fond blanc semi-transparent -->
+  <rect x="0" y="8" width="64" height="64" rx="18" fill="rgba(255,255,255,0.15)"/>
+  <!-- Accent vert coin bas droite -->
+  <rect x="36" y="52" width="28" height="20" rx="10" fill="#5bd988"/>
+
+  <!-- Fourchette + couteau blancs -->
+  <g transform="translate(32, 40)" fill="white">
+    <rect x="-14" y="-18" width="2.5" height="12" rx="1.2"/>
+    <rect x="-10" y="-18" width="2.5" height="12" rx="1.2"/>
+    <rect x="-6"  y="-18" width="2.5" height="12" rx="1.2"/>
+    <path d="M-14,-6 Q-10,-2 -6,-6 L-6,18 Q-10,20 -14,18 Z" opacity="0.95"/>
+    <rect x="6" y="-18" width="2.8" height="36" rx="1.4"/>
+    <path d="M6,-18 Q14,-10 8.8,-4 L6,-4 Z" opacity="0.9"/>
+  </g>
+
+  <!-- "Ubi" blanc bold -->
+  <text x="82" y="52" font-family="'Helvetica Neue', Arial, sans-serif"
+    font-size="38" font-weight="800" fill="white" letter-spacing="-1">Ubi</text>
+
+  <!-- "Food" vert clair -->
+  <text x="141" y="52" font-family="'Helvetica Neue', Arial, sans-serif"
+    font-size="38" font-weight="300" fill="#5bd988" letter-spacing="-0.5">Food</text>
+
+  <!-- Soulignement vert -->
+  <rect x="82" y="57" width="55" height="3" rx="1.5" fill="#5bd988" opacity="0.8"/>
+</svg>
