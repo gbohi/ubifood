@@ -12,31 +12,6 @@ import '../../core/services/cantine_service.dart';
 import '../avis/avis_widgets.dart';
 import '../dashboard/accueil_widgets.dart' show fermeDans, jourCourt;
 
-// Date limite de commande calculée par le serveur (délai paramétré)
-DateTime? _deadline(Menu menu) => menu.dateLimiteCommande;
-
-bool _depasseDelai(Menu menu) => menu.commandeFermee;
-
-String _delaiMessage(Menu menu) {
-  final deadline = _deadline(menu);
-  if (deadline == null) return '';
-  final now = DateTime.now().toUtc();
-  if (now.isAfter(deadline)) return 'Délai de commande dépassé';
-  final diff = deadline.difference(now);
-  if (diff.inHours < 1) return 'Ferme dans ${diff.inMinutes} min';
-  if (diff.inHours < 24) {
-    return 'Ferme dans ${diff.inHours}h${diff.inMinutes.remainder(60).toString().padLeft(2, '0')}';
-  }
-  return 'Commande ouverte encore ${diff.inDays}j ${diff.inHours.remainder(24)}h';
-}
-
-String _dateMenuLongue(Menu menu) {
-  final date = DateTime.tryParse(menu.dateMenu);
-  if (date == null) return menu.dateMenu;
-  final s = DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(date);
-  return s[0].toUpperCase() + s.substring(1);
-}
-
 /// Menu à afficher à l'ouverture de l'onglet (depuis l'accueil : un jour
 /// de « Ma semaine », « Réserver » du prochain repas).
 class CibleMenu {
@@ -1013,277 +988,6 @@ class _CartePlatState extends State<_CartePlat> {
   }
 }
 
-class _ImagePlaceholder extends StatelessWidget {
-  final double height;
-  const _ImagePlaceholder({required this.height});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        height: height,
-        width: double.infinity,
-        color: AppColors.primary.withOpacity(0.06),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.restaurant_menu_rounded,
-              size: 48, color: AppColors.primary.withOpacity(0.3)),
-          const SizedBox(height: 8),
-          Text('Aucune photo disponible',
-              style: TextStyle(
-                  color: AppColors.primary.withOpacity(0.4), fontSize: 12)),
-        ]),
-      );
-}
-
-/// Badge « Ferme dans … » : mis à jour en direct (minuteur léger) et
-/// basculé sur « Délai de commande dépassé » à l'heure limite.
-class _DelaiBadge extends StatelessWidget {
-  final Menu menu;
-  const _DelaiBadge({required this.menu});
-
-  @override
-  Widget build(BuildContext context) => TicEcheance(
-        echeances: [menu.dateLimiteCommande],
-        builder: _contenu,
-      );
-
-  Widget _contenu(BuildContext context) {
-    final depasseDelai = _depasseDelai(menu);
-    final message = _delaiMessage(menu);
-    final color = depasseDelai ? AppColors.error : AppColors.accent;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: depasseDelai ? AppColors.errorLight : AppColors.accentLight,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            depasseDelai ? Icons.lock_clock_rounded : Icons.timer_outlined,
-            size: 13,
-            color: color,
-          ),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              message,
-              style: TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w600, color: color),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Tag extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  const _Tag({required this.icon, required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Text(label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 12, color: color, fontWeight: FontWeight.w500)),
-        ),
-      ]),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-// BOUTON COMMANDER
-// ══════════════════════════════════════════════════════════════
-
-class _BoutonCommander extends StatelessWidget {
-  final Plat plat;
-  final Menu menu;
-
-  const _BoutonCommander({required this.plat, required this.menu});
-
-  /// Reconstruit à l'heure limite de commande / d'annulation : « Réserver »
-  /// et « Annuler » se ferment sans action de l'utilisateur.
-  @override
-  Widget build(BuildContext context) => TicEcheance(
-        echeances: [menu.dateLimiteCommande, menu.dateLimiteAnnulation],
-        builder: _contenu,
-      );
-
-  Widget _contenu(BuildContext context) {
-    final depasseDelai = _depasseDelai(menu);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cmdProv = context.watch<CommandeProvider>();
-    final secColor =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
-    final secBg = isDark ? AppColors.darkCard : const Color(0xFFF1F5F9);
-
-    final commandeCeMenu = cmdProv.mesCommandes
-        .where((c) =>
-            c.menuDetail?.id == menu.id &&
-            (c.statut == StatutCommande.enAttente ||
-                c.statut == StatutCommande.retiree))
-        .firstOrNull;
-
-    final commandeCeJour = commandeCeMenu ??
-        cmdProv.mesCommandes.where((c) {
-          final dm = c.menuDetail?.dateMenu;
-          if (dm == null) return false;
-          return dm == menu.dateMenu &&
-              (c.statut == StatutCommande.enAttente ||
-                  c.statut == StatutCommande.retiree);
-        }).firstOrNull;
-
-    // Délai d'annulation : distinct du délai de commande
-    final annulationFermee = menu.annulationFermee;
-
-    final estCePlatCeMenu =
-        commandeCeMenu != null && commandeCeMenu.platDetail?.id == plat.id;
-    final autrePlatCeMenu = commandeCeMenu != null && !estCePlatCeMenu;
-    final autreAgenceCeJour = commandeCeMenu == null && commandeCeJour != null;
-
-    if (commandeCeMenu?.statut == StatutCommande.retiree) {
-      return _StatutBouton(
-        icon: Icons.check_circle_rounded,
-        label: estCePlatCeMenu ? 'Repas retiré' : 'Un autre plat a été retiré',
-        color: AppColors.success,
-        bg: AppColors.successLight,
-      );
-    }
-
-    if (estCePlatCeMenu) {
-      return Column(children: [
-        _StatutBouton(
-          icon: Icons.check_circle_outline_rounded,
-          label: 'Commande en attente',
-          color: AppColors.warning,
-          bg: AppColors.warningLight,
-        ),
-        if (!annulationFermee) ...[
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.cancel_outlined, size: 16),
-              label: const Text('Annuler ma commande'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.error,
-                side: const BorderSide(color: AppColors.error),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
-              // Pas de second envoi pendant une action en cours
-              onPressed: cmdProv.isLoading
-                  ? null
-                  : () => _confirmerAnnulationCommande(
-                      context, cmdProv, menu, commandeCeMenu.id),
-            ),
-          ),
-        ],
-        if (annulationFermee)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text('Annulation impossible — date limite dépassée',
-                style: const TextStyle(fontSize: 11, color: AppColors.error),
-                textAlign: TextAlign.center),
-          ),
-      ]);
-    }
-
-    if (autrePlatCeMenu) {
-      return Column(children: [
-        _StatutBouton(
-          icon: Icons.block_rounded,
-          label: 'Autre plat déjà commandé',
-          color: secColor,
-          bg: secBg,
-        ),
-        // Conseil d'annulation seulement si elle est encore possible
-        if (commandeCeMenu.statut == StatutCommande.enAttente &&
-            !annulationFermee) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Annulez "${commandeCeMenu.platDetail?.nom ?? 'votre commande'}" '
-            'pour choisir ce plat',
-            style: TextStyle(fontSize: 11, color: secColor),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ]);
-    }
-
-    if (autreAgenceCeJour) {
-      final agenceCmde =
-          commandeCeJour.menuDetail?.agenceNom ?? 'une autre agence';
-      final platCmde = commandeCeJour.platDetail?.nom ?? 'un plat';
-      return Column(children: [
-        _StatutBouton(
-          icon: Icons.location_off_rounded,
-          label: 'Déjà commandé ce jour',
-          color: AppColors.error,
-          bg: AppColors.errorLight,
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Vous avez déjà commandé "$platCmde" '
-          'chez $agenceCmde ce jour.'
-          // Conseil d'annulation seulement si elle est encore possible
-          '${commandeCeJour.statut == StatutCommande.enAttente && !annulationFermee ? '\nAnnulez cette commande pour en passer une autre.' : ''}',
-          style: TextStyle(fontSize: 11, color: secColor),
-          textAlign: TextAlign.center,
-        ),
-      ]);
-    }
-
-    if (depasseDelai) {
-      return _StatutBouton(
-        icon: Icons.lock_clock_rounded,
-        label: 'Commandes fermées',
-        color: secColor,
-        bg: secBg,
-      );
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
-        label: const Text('Réserver ce repas'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.accent,
-          foregroundColor: AppColors.primary,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          elevation: 0,
-        ),
-        onPressed: cmdProv.isLoading
-            ? null
-            : () => _reserverPlat(context, cmdProv, menu, plat),
-      ),
-    );
-  }
-}
-
 /// Réserve [plat] (carte compacte et fiche détaillée : mêmes messages)
 Future<void> _reserverPlat(BuildContext context, CommandeProvider cmdProv,
     Menu menu, Plat plat) async {
@@ -1378,51 +1082,58 @@ void _confirmerAnnulationCommande(
           ));
 }
 
-class _StatutBouton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final Color bg;
-
-  const _StatutBouton({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.bg,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(icon, color: color, size: 18),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  color: color, fontWeight: FontWeight.w600, fontSize: 14)),
-        ),
-      ]),
-    );
-  }
-}
-
 // ══════════════════════════════════════════════════════════════
 // FICHE DÉTAILLÉE D'UN PLAT (feuille modale)
 // ══════════════════════════════════════════════════════════════
 
+/// État de la commande du jour vu depuis la fiche d'un plat (ordre des
+/// règles : retrait, ce plat réservé, autre plat de ce menu, autre agence
+/// le même jour, délai dépassé, réservation possible).
+enum _EtatFiche {
+  platRetire,
+  autrePlatRetire,
+  platReserve,
+  autrePlatCeMenu,
+  autreAgence,
+  commandesFermees,
+  ouvert,
+}
+
+/// « 2 j 13 h » : temps restant avant [limite] (null si passée)
+String? _tempsRestant(DateTime? limite) =>
+    fermeDans(limite, DateTime.now())?.replaceFirst('Ferme dans ', '');
+
+/// « ven. 23 oct., 18 h » / « ven. 23 oct., minuit » (heure locale)
+String _dateLimiteCourte(DateTime limite) {
+  var d = limite.toLocal();
+  final minuit = d.hour == 0 && d.minute == 0;
+  if (minuit) d = d.subtract(const Duration(days: 1));
+  final jour = DateFormat('EEE d MMM', 'fr_FR').format(d);
+  if (minuit) return '$jour, minuit';
+  return '$jour, ${d.hour} h${d.minute == 0 ? '' : ' ${d.minute.toString().padLeft(2, '0')}'}';
+}
+
+String _majusculeInitiale(String s) =>
+    s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+/// Fiche d'un plat pour les tests (résumé des avis fourni sans réseau)
+@visibleForTesting
+Widget ficheDetailPlat({
+  required Menu menu,
+  required Plat plat,
+  required Future<ResumeAvisPlat> Function(int platId) chargerAvis,
+}) =>
+    _PlatDetailSheet(menu: menu, plat: plat, chargerAvis: chargerAvis);
+
 class _PlatDetailSheet extends StatefulWidget {
   final Menu menu;
   final Plat plat;
-  const _PlatDetailSheet({required this.menu, required this.plat});
+
+  /// Résumé des avis du plat (par défaut GET /plats/{id}/avis/)
+  final Future<ResumeAvisPlat> Function(int platId)? chargerAvis;
+
+  const _PlatDetailSheet(
+      {required this.menu, required this.plat, this.chargerAvis});
 
   static Future<void> show(BuildContext context,
       {required Menu menu, required Plat plat}) {
@@ -1443,170 +1154,723 @@ class _PlatDetailSheet extends StatefulWidget {
 
 class _PlatDetailSheetState extends State<_PlatDetailSheet> {
   late Future<ResumeAvisPlat> _resume;
+  bool _envoi = false;
+
+  Future<ResumeAvisPlat> _charger() =>
+      (widget.chargerAvis ?? avisService.resumePlat)(widget.plat.id);
 
   @override
   void initState() {
     super.initState();
-    _resume = avisService.resumePlat(widget.plat.id);
+    _resume = _charger();
   }
 
-  void _rechargerAvis() =>
-      setState(() => _resume = avisService.resumePlat(widget.plat.id));
+  void _rechargerAvis() => setState(() => _resume = _charger());
+
+  /// [ctx] : contexte sous le messager de la feuille (SnackBar visible)
+  Future<void> _reserver(BuildContext ctx, CommandeProvider cmdProv) async {
+    setState(() => _envoi = true);
+    await _reserverPlat(ctx, cmdProv, widget.menu, widget.plat);
+    if (mounted) setState(() => _envoi = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final menu = widget.menu;
-    final plat = widget.plat;
-    final iconColor =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
-    final bg = isDark ? AppColors.darkSurface : AppColors.lightSurface;
+    final fond = isDark ? AppColors.darkSurface : AppColors.lightSurface;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (_, scroll) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        // Messager propre à la feuille : les SnackBars (commande, annulation,
-        // avis) s'affichent au-dessus d'elle et non derrière.
-        child: ScaffoldMessenger(
-          child: Scaffold(
-            backgroundColor: bg,
-            body: ListView(
-              controller: scroll,
-              padding: EdgeInsets.zero,
-              children: [
-                Stack(children: [
-                  _PhotosCarousel(plat: plat),
-                  // Poignée de la feuille, au-dessus de la photo
-                  Positioned(
-                    top: 8,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.85),
-                          borderRadius: BorderRadius.circular(2),
-                          boxShadow: [
-                            BoxShadow(
-                                color: Colors.black.withOpacity(0.25),
-                                blurRadius: 4)
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: IconButton.filled(
-                      tooltip: 'Fermer',
-                      style: IconButton.styleFrom(
-                          backgroundColor: Colors.black.withOpacity(0.35),
-                          foregroundColor: Colors.white),
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                ]),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(plat.nom,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 8),
-                      _NoteMoyenne(resume: _resume),
-                      if (plat.typePlatLibelle != null) ...[
-                        const SizedBox(height: 10),
-                        _Tag(
-                            icon: Icons.eco_outlined,
-                            label: plat.typePlatLibelle!,
-                            color: AppColors.accent),
-                      ],
-                      if (plat.description.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        Text(plat.description,
-                            style: Theme.of(context).textTheme.bodyMedium),
-                      ],
-                      const SizedBox(height: 18),
-
-                      // ── Menu : date, agence, équipe, délai ─────
-                      _InfoLigne(
-                          icon: Icons.calendar_today_rounded,
-                          color: iconColor,
-                          text: _dateMenuLongue(menu)),
-                      _InfoLigne(
-                          icon: Icons.location_on_rounded,
-                          color: iconColor,
-                          text: menu.agenceNom),
-                      _InfoLigne(
-                          icon: Icons.groups_rounded,
-                          color: iconColor,
-                          text: menu.typeEquipeLibelle),
-                      const SizedBox(height: 4),
-                      _DelaiBadge(menu: menu),
-                      const SizedBox(height: 20),
-
-                      // ── Actions : mêmes règles que la carte ─────
-                      Consumer<CommandeProvider>(
-                        builder: (_, cmdProv, __) {
-                          final retiree = cmdProv.mesCommandes
-                              .where((c) =>
-                                  c.menuDetail?.id == menu.id &&
-                                  c.platDetail?.id == plat.id &&
-                                  c.statut == StatutCommande.retiree)
-                              .firstOrNull;
-                          return Column(children: [
-                            _BoutonCommander(plat: plat, menu: menu),
-                            if (retiree != null) ...[
-                              const SizedBox(height: 10),
-                              // Le résumé des avis est rechargé après notation
-                              AvisCommandeBloc(
-                                  commande: retiree, onSaved: _rechargerAvis),
-                            ],
-                          ]);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+    // Messager propre à la feuille : les SnackBars (commande, annulation,
+    // avis) s'affichent au-dessus d'elle et non derrière. La feuille prend
+    // la hauteur de son contenu ; la zone transparente au-dessus la ferme.
+    return ScaffoldMessenger(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: LayoutBuilder(
+          builder: (context, contraintes) => Column(children: [
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).pop(),
+              ),
             ),
-          ),
+            ConstrainedBox(
+              constraints:
+                  BoxConstraints(maxHeight: contraintes.maxHeight * 0.94),
+              child: Material(
+                color: fond,
+                clipBehavior: Clip.antiAlias,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(22)),
+                // Reconstruit à l'heure limite de commande / d'annulation :
+                // « Réserver » et « Annuler » se ferment d'eux-mêmes.
+                child: TicEcheance(
+                  echeances: [
+                    widget.menu.dateLimiteCommande,
+                    widget.menu.dateLimiteAnnulation
+                  ],
+                  builder: _feuille,
+                ),
+              ),
+            ),
+          ]),
         ),
       ),
     );
   }
+
+  Widget _feuille(BuildContext context) {
+    final menu = widget.menu;
+    final plat = widget.plat;
+    final cmdProv = context.watch<CommandeProvider>();
+    final (ceMenu, ceJour) = _commandesDuJour(cmdProv.mesCommandes, menu);
+    final estCePlat = ceMenu != null && ceMenu.platDetail?.id == plat.id;
+
+    final _EtatFiche etat;
+    if (ceMenu?.statut == StatutCommande.retiree) {
+      etat = estCePlat ? _EtatFiche.platRetire : _EtatFiche.autrePlatRetire;
+    } else if (estCePlat) {
+      etat = _EtatFiche.platReserve;
+    } else if (ceMenu != null) {
+      etat = _EtatFiche.autrePlatCeMenu;
+    } else if (ceJour != null) {
+      etat = _EtatFiche.autreAgence;
+    } else if (menu.commandeFermee) {
+      etat = _EtatFiche.commandesFermees;
+    } else {
+      etat = _EtatFiche.ouvert;
+    }
+
+    final bandeau = switch (etat) {
+      _EtatFiche.ouvert => _BandeauOuvert(menu: menu),
+      _EtatFiche.platReserve => _CarteReserve(commande: ceMenu!, menu: menu),
+      _ => null,
+    };
+
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Flexible(
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _PhotosCarousel(
+                  plat: plat, onFermer: () => Navigator.of(context).pop()),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                child: FutureBuilder<ResumeAvisPlat>(
+                  future: _resume,
+                  builder: (context, snap) => _corps(
+                    context,
+                    resume: snap.data,
+                    bandeau: bandeau,
+                    // Repas retiré : notation (le résumé est rechargé après)
+                    retiree: etat == _EtatFiche.platRetire ? ceMenu : null,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      _pied(context, cmdProv, etat, ceMenu, ceJour),
+    ]);
+  }
+
+  Widget _corps(BuildContext context,
+      {required ResumeAvisPlat? resume,
+      required Widget? bandeau,
+      required Commande? retiree}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final texte =
+        isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
+    final plat = widget.plat;
+    final menu = widget.menu;
+    final type = plat.typePlatLibelle;
+    final description = plat.descriptionUtile;
+
+    // Note : résumé chargé, sinon celle fournie avec le plat
+    final moyenne = resume?.noteMoyenne ?? plat.noteMoyenne;
+    final nbAvis = resume?.nbAvis ?? plat.nbAvis;
+    Widget? note;
+    if (moyenne != null && (nbAvis ?? 1) > 0) {
+      note = Wrap(
+        spacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          EtoilesNote(note: moyenne.round(), size: 16),
+          Text.rich(TextSpan(children: [
+            TextSpan(
+                text: formatNoteMoyenne(moyenne),
+                style: TextStyle(
+                    fontSize: 13.5, fontWeight: FontWeight.w700, color: texte)),
+            if (nbAvis != null)
+              TextSpan(
+                  text: ' · $nbAvis avis',
+                  style: TextStyle(fontSize: 12.5, color: gris)),
+          ])),
+        ],
+      );
+    } else if (nbAvis == 0) {
+      note = Text('Pas encore noté',
+          style: TextStyle(fontSize: 12.5, color: gris));
+    }
+
+    final date = DateTime.tryParse(menu.dateMenu);
+    final avis = resume?.derniers ?? const <AvisRecent>[];
+
+    final blocs = <Widget>[
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: Text(plat.nom,
+              style: TextStyle(
+                  fontSize: 21,
+                  height: 1.2,
+                  fontWeight: FontWeight.w800,
+                  color: texte)),
+        ),
+        if (type != null) ...[
+          const SizedBox(width: 10),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 130),
+              child: PastilleStatut(
+                  label: type,
+                  icone: Icons.eco_outlined,
+                  ton: TonPastille.vert),
+            ),
+          ),
+        ],
+      ]),
+      if (note != null) note,
+      if (description != null)
+        Text(description,
+            style: TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                color: texte.withOpacity(isDark ? 0.85 : 0.8))),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        if (date != null)
+          _PastilleInfo(
+              icone: Icons.calendar_today_rounded,
+              texte: _majusculeInitiale(
+                  DateFormat('EEE d MMM', 'fr_FR').format(date))),
+        if (menu.agenceNom.isNotEmpty)
+          _PastilleInfo(
+              icone: Icons.location_on_outlined, texte: menu.agenceNom),
+        if (menu.typeEquipeLibelle.isNotEmpty)
+          _PastilleInfo(
+              icone: Icons.groups_outlined, texte: menu.typeEquipeLibelle),
+      ]),
+      if (bandeau != null) bandeau,
+      if (retiree != null)
+        AvisCommandeBloc(commande: retiree, onSaved: _rechargerAvis),
+      if (avis.isNotEmpty)
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SizedBox(
+            height: 30,
+            child: Row(children: [
+              const Expanded(
+                child: LibelleSection('Avis des collègues',
+                    padding: EdgeInsets.symmetric(horizontal: 2)),
+              ),
+              if (avis.length > 2)
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor:
+                        isDark ? AppColors.accent : AppColors.primaryLight,
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    minimumSize: const Size(48, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w700),
+                  ),
+                  onPressed: () => _ListeAvisSheet.show(context,
+                      plat: plat, resume: resume!),
+                  child: Text('Voir les ${avis.length}'),
+                ),
+            ]),
+          ),
+          for (final a in avis.take(2)) _CarteAvis(avis: a),
+        ]),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < blocs.length; i++) ...[
+          // Note collée au nom, sections espacées
+          if (i > 0) SizedBox(height: identical(blocs[i], note) ? 6 : 12),
+          blocs[i],
+        ],
+      ],
+    );
+  }
+
+  /// Barre d'action fixée en bas de la feuille : mêmes règles que l'ancien
+  /// bouton « Commander » (retrait, annulation, autre plat, autre agence,
+  /// délai dépassé, réservation).
+  Widget _pied(BuildContext context, CommandeProvider cmdProv, _EtatFiche etat,
+      Commande? ceMenu, Commande? ceJour) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final texte =
+        isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
+    final menu = widget.menu;
+    final styleAide = TextStyle(fontSize: 11.5, height: 1.4, color: gris);
+
+    Widget aide(String s) =>
+        Text(s, textAlign: TextAlign.center, style: styleAide);
+
+    /// « Votre repas ce jour : Attiéké poisson · en attente »
+    Widget votreRepas(Commande c) {
+      final statut = c.statut == StatutCommande.retiree
+          ? 'retiré'
+          : c.estNonRetiree()
+              ? 'non retiré'
+              : 'en attente';
+      return Text.rich(
+        TextSpan(style: styleAide, children: [
+          const TextSpan(text: 'Votre repas ce jour : '),
+          TextSpan(
+              text: c.platDetail?.nom ?? 'repas commandé',
+              style: TextStyle(fontWeight: FontWeight.w700, color: texte)),
+          TextSpan(text: ' · $statut'),
+        ]),
+        textAlign: TextAlign.center,
+      );
+    }
+
+    final List<Widget> contenu;
+    switch (etat) {
+      case _EtatFiche.platRetire:
+        contenu = [
+          const _PiedStatut(
+              icone: Icons.check_circle_rounded,
+              texte: 'Repas retiré',
+              ton: TonPastille.vert),
+        ];
+      case _EtatFiche.autrePlatRetire:
+        contenu = [
+          const _PiedStatut(
+              icone: Icons.check_circle_rounded,
+              texte: 'Un autre plat a été retiré',
+              ton: TonPastille.vert),
+          votreRepas(ceMenu!),
+        ];
+      case _EtatFiche.platReserve:
+        if (!menu.annulationFermee) {
+          final (_, rouge) = couleursPastille(TonPastille.rouge, isDark);
+          final restant = _tempsRestant(menu.dateLimiteAnnulation);
+          final limite = menu.dateLimiteAnnulation;
+          contenu = [
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.cancel_outlined, size: 18),
+                label: const Text('Annuler ma réservation'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: rouge,
+                  side: BorderSide(color: rouge.withOpacity(0.5), width: 1.5),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  textStyle: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+                // Pas de second envoi pendant une action en cours
+                onPressed: cmdProv.isLoading
+                    ? null
+                    : () => _confirmerAnnulationCommande(
+                        context, cmdProv, menu, ceMenu!.id),
+              ),
+            ),
+            if (restant != null || limite != null)
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.schedule_rounded, size: 13, color: gris),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: aide([
+                    'Annulation possible',
+                    if (restant != null) 'encore $restant',
+                    if (limite != null) '(${_dateLimiteCourte(limite)})',
+                  ].join(' ')),
+                ),
+              ]),
+          ];
+        } else {
+          contenu = [
+            const _PiedStatut(
+                icone: Icons.lock_outline_rounded,
+                texte: 'Commande en attente',
+                ton: TonPastille.or),
+            aide('Annulation impossible — date limite dépassée'),
+          ];
+        }
+      case _EtatFiche.autrePlatCeMenu:
+        contenu = [
+          _PiedStatut(
+              icone: menu.commandeFermee
+                  ? Icons.lock_outline_rounded
+                  : Icons.block_rounded,
+              texte: menu.commandeFermee
+                  ? 'Commandes fermées pour ce jour'
+                  : 'Autre plat déjà commandé',
+              ton: TonPastille.gris),
+          votreRepas(ceMenu!),
+          // Conseil d'annulation seulement si elle est encore possible
+          if (ceMenu.statut == StatutCommande.enAttente &&
+              !menu.annulationFermee)
+            aide('Annulez « ${ceMenu.platDetail?.nom ?? 'votre commande'} » '
+                'pour choisir ce plat'),
+        ];
+      case _EtatFiche.autreAgence:
+        final c = ceJour!;
+        contenu = [
+          const _PiedStatut(
+              icone: Icons.location_off_rounded,
+              texte: 'Déjà commandé ce jour',
+              ton: TonPastille.rouge),
+          aide('Vous avez déjà commandé « ${c.platDetail?.nom ?? 'un plat'} » '
+              'chez ${c.menuDetail?.agenceNom ?? 'une autre agence'} ce jour.'
+              // Conseil d'annulation seulement si elle est encore possible
+              '${c.statut == StatutCommande.enAttente && !menu.annulationFermee ? '\nAnnulez cette commande pour en passer une autre.' : ''}'),
+        ];
+      case _EtatFiche.commandesFermees:
+        contenu = [
+          const _PiedStatut(
+              icone: Icons.lock_outline_rounded,
+              texte: 'Commandes fermées pour ce jour',
+              ton: TonPastille.gris),
+        ];
+      case _EtatFiche.ouvert:
+        contenu = [
+          BoutonVert(
+            label: 'Réserver ce plat',
+            icone: Icons.shopping_basket_outlined,
+            hauteur: 52,
+            chargement: _envoi,
+            onPressed:
+                cmdProv.isLoading ? null : () => _reserver(context, cmdProv),
+          ),
+          if (menu.dateLimiteAnnulation != null)
+            aide('Annulable jusqu\'au '
+                '${libelleDateLimite(menu.dateLimiteAnnulation!)}'),
+        ];
+    }
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        border: Border(
+            top: BorderSide(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          18, 12, 18, 14 + MediaQuery.paddingOf(context).bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        for (var i = 0; i < contenu.length; i++) ...[
+          if (i > 0) const SizedBox(height: 7),
+          contenu[i],
+        ],
+      ]),
+    );
+  }
 }
 
-class _InfoLigne extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String text;
-  const _InfoLigne(
-      {required this.icon, required this.color, required this.text});
+/// Pastille compacte « Lun. 26 oct. », « Siège », « Journée »
+class _PastilleInfo extends StatelessWidget {
+  final IconData icone;
+  final String texte;
+  const _PastilleInfo({required this.icone, required this.texte});
 
   @override
   Widget build(BuildContext context) {
-    if (text.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(children: [
-        Icon(icon, size: 15, color: color),
-        const SizedBox(width: 8),
-        Expanded(
-            child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightBackground,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icone,
+            size: 13,
+            color: isDark ? AppColors.accent : AppColors.primaryLight),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(texte,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary)),
+        ),
       ]),
+    );
+  }
+}
+
+/// Bandeau ambré « Commandes ouvertes · ferme dans … » (jour ouvert)
+class _BandeauOuvert extends StatelessWidget {
+  final Menu menu;
+  const _BandeauOuvert({required this.menu});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final (_, couleur) = couleursPastille(TonPastille.or, isDark);
+    final fond =
+        isDark ? AppColors.warning.withOpacity(0.15) : AppColors.warningLight;
+    final restant = fermeDans(menu.dateLimiteCommande, DateTime.now());
+    final limite = menu.dateLimiteCommande;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration:
+          BoxDecoration(color: fond, borderRadius: BorderRadius.circular(12)),
+      child: Row(children: [
+        Icon(Icons.alarm_rounded, size: 18, color: couleur),
+        const SizedBox(width: 9),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+                [
+                  'Commandes ouvertes',
+                  if (restant != null) _minuscule(restant),
+                ].join(' · '),
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: couleur)),
+            if (limite != null)
+              Text('Jusqu\'au ${libelleDateLimite(limite)}',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: couleur.withOpacity(0.85))),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Carte verte « Plat réservé » (ce plat est la commande du jour)
+class _CarteReserve extends StatelessWidget {
+  final Commande commande;
+  final Menu menu;
+  const _CarteReserve({required this.commande, required this.menu});
+
+  @override
+  Widget build(BuildContext context) {
+    final nonRetiree = commande.estNonRetiree();
+    final date = DateTime.tryParse(menu.dateMenu);
+    final detail = nonRetiree
+        ? 'Repas non retiré au comptoir'
+        : [
+            'À retirer au comptoir'
+                '${date != null ? ' ${DateFormat('EEEE d MMMM', 'fr_FR').format(date)}' : ''}',
+            if (menu.agenceNom.isNotEmpty) menu.agenceNom,
+          ].join(' · ');
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+            colors: [Color(0xFF1F9D55), Color(0xFF3EC970)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.22),
+              borderRadius: BorderRadius.circular(11)),
+          child: const Icon(Icons.check_rounded, color: Colors.white, size: 21),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Plat réservé',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700)),
+            Text(detail,
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.88), fontSize: 11)),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(20)),
+          child: Text(nonRetiree ? 'Non retirée' : 'En attente',
+              style: const TextStyle(
+                  color: Color(0xFF1F9D55),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700)),
+        ),
+      ]),
+    );
+  }
+}
+
+/// État verrouillé de la barre d'action (« Commandes fermées pour ce jour »)
+class _PiedStatut extends StatelessWidget {
+  final IconData icone;
+  final String texte;
+  final TonPastille ton;
+  const _PiedStatut(
+      {required this.icone, required this.texte, required this.ton});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    var (fond, couleur) = couleursPastille(ton, isDark);
+    if (ton == TonPastille.gris && isDark) fond = AppColors.darkCard;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration:
+          BoxDecoration(color: fond, borderRadius: BorderRadius.circular(14)),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(icone, size: 17, color: couleur),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(texte,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 13.5, fontWeight: FontWeight.w600, color: couleur)),
+        ),
+      ]),
+    );
+  }
+}
+
+// ── Avis des collègues ─────────────────────────────────────────
+
+class _CarteAvis extends StatelessWidget {
+  final AvisRecent avis;
+  const _CarteAvis({required this.avis});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final texte =
+        isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
+    final date = DateTime.tryParse(avis.date);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Flexible(
+            child: Text(avis.auteur.isEmpty ? 'Un collègue' : avis.auteur,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700, color: texte)),
+          ),
+          const SizedBox(width: 6),
+          EtoilesNote(note: avis.note, size: 12),
+          const Spacer(),
+          if (date != null)
+            Text(DateFormat('d MMM', 'fr_FR').format(date),
+                style: TextStyle(fontSize: 11, color: gris)),
+        ]),
+        const SizedBox(height: 3),
+        Text(avis.commentaire,
+            style: TextStyle(fontSize: 12.5, height: 1.45, color: texte)),
+      ]),
+    );
+  }
+}
+
+/// Tous les commentaires renvoyés par le serveur (les plus récents)
+class _ListeAvisSheet extends StatelessWidget {
+  final Plat plat;
+  final ResumeAvisPlat resume;
+  const _ListeAvisSheet({required this.plat, required this.resume});
+
+  static Future<void> show(BuildContext context,
+          {required Plat plat, required ResumeAvisPlat resume}) =>
+      showModalBottomSheet<void>(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (_) => _ListeAvisSheet(plat: plat, resume: resume),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final n = resume.derniers.length;
+    final moyenne = resume.noteMoyenne;
+    return ConstrainedBox(
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+            child: Text('Avis des collègues',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+            child: Text(
+                [
+                  plat.nom,
+                  if (moyenne != null)
+                    '★ ${formatNoteMoyenne(moyenne)} · ${resume.nbAvis} avis',
+                  if (resume.nbAvis > n)
+                    '$n dernier${n > 1 ? 's' : ''} commentaire${n > 1 ? 's' : ''}',
+                ].join(' · '),
+                style: TextStyle(fontSize: 12.5, color: gris)),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: EdgeInsets.fromLTRB(
+                  16, 0, 16, 16 + MediaQuery.paddingOf(context).bottom),
+              children: [
+                for (final a in resume.derniers) _CarteAvis(avis: a),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1615,14 +1879,15 @@ class _InfoLigne extends StatelessWidget {
 
 class _PhotosCarousel extends StatefulWidget {
   final Plat plat;
-  const _PhotosCarousel({required this.plat});
+  final VoidCallback onFermer;
+  const _PhotosCarousel({required this.plat, required this.onFermer});
 
   @override
   State<_PhotosCarousel> createState() => _PhotosCarouselState();
 }
 
 class _PhotosCarouselState extends State<_PhotosCarousel> {
-  static const _hauteur = 280.0;
+  static const _hauteur = 222.0;
   final _controller = PageController();
   int _page = 0;
 
@@ -1639,23 +1904,77 @@ class _PhotosCarouselState extends State<_PhotosCarousel> {
       ...widget.plat.images.where((i) => i.isPrincipale),
       ...widget.plat.images.where((i) => !i.isPrincipale),
     ].map((i) => i.url).whereType<String>().toList();
-
-    if (urls.isEmpty) return const _ImagePlaceholder(height: _hauteur);
+    const voile = Color(0x73061220);
 
     return SizedBox(
       height: _hauteur,
       child: Stack(children: [
-        PageView.builder(
-          controller: _controller,
-          itemCount: urls.length,
-          onPageChanged: (i) => setState(() => _page = i),
-          itemBuilder: (_, i) => Image.network(
-            urls[i],
-            width: double.infinity,
-            height: _hauteur,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) =>
-                const _ImagePlaceholder(height: _hauteur),
+        if (urls.isEmpty)
+          const _SansPhoto()
+        else
+          PageView.builder(
+            controller: _controller,
+            itemCount: urls.length,
+            onPageChanged: (i) => setState(() => _page = i),
+            itemBuilder: (_, i) => Image.network(
+              urls[i],
+              width: double.infinity,
+              height: _hauteur,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const _SansPhoto(),
+            ),
+          ),
+        // Poignée de la feuille, au-dessus de la photo
+        Positioned(
+          top: 8,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(2),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 4)
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (urls.length > 1)
+          Positioned(
+            top: 14,
+            left: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                  color: voile, borderRadius: BorderRadius.circular(20)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.photo_outlined, size: 13, color: Colors.white),
+                const SizedBox(width: 4),
+                Text('${_page + 1} / ${urls.length}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
+              ]),
+            ),
+          ),
+        Positioned(
+          top: 10,
+          right: 10,
+          child: IconButton.filled(
+            tooltip: 'Fermer',
+            style: IconButton.styleFrom(
+                backgroundColor: voile,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(36, 36),
+                fixedSize: const Size(36, 36),
+                padding: EdgeInsets.zero),
+            icon: const Icon(Icons.close_rounded, size: 20),
+            onPressed: widget.onFermer,
           ),
         ),
         if (urls.length > 1)
@@ -1669,7 +1988,7 @@ class _PhotosCarouselState extends State<_PhotosCarousel> {
                 final actif = i == _page;
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  margin: const EdgeInsets.symmetric(horizontal: 2.5),
                   width: actif ? 18 : 7,
                   height: 7,
                   decoration: BoxDecoration(
@@ -1691,32 +2010,31 @@ class _PhotosCarouselState extends State<_PhotosCarousel> {
   }
 }
 
-// ── Note moyenne ──────────────────────────────
-
-class _NoteMoyenne extends StatelessWidget {
-  final Future<ResumeAvisPlat> resume;
-  const _NoteMoyenne({required this.resume});
+/// Pas de photo : couverts sur dégradé marine (lisible dans les deux thèmes)
+class _SansPhoto extends StatelessWidget {
+  const _SansPhoto();
 
   @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<ResumeAvisPlat>(
-      future: resume,
-      builder: (_, snap) {
-        final r = snap.data;
-        // Aucun avis (ou erreur de chargement) : rien à afficher
-        if (r == null || r.noteMoyenne == null || r.nbAvis == 0) {
-          return const SizedBox.shrink();
-        }
-        return Row(children: [
-          const Icon(Icons.star_rounded, color: kCouleurEtoile, size: 20),
-          const SizedBox(width: 4),
-          Text('${formatNoteMoyenne(r.noteMoyenne!)} · ${r.nbAvis} avis',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w600)),
-        ]);
-      },
-    );
-  }
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(gradient: AppColors.heroGradient),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: AppColors.accent.withOpacity(0.14),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.restaurant_rounded,
+                size: 30, color: AppColors.accent.withOpacity(0.9)),
+          ),
+          const SizedBox(height: 10),
+          Text('Pas encore de photo',
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500)),
+        ]),
+      );
 }
