@@ -4,7 +4,7 @@ export const environment = {
 
   // URL du serveur Django (sans /api/api ni slash final).
   // Passer en https:// dès que le certificat est installé sur le serveur.
-  apiUrl: 'http://13.60.66.147',
+  apiUrl: 'http://51.20.112.182',
 
   // ✅ Configuration Firebase — copier depuis Firebase Console
   // Project Settings → General → Your apps → Web app → firebaseConfig
