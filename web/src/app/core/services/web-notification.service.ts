@@ -3,7 +3,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from 'src/environments/environment';
-import { getMessaging, getToken, onMessage, Messaging } from 'firebase/messaging';
+import { getMessaging, getToken, onMessage, isSupported, Messaging } from 'firebase/messaging';
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { ToastrService } from 'ngx-toastr';
 
@@ -12,7 +12,9 @@ const VAPID_KEY = 'BHVtuBhT4bLXdM8MZ2tK0dbzabvoUAGTvVapKOUfnrv4yFtx8gYkYisWd5Q0B
 @Injectable({ providedIn: 'root' })
 export class WebNotificationService {
 
-  private messaging!: Messaging;
+  // Absent tant que le navigateur ne prend pas en charge les notifications
+  // (site en HTTP, navigation privée, Safari ancien…) : tout est alors ignoré.
+  private messaging?: Messaging;
   private apiUrl = `${environment.apiUrl}/api/api`;
   private swRegistration!: ServiceWorkerRegistration;
 
@@ -25,6 +27,12 @@ export class WebNotificationService {
 
   async init(): Promise<void> {
     try {
+      // Les notifications web exigent HTTPS (ou localhost) et un navigateur compatible
+      if (!window.isSecureContext || !(await isSupported())) {
+        console.info('Notifications web indisponibles ici (HTTPS requis ou navigateur non compatible).');
+        return;
+      }
+
       // 1. Initialiser Firebase
       if (getApps().length === 0) {
         initializeApp(environment.firebaseConfig);
@@ -53,6 +61,7 @@ export class WebNotificationService {
   // ── Permission + Token ────────────────────────────────────
 
   async requestPermissionAndSaveToken(): Promise<void> {
+    if (!this.messaging) return;
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
@@ -98,6 +107,7 @@ export class WebNotificationService {
   // ── Suppression token au logout ───────────────────────────
 
   async deleteToken(): Promise<void> {
+    if (!this.messaging) return;
     try {
       const token = await getToken(this.messaging, {
         vapidKey:             VAPID_KEY,
@@ -117,6 +127,7 @@ export class WebNotificationService {
   // ── Messages foreground → Toast ───────────────────────────
 
   private _listenForeground(): void {
+    if (!this.messaging) return;
     onMessage(this.messaging, (message) => {
       console.log('🔔 [FCM Web Foreground]', message.notification?.title);
       const titre = message.notification?.title || 'Notification';
