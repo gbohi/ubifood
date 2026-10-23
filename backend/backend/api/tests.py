@@ -1420,3 +1420,88 @@ class PlanningEtComptoirTests(BaseAPITestCase):
         self.assertEqual((plats['Attiéké poulet']['note_moyenne'], plats['Attiéké poulet']['nb_avis']), (None, 0))
         r = self.client_pour(self.employe).get(f'{API}/plats/{self.plat1.id}/')
         self.assertEqual(r.data['note_moyenne'], 4.5)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ApplicationMobileTests(BaseAPITestCase):
+    """Page publique de téléchargement : lecture sans connexion, dépôt de l'APK par un admin."""
+    url = f'{API}/application-mobile/'
+
+    def setUp(self):
+        cache.clear()  # limitation de débit
+
+    def apk(self, nom='app-release.apk', contenu=None):
+        import zipfile
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        if contenu is None:
+            buf = _BytesIO()
+            with zipfile.ZipFile(buf, 'w') as z:
+                z.writestr('AndroidManifest.xml', 'manifeste')
+            contenu = buf.getvalue()
+        return SimpleUploadedFile(nom, contenu, content_type='application/vnd.android.package-archive')
+
+    def test_lecture_publique_sans_connexion(self):
+        client = APIClient()
+        r = client.get(self.url)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data, {
+            'android': {'url': None, 'version': None, 'taille_octets': None,
+                        'mis_a_jour': None, 'nom_fichier': None},
+            'ios': {'url': None, 'version': None},
+        })
+        # Un jeton invalide (session expirée) ne bloque pas la page publique
+        client.credentials(HTTP_AUTHORIZATION='Bearer jeton-expire')
+        self.assertEqual(client.get(self.url).status_code, 200)
+        # Modification refusée sans connexion
+        self.assertEqual(APIClient().patch(self.url, {'ios_version': '1'}, format='json').status_code, 401)
+
+    def test_depot_apk_et_liens_par_un_admin(self):
+        admin = self.client_pour(self.admin)
+        r = admin.patch(self.url, {
+            'apk': self.apk(), 'android_version': '1.4.0',
+            'ios_url': 'https://testflight.apple.com/join/AbCd1234', 'ios_version': '1.4.0',
+        }, format='multipart')
+        self.assertEqual(r.status_code, 200, r.data)
+        android = r.data['android']
+        self.assertTrue(android['url'].startswith('http://testserver/media/application/ubifood-1.4.0.apk?v='))
+        self.assertEqual(android['nom_fichier'], 'ubifood-1.4.0.apk')
+        self.assertEqual(android['version'], '1.4.0')
+        self.assertGreater(android['taille_octets'], 0)
+        self.assertIsNotNone(android['mis_a_jour'])
+        self.assertEqual(r.data['ios'], {'url': 'https://testflight.apple.com/join/AbCd1234', 'version': '1.4.0'})
+
+        # Visible publiquement
+        self.assertEqual(APIClient().get(self.url).data['android']['version'], '1.4.0')
+
+        # Nouvelle version : l'ancien fichier est remplacé
+        from .models import ParametresSociete
+        ancien = ParametresSociete.charger().application_apk.path
+        r = admin.patch(self.url, {'apk': self.apk(), 'android_version': '1.5.0'}, format='multipart')
+        self.assertEqual(r.data['android']['nom_fichier'], 'ubifood-1.5.0.apk')
+        self.assertFalse(os.path.exists(ancien))
+
+        # Retrait de l'APK (DELETE) : la version reste, le lien disparaît
+        r = admin.delete(self.url)
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(r.data['android']['url'])
+        self.assertIsNone(ParametresSociete.charger().application_apk.name or None)
+
+    def test_reserve_aux_administrateurs(self):
+        for user in (self.gestionnaire, self.employe):
+            client = self.client_pour(user)
+            self.assertEqual(client.patch(self.url, {'apk': self.apk()}, format='multipart').status_code, 403)
+            self.assertEqual(client.delete(self.url).status_code, 403)
+        self.assertEqual(self.client_pour(self.super_admin).patch(
+            self.url, {'ios_version': '2.0'}, format='json').status_code, 200)
+
+    def test_fichier_refuse(self):
+        admin = self.client_pour(self.admin)
+        r = admin.patch(self.url, {'apk': self.apk('ubifood.exe')}, format='multipart')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('apk', r.data)
+        # Simple fichier renommé en .apk
+        r = admin.patch(self.url, {'apk': self.apk('faux.apk', b'pas un apk')}, format='multipart')
+        self.assertEqual(r.status_code, 400)
+        r = admin.patch(self.url, {'ios_url': 'pas-un-lien'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIsNone(APIClient().get(self.url).data['android']['url'])

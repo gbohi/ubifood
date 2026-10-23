@@ -1,0 +1,277 @@
+<!-- Page publique « Télécharger UbiFood » (styles : assets/scss/pages/_telecharger.scss) -->
+<div class="tl">
+
+  <!-- ── Bandeau d'accueil ─────────────────────────────────────── -->
+  <header class="tl-hero">
+    <span class="tl-rond tl-rond-1" aria-hidden="true"></span>
+    <span class="tl-rond tl-rond-2" aria-hidden="true"></span>
+
+    <nav class="tl-nav tl-centre" aria-label="UbiFood">
+      <img src="assets/images/ubifood-logo-blanc.svg" alt="UbiFood" class="tl-logo">
+      <a routerLink="/auth/login" class="tl-nav-lien"><i class="ri-computer-line" aria-hidden="true"></i><span>Site gestionnaires</span></a>
+    </nav>
+
+    <div class="tl-hero-grille tl-centre">
+      <div class="tl-hero-texte">
+        <p class="tl-sur"><i class="ri-smartphone-line" aria-hidden="true"></i>L'application de la cantine UbiPharm</p>
+        <h1>Votre repas,<br><em>réservé en<br>un geste.</em></h1>
+        <p class="tl-chapeau">
+          Fini les listes papier et l'attente au comptoir : <b>choisissez, réservez, savourez</b>
+          depuis votre téléphone.
+        </p>
+
+        <!-- Boutons de téléchargement : celui de l'appareil du visiteur d'abord -->
+        <div class="tl-boutons">
+          @for (os of ordre; track os; let premier = $first) {
+            @if (os === 'android') {
+              <div class="tl-bouton-bloc">
+                @if (urlAndroid) {
+                  <a class="tl-bouton" [class.vif]="premier" [href]="urlAndroid" download>
+                    <i class="ri-android-fill tl-bouton-ico" aria-hidden="true"></i>
+                    <span><small>Télécharger pour</small>Android (APK)</span>
+                    <i class="ri-download-2-line tl-bouton-fl" aria-hidden="true"></i>
+                  </a>
+                } @else {
+                  <span class="tl-bouton off" role="link" aria-disabled="true">
+                    <i class="ri-android-fill tl-bouton-ico" aria-hidden="true"></i>
+                    <span><small>{{ chargement ? 'Chargement…' : 'Bientôt disponible' }}</small>Android (APK)</span>
+                  </span>
+                }
+                <p class="tl-bouton-info">
+                  @if (appareil === 'android') { <b class="tl-pastille">Votre téléphone</b> }
+                  {{ detailsAndroid || (chargement ? '' : 'Fichier en cours de préparation') }}
+                </p>
+              </div>
+            } @else {
+              <div class="tl-bouton-bloc">
+                @if (urlIos) {
+                  <a class="tl-bouton" [class.vif]="premier" [href]="urlIos" target="_blank" rel="noopener">
+                    <i class="ri-apple-fill tl-bouton-ico" aria-hidden="true"></i>
+                    <span><small>Télécharger pour</small>iPhone</span>
+                    <i class="ri-arrow-right-up-line tl-bouton-fl" aria-hidden="true"></i>
+                  </a>
+                } @else {
+                  <span class="tl-bouton off" role="link" aria-disabled="true">
+                    <i class="ri-apple-fill tl-bouton-ico" aria-hidden="true"></i>
+                    <span><small>{{ chargement ? 'Chargement…' : 'Bientôt disponible' }}</small>iPhone</span>
+                  </span>
+                }
+                <p class="tl-bouton-info">
+                  @if (appareil === 'ios') { <b class="tl-pastille">Votre téléphone</b> }
+                  {{ detailsIos || (chargement ? '' : 'Invitation en cours de préparation') }}
+                </p>
+              </div>
+            }
+          }
+        </div>
+
+        @if (erreur) {
+          <p class="tl-alerte" role="status"><i class="ri-wifi-off-line" aria-hidden="true"></i>
+            Les liens n'ont pas pu être chargés. Vérifiez votre connexion puis rechargez la page.</p>
+        }
+
+        <ul class="tl-garanties">
+          <li><i class="ri-user-3-line" aria-hidden="true"></i>Connexion avec votre matricule</li>
+          <li><i class="ri-gift-line" aria-hidden="true"></i>Gratuite</li>
+          <li><i class="ri-building-2-line" aria-hidden="true"></i>Réservée aux collaborateurs</li>
+        </ul>
+
+        @if (appareil === 'ordinateur') {
+          <div class="tl-ordi">
+            <i class="ri-smartphone-line" aria-hidden="true"></i>
+            <span>Sur ordinateur ? Ouvrez cette adresse sur votre téléphone :
+              <b>{{ adressePage }}</b></span>
+            <button type="button" (click)="copierLien()">
+              <i [class]="lienCopie ? 'ri-check-line' : 'ri-file-copy-line'" aria-hidden="true"></i>{{ lienCopie ? 'Copié' : 'Copier' }}
+            </button>
+          </div>
+        }
+      </div>
+
+      <!-- Captures de l'application -->
+      <div class="tl-tels" aria-hidden="true">
+        <img class="tl-tel tl-tel-1" src="assets/images/telecharger/tel-menu.webp" alt="" width="560" height="1157">
+        <img class="tl-tel tl-tel-2" src="assets/images/telecharger/tel-badge.webp" alt="" width="560" height="1157">
+        <div class="tl-bulle tl-bulle-ok"><i class="ri-check-line"></i><div>Retrait validé<small>Attiéké poisson · 12:41</small></div></div>
+        <div class="tl-bulle tl-bulle-temps"><i class="ri-timer-line"></i><div>Commandes ouvertes<small>encore 2 j 15 h</small></div></div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ── Comment ça marche ───────────────────────────────────── -->
+    <section class="tl-section tl-centre" aria-labelledby="tl-etapes-titre">
+      <p class="tl-kicker">Comment ça marche</p>
+      <h2 id="tl-etapes-titre">Trois gestes, et votre repas vous attend</h2>
+      <ol class="tl-etapes">
+        @for (e of etapes; track e.titre; let i = $index) {
+          <li class="tl-etape">
+            <span class="tl-etape-n">{{ i + 1 }}</span>
+            <span class="tl-etape-ico" aria-hidden="true"><i [class]="e.icone"></i></span>
+            <h3>{{ e.titre }}</h3>
+            <p>{{ e.texte }}</p>
+          </li>
+        }
+      </ol>
+    </section>
+
+    <!-- ── Atouts ──────────────────────────────────────────────── -->
+    <section class="tl-atouts-zone" aria-labelledby="tl-atouts-titre">
+      <div class="tl-centre tl-atouts-grille">
+        <div class="tl-atouts-tels" aria-hidden="true">
+          <img src="assets/images/telecharger/tel-plat-detail.webp" alt="" width="560" height="1157" loading="lazy">
+          <img src="assets/images/telecharger/tel-commandes.webp" alt="" width="560" height="1157" loading="lazy">
+        </div>
+        <div>
+          <p class="tl-kicker">Tout pour la cantine</p>
+          <h2 id="tl-atouts-titre">Pensée pour votre pause déjeuner</h2>
+          <div class="tl-atouts">
+            @for (a of atouts; track a.titre) {
+              <div class="tl-atout">
+                <span class="tl-atout-ico" aria-hidden="true"><i [class]="a.icone"></i></span>
+                <div><h3>{{ a.titre }}</h3><p>{{ a.texte }}</p></div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Guide d'installation ────────────────────────────────── -->
+    <section class="tl-section tl-centre" id="installation" aria-labelledby="tl-install-titre">
+      <p class="tl-kicker">Installation</p>
+      <h2 id="tl-install-titre">Installez UbiFood en quelques minutes</h2>
+
+      <div class="tl-onglets" role="tablist" aria-label="Type de téléphone">
+        <button type="button" role="tab" id="tl-onglet-android" aria-controls="tl-panneau-android"
+                [attr.aria-selected]="onglet === 'android'" [class.actif]="onglet === 'android'" (click)="onglet = 'android'">
+          <i class="ri-android-fill" aria-hidden="true"></i>Android
+        </button>
+        <button type="button" role="tab" id="tl-onglet-ios" aria-controls="tl-panneau-ios"
+                [attr.aria-selected]="onglet === 'ios'" [class.actif]="onglet === 'ios'" (click)="onglet = 'ios'">
+          <i class="ri-apple-fill" aria-hidden="true"></i>iPhone
+        </button>
+      </div>
+
+      @if (onglet === 'android') {
+        <div class="tl-guide" role="tabpanel" id="tl-panneau-android" aria-labelledby="tl-onglet-android">
+          <ol class="tl-pas">
+            <li>
+              <span class="tl-pas-n">1</span>
+              <div>
+                <h3>Téléchargez le fichier</h3>
+                <p>Depuis votre téléphone Android, touchez <b>« Télécharger pour Android (APK) »</b>.
+                  Si le navigateur demande confirmation, choisissez <b>Télécharger</b>.</p>
+                @if (urlAndroid) {
+                  <a class="tl-mini-bouton" [href]="urlAndroid" download><i class="ri-download-2-line" aria-hidden="true"></i>Télécharger l'APK</a>
+                }
+              </div>
+            </li>
+            <li>
+              <span class="tl-pas-n">2</span>
+              <div>
+                <h3>Autorisez l'installation</h3>
+                <p>À la première installation, Android demande d'autoriser cette source :
+                  touchez <b>Paramètres</b>, activez <b>« Autoriser depuis cette source »</b>
+                  (ou « Sources inconnues » selon le modèle), puis revenez en arrière.</p>
+              </div>
+            </li>
+            <li>
+              <span class="tl-pas-n">3</span>
+              <div>
+                <h3>Ouvrez le fichier et installez</h3>
+                <p>Ouvrez le fichier téléchargé (notification ou dossier <b>Téléchargements</b>)
+                  puis touchez <b>Installer</b>. Si Play Protect affiche un avertissement, choisissez
+                  <b>« Installer quand même »</b> : c'est l'application interne d'UbiPharm.</p>
+              </div>
+            </li>
+            <li>
+              <span class="tl-pas-n">4</span>
+              <div>
+                <h3>Connectez-vous</h3>
+                <p>Ouvrez UbiFood et connectez-vous avec votre <b>matricule</b> et votre mot de passe.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      } @else {
+        <div class="tl-guide" role="tabpanel" id="tl-panneau-ios" aria-labelledby="tl-onglet-ios">
+          <ol class="tl-pas">
+            <li>
+              <span class="tl-pas-n">1</span>
+              <div>
+                <h3>Ouvrez cette page sur votre iPhone</h3>
+                <p>Dans Safari, touchez <b>« Télécharger pour iPhone »</b> : le lien d'invitation
+                  UbiFood s'ouvre dans TestFlight, l'application d'Apple pour les applications internes.</p>
+                @if (urlIos) {
+                  <a class="tl-mini-bouton" [href]="urlIos" target="_blank" rel="noopener"><i class="ri-apple-fill" aria-hidden="true"></i>Ouvrir l'invitation</a>
+                }
+              </div>
+            </li>
+            <li>
+              <span class="tl-pas-n">2</span>
+              <div>
+                <h3>Installez TestFlight</h3>
+                <p>Si ce n'est pas déjà fait, installez <b>TestFlight</b> depuis l'App Store (gratuit, édité
+                  par Apple), puis revenez sur cette page et touchez à nouveau le bouton iPhone.</p>
+              </div>
+            </li>
+            <li>
+              <span class="tl-pas-n">3</span>
+              <div>
+                <h3>Acceptez l'invitation</h3>
+                <p>Dans TestFlight, touchez <b>Accepter</b> puis <b>Installer</b> : UbiFood apparaît
+                  sur votre écran d'accueil. Les mises à jour arriveront aussi par TestFlight.</p>
+              </div>
+            </li>
+            <li>
+              <span class="tl-pas-n">4</span>
+              <div>
+                <h3>Connectez-vous</h3>
+                <p>Ouvrez UbiFood et connectez-vous avec votre <b>matricule</b> et votre mot de passe.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      }
+    </section>
+
+    <!-- ── Questions fréquentes ────────────────────────────────── -->
+    <section class="tl-section tl-centre tl-faq-zone" aria-labelledby="tl-faq-titre">
+      <p class="tl-kicker">Questions fréquentes</p>
+      <h2 id="tl-faq-titre">Vous vous demandez…</h2>
+      <div class="tl-faq">
+        @for (item of questions; track item.q; let i = $index) {
+          <details [open]="i === 0">
+            <summary>{{ item.q }}<i class="ri-add-line" aria-hidden="true"></i></summary>
+            <p>{{ item.r }}</p>
+          </details>
+        }
+      </div>
+    </section>
+
+    <!-- ── Rappel final ────────────────────────────────────────── -->
+    <section class="tl-centre">
+      <div class="tl-final">
+        <div>
+          <h2>Téléchargez UbiFood, <em>réservez dès demain.</em></h2>
+          <p>Une question ? Votre gestionnaire de cantine vous accompagne.</p>
+        </div>
+        <div class="tl-final-btns">
+          <a class="tl-mini-bouton clair" [class.off]="!urlAndroid" [attr.href]="urlAndroid" [attr.aria-disabled]="!urlAndroid" download>
+            <i class="ri-android-fill" aria-hidden="true"></i>{{ urlAndroid ? 'Android' : 'Android · bientôt' }}</a>
+          <a class="tl-mini-bouton clair" [class.off]="!urlIos" [attr.href]="urlIos" [attr.aria-disabled]="!urlIos" target="_blank" rel="noopener">
+            <i class="ri-apple-fill" aria-hidden="true"></i>{{ urlIos ? 'iPhone' : 'iPhone · bientôt' }}</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="tl-pied">
+    <div class="tl-centre tl-pied-ligne">
+      <img src="assets/images/ubifood-logo.svg" alt="UbiFood" class="tl-pied-logo">
+      <a routerLink="/auth/login" class="tl-pied-lien"><i class="ri-login-box-line" aria-hidden="true"></i>Accéder au site (gestionnaires)</a>
+      <small>© {{ annee }} UbiPharm Côte d'Ivoire · Application interne</small>
+    </div>
+  </footer>
+</div>

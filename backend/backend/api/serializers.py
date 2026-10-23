@@ -1185,6 +1185,86 @@ class ParametresSocieteSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
+class ApplicationMobileSerializer(serializers.ModelSerializer):
+    """
+    Application mobile (page publique /telecharger du site).
+
+    Lecture : { android: {url, version, taille_octets, mis_a_jour, nom_fichier},
+                ios: {url, version} } — url à null si rien n'est configuré.
+    Écriture (administrateurs, multipart) : apk, android_version, ios_url,
+    ios_version, supprimer_apk=true.
+    """
+    TAILLE_MAX = 200 * 1024 * 1024
+
+    apk             = serializers.FileField(source='application_apk', write_only=True, required=False)
+    android_version = serializers.CharField(source='application_android_version', write_only=True,
+                                            required=False, allow_blank=True, max_length=30)
+    ios_url         = serializers.URLField(source='application_ios_url', write_only=True,
+                                           required=False, allow_blank=True, max_length=500)
+    ios_version     = serializers.CharField(source='application_ios_version', write_only=True,
+                                            required=False, allow_blank=True, max_length=30)
+    # true = retirer l'APK actuel
+    supprimer_apk   = serializers.BooleanField(write_only=True, required=False, default=False)
+
+    class Meta:
+        model  = ParametresSociete
+        fields = ['apk', 'android_version', 'ios_url', 'ios_version', 'supprimer_apk']
+
+    def validate_apk(self, apk):
+        if not apk:
+            return apk
+        if not apk.name.lower().endswith('.apk'):
+            raise serializers.ValidationError("Le fichier doit être un APK Android (.apk).")
+        if apk.size > self.TAILLE_MAX:
+            raise serializers.ValidationError("Fichier trop volumineux (200 Mo maximum).")
+        # Un APK est une archive ZIP : refuse un fichier simplement renommé
+        debut = apk.read(4)
+        apk.seek(0)
+        if debut != b'PK\x03\x04':
+            raise serializers.ValidationError("Ce fichier n'est pas un APK Android valide.")
+        return apk
+
+    def update(self, instance, validated_data):
+        supprimer = validated_data.pop('supprimer_apk', False)
+        nouvel_apk = validated_data.get('application_apk')
+        if (supprimer or nouvel_apk) and instance.application_apk:
+            instance.application_apk.delete(save=False)
+            if supprimer and not nouvel_apk:
+                instance.application_apk = None
+        modifie = supprimer or any(
+            getattr(instance, champ) != valeur for champ, valeur in validated_data.items())
+        if modifie:
+            instance.application_mise_a_jour = timezone.now()
+        return super().update(instance, validated_data)
+
+    def to_representation(self, obj):
+        request = self.context.get('request')
+        android = {'url': None, 'version': obj.application_android_version or None,
+                   'taille_octets': None, 'mis_a_jour': None, 'nom_fichier': None}
+        if obj.application_apk:
+            url = obj.application_apk.url
+            if obj.application_mise_a_jour:
+                # Version dans l'URL : un APK remplacé n'est pas resservi par le cache
+                url = f"{url}?v={int(obj.application_mise_a_jour.timestamp())}"
+            try:
+                taille = obj.application_apk.size
+            except (FileNotFoundError, OSError):
+                taille = None
+            android.update({
+                'url': request.build_absolute_uri(url) if request else url,
+                'taille_octets': taille,
+                'mis_a_jour': obj.application_mise_a_jour,
+                'nom_fichier': obj.application_apk.name.rsplit('/', 1)[-1],
+            })
+        if android['mis_a_jour'] is not None:
+            android['mis_a_jour'] = serializers.DateTimeField().to_representation(android['mis_a_jour'])
+        return {
+            'android': android,
+            'ios': {'url': obj.application_ios_url or None,
+                    'version': obj.application_ios_version or None},
+        }
+
+
 class BanniereSerializer(serializers.ModelSerializer):
     """Bannière de l'accueil mobile (image paysage, 5 Mo maximum)."""
     image_url = serializers.SerializerMethodField()

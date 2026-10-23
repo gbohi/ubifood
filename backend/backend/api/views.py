@@ -2619,6 +2619,52 @@ class ParametresSocieteView(APIView):
         return Response(serializer.data)
 
 
+class ApplicationMobileView(APIView):
+    """
+    Application mobile UbiFood (interne, hors stores).
+
+    GET    /api/api/application-mobile/   liens de téléchargement — PUBLIC (page /telecharger)
+    PATCH  /api/api/application-mobile/   administrateurs, multipart : apk, android_version,
+                                          ios_url, ios_version, supprimer_apk=true
+    DELETE /api/api/application-mobile/   administrateurs : retire l'APK
+    """
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'application_mobile'
+
+    def get_authenticators(self):
+        # Lecture publique : un jeton expiré envoyé par le navigateur ne doit
+        # pas provoquer de 401 sur cette page sans connexion.
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return []
+        return super().get_authenticators()
+
+    def get_permissions(self):
+        return [AllowAny()] if self.request.method in ('GET', 'HEAD', 'OPTIONS') \
+            else [IsAdminRole()]
+
+    def _reponse(self, request, parametres):
+        return Response(ApplicationMobileSerializer(parametres, context={'request': request}).data)
+
+    def get(self, request):
+        return self._reponse(request, ParametresSociete.charger())
+
+    def patch(self, request):
+        serializer = ApplicationMobileSerializer(ParametresSociete.charger(), data=request.data,
+                                                 partial=True, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        parametres = serializer.save(user_updated=request.user)
+        return self._reponse(request, parametres)
+
+    put = patch
+
+    def delete(self, request):
+        serializer = ApplicationMobileSerializer(ParametresSociete.charger(), data={'supprimer_apk': True},
+                                                 partial=True, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        return self._reponse(request, serializer.save(user_updated=request.user))
+
+
 class ParametresCantineView(APIView):
     """
     GET /api/api/parametres-cantine/   délais de commande et d'annulation

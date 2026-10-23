@@ -45,6 +45,8 @@ export const GROUPES_PARAMETRES: GroupeParametres[] = [
         lien: '/parametres/bannieres', roles: ADMINS, compte: 'bannieres/?toutes=1', motsCles: 'mobile image accueil' },
       { titre: 'Fenêtre de connexion', description: 'Image affichée après la connexion (web et mobile)', icone: 'ri-window-line',
         lien: '/parametres/popup-connexion', roles: ADMINS, compte: 'popups-connexion/', motsCles: 'popup annonce' },
+      { titre: 'Application mobile', description: 'APK Android, lien iPhone et page de téléchargement', icone: 'ri-smartphone-line',
+        lien: '/parametres/application-mobile', roles: ADMINS, motsCles: 'apk android iphone ios testflight télécharger version' },
     ],
   },
   {

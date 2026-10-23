@@ -207,6 +207,22 @@ $ub-bord:     #E2EAF4;
 
 .auth-ub-contact { margin: 36px 0 0; font-size: 12px; color: $ub-indice; text-align: center; }
 
+// Lien discret vers la page publique /telecharger
+.auth-ub-appli {
+  margin: 10px 0 0;
+  text-align: center;
+  a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: $ub-gris;
+    i { font-size: 15px; color: $ub-vert-2; }
+    &:hover, &:focus-visible { color: $ub-marine-2; }
+  }
+}
+
 // ── Petit écran : bandeau en haut ─────────────────────────────
 @media (max-width: 991.98px) {
   .auth-ub { flex-direction: column; }

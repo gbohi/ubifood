@@ -21,6 +21,7 @@ import { SocieteComponent } from './societe/societe.component';
 import { BannieresComponent } from './bannieres/bannieres.component';
 import { PopupConnexionComponent } from './popup-connexion/popup-connexion.component';
 import { AccueilParametresComponent } from './accueil-parametres/accueil-parametres.component';
+import { ApplicationMobileComponent } from './application-mobile/application-mobile.component';
 
 
 const routes: Routes = [
@@ -48,6 +49,13 @@ const routes: Routes = [
     // Bannières de l'accueil de l'application mobile
     path: 'bannieres',
     component: BannieresComponent,
+    canActivate: [RoleGuard],
+    data: { roles: ADMINS }
+  },
+  {
+    // APK Android et lien iPhone de la page publique /telecharger
+    path: 'application-mobile',
+    component: ApplicationMobileComponent,
     canActivate: [RoleGuard],
     data: { roles: ADMINS }
   },

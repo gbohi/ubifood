@@ -460,6 +460,13 @@ class LigneFacturePrestataire(models.Model):
 # téléchargement ; les montants, eux, restent figés.
 # ============================================================
 
+def chemin_apk(instance, filename):
+    """APK de l'application : nom lisible et stable (« ubifood-1.4.0.apk »)."""
+    import re
+    version = re.sub(r'[^0-9A-Za-z._-]+', '-', instance.application_android_version or '').strip('.-_')
+    return f"application/ubifood-{version}.apk" if version else 'application/ubifood.apk'
+
+
 class ParametresSociete(models.Model):
     nom                = models.CharField(max_length=255, blank=True)
     adresse            = models.TextField(blank=True)
@@ -482,6 +489,17 @@ class ParametresSociete(models.Model):
     delai_annulation_heures = models.PositiveIntegerField(
         "Délai d'annulation (heures)", default=48, validators=[MaxValueValidator(720)],
         help_text="Nombre d'heures avant le jour du menu où les annulations se ferment.")
+    # Application mobile (interne, hors stores) : téléchargée depuis la page
+    # publique /telecharger du site. Android : fichier APK déposé ici ;
+    # iPhone : lien d'invitation (TestFlight ou équivalent).
+    application_apk             = models.FileField(
+        'APK Android', upload_to=chemin_apk, blank=True, null=True,
+        validators=[FileExtensionValidator(['apk'])])
+    application_android_version = models.CharField('Version Android', max_length=30, blank=True)
+    application_ios_url         = models.URLField('Lien iPhone (TestFlight…)', max_length=500, blank=True)
+    application_ios_version     = models.CharField('Version iPhone', max_length=30, blank=True)
+    application_mise_a_jour     = models.DateTimeField(
+        "Dernière mise à jour de l'application", null=True, blank=True)
     updated_at         = models.DateTimeField(auto_now=True)
     user_updated       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                            related_name='+')

@@ -32,6 +32,7 @@ import { SocieteComponent } from './societe/societe.component';
 import { BannieresComponent } from './bannieres/bannieres.component';
 import { PopupConnexionComponent } from './popup-connexion/popup-connexion.component';
 import { AccueilParametresComponent } from './accueil-parametres/accueil-parametres.component';
+import { ApplicationMobileComponent } from './application-mobile/application-mobile.component';
 
 @NgModule({
   declarations: [
@@ -39,6 +40,7 @@ import { AccueilParametresComponent } from './accueil-parametres/accueil-paramet
     SocieteComponent,
     BannieresComponent,
     PopupConnexionComponent,
+    ApplicationMobileComponent,
     AgenceComponent,
     EtatComponent,
     PrioriteComponent,

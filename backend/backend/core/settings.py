@@ -189,6 +189,8 @@ REST_FRAMEWORK = {
         'password_reset': '10/hour',
         'login':          '20/min',
         'token_refresh':  '60/min',
+        # Page publique « Télécharger l'application » : par adresse IP
+        'application_mobile': '60/min',
     },
 }
 
@@ -238,8 +240,13 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Taille max d'un fichier uploadé (doit rester ≤ client_max_body_size de Nginx)
+# Taille max des champs d'une requête HORS fichiers (JSON, champs de formulaire).
+# Les fichiers ne sont pas comptés : leur taille est limitée par Nginx
+# (client_max_body_size : 20 Mo, 200 Mo pour l'APK de l'application mobile)
+# et par chaque serializer.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
+# Au-delà, un fichier reçu est écrit dans un fichier temporaire (pas en mémoire) :
+# indispensable pour l'APK (jusqu'à 200 Mo) avec plusieurs workers Gunicorn.
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 
 
