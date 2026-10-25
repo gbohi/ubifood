@@ -538,6 +538,22 @@ app-telecharger { display: block; }
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: none; }
 }
+// Au menu : les trois plats en photo
+.tl-menu { padding-top: 64px; }
+.tl-plats { list-style: none; padding: 0; margin: 40px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+.tl-plat {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
+  img { width: 100%; max-width: 240px; height: auto; aspect-ratio: 1; border-radius: 50%; margin-bottom: 12px;
+        box-shadow: 0 22px 40px rgba(9, 36, 64, .18); transition: transform .3s ease; }
+  &:hover img { transform: scale(1.04) rotate(-2deg); }
+  b { font-size: 1.15rem; font-weight: 700; color: #092440; }
+  span { color: #5A7090; font-size: .95rem; }
+}
+@media (max-width: 575.98px) {
+  .tl-plats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 26px; }
+  .tl-plat { img { margin-bottom: 6px; } b { font-size: .85rem; } span { display: none; } }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tl-hero-texte, .tl-tels { animation: none; }
   .tl-bouton, .tl-mini-bouton { transition: none; }
