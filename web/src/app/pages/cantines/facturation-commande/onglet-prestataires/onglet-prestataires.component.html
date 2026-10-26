@@ -1,0 +1,311 @@
+@if (erreur) {
+  <div class="ce-alerte ce-alerte-ro">
+    <i class="ri-error-warning-line"></i><div>{{ erreur }}</div>
+    <button type="button" class="btn-close ms-auto" (click)="erreur = null" aria-label="Fermer"></button>
+  </div>
+}
+
+@if (chargement && !releve) {
+  <div class="ce-carte"><div class="ce-chargement"><span class="spinner-border" role="status"></span><span>Calcul en cours…</span></div></div>
+} @else if (releve && !releve.prestataire) {
+  <div class="ce-carte">
+    <div class="ce-vide-page">
+      <i class="ri-truck-line"></i>
+      <b>Aucun prestataire</b>
+      <span>Aucun prestataire n'est rattaché à vos agences. Les rattachements se font dans Paramètres › Prestataires.</span>
+    </div>
+  </div>
+} @else if (releve) {
+  <div class="ce-presta" [class.ce-attente]="chargement">
+
+    <!-- ── Fiche du prestataire ─────────────────────────────────── -->
+    <div class="ce-carte ce-ident">
+      <span class="ce-ident-ic"><i class="ri-truck-line"></i></span>
+      <div class="ce-ident-txt">
+        <h2>{{ releve.prestataire!.libelle }}</h2>
+        <div class="ce-ident-co">
+          @if (releve.prestataire!.contact_nom) { <span><i class="ri-user-line"></i>{{ releve.prestataire!.contact_nom }}</span> }
+          @if (releve.prestataire!.telephone) { <span><i class="ri-phone-line"></i>{{ releve.prestataire!.telephone }}</span> }
+          <span><i class="ri-building-line"></i>Agence{{ releve.prestataire!.agences.length > 1 ? 's' : '' }} desservie{{ releve.prestataire!.agences.length > 1 ? 's' : '' }} :
+            {{ releve.prestataire!.agences.join(', ') || '—' }}</span>
+          @if (releve.prestataire!.identifiant_fiscal || releve.prestataire!.registre_commerce) {
+            <span>
+              @if (releve.prestataire!.identifiant_fiscal) { CC {{ releve.prestataire!.identifiant_fiscal.replace('CC ', '') }} }
+              @if (releve.prestataire!.identifiant_fiscal && releve.prestataire!.registre_commerce) { · }
+              @if (releve.prestataire!.registre_commerce) { RCCM {{ releve.prestataire!.registre_commerce }} }
+            </span>
+          }
+        </div>
+      </div>
+      <div class="ce-ident-tarif">
+        <small>Tarif en vigueur</small>
+        <b>@if (releve.tarif) { {{ f(releve.tarif.montant) }} F / repas } @else { <span class="ce-c-rouge">aucun tarif</span> }</b>
+        @if (releve.tarif) { <small>depuis le {{ date(releve.tarif.date_debut) }}</small> }
+      </div>
+    </div>
+
+    <!-- ── 4 chiffres clés ─────────────────────────────────────── -->
+    <div class="ce-kpis">
+      <div class="ce-k">
+        <span class="ce-k-ic ce-p-bl"><i class="ri-restaurant-2-line"></i></span>
+        <div><small>Repas à payer</small><b>{{ f(c.nb_repas) }}</b>
+          <small>dont {{ f(c.retires) }} retirés · {{ f(c.non_retires) }} non retirés</small></div>
+      </div>
+      <div class="ce-k">
+        <span class="ce-k-ic ce-p-ve"><i class="ri-wallet-3-line"></i></span>
+        <div><small>Montant dû</small><b>{{ f(c.montant) }} F</b>
+          <small>@if (releve.tarifs_appliques.length === 1) { {{ f(c.nb_repas) }} × {{ tarifTexte }} } @else { tarif : {{ tarifTexte }} }
+            @if (c.repas_sans_tarif) { <span class="ce-c-rouge"> · {{ c.repas_sans_tarif }} sans tarif</span> }</small></div>
+      </div>
+      <div class="ce-k">
+        <span class="ce-k-ic ce-p-or"><i class="ri-line-chart-line"></i></span>
+        @if (c.precedent; as p) {
+          <div><small>Écart vs {{ p.libelle }}</small><b>{{ signe(p.ecart_montant) }} F</b>
+            <small>@if (p.ecart_pct !== null) { <span class="ce-ev" [class.ce-ev-up]="p.ecart_montant >= 0" [class.ce-ev-dn]="p.ecart_montant < 0">{{ pct(p.ecart_pct) }}</span> · }
+              {{ signe(p.ecart_repas) || '0' }} repas</small></div>
+        } @else {
+          <div><small>Écart vs mois précédent</small><b>—</b><small>période personnalisée</small></div>
+        }
+      </div>
+      <div class="ce-k">
+        <span class="ce-k-ic ce-p-bl"><i class="ri-calendar-check-line"></i></span>
+        <div><small>Jours servis</small><b>{{ c.jours_servis }}</b><small>moy. {{ c.moyenne_jour }} repas / jour</small></div>
+      </div>
+    </div>
+
+    <!-- ── Agences avec des repas mais sans prestataire ─────────── -->
+    @if (releve.agences_sans_prestataire.length) {
+      <div class="ce-alerte ce-alerte-or ce-alerte-fine ce-alerte-presta">
+        <i class="ri-error-warning-line"></i>
+        <div><b>{{ nomsSansPrestataire }} : aucun prestataire rattaché</b> — {{ joursSansPrestataire }} journée{{ joursSansPrestataire > 1 ? 's' : '' }}
+          de repas ({{ f(repasSansPrestataire) }} repas) ne {{ repasSansPrestataire > 1 ? 'sont facturées' : 'est facturée' }} à personne sur la période.</div>
+        @if (estAdmin) { <a class="ce-btn ce-btn-mini ms-auto" routerLink="/parametres/prestataire">Rattacher un prestataire</a> }
+      </div>
+    }
+
+    <div class="ce-g-presta">
+      <div class="ce-pile-presta">
+
+        <!-- ── Par plat ──────────────────────────────────────────── -->
+        <div class="ce-carte ce-carte-table">
+          <div class="ce-table-hd">
+            <div><b><i class="ri-restaurant-2-line"></i>Par plat</b>
+              <small class="ce-muted d-block">{{ releve.periode | titlecase }} · repas commandés et non annulés · tarif unique du prestataire</small></div>
+            <button type="button" class="ce-btn ce-btn-mini ce-hide-m" [disabled]="!c.nb_repas" (click)="exporterExcel()"><i class="ri-file-excel-2-line ce-c-vert"></i>Excel</button>
+          </div>
+          @if (!releve.par_plat.length) {
+            <div class="ce-vide-page"><i class="ri-restaurant-2-line"></i><b>Aucun repas sur la période</b><span>Changez de mois ou de prestataire.</span></div>
+          } @else {
+            <div class="table-responsive">
+              <table class="ce-table ce-table-souple">
+                <thead><tr><th>Plat</th><th class="ce-n">Repas</th><th class="ce-n ce-hide-m">Prix unit.</th><th class="ce-n">Montant</th>
+                  @if (c.precedent) { <th class="ce-n ce-hide-m">vs {{ libelleMoisPrecedent }}</th> }
+                  <th class="ce-part ce-hide-m">Part</th></tr></thead>
+                <tbody>
+                  @for (p of releve.par_plat; track $index) {
+                    <tr>
+                      <td><b>{{ p.plat }}</b></td>
+                      <td class="ce-n">{{ p.nb_repas }}</td>
+                      <td class="ce-n ce-muted ce-hide-m">@if (p.pu !== null) { {{ f(p.pu) }} F } @else { <span class="ce-c-rouge">sans tarif</span> }</td>
+                      <td class="ce-n"><b>@if (p.montant !== null) { {{ f(p.montant) }} F } @else { — }</b></td>
+                      @if (c.precedent) {
+                        <td class="ce-n ce-hide-m">@if (p.ecart !== null) {
+                          <span class="ce-ev" [class.ce-ev-up]="p.ecart > 0" [class.ce-ev-dn]="p.ecart < 0">{{ p.ecart > 0 ? '+' : '' }}{{ p.ecart }}</span> }</td>
+                      }
+                      <td class="ce-part ce-hide-m"><span class="ce-jauge ce-jauge-fine ce-jauge-vert"><i [style.width.%]="p.nb_repas / maxPlat * 100"></i></span><small>{{ p.part | number:'1.0-0' }} %</small></td>
+                    </tr>
+                  }
+                  <tr class="ce-total">
+                    <td>Total · {{ releve.par_plat.length }} plat{{ releve.par_plat.length > 1 ? 's' : '' }}</td>
+                    <td class="ce-n">{{ c.nb_repas }}</td><td class="ce-hide-m"></td>
+                    <td class="ce-n">{{ f(c.montant) }} F</td>
+                    @if (c.precedent; as p) { <td class="ce-n ce-hide-m"><span class="ce-ev" [class.ce-ev-up]="p.ecart_repas > 0" [class.ce-ev-dn]="p.ecart_repas < 0">{{ p.ecart_repas > 0 ? '+' : '' }}{{ p.ecart_repas }}</span></td> }
+                    <td class="ce-hide-m"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+
+        <!-- ── Par jour ──────────────────────────────────────────── -->
+        @if (releve.semaines.length) {
+          <div class="ce-carte ce-carte-table">
+            <div class="ce-table-hd">
+              <div><b><i class="ri-calendar-2-line"></i>Par jour</b>
+                <small class="ce-muted d-block">Plats servis et quantités, sous-total par semaine</small></div>
+            </div>
+            <div class="table-responsive">
+              <table class="ce-table ce-table-souple ce-table-jours">
+                <thead><tr><th>Date</th><th>Plats servis</th><th class="ce-n">Repas</th><th class="ce-n">Montant</th></tr></thead>
+                <tbody>
+                  @for (s of semainesVisibles; track s.numero) {
+                    @for (j of s.jours; track j.date) {
+                      <tr>
+                        <td class="ce-jour-date"><b>{{ j.libelle }}</b></td>
+                        <td>@for (p of j.plats; track p.plat) { <span class="ce-pl">{{ p.plat }} <b>{{ p.nb }}</b></span> }</td>
+                        <td class="ce-n">{{ j.nb_repas }}</td>
+                        <td class="ce-n"><b>{{ f(j.montant) }} F</b></td>
+                      </tr>
+                    }
+                    <tr class="ce-st"><td colspan="2">{{ s.libelle }} · {{ s.nb_jours }} jour{{ s.nb_jours > 1 ? 's' : '' }}</td>
+                      <td class="ce-n">{{ s.nb_repas }}</td><td class="ce-n">{{ f(s.montant) }} F</td></tr>
+                  }
+                  @if (!semainesDepliees) {
+                    <tr class="ce-plus" (click)="semainesDepliees = true">
+                      <td colspan="2"><button type="button" class="ce-lien-plus"><i class="ri-arrow-down-s-line"></i>Afficher les {{ semainesCachees.nb }} autres semaines ({{ semainesCachees.jours }} jours)</button></td>
+                      <td class="ce-n">{{ semainesCachees.repas }}</td><td class="ce-n">{{ f(semainesCachees.montant) }} F</td>
+                    </tr>
+                  } @else if (releve.semaines.length > 2) {
+                    <tr class="ce-plus" (click)="semainesDepliees = false">
+                      <td colspan="4"><button type="button" class="ce-lien-plus"><i class="ri-arrow-up-s-line"></i>Replier</button></td>
+                    </tr>
+                  }
+                  <tr class="ce-total"><td colspan="2">Total {{ releve.periode }}</td><td class="ce-n">{{ c.nb_repas }}</td><td class="ce-n">{{ f(c.montant) }} F</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+
+        <!-- ── Détail par agent (replié) ─────────────────────────── -->
+        <div class="ce-carte ce-carte-table">
+          <div class="ce-table-hd ce-agents-hd">
+            <div><b><i class="ri-team-line"></i>Détail par agent
+              @if (releve.agents) { <span class="ce-tag ce-tag-gr">{{ releve.agents.length }} agents</span> }</b>
+              <small class="ce-muted d-block">Qui a mangé quoi, jour par jour (justificatif en cas de contestation)</small></div>
+            <button type="button" class="ce-btn ce-btn-mini" [disabled]="!c.nb_repas" (click)="basculerAgents()" [attr.aria-expanded]="agentsOuverts">
+              {{ agentsOuverts ? 'Masquer' : 'Afficher' }}<i [class]="agentsOuverts ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i>
+            </button>
+          </div>
+          @if (agentsOuverts) {
+            @if (chargementAgents) {
+              <div class="ce-chargement"><span class="spinner-border" role="status"></span></div>
+            } @else if (releve.agents) {
+              <div class="ce-agents-recherche">
+                <label class="ce-champ ce-champ-recherche"><i class="ri-search-line"></i>
+                  <input type="search" [(ngModel)]="rechercheAgent" placeholder="Rechercher un agent…" aria-label="Rechercher un agent"></label>
+              </div>
+              <div class="table-responsive">
+                <table class="ce-table ce-table-souple">
+                  <thead><tr><th>Agent</th><th class="ce-hide-m">Agence</th><th class="ce-n">Repas</th><th class="ce-n ce-hide-m">Retirés</th><th class="ce-n">Montant</th></tr></thead>
+                  <tbody>
+                    @for (a of agentsFiltres; track a.username) {
+                      <tr class="ce-ligne-agent" (click)="agentDeplie = agentDeplie === a.username ? null : a.username">
+                        <td><div class="ce-qui"><i [class]="agentDeplie === a.username ? 'ri-arrow-down-s-line' : 'ri-arrow-right-s-line'"></i>
+                          <div><b>{{ a.nom_prenom }}</b><small>{{ a.username }}</small></div></div></td>
+                        <td class="ce-hide-m">{{ a.agence }}</td>
+                        <td class="ce-n">{{ a.nb_repas }}</td>
+                        <td class="ce-n ce-hide-m">{{ a.retires }}</td>
+                        <td class="ce-n"><b>{{ f(a.montant) }} F</b></td>
+                      </tr>
+                      @if (agentDeplie === a.username) {
+                        <tr class="ce-detail-agent"><td colspan="5">
+                          @for (l of a.lignes; track $index) {
+                            <span class="ce-pl" [class.ce-pl-attente]="l.statut !== 'retiree'" [title]="libelleStatut(l.statut)">{{ dateCourte(l.date_menu) }} · {{ l.plat }}@if (l.statut !== 'retiree') { <i class="ri-time-line"></i> }</span>
+                          }
+                        </td></tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              </div>
+              <div class="ce-pied"><span class="ce-info"><i class="ri-time-line"></i>repas commandé non retiré (facturé selon le contrat)</span></div>
+            }
+          }
+        </div>
+      </div>
+
+      <div class="ce-pile-presta">
+        <!-- ── Clôture du mois ───────────────────────────────────── -->
+        <div class="ce-carte ce-etapes">
+          <h3><i class="ri-lock-2-line"></i>Clôture du mois</h3>
+          @if (clotureMessage) { <div class="ce-alerte ce-alerte-ve ce-alerte-fine mb-2"><i class="ri-checkbox-circle-line"></i><div>{{ clotureMessage }}</div></div> }
+          @if (clotureErreur) { <div class="ce-alerte ce-alerte-ro ce-alerte-fine mb-2"><i class="ri-error-warning-line"></i><div>{{ clotureErreur }}</div></div> }
+          @switch (releve.cloture.etat) {
+            @case ('cloture') {
+              <div class="ce-etape"><span class="ce-pt ce-p-ve"><i class="ri-check-line"></i></span>
+                <div><b>Mois clôturé</b><small>le {{ date(releve.cloture.cloturee_le) }} · montants figés</small></div></div>
+              <div class="ce-etape"><span class="ce-pt ce-p-ve"><i class="ri-file-pdf-line"></i></span>
+                <div><b>Relevé officiel {{ releve.cloture.releve?.numero || '' }}</b><small>À faire signer, puis à transmettre au prestataire</small></div></div>
+              <div class="ce-etape"><span class="ce-pt ce-p-gr"><i class="ri-quill-pen-line"></i></span>
+                <div><b>Relevé signé, puis facture du prestataire</b><small>Le prestataire joint ce relevé à sa facture en reportant le n°</small></div></div>
+              @if (releve.cloture.releve) {
+                <button type="button" class="ce-btn ce-btn-navy ce-btn-plein" [disabled]="telechargement === 'releve'" (click)="telechargerReleve()">
+                  <i class="ri-file-pdf-line"></i>Relevé officiel {{ releve.cloture.releve.numero }}</button>
+              }
+            }
+            @case ('a_cloturer') {
+              <div class="ce-etape"><span class="ce-pt ce-p-ve"><i class="ri-check-line"></i></span>
+                <div><b>Mois terminé</b><small>{{ finPeriode }} · @if (obstacles) { <span class="ce-c-rouge">à corriger avant clôture : {{ obstacles }}</span> } @else { tous les repas ont un tarif }</small></div></div>
+              <div class="ce-etape"><span class="ce-pt ce-p-or"><i class="ri-lock-unlock-line"></i></span>
+                <div><b>À clôturer</b><small>La clôture fige les montants et attribue le n° {{ releve.cloture.prochain_numero }}</small></div></div>
+              <div class="ce-etape"><span class="ce-pt ce-p-gr"><i class="ri-quill-pen-line"></i></span>
+                <div><b>Relevé signé, puis facture du prestataire</b><small>Le prestataire joint ce relevé à sa facture</small></div></div>
+              @if (estAdmin) {
+                <button type="button" class="ce-btn ce-btn-navy ce-btn-plein" [disabled]="isCloturing" (click)="cloturer()">
+                  @if (isCloturing) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-lock-2-line"></i> }
+                  Clôturer {{ moisLibelle }}</button>
+              } @else {
+                <small class="ce-muted d-block mt-1">La clôture est faite par un administrateur.</small>
+              }
+            }
+            @case ('en_cours') {
+              <div class="ce-etape"><span class="ce-pt ce-p-or"><i class="ri-time-line"></i></span>
+                <div><b>Mois en cours</b><small>Montants provisoires jusqu'au {{ finPeriode }}</small></div></div>
+              <div class="ce-etape"><span class="ce-pt ce-p-gr"><i class="ri-lock-unlock-line"></i></span>
+                <div><b>Clôture après la fin du mois</b><small>Elle fige les montants et attribue le n° du relevé</small></div></div>
+            }
+            @default {
+              <div class="ce-etape"><span class="ce-pt ce-p-gr"><i class="ri-calendar-line"></i></span>
+                <div><b>Période personnalisée</b><small>La clôture se fait par mois entier : revenez au mois pour clôturer.</small></div></div>
+            }
+          }
+          @if (releve.cloture.etat !== 'cloture') {
+            <small class="ce-muted d-block mt-2 ce-petit">Avant clôture, le PDF porte la mention « PROVISOIRE » et n'a pas de numéro.</small>
+          }
+        </div>
+
+        <!-- ── Par agence ────────────────────────────────────────── -->
+        <div class="ce-carte ce-carte-table">
+          <div class="ce-table-hd"><b><i class="ri-building-line"></i>Par agence</b></div>
+          <table class="ce-table ce-table-souple">
+            <thead><tr><th>Agence</th><th class="ce-n">Repas</th><th class="ce-n">Montant</th></tr></thead>
+            <tbody>
+              @for (a of releve.par_agence; track a.agence) {
+                <tr><td><b>{{ a.agence }}</b></td><td class="ce-n">{{ a.nb_repas }}</td><td class="ce-n"><b>{{ f(a.montant) }} F</b></td></tr>
+              }
+              @for (a of releve.agences_sans_prestataire; track a.agence) {
+                <tr><td class="ce-muted">{{ a.agence }}</td><td class="ce-n ce-muted" colspan="2">non rattachée · {{ a.nb_repas }} repas</td></tr>
+              }
+              @if (!releve.par_agence.length && !releve.agences_sans_prestataire.length) {
+                <tr><td colspan="3" class="ce-muted">Aucun repas sur la période</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ── Relevés officiels ─────────────────────────────────── -->
+        <div class="ce-carte">
+          <h3><i class="ri-file-pdf-line"></i>Relevés officiels</h3>
+          @if (!releve.releves.length) {
+            <small class="ce-muted">Aucun relevé officiel : il est créé à la clôture du mois.</small>
+          }
+          <ul class="ce-docs">
+            @for (r of releve.releves; track r.id) {
+              <li>
+                <span class="ce-docs-ic"><i class="ri-file-pdf-line"></i></span>
+                <div><b>{{ r.numero }} · {{ libelleReleve(r) }}</b>
+                  <small>{{ f(r.nb_repas) }} repas · {{ f(r.montant_total) }} F · clôturé le {{ dateCourte(r.cloturee_le) }}</small></div>
+                <button type="button" class="ce-lien-ic ms-auto" [disabled]="telechargement === 'off-' + r.id" (click)="telechargerOfficiel(r)"
+                        [attr.aria-label]="'Télécharger le relevé ' + r.numero"><i class="ri-download-2-line"></i></button>
+              </li>
+            }
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="ce-info ce-muted"><i class="ri-information-line"></i>{{ releve.regle }} · montants figés après clôture</div>
+  </div>
+}

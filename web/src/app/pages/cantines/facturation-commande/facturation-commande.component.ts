@@ -6,7 +6,7 @@
 // vigueur à la date du menu ; montants figés pour les mois clôturés.
 
 import { filtrerAgencesGerees } from 'src/app/core/helpers/roles';
-import { Component, OnInit, DestroyRef, inject } from '@angular/core';
+import { Component, OnInit, DestroyRef, ViewChild, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Store } from '@ngrx/store';
@@ -24,6 +24,8 @@ import { ADMINS, aUnRole } from 'src/app/core/helpers/roles';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { saveAs } from 'file-saver';
+import { InfosReleve, OngletPrestatairesComponent } from './onglet-prestataires/onglet-prestataires.component';
 
 export type EtatFacture = 'cloturee' | 'provisoire' | 'partielle';
 
@@ -91,6 +93,13 @@ export class FacturationCommandeComponent implements OnInit {
 
   /** Onglet affiché : agents (ce qu'ils doivent) ou prestataires (ce que nous leur devons) */
   onglet: 'agents' | 'prestataires' = 'agents';
+
+  // ── Onglet Prestataires : choix dans la barre, contenu dans <app-onglet-prestataires> ──
+  @ViewChild(OngletPrestatairesComponent) ongletPrestataires?: OngletPrestatairesComponent;
+  prestataireId: number | null = null;
+  agencePresta = '';
+  infosPresta: InfosReleve | null = null;
+  telechargementAgents = false;
 
   /** Mois affiché (navigation par flèches) ; périodeLibre = dates saisies */
   annee = new Date().getFullYear();
@@ -596,93 +605,38 @@ export class FacturationCommandeComponent implements OnInit {
   }
 
   // ══════════════════════════════════════════════════════════
-  // ✅ EXPORT PDF (username + nom/prénom)
+  // RELEVÉ DES REPAS AGENTS (PDF serveur, A4 : retenues sur salaire)
   // ══════════════════════════════════════════════════════════
 
   exportPdf(): void {
-    const { date_debut, date_fin } = this.filterForm.value;
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
+    const { date_debut, date_fin, agence, typeequipe } = this.filterForm.value;
+    let params = new HttpParams();
+    if (date_debut) params = params.set('date_debut', date_debut);
+    if (date_fin)   params = params.set('date_fin', date_fin);
+    if (agence)     params = params.set('agence', agence);
+    if (typeequipe) params = params.set('typeequipe', typeequipe);
+    this.telechargementAgents = true;
+    this.http.get(`${this.apiUrl}/facturation/agents-pdf/`, { params, responseType: 'blob' })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: blob => {
+          this.telechargementAgents = false;
+          saveAs(blob, `releve-repas-agents-${date_debut ?? ''}-${date_fin ?? ''}.pdf`);
+        },
+        error: err => {
+          this.telechargementAgents = false;
+          this.error = typeof err === 'string' ? err : 'Téléchargement du relevé impossible';
+        },
+      });
+  }
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    const titre = `Facturation commandes cantine — ${
-      date_debut ? this.formatDate(date_debut) : ''
-    }${date_fin ? ' au ' + this.formatDate(date_fin) : ''}`;
-    doc.text(titre, 14, 15);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.text(
-      `Généré le : ${new Date().toLocaleDateString('fr-FR')} — ` +
-      `${this.lignesFacturation.length} agent(s) — ` +
-      `${this.totalNbCommandes} commande(s) — ` +
-      `Total : ${this.formatMontant(this.totalMontant)} FCFA`,
-      14, 21
-    );
+  // ══════════════════════════════════════════════════════════
+  // ONGLET PRESTATAIRES
+  // ══════════════════════════════════════════════════════════
 
-    const head = [[
-      'N°', 'Username', 'Nom & Prénom', 'Agence menu', 'Agence agent', 'Équipe',
-      'Service', 'Poste', 'Catégorie', 'Montant', 'Nb cmd',
-      'Att.', 'Ret.', 'État', 'Total',
-    ]];
-
-    const body: any[][] = this.lignesFacturation.map((l, i) => [
-      i + 1,
-      l.username,
-      l.nomPrenom,
-      l.agenceMenu,
-      l.agenceAgent,
-      l.equipe,
-      l.service,
-      l.poste,
-      l.categoriesalarie,
-      this.formatMontant(l.montant),
-      l.nbCommandes,
-      l.statuts.en_attente,
-      l.statuts.retiree,
-      this.libelleEtat(l.etat),
-      this.formatMontant(l.total),
-    ]);
-
-    // Ligne total
-    body.push([
-      '', 'TOTAL', '', '', '', '', '', '', '', '',
-      this.totalNbCommandes, '', '', '',
-      this.formatMontant(this.totalMontant),
-    ]);
-
-    autoTable(doc, {
-      head,
-      body,
-      startY: 26,
-      styles:     { fontSize: 7, cellPadding: 1.5 },
-      headStyles: { fillColor: [9, 36, 64], textColor: 255, fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
-      didParseCell: (data) => {
-        if (data.row.index === body.length - 1) {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [234, 251, 241];
-        }
-      },
-      columnStyles: {
-        0:  { cellWidth: 8,  halign: 'center' },
-        1:  { cellWidth: 22 },
-        2:  { cellWidth: 30 },
-        3:  { cellWidth: 22 },
-        4:  { cellWidth: 22 },
-        5:  { cellWidth: 15 },
-        6:  { cellWidth: 22 },
-        7:  { cellWidth: 22 },
-        8:  { cellWidth: 22 },
-        9:  { cellWidth: 16, halign: 'right' },
-        10: { cellWidth: 12, halign: 'center' },
-        11: { cellWidth: 10, halign: 'center' },
-        12: { cellWidth: 10, halign: 'center' },
-        13: { cellWidth: 10, halign: 'center' },
-        14: { cellWidth: 18, halign: 'right' },
-      },
-      margin: { left: 14, right: 14 },
-    });
-
-    doc.save(`facturation-${date_debut ?? ''}-${date_fin ?? ''}.pdf`);
+  /** Liste des prestataires, prestataire retenu et état du mois, remontés par l'onglet */
+  recevoirInfosPresta(infos: InfosReleve): void {
+    this.infosPresta = infos;
+    this.prestataireId = infos.prestataireId;
   }
 }

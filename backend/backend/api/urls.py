@@ -100,6 +100,10 @@ urlpatterns = [
     path('api/statistiques/detail/', DetailServiceView.as_view(), name='statistiques-detail'),
     path('api/facturation/', FacturationView.as_view(), name='facturation'),
     path('api/facturation/prestataires/', FacturationPrestataireView.as_view(), name='facturation-prestataires'),
+    path('api/facturation/prestataires/releve/', RelevePrestataireView.as_view(), name='facturation-prestataires-releve'),
+    path('api/facturation/prestataires/<int:pk>/releve-pdf/', RelevePrestatairePdfView.as_view(),
+         name='facturation-prestataires-releve-pdf'),
+    path('api/facturation/agents-pdf/', ReleveAgentsPdfView.as_view(), name='facturation-agents-pdf'),
     path('api/parametres-societe/', ParametresSocieteView.as_view(), name='parametres-societe'),
     # Liens de téléchargement de l'application mobile : lecture publique, modification admin
     path('api/application-mobile/', ApplicationMobileView.as_view(), name='application-mobile'),

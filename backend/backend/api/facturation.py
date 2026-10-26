@@ -257,8 +257,12 @@ def lignes_prestataires(commandes_qs):
     lignes = []
     for c in commandes:
         figee = figees.get(c.id)
+        plat = c.plat.nom
+        agence = c.menu.agence.nom_agence if c.menu.agence else ''
         if figee:
+            # Mois clôturé : prestataire, montant, plat et agence tels qu'à la clôture
             prestataire, montant, source = figee.facture.prestataire, figee.montant, 'facture'
+            plat, agence = figee.plat_nom or plat, figee.agence_nom or agence
         else:
             prestataire, montant = tarif.prix(c.menu.agence_id, c.menu.date_menu)
             source = 'calcul'
@@ -267,8 +271,8 @@ def lignes_prestataires(commandes_qs):
             'commande_id': c.id,
             'user_id': c.user_id,
             'date_menu': c.menu.date_menu,
-            'plat': c.plat.nom,
-            'agence_menu': c.menu.agence.nom_agence if c.menu.agence else '',
+            'plat': plat,
+            'agence_menu': agence,
             'equipe': c.menu.typeequipe.libelle if c.menu.typeequipe else '',
             'statut': c.statut,
             'prestataire': prestataire,
@@ -348,6 +352,45 @@ def mois_cloture(annee, mois):
     return ClotureMensuelle.objects.filter(annee=annee, mois=mois).exists()
 
 
+def numero_releve(annee, rang):
+    """N° du relevé de prestations officiel : RP-AAAA-NNN (compteur par année)."""
+    return f"RP-{annee}-{rang:03d}"
+
+
+def dernier_rang_releve(annee):
+    """
+    Dernier rang attribué dans l'année (0 si aucun). Les anciens numéros
+    FP-AAAA-MM-NNN (avant le relevé de prestations) ne sont pas renumérotés
+    et n'entrent pas dans le compteur.
+    """
+    prefixe = f"RP-{annee}-"
+    rangs = [int(n[len(prefixe):]) for n in FacturePrestataire.objects
+             .filter(numero__startswith=prefixe).values_list('numero', flat=True)
+             if n[len(prefixe):].isdigit()]
+    return max(rangs, default=0)
+
+
+def _obstacles_cloture(lignes, lignes_prest):
+    return sorted({
+        f"Employé {l['commande'].user.username} ({l['date_menu']:%d/%m/%Y}) : "
+        + ("aucune catégorie salarié" if not l['categorie']
+           else f"pas de tarif pour la catégorie {l['categorie']}")
+        for l in lignes if l['sans_tarif']
+    }) + [f"Prestataire — {d}" for d in _anomalies_prestataires(lignes_prest)]
+
+
+def obstacles_cloture(annee, mois):
+    """
+    Ce qui empêcherait de clôturer le mois (toutes agences) :
+    (repas employés sans tarif, repas sans prestataire ou sans tarif prestataire).
+    """
+    debut, fin = bornes_mois(annee, mois)
+    commandes_mois = Commande.objects.filter(menu__date_menu__gte=debut, menu__date_menu__lte=fin)
+    employes = sum(l['sans_tarif'] for l in lignes_facturation(commandes_mois))
+    prest = sum(l['sans_prestataire'] or l['sans_tarif'] for l in lignes_prestataires(commandes_mois))
+    return employes, prest
+
+
 def cloturer_mois(annee, mois, par_user):
     """
     Fige la facturation d'un mois terminé : une ClotureMensuelle, puis
@@ -369,12 +412,7 @@ def cloturer_mois(annee, mois, par_user):
     lignes = lignes_facturation(commandes_mois)
     lignes_prest = lignes_prestataires(commandes_mois)
 
-    details = sorted({
-        f"Employé {l['commande'].user.username} ({l['date_menu']:%d/%m/%Y}) : "
-        + ("aucune catégorie salarié" if not l['categorie']
-           else f"pas de tarif pour la catégorie {l['categorie']}")
-        for l in lignes if l['sans_tarif']
-    }) + [f"Prestataire — {d}" for d in _anomalies_prestataires(lignes_prest)]
+    details = _obstacles_cloture(lignes, lignes_prest)
     if details:
         raise ClotureImpossible(
             "Des repas n'ont pas de tarif : complétez les catégories, tarifs et "
@@ -394,11 +432,13 @@ def cloturer_mois(annee, mois, par_user):
                 nb_factures_prestataires=len(prestataires),
                 montant_total_prestataires=sum((p['total'] for p in prestataires), Decimal('0')),
             )
-            for rang, p in enumerate(prestataires, start=1):
+            rang = dernier_rang_releve(annee)
+            for p in prestataires:
+                rang += 1
                 facture_p = FacturePrestataire.objects.create(
                     cloture=cloture, prestataire_id=p['prestataire_id'],
                     prestataire_libelle=p['prestataire'], annee=annee, mois=mois,
-                    numero=f"FP-{annee}-{mois:02d}-{rang:03d}",
+                    numero=numero_releve(annee, rang),
                     nb_repas=p['nb_repas'], montant_total=p['total'],
                 )
                 LigneFacturePrestataire.objects.bulk_create([

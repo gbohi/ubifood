@@ -15,8 +15,9 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from . import facturation as fact
 from .models import (
-    Agence, AgencePrestataire, Categoriesalarie, Commande, Menu, MenuPlat, Plat,
+    Agence, AgencePrestataire, Categoriesalarie, Commande, FacturePrestataire, Menu, MenuPlat, Plat,
     PlatCategoriesalarie, PlatPrestataire, Prestataire, Statut, TypeEquipe, TypePlat,
     User, UserAgence, UserAllergie, UserCategoriesalarie,
 )
@@ -802,7 +803,7 @@ class FacturePdfTests(_FacturationBase):
         self.assertEqual(r.status_code, 201, r.data)
 
         facture = self.client_pour(self.gestionnaire).get(f'{API}/factures-prestataires/').data['results'][0]
-        self.assertEqual(facture['numero'], 'FP-2026-08-001')
+        self.assertEqual(facture['numero'], 'RP-2026-001')
 
         self.assertEqual(self.client_pour(self.employe).get(
             f"{API}/factures-prestataires/{facture['id']}/pdf/").status_code, 403)
@@ -811,16 +812,28 @@ class FacturePdfTests(_FacturationBase):
         self.assertEqual(r['Content-Type'], 'application/pdf')
         contenu = b''.join(r.streaming_content)
         self.assertTrue(contenu.startswith(b'%PDF'))
-        self.assertIn(b'FP-2026-08-001', contenu)   # titre du document
+        self.assertIn(b'RP-2026-001', contenu)   # titre du document
         with open(os.path.join(_MEDIA_TEST, 'facture-test.pdf'), 'wb') as f:
             f.write(contenu)
 
     def test_montant_en_lettres(self):
         from .pdf_factures import montant_en_lettres
-        self.assertEqual(montant_en_lettres(Decimal('1700')), 'mille-sept-cents')
-        self.assertEqual(montant_en_lettres(Decimal('80000')), 'quatre-vingt-mille')
-        self.assertEqual(montant_en_lettres(Decimal('1250300')),
-                         'un-million-deux-cent-cinquante-mille-trois-cents')
+        attendus = {
+            0: 'zéro', 1: 'un', 21: 'vingt et un', 71: 'soixante et onze', 80: 'quatre-vingts',
+            81: 'quatre-vingt-un', 91: 'quatre-vingt-onze', 100: 'cent', 200: 'deux cents',
+            201: 'deux cent un', 1000: 'mille', 1700: 'mille sept cents', 80000: 'quatre-vingt mille',
+            200000: 'deux cent mille', 1000000: 'un million', 200000000: 'deux cents millions',
+            472500: 'quatre cent soixante-douze mille cinq cents',
+            1529000: 'un million cinq cent vingt-neuf mille',
+            1250300: 'un million deux cent cinquante mille trois cents',
+            2000000000: 'deux milliards',
+        }
+        for n, texte in attendus.items():
+            self.assertEqual(montant_en_lettres(Decimal(n)), texte, n)
+        from .pdf_factures import montant_en_lettres_phrase
+        self.assertEqual(montant_en_lettres_phrase(Decimal('472500.00')),
+                         'Quatre cent soixante-douze mille cinq cents')
+
 
 
 class GestionUtilisateursTests(BaseAPITestCase):
@@ -1677,3 +1690,171 @@ class FacturationSynthesesTests(_FacturationBase):
             f'{API}/facturation/', {'date_debut': '2026-08-01', 'date_fin': '2026-08-31'}).data
         self.assertEqual(data['par_categorie'][0]['montant'], 1500.0)
         self.assertEqual(data['par_plat'][0]['montant'], 1500.0)
+
+
+@override_settings(MEDIA_ROOT=_MEDIA_TEST)
+class RelevePrestationsTests(_FacturationBase):
+    """Onglet Prestataires : relevé de prestations (écran, PDF provisoire / officiel) et relevé agents."""
+
+    def releve(self, qui=None, **params):
+        params.setdefault('prestataire', self.traiteur.id)
+        params.setdefault('annee', 2026)
+        params.setdefault('mois', 8)
+        return self.client_pour(qui or self.gestionnaire).get(f'{API}/facturation/prestataires/releve/', params)
+
+    def donnees_aout(self):
+        d = self.date
+        self.commander(self.employe, d(2026, 8, 18), statut='retiree')                  # 900
+        self.commander(self.employe, d(2026, 8, 19), plat=self.plat2)                   # 900, non retiré
+        self.commander(self.employe2, d(2026, 8, 19), statut='retiree')                 # 900
+        self.commander(self.employe2, d(2026, 8, 25), plat=self.plat2, statut='retiree')  # 900
+        self.commander(self.employe2, d(2026, 8, 26), statut='annulee')                 # non facturé
+        self.commander(self.employe, d(2026, 7, 15))                                     # juillet : 800
+
+    def pdf(self, r):
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'], 'application/pdf')
+        contenu = b''.join(r.streaming_content)
+        self.assertTrue(contenu.startswith(b'%PDF'))
+        return contenu
+
+    def test_releve_ecran_totaux_coherents(self):
+        self.donnees_aout()
+        self.assertEqual(self.releve(self.employe).status_code, 403)
+        r = self.releve(agents=1)
+        self.assertEqual(r.status_code, 200, r.data)
+        data = r.data
+        c = data['chiffres']
+        self.assertEqual((c['nb_repas'], c['retires'], c['non_retires'], c['montant']), (4, 3, 1, 3600.0))
+        self.assertEqual((c['jours_servis'], c['precedent']['nb_repas'], c['precedent']['montant']), (3, 1, 800.0))
+        self.assertEqual(c['precedent']['ecart_montant'], 2800.0)
+        self.assertEqual(data['prestataire']['libelle'], 'Traiteur A')
+        self.assertEqual(data['tarif']['montant'], 900.0)
+        # Par plat, par jour, par agence, par agent : même total
+        self.assertEqual(sum(p['montant'] for p in data['par_plat']), c['montant'])
+        self.assertEqual(sum(p['nb_repas'] for p in data['par_plat']), c['nb_repas'])
+        self.assertTrue(all(p['montant'] == p['nb_repas'] * p['pu'] for p in data['par_plat']))
+        self.assertEqual(sum(w['montant'] for w in data['semaines']), c['montant'])
+        self.assertEqual(sum(j['nb_repas'] for w in data['semaines'] for j in w['jours']), c['nb_repas'])
+        self.assertEqual([w['nb_jours'] for w in data['semaines']], [2, 1])
+        self.assertEqual(sum(a['montant'] for a in data['par_agence']), c['montant'])
+        self.assertEqual(sum(a['montant'] for a in data['agents']), c['montant'])
+        self.assertEqual(data['cloture']['etat'], 'a_cloturer')
+        self.assertEqual(data['cloture']['prochain_numero'], 'RP-2026-001')
+        self.assertEqual(data['releves'], [])
+        # Sans prestataire précisé : celui qui a le plus de repas
+        r = self.client_pour(self.gestionnaire).get(f'{API}/facturation/prestataires/releve/',
+                                                    {'date_debut': '2026-08-01', 'date_fin': '2026-08-31'})
+        self.assertEqual(r.data['prestataire']['id'], self.traiteur.id)
+        self.assertNotIn('agents', r.data)
+
+    def test_pdf_provisoire_sans_cloture(self):
+        self.donnees_aout()
+        url = f'{API}/facturation/prestataires/{self.traiteur.id}/releve-pdf/'
+        self.assertEqual(self.client_pour(self.employe).get(url, {'annee': 2026, 'mois': 8}).status_code, 403)
+        r = self.client_pour(self.gestionnaire).get(url, {'annee': 2026, 'mois': 8})
+        contenu = self.pdf(r)
+        self.assertIn('provisoire', r['Content-Disposition'])
+        self.assertNotIn(b'RP-2026', contenu)
+        self.assertFalse(FacturePrestataire.objects.exists())   # aucun numéro consommé
+        # Période personnalisée et mois sans repas : document provisoire quand même
+        self.pdf(self.client_pour(self.gestionnaire).get(url, {'date_debut': '2026-08-10', 'date_fin': '2026-08-20'}))
+        self.pdf(self.client_pour(self.gestionnaire).get(url, {'annee': 2026, 'mois': 3}))
+
+    def test_numerotation_rp_par_annee(self):
+        from .models import ClotureMensuelle, FacturePrestataire as FP
+        # Ancien relevé clôturé avec l'ancienne numérotation : conservé tel quel
+        juin = ClotureMensuelle.objects.create(annee=2026, mois=6)
+        FP.objects.create(cloture=juin, prestataire=self.traiteur, prestataire_libelle='Traiteur A',
+                          numero='FP-2026-06-001', annee=2026, mois=6, nb_repas=0, montant_total=0)
+        UserCategoriesalarie.objects.create(user=self.employe2, categoriesalarie=self.agent,
+                                            statut=self.statut, date_debut=self.d('2025-01-01'))
+        UserCategoriesalarie.objects.create(user=self.employe, categoriesalarie=self.agent,
+                                            statut=self.statut, date_debut=self.d('2025-01-01'),
+                                            date_fin=self.d('2025-12-31'))
+        PlatCategoriesalarie.objects.create(categoriesalarie=self.agent, montant=Decimal('500'),
+                                            statut=self.statut, date_debut=self.d('2025-01-01'),
+                                            date_fin=self.d('2025-12-31'))
+        PlatPrestataire.objects.create(prestataire=self.traiteur, montant=Decimal('700'),
+                                       statut=self.statut, date_debut=self.d('2025-01-01'),
+                                       date_fin=self.d('2025-12-31'))
+        AgencePrestataire.objects.filter(prestataire=self.traiteur).update(date_debut=self.d('2025-01-01'))
+        self.donnees_aout()
+        self.commander(self.employe2, self.date(2025, 12, 10))
+        admin = self.client_pour(self.admin)
+        numeros = []
+        for annee, mois in ((2026, 7), (2026, 8), (2025, 12)):
+            r = admin.post(f'{API}/facturation/clotures/cloturer/', {'annee': annee, 'mois': mois})
+            self.assertEqual(r.status_code, 201, r.data)
+            numeros.append(FP.objects.get(annee=annee, mois=mois).numero)
+        self.assertEqual(numeros, ['RP-2026-001', 'RP-2026-002', 'RP-2025-001'])
+        self.assertTrue(FP.objects.filter(numero='FP-2026-06-001').exists())
+
+        # Relevé officiel d'août : numéroté, montants figés, plat tel qu'à la clôture
+        PlatPrestataire.objects.update(montant=Decimal('5000'))
+        self.plat1.nom = 'Garba renommé'
+        self.plat1.save()
+        data = self.releve().data
+        self.assertEqual(data['cloture']['etat'], 'cloture')
+        self.assertEqual(data['cloture']['releve']['numero'], 'RP-2026-002')
+        self.assertEqual(data['chiffres']['montant'], 3600.0)
+        self.assertIn('Garba', [p['plat'] for p in data['par_plat']])
+        # (le relevé FP- de juin, sans repas, n'est visible que d'un administrateur)
+        self.assertEqual([r['numero'] for r in data['releves']], ['RP-2026-002', 'RP-2026-001', 'RP-2025-001'])
+        self.assertIn('FP-2026-06-001', [r['numero'] for r in self.releve(self.admin).data['releves']])
+        url = f'{API}/facturation/prestataires/{self.traiteur.id}/releve-pdf/'
+        r = self.client_pour(self.gestionnaire).get(url, {'annee': 2026, 'mois': 8})
+        self.assertIn(b'RP-2026-002', self.pdf(r))
+        self.assertIn('RP-2026-002', r['Content-Disposition'])
+        r = self.client_pour(self.gestionnaire).get(
+            f"{API}/factures-prestataires/{data['cloture']['releve']['id']}/pdf/")
+        self.assertIn(b'RP-2026-002', self.pdf(r))
+
+    def test_perimetre_gestionnaire(self):
+        self.donnees_aout()
+        annexe = Agence.objects.create(nom_agence='Annexe')
+        traiteur_b = Prestataire.objects.create(libelle='Traiteur B', statut=self.statut,
+                                                date_debut=self.d('2026-01-01'))
+        AgencePrestataire.objects.create(prestataire=traiteur_b, agence=annexe, statut=self.statut,
+                                         date_debut=self.d('2026-01-01'))
+        PlatPrestataire.objects.create(prestataire=traiteur_b, montant=Decimal('1000'), statut=self.statut,
+                                       date_debut=self.d('2026-01-01'))
+        sans = Agence.objects.create(nom_agence='Yopougon')
+        for agence in (annexe, sans):
+            menu = Menu.objects.create(date_menu=self.date(2026, 8, 6), agence=agence, typeequipe=self.typeequipe)
+            MenuPlat.objects.create(menu=menu, plat=self.plat1)
+            Commande.objects.create(user=self.employe2, menu=menu, plat=self.plat1)
+
+        # Gestionnaire du Siège : ni les repas de l'Annexe, ni le Traiteur B, ni l'alerte Yopougon
+        data = self.releve(prestataire=traiteur_b.id).data
+        self.assertEqual(data['chiffres']['nb_repas'], 0)
+        self.assertEqual([p['libelle'] for p in data['prestataires']], ['Traiteur A'])
+        self.assertEqual(data['agences_sans_prestataire'], [])
+        self.assertEqual(self.releve(agence=annexe.id).status_code, 403)
+        # Administrateur : tout, avec l'alerte pour l'agence sans prestataire
+        data = self.releve(self.admin, prestataire=traiteur_b.id).data
+        self.assertEqual((data['chiffres']['nb_repas'], data['chiffres']['montant']), (1, 1000.0))
+        self.assertEqual(data['agences_sans_prestataire'], [{'agence': 'Yopougon', 'nb_jours': 1, 'nb_repas': 1}])
+        self.assertEqual(self.releve(self.admin, agence=annexe.id).data['chiffres']['nb_repas'], 0)
+
+    def test_releve_agents_pdf(self):
+        self.donnees_aout()
+        url = f'{API}/facturation/agents-pdf/'
+        self.assertEqual(self.client_pour(self.employe).get(url, {'annee': 2026, 'mois': 8}).status_code, 403)
+        r = self.client_pour(self.gestionnaire).get(url, {'date_debut': '2026-08-01', 'date_fin': '2026-08-31'})
+        self.pdf(r)
+        self.assertIn('releve-repas-agents-2026-08-01-2026-08-31.pdf', r['Content-Disposition'])
+        autre = Agence.objects.create(nom_agence='Autre')
+        self.assertEqual(self.client_pour(self.gestionnaire).get(
+            url, {'annee': 2026, 'mois': 8, 'agence': autre.id}).status_code, 403)
+        self.pdf(self.client_pour(self.admin).get(url, {'annee': 2026, 'mois': 8, 'agence': autre.id}))
+        self.assertEqual(self.client_pour(self.gestionnaire).get(url, {'date_debut': 'x'}).status_code, 400)
+
+    def test_donnees_releve_agents(self):
+        from . import releves
+        self.donnees_aout()
+        lignes = fact.lignes_facturation(Commande.objects.filter(menu__date_menu__month=8))
+        data = releves.releve_agents(lignes)
+        self.assertEqual(data['nb_repas'], 4)
+        self.assertEqual(sum(g['montant'] for g in data['agences']), data['montant'])
+        self.assertEqual(sum(c['montant'] for c in data['par_categorie']), data['montant'])

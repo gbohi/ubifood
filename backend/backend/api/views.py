@@ -31,6 +31,7 @@ from django.db.models import Avg, Count, Q
 from django.shortcuts import get_object_or_404
 from decimal import Decimal
 from django.utils import timezone
+from django.utils.text import slugify
 from django.core.exceptions import ValidationError as DjangoValidationError
 import requests
 from django.core.cache import cache
@@ -2575,7 +2576,7 @@ class FacturationPrestataireView(APIView):
 class FacturePrestataireViewSet(viewsets.ReadOnlyModelViewSet):
     """
     GET /api/api/factures-prestataires/?annee=&mois=&prestataire=   (gestionnaires)
-    GET /api/api/factures-prestataires/{id}/pdf/                     facture PDF officielle
+    GET /api/api/factures-prestataires/{id}/pdf/                     relevé de prestations officiel (PDF)
     """
     serializer_class = FacturePrestataireSerializer
     permission_classes = [IsGestionnaireRole]
@@ -2598,13 +2599,240 @@ class FacturePrestataireViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['get'])
     def pdf(self, request, pk=None):
+        """Relevé de prestations officiel (numéroté, montants figés)."""
         from .pdf_factures import generer_facture_prestataire
         facture = self.get_object()
         contenu = generer_facture_prestataire(facture, ParametresSociete.charger())
-        nom = f"facture-{facture.numero or facture.id}.pdf"
+        nom = f"releve-prestations-{facture.numero or facture.id}.pdf"
         reponse = FileResponse(BytesIO(contenu), content_type='application/pdf',
                                as_attachment=True, filename=nom)
         return reponse
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RELEVÉ DE PRESTATIONS (onglet « Prestataires ») ET RELEVÉ DES REPAS AGENTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _periode_params(request):
+    """(debut, fin) : date_debut / date_fin, ou annee / mois ; défaut : le mois en cours."""
+    aujourdhui = timezone.localdate()
+    annee, mois = request.query_params.get('annee'), request.query_params.get('mois')
+    if annee and mois:
+        if not (str(annee).isdigit() and str(mois).isdigit() and 1 <= int(mois) <= 12):
+            raise ValidationError("Paramètres annee et mois (1-12) invalides.")
+        return fact.bornes_mois(int(annee), int(mois))
+    debut_defaut, fin_defaut = fact.bornes_mois(aujourdhui.year, aujourdhui.month)
+    debut = _parse_date(request.query_params.get('date_debut'), debut_defaut)
+    fin = _parse_date(request.query_params.get('date_fin'), fin_defaut)
+    if fin < debut:
+        raise ValidationError("La date de fin précède la date de début.")
+    return debut, fin
+
+
+def _param_id(request, nom):
+    valeur = request.query_params.get(nom)
+    if not valeur:
+        return None
+    if not str(valeur).isdigit():
+        raise ValidationError(f"Paramètre {nom} invalide.")
+    return int(valeur)
+
+
+def _f(montant):
+    return float(montant) if montant is not None else None
+
+
+def _releve_contexte(request, prestataire_id=None):
+    """Prestataire, période, périmètre (agences gérées) et relevé calculé."""
+    from . import releves
+    debut, fin = _periode_params(request)
+    geres = agences_gerees(request.user)
+    agence = _param_id(request, 'agence')
+    typeequipe = _param_id(request, 'typeequipe')
+    if agence is not None and geres is not None and agence not in geres:
+        raise PermissionDenied("Cette agence n'est pas l'une des vôtres.")
+    prestataire_id = prestataire_id or _param_id(request, 'prestataire')
+    prestataire = get_object_or_404(Prestataire, pk=prestataire_id) if prestataire_id else None
+    synth, lignes = releves.releve_prestataire(prestataire, debut, fin, geres, agence, typeequipe)
+    if prestataire is None and synth['prestataires']:
+        # Pas de prestataire choisi : celui qui a le plus de repas sur la période
+        prestataire = Prestataire.objects.get(pk=synth['prestataires'][0]['id'])
+        synth, lignes = releves.releve_prestataire(prestataire, debut, fin, geres, agence, typeequipe)
+    return {'debut': debut, 'fin': fin, 'geres': geres, 'agence': agence, 'typeequipe': typeequipe,
+            'prestataire': prestataire, 'synth': synth, 'lignes': lignes}
+
+
+class RelevePrestataireView(APIView):
+    """
+    GET /api/api/facturation/prestataires/releve/?prestataire=ID
+            &date_debut=&date_fin= (ou &annee=&mois=) [&agence=ID&typeequipe=ID&agents=1]
+
+    Onglet « Facturation › Prestataires » : fiche du prestataire, chiffres
+    clés (écart au mois précédent), par plat, par jour (sous-totaux par
+    semaine), par agence, état de clôture et relevés officiels ; détail par
+    agent avec agents=1. Mêmes lignes que /facturation/prestataires/
+    (valeurs figées pour un mois clôturé). Gestionnaire : ses agences.
+    """
+    permission_classes = [IsGestionnaireRole]
+
+    def get(self, request):
+        from . import releves
+        ctx = _releve_contexte(request)
+        p, s = ctx['prestataire'], ctx['synth']
+        tarif = releves.tarif_en_vigueur(p, min(ctx['fin'], timezone.localdate())) if p else None
+        etat = releves.etat_cloture(p, ctx['debut'], ctx['fin'])
+        facture = etat.pop('facture', None)
+        if facture is not None and not releves.factures_visibles(ctx['geres']).filter(pk=facture.pk).exists():
+            facture = None
+        prec = s['precedent']
+        plats_prec = prec['plats'] if prec else {}
+        deja = set()
+        par_plat = []
+        for l in s['par_plat']:
+            premier = l['plat'] not in deja
+            deja.add(l['plat'])
+            total_plat = sum(x['nb_repas'] for x in s['par_plat'] if x['plat'] == l['plat'])
+            par_plat.append({
+                'plat': l['plat'], 'nb_repas': l['nb_repas'], 'retires': l['retires'],
+                'pu': _f(l['pu']), 'montant': _f(l['montant']) if l['pu'] is not None else None,
+                'part': round(l['nb_repas'] / s['nb_repas'] * 100, 1) if s['nb_repas'] else 0,
+                # Écart de quantité au mois précédent (sur la première ligne du plat)
+                'ecart': (total_plat - plats_prec.get(l['plat'], 0)) if prec and premier else None,
+            })
+
+        reponse = {
+            'date_debut': ctx['debut'].isoformat(),
+            'date_fin': ctx['fin'].isoformat(),
+            'periode': s['periode'],
+            'regle': ("Repas commandés et non annulés des agences rattachées au prestataire, "
+                      "à son tarif en vigueur à la date du menu"),
+            'prestataires': [{**t, 'montant': _f(t['montant'])} for t in s['prestataires']],
+            'prestataire': p and {
+                'id': p.id, 'libelle': p.libelle, 'contact_nom': p.contact_nom, 'telephone': p.telephone,
+                'email': p.email, 'adresse': p.adresse, 'ville': p.ville,
+                'identifiant_fiscal': p.identifiant_fiscal, 'registre_commerce': p.registre_commerce,
+                'agences': sorted({ap.agence.nom_agence for ap in AgencePrestataire.objects
+                                   .filter(prestataire=p).select_related('agence')
+                                   if ctx['geres'] is None or ap.agence_id in ctx['geres']}),
+            },
+            'tarif': tarif and {'montant': _f(tarif.montant), 'date_debut': timezone.localtime(
+                tarif.date_debut).date().isoformat() if timezone.is_aware(tarif.date_debut)
+                else tarif.date_debut.date().isoformat()},
+            'tarifs_appliques': [_f(t) for t in s['tarifs']],
+            'chiffres': {
+                'nb_repas': s['nb_repas'], 'retires': s['retires'], 'non_retires': s['non_retires'],
+                'repas_sans_tarif': s['repas_sans_tarif'], 'montant': _f(s['montant']),
+                'jours_servis': s['jours_servis'], 'moyenne_jour': s['moyenne_jour'],
+                'precedent': prec and {
+                    'annee': prec['annee'], 'mois': prec['mois'], 'libelle': prec['libelle'],
+                    'nb_repas': prec['nb_repas'], 'montant': _f(prec['montant']),
+                    'ecart_montant': _f(s['montant'] - prec['montant']),
+                    'ecart_repas': s['nb_repas'] - prec['nb_repas'],
+                    'ecart_pct': (round(float((s['montant'] - prec['montant']) / prec['montant'] * 100), 1)
+                                  if prec['montant'] else None),
+                },
+            },
+            'par_plat': par_plat,
+            'semaines': [{
+                'numero': w['numero'], 'libelle': w['libelle'], 'nb_jours': w['nb_jours'],
+                'nb_repas': w['nb_repas'], 'montant': _f(w['montant']), 'plats': w['plats'],
+                'jours': [{'date': j['date'].isoformat(), 'libelle': releves.libelle_jour(j['date']),
+                           'plats': [{'plat': n, 'nb': q} for n, q in j['plats']],
+                           'nb_repas': j['nb_repas'], 'montant': _f(j['montant'])} for j in w['jours']],
+            } for w in s['semaines']],
+            'par_agence': [{**a, 'montant': _f(a['montant'])} for a in s['par_agence']],
+            'agences_sans_prestataire': s['agences_sans_prestataire'],
+            'etat': s['etat'],
+            'cloture': {
+                'etat': etat['etat'], 'annee': etat.get('annee'), 'mois': etat.get('mois'),
+                'cloturee_le': etat['cloturee_le'].isoformat() if etat.get('cloturee_le') else None,
+                'releve': facture and {'id': facture.id, 'numero': facture.numero},
+                'prochain_numero': (fact.numero_releve(etat['annee'], fact.dernier_rang_releve(etat['annee']) + 1)
+                                    if etat['etat'] in ('a_cloturer', 'en_cours') else None),
+                # Mois terminé : repas qui bloquent la clôture (toutes agences, agents et prestataires)
+                'obstacles': (dict(zip(('repas_agents_sans_tarif', 'repas_sans_prestataire_ou_tarif'),
+                                       fact.obstacles_cloture(etat['annee'], etat['mois'])))
+                              if etat['etat'] == 'a_cloturer' else None),
+            },
+            'releves': [{
+                'id': r.id, 'numero': r.numero, 'annee': r.annee, 'mois': r.mois,
+                'nb_repas': r.nb_repas, 'montant_total': _f(r.montant_total),
+                'cloturee_le': r.cloture.cloturee_le.isoformat(),
+            } for r in (releves.factures_visibles(ctx['geres']).filter(prestataire=p)
+                        .order_by('-annee', '-mois')[:12] if p else [])],
+        }
+        if request.query_params.get('agents') in ('1', 'true'):
+            infos = _infos_agents([a['user_id'] for a in releves.par_agent(ctx['lignes']) if a['user_id']])
+            reponse['agents'] = [{
+                'user_id': a['user_id'], 'username': a['username'], 'nom_prenom': a['nom_prenom'],
+                'agence': a['agence'], 'nb_repas': a['nb_repas'], 'retires': a['retires'],
+                'montant': _f(a['montant']), **{k: v for k, v in infos.get(a['user_id'], {}).items()},
+                'lignes': [{'date_menu': l['date_menu'].isoformat(), 'plat': l['plat'], 'statut': l['statut'],
+                            'montant': _f(l['montant']), 'source': l['source']} for l in a['lignes']],
+            } for a in releves.par_agent(ctx['lignes'])]
+        return Response(reponse)
+
+
+class RelevePrestatairePdfView(APIView):
+    """
+    GET /api/api/facturation/prestataires/<id>/releve-pdf/?date_debut=&date_fin= (ou annee/mois)
+                                                         [&agence=ID&typeequipe=ID]
+
+    « Relevé de prestations — Bon à facturer » du prestataire sur la période.
+    Mois clôturé dont le relevé officiel est visible (sans filtre) : le relevé
+    officiel numéroté. Sinon : document provisoire, sans numéro, avec
+    filigrane « PROVISOIRE » (ou « EXTRAIT » pour un extrait de mois clôturé).
+    """
+    permission_classes = [IsGestionnaireRole]
+
+    def get(self, request, pk):
+        from . import releves
+        from .pdf_factures import generer_facture_prestataire, generer_releve_prestations
+        ctx = _releve_contexte(request, prestataire_id=pk)
+        p, s = ctx['prestataire'], ctx['synth']
+        societe = ParametresSociete.charger()
+        etat = releves.etat_cloture(p, ctx['debut'], ctx['fin'])
+        facture = etat.get('facture')
+        if (facture is not None and ctx['agence'] is None and ctx['typeequipe'] is None
+                and releves.factures_visibles(ctx['geres']).filter(pk=facture.pk).exists()):
+            contenu = generer_facture_prestataire(facture, societe)
+            nom = f"releve-prestations-{facture.numero}.pdf"
+        else:
+            filigrane = 'PROVISOIRE' if s['etat'] != 'cloturee' or not s['nb_repas'] else 'EXTRAIT'
+            contenu = generer_releve_prestations(s, p, societe, filigrane=filigrane)
+            nom = f"releve-prestations-provisoire-{slugify(p.libelle)}-{ctx['debut']:%Y-%m-%d}-{ctx['fin']:%Y-%m-%d}.pdf"
+        return FileResponse(BytesIO(contenu), content_type='application/pdf', as_attachment=True, filename=nom)
+
+
+class ReleveAgentsPdfView(APIView):
+    """
+    GET /api/api/facturation/agents-pdf/?date_debut=&date_fin= (ou annee/mois) [&agence=ID&typeequipe=ID]
+
+    « Relevé des repas agents — Retenues sur salaire » (A4 portrait) : mêmes
+    lignes que /facturation/ (gestionnaire : repas servis dans ses agences).
+    """
+    permission_classes = [IsGestionnaireRole]
+
+    def get(self, request):
+        from . import releves
+        from .pdf_factures import generer_releve_agents
+        debut, fin = _periode_params(request)
+        geres = agences_gerees(request.user)
+        agence = _param_id(request, 'agence')
+        if agence is not None and geres is not None and agence not in geres:
+            raise PermissionDenied("Cette agence n'est pas l'une des vôtres.")
+        qs = releves.commandes_visibles(debut, fin, geres, agence, _param_id(request, 'typeequipe'))
+        data = releves.releve_agents(fact.lignes_facturation(qs))
+        if agence is not None:
+            libelle = getattr(Agence.objects.filter(pk=agence).first(), 'nom_agence', '—')
+        elif geres is not None:
+            libelle = ', '.join(Agence.objects.filter(pk__in=geres).order_by('nom_agence')
+                                .values_list('nom_agence', flat=True)) or '—'
+        else:
+            libelle = 'toutes'
+        contenu = generer_releve_agents(data, ParametresSociete.charger(), debut, fin, libelle)
+        return FileResponse(BytesIO(contenu), content_type='application/pdf', as_attachment=True,
+                            filename=f"releve-repas-agents-{debut:%Y-%m-%d}-{fin:%Y-%m-%d}.pdf")
 
 
 class ParametresSocieteView(APIView):

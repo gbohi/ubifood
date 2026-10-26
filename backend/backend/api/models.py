@@ -419,7 +419,8 @@ class FacturePrestataire(models.Model):
     prestataire         = models.ForeignKey(Prestataire, on_delete=models.PROTECT,
                                             related_name='factures_mensuelles')
     prestataire_libelle = models.CharField(max_length=100)
-    # Numéro unique attribué à la clôture : FP-AAAA-MM-NNN
+    # Numéro unique attribué à la clôture : RP-AAAA-NNN (compteur par année ;
+    # les relevés clôturés avant gardent leur ancien numéro FP-AAAA-MM-NNN)
     numero              = models.CharField(max_length=30, unique=True, null=True, blank=True)
     annee               = models.PositiveSmallIntegerField()
     mois                = models.PositiveSmallIntegerField()

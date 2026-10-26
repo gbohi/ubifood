@@ -11,8 +11,20 @@
         <button type="button" class="ce-btn" [disabled]="!lignesFacturation.length" (click)="exportExcel()">
           <i class="ri-file-excel-2-line ce-c-vert"></i>Excel
         </button>
-        <button type="button" class="ce-btn" [disabled]="!lignesFacturation.length" (click)="exportPdf()">
-          <i class="ri-file-pdf-line ce-c-rouge"></i>PDF
+        <button type="button" class="ce-btn" [disabled]="!lignesFacturation.length || telechargementAgents" (click)="exportPdf()">
+          @if (telechargementAgents) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-file-pdf-line ce-c-rouge"></i> }PDF
+        </button>
+      </div>
+    } @else {
+      <div class="ce-btns ce-btns-presta">
+        <button type="button" class="ce-btn" [disabled]="!infosPresta?.aDesRepas" (click)="ongletPrestataires?.exporterExcel()">
+          <i class="ri-file-excel-2-line ce-c-vert"></i>Excel
+        </button>
+        <button type="button" class="ce-btn" [disabled]="!infosPresta?.aDesRepas" (click)="ongletPrestataires?.telechargerDetailAgents()">
+          <i class="ri-file-list-3-line"></i>Détail par agent PDF
+        </button>
+        <button type="button" class="ce-btn ce-btn-navy ce-btn-releve" [disabled]="!infosPresta?.prestataireId" (click)="ongletPrestataires?.telechargerReleve()">
+          <i class="ri-file-pdf-line"></i>Relevé de prestations PDF
         </button>
       </div>
     }
@@ -27,6 +39,15 @@
               (click)="changerOnglet('prestataires')"><i class="ri-truck-line"></i>Prestataires</button>
     </div>
     <div class="ce-filtres">
+      @if (onglet === 'prestataires') {
+        <label class="ce-champ ce-champ-presta">
+          <i class="ri-truck-line"></i>
+          <select [ngModel]="prestataireId" (ngModelChange)="prestataireId = $event ? +$event : null" aria-label="Prestataire">
+            @if (!infosPresta?.prestataires?.length) { <option [ngValue]="null">Aucun prestataire</option> }
+            @for (p of infosPresta?.prestataires ?? []; track p.id) { <option [ngValue]="p.id">{{ p.libelle }}</option> }
+          </select>
+        </label>
+      }
       @if (!periodeLibre) {
         <div class="ce-nav">
           <button type="button" class="ce-btn ce-btn-ic" (click)="changerMois(-1)" aria-label="Mois précédent"><i class="ri-arrow-left-s-line"></i></button>
@@ -63,15 +84,33 @@
           </label>
         </form>
       }
+      @if (onglet === 'prestataires') {
+        @switch (infosPresta?.etat) {
+          @case ('cloture') { <span class="ce-tag ce-tag-gr"><i class="ri-lock-line"></i>Clôturé{{ infosPresta?.numero ? ' · ' + infosPresta?.numero : '' }}</span> }
+          @case ('a_cloturer') { <span class="ce-tag ce-tag-ve"><i class="ri-checkbox-circle-line"></i>Terminé · à clôturer</span> }
+          @case ('en_cours') { <span class="ce-tag ce-tag-or"><i class="ri-time-line"></i>En cours · provisoire</span> }
+          @case ('periode') { <span class="ce-tag ce-tag-or"><i class="ri-time-line"></i>Période personnalisée</span> }
+        }
+        @if (agences.length > 1) {
+          <label class="ce-champ ce-champ-agence-presta">
+            <i class="ri-building-line"></i>
+            <select [(ngModel)]="agencePresta" aria-label="Agence">
+              <option value="">Agences</option>
+              @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
+            </select>
+          </label>
+        }
+      }
       <button type="button" class="ce-lien" (click)="basculerPeriodeLibre()">
         {{ periodeLibre ? 'Revenir au mois' : 'Période personnalisée' }}
       </button>
     </div>
   </div>
 
-  <!-- ══ ONGLET PRESTATAIRES : écran existant, intégré ═════════ -->
+  <!-- ══ ONGLET PRESTATAIRES ═══════════════════════════════════ -->
   @if (onglet === 'prestataires') {
-    <app-facturation-prestataire [integre]="true" [periode]="periode"></app-facturation-prestataire>
+    <app-onglet-prestataires [periode]="periode" [prestataireId]="prestataireId" [agence]="agencePresta" [estAdmin]="estAdmin"
+                             (infos)="recevoirInfosPresta($event)" (cloture)="chargerClotures(); rechercher()"></app-onglet-prestataires>
   }
 
   <!-- ══ ONGLET AGENTS ═════════════════════════════════════════ -->

@@ -39,7 +39,7 @@ import { GestionCommandesComponent } from './gestion-commandes/gestion-commandes
 import { MesCommandesComponent } from './mes-commandes/mes-commandes.component';
 import { RetraitCommandeComponent } from './retrait-commande/retrait-commande/retrait-commande.component';
 import { FacturationCommandeComponent } from './facturation-commande/facturation-commande.component';
-import { FacturationPrestataireComponent } from './facturation-prestataire/facturation-prestataire.component';
+import { OngletPrestatairesComponent } from './facturation-commande/onglet-prestataires/onglet-prestataires.component';
 import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
 import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.component';
 import { StatistiquesComponent } from './statistiques/statistiques.component';
@@ -67,7 +67,7 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     MesCommandesComponent,
     RetraitCommandeComponent,
     FacturationCommandeComponent,
-    FacturationPrestataireComponent,
+    OngletPrestatairesComponent,
     AvisPlatsComponent,
     AccueilEmployeComponent,
     StatistiquesComponent
