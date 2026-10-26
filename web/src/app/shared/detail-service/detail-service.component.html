@@ -1,0 +1,130 @@
+<div class="st-dt">
+  <!-- En-tête -->
+  <div class="st-dt-hd">
+    <span class="st-dt-ic"><i [class]="mode === 'repas' ? 'ri-restaurant-2-line' : 'ri-user-star-line'"></i></span>
+    <div class="st-dt-titre">
+      <h2>{{ titre }}</h2>
+      <p>{{ sousTitre }}</p>
+    </div>
+    <button type="button" class="st-dt-x" (click)="fermer()" aria-label="Fermer"><i class="ri-close-line"></i></button>
+  </div>
+
+  <!-- Filtres -->
+  <div class="st-dt-filtres">
+    <div class="st-switch" role="group" aria-label="Regrouper par">
+      <button type="button" [class.on]="mode === 'repas'" (click)="changerMode('repas')"><i class="ri-restaurant-2-line"></i>Par repas</button>
+      <button type="button" [class.on]="mode === 'categorie'" (click)="changerMode('categorie')"><i class="ri-user-star-line"></i>Par catégorie</button>
+    </div>
+    @if (mode === 'repas') {
+      <label class="st-champ">
+        <i class="ri-restaurant-line"></i>
+        <select [(ngModel)]="plat" (ngModelChange)="changerFiltre()" aria-label="Repas">
+          <option [ngValue]="null">Tous les repas</option>
+          @for (p of plats; track p.id) { <option [ngValue]="p.id">{{ p.nom }}</option> }
+        </select>
+      </label>
+    } @else {
+      <label class="st-champ">
+        <i class="ri-user-star-line"></i>
+        <select [(ngModel)]="categorie" (ngModelChange)="changerFiltre()" aria-label="Catégorie">
+          <option [ngValue]="null">Toutes les catégories</option>
+          @for (c of categories; track $index) {
+            <option [ngValue]="c.id ?? 'aucune'">{{ c.libelle ?? 'Sans catégorie' }}</option>
+          }
+        </select>
+      </label>
+    }
+    @if (agences.length > 1) {
+      <label class="st-champ">
+        <i class="ri-building-line"></i>
+        <select [(ngModel)]="agence" (ngModelChange)="changerFiltre()" aria-label="Agence">
+          <option [ngValue]="null">Toutes mes agences</option>
+          @for (a of agences; track a.id) { <option [ngValue]="a.id">{{ a.nom_agence }}</option> }
+        </select>
+      </label>
+    }
+    <label class="st-champ st-champ-recherche">
+      <i class="ri-search-line"></i>
+      <input type="search" [(ngModel)]="recherche" (ngModelChange)="saisieRecherche($event)"
+             placeholder="Rechercher un nom, un poste…" aria-label="Rechercher">
+    </label>
+  </div>
+
+  <!-- Onglets + export de l'onglet actif -->
+  <div class="st-dt-onglets">
+    <div class="st-dt-tabs" role="tablist">
+      @for (o of onglets; track o) {
+        <button type="button" role="tab" [class.on]="liste === o" [attr.aria-selected]="liste === o" (click)="changerOnglet(o)">
+          {{ libelleOnglet(o) }} <span class="st-cpt" [class]="'st-cpt st-cpt-' + o">{{ nombreFr(compte(o)) }}</span>
+        </button>
+      }
+    </div>
+    <div class="st-dt-export">
+      <span class="st-muted">Exporter « {{ libelleOnglet(liste) }} ({{ nombreFr(compte(liste)) }}) »</span>
+      <button type="button" class="st-btn st-btn-mini" [disabled]="!total || export" (click)="exporter('excel')">
+        @if (export === 'excel') { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-file-excel-2-line st-c-vert"></i> }Excel
+      </button>
+      <button type="button" class="st-btn st-btn-mini" [disabled]="!total || export" (click)="exporter('pdf')">
+        @if (export === 'pdf') { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-file-pdf-line st-c-rouge"></i> }PDF
+      </button>
+    </div>
+  </div>
+
+  @if (erreur) {
+    <div class="st-alerte"><i class="ri-error-warning-line"></i>{{ erreur }}</div>
+  }
+
+  <!-- Liste nominative -->
+  <div class="st-dt-table" [class.st-attente]="chargement">
+    @if (!donnees && chargement) {
+      <div class="st-vide"><span class="spinner-border" role="status"></span></div>
+    } @else if (!lignes.length) {
+      <div class="st-vide"><i class="ri-user-search-line"></i><b>Personne dans cette liste</b>
+        <span>{{ recherche ? 'Aucun agent ne correspond à la recherche.' : 'Changez de repas, de catégorie ou d’agence.' }}</span></div>
+    } @else {
+      <div class="table-responsive">
+        <table class="st-table">
+          <thead>
+            <tr>
+              <th>Nom</th><th>Prénoms</th><th>Catégorie</th><th>Poste</th><th>Agence</th>
+              @if (colonneDate) { <th>Date</th> }
+              @if (colonneRepas) { <th>Repas</th> }
+              @if (liste === 'commandes') { <th>Statut</th> }
+              @if (liste === 'servis') { <th class="st-n">Heure de retrait</th> }
+            </tr>
+          </thead>
+          <tbody>
+            @for (l of lignes; track l.commande_id) {
+              <tr>
+                <td><b>{{ l.nom }}</b></td>
+                <td>{{ l.prenom }}</td>
+                <td><span class="st-cat" [class]="'st-cat ' + classeCategorie(l.categorie)">{{ l.categorie ?? 'Sans catégorie' }}</span></td>
+                <td>{{ l.poste ?? '—' }}</td>
+                <td>{{ l.agence ?? '—' }}</td>
+                @if (colonneDate) { <td class="st-nw">{{ jourMoisCourt(l.date_menu) }}</td> }
+                @if (colonneRepas) { <td>{{ l.plat }}</td> }
+                @if (liste === 'commandes') {
+                  <td><span class="st-statut" [class]="'st-statut ' + statutLigne(l).classe"><i [class]="statutLigne(l).icone"></i>{{ statutLigne(l).texte }}</span></td>
+                }
+                @if (liste === 'servis') { <td class="st-n"><b>{{ heureFr(l.heure_retrait) }}</b></td> }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+
+  <div class="st-dt-pied">
+    <span class="st-muted">{{ plage }}</span>
+    @if (nbPages > 1) {
+      <div class="st-pages">
+        <button type="button" [disabled]="page === 1" (click)="allerPage(page - 1)" aria-label="Page précédente"><i class="ri-arrow-left-s-line"></i></button>
+        @for (p of pages; track p) {
+          <button type="button" [class.on]="p === page" (click)="allerPage(p)">{{ p }}</button>
+        }
+        <button type="button" [disabled]="page === nbPages" (click)="allerPage(page + 1)" aria-label="Page suivante"><i class="ri-arrow-right-s-line"></i></button>
+      </div>
+    }
+  </div>
+</div>

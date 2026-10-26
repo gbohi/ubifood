@@ -518,6 +518,46 @@ app-dashboard-cantine {
     &.t-man { background: #FDE8E4; color: var(--acc-rouge); }
   }
 
+  // ── Service du jour : par repas / par catégorie de salarié ───
+  .acc-grille-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .acc-service { display: flex; flex-direction: column; }
+  .acc-service-hd {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
+    h3 { margin: 0; }
+    p { margin: 2px 0 0; color: var(--acc-gris); font-size: 11.5px; }
+  }
+  .acc-service-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .acc-btn-s { padding: 6px 10px; font-size: 12px; border-radius: 9px; gap: 5px; &:disabled { opacity: .55; transform: none; box-shadow: none; } }
+  .acc-btn-navy { background: var(--acc-navy); border-color: var(--acc-navy); color: #fff; &:hover { color: #fff; background: var(--acc-navy2); } }
+  .acc-table {
+    width: 100%; border-collapse: collapse; font-size: 12.5px;
+    th { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--acc-gris); font-weight: 600; padding: 8px 8px;
+         border-bottom: 1px solid var(--acc-bord); white-space: nowrap; text-align: left; }
+    td { padding: 9px 8px; border-bottom: 1px solid #EEF2F7; vertical-align: middle; }
+    td small { display: block; color: var(--acc-gris); font-size: 11px; }
+    tbody tr:not(.acc-total) { cursor: pointer; &:hover td { background: #F6FAFF; } }
+    .acc-n { text-align: right; white-space: nowrap; }
+    .acc-av { width: 28%; min-width: 90px; }
+    .acc-orange { color: #c98a16; font-weight: 600; }
+    .acc-total td { font-weight: 700; border-bottom: 0; }
+    .acc-tag { margin-top: 0; white-space: nowrap; }
+  }
+  .acc-jauge {
+    display: block; height: 7px; border-radius: 5px; background: #EEF2F7; overflow: hidden;
+    i { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--acc-vert), var(--acc-vert2)); }
+    &.acc-jauge-navy i { background: var(--acc-navy2); }
+  }
+
+  // ── Ce mois-ci ───────────────────────────────────────────────
+  .acc-mois h3 { flex-wrap: wrap; }
+  .acc-mois-p { color: var(--acc-gris); font-weight: 400; font-size: 12px; }
+  .acc-lien-fort { margin-left: auto; color: var(--acc-navy2); font-weight: 600; font-size: 12.5px; display: inline-flex; gap: 4px; align-items: center; &:hover { color: var(--acc-vert2); } }
+  .acc-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .acc-kpi-lien { margin-top: 8px; padding-top: 8px; border-top: 1px solid #EEF2F7; color: var(--acc-navy2); font-weight: 600; font-size: 12px;
+    display: inline-flex; gap: 4px; align-items: center; &:hover { color: var(--acc-vert2); } }
+  .acc-note-stats { text-align: center; color: var(--acc-gris); font-size: 12px; margin: -4px 0 0; display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;
+    a { color: var(--acc-navy); font-weight: 600; } }
+
   // ── Titre « Statistiques détaillées » et onglets ─────────────
   .acc-section-titre {
     font-size: 13px;
@@ -566,6 +606,7 @@ app-dashboard-cantine {
 
   @media (max-width: 991.98px) {
     .acc-semaine { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .acc-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 
   @media (max-width: 767.98px) {
@@ -592,5 +633,10 @@ app-dashboard-cantine {
     .acc-j-n { grid-area: n; margin: 0; font-size: 18px; text-align: right; }
     .acc-j-s, .acc-j-manque { grid-column: 1 / -1; }
     .acc-tag { grid-area: tag; margin-top: 0; }
+
+    .acc-service-btns { width: 100%; > * { flex: 1; } .acc-btn-s { width: 100%; justify-content: center; } }
+    .acc-table .acc-av { display: none; }
+    .acc-lien-fort { margin-left: 0; width: 100%; }
+    .acc-kpis { gap: 10px; }
   }
 }

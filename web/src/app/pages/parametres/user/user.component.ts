@@ -1,6 +1,7 @@
 // src/app/pages/user/user.component.ts
 
-import { Component, OnInit, AfterViewInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, AfterViewInit, OnDestroy, ViewChild, ElementRef, inject } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import {
   UntypedFormBuilder, UntypedFormGroup, Validators, AbstractControl,
@@ -149,6 +150,9 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly search$ = new Subject<string>();
   private lastActiveElement: HTMLElement | null = null;
 
+  // ?search=matricule : ouverture filtrée depuis la facturation (« Compléter la fiche »)
+  private route = inject(ActivatedRoute);
+
   @ViewChild('addUser',           { static: false }) addUser?:           ModalDirective;
   @ViewChild('deleteRecordModal', { static: false }) deleteRecordModal?: ModalDirective;
   @ViewChild('viewUser',          { static: false }) viewUser?:          ModalDirective;
@@ -266,6 +270,8 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe(() => this.loadData(1));
 
+    const recherche = this.route.snapshot.queryParamMap.get('search');
+    if (recherche) this.term = recherche;
     this.loadData(1);
   }
 

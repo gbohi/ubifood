@@ -107,6 +107,90 @@
       </div>
     </div>
 
+    <!-- Synthèses : par catégorie de salarié et par plat (mêmes repas que le détail) -->
+    @if (!isLoadingAll && lignesFacturation.length) {
+      <div class="ce-g-synth">
+        <div class="ce-carte ce-carte-table">
+          <div class="ce-table-hd">
+            <div><b><i class="ri-user-star-line"></i>Par catégorie de salarié</b>
+              <small class="ce-muted d-block">{{ periodeTexte }} · tarif de la catégorie à la date du menu</small></div>
+            <div class="ce-btns">
+              <button type="button" class="ce-btn ce-btn-mini" (click)="exporterSynthese('categorie', 'excel')"><i class="ri-file-excel-2-line ce-c-vert"></i>Excel</button>
+              <button type="button" class="ce-btn ce-btn-mini" (click)="exporterSynthese('categorie', 'pdf')"><i class="ri-file-pdf-line ce-c-rouge"></i>PDF</button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="ce-table">
+              <thead><tr><th>Catégorie</th><th class="ce-n">Agents</th><th class="ce-n">Repas</th><th class="ce-n">Tarif</th><th class="ce-n">Montant</th><th class="ce-part">Part</th></tr></thead>
+              <tbody>
+                @for (c of parCategorie; track $index) {
+                  <tr>
+                    <td>@if (c.categorie) { <b>{{ c.categorie }}</b> } @else { <span class="ce-tag ce-tag-ro"><i class="ri-error-warning-line"></i>Sans catégorie</span> }</td>
+                    <td class="ce-n">{{ c.nb_agents }}</td>
+                    <td class="ce-n">{{ formatMontant(c.nb_repas) }}</td>
+                    <td class="ce-n">{{ libelleTarif(c) }}</td>
+                    <td class="ce-n">
+                      @if (c.montant > 0) { <b>{{ formatMontant(c.montant) }} F</b> } @else { <b class="ce-c-rouge">à compléter</b> }
+                      @if (c.montant > 0 && c.repas_sans_tarif) { <small class="ce-c-rouge d-block">{{ c.repas_sans_tarif }} sans tarif</small> }
+                    </td>
+                    <td class="ce-part">@if (c.montant > 0) { <span class="ce-jauge ce-jauge-fine"><i [style.width.%]="part(c.montant)"></i></span><small>{{ part(c.montant) }} %</small> }</td>
+                  </tr>
+                }
+                <tr class="ce-total">
+                  <td>Total</td><td class="ce-n">{{ lignesFacturation.length }}</td><td class="ce-n">{{ formatMontant(totalNbCommandes) }}</td>
+                  <td></td><td class="ce-n">{{ formatMontant(totalMontant) }} F</td><td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          @if (sansCategorie; as s) {
+            <div class="ce-alerte ce-alerte-ro ce-alerte-fine ce-synth-alerte">
+              <i class="ri-error-warning-line"></i>
+              <div><b>{{ s.nb_repas }} repas sans tarif</b> : {{ alerteSansCategorie }}</div>
+              @if (estAdmin) {
+                <a class="ce-btn ce-btn-mini ms-auto" routerLink="/parametres/user" [queryParams]="{ search: s.agents_sans_categorie[0].username }">Compléter la fiche</a>
+              } @else { <small class="ms-auto">À compléter par un administrateur</small> }
+            </div>
+          }
+          @for (c of categoriesSansTarif; track c.categorie) {
+            <div class="ce-alerte ce-alerte-or ce-alerte-fine ce-synth-alerte">
+              <i class="ri-price-tag-3-line"></i>
+              <div><b>{{ c.repas_sans_tarif }} repas</b> de la catégorie {{ c.categorie }} sans tarif à la date du menu.</div>
+              @if (estAdmin) { <a class="ce-btn ce-btn-mini ms-auto" routerLink="/parametres/categorie-salarie">Tarifs</a> }
+            </div>
+          }
+          <div class="ce-pied"><span class="ce-info"><i class="ri-information-line"></i>Tarifs modifiables dans Paramètres › Catégories · un changement ne touche pas les mois clôturés</span></div>
+        </div>
+
+        <div class="ce-carte ce-carte-table">
+          <div class="ce-table-hd">
+            <div><b><i class="ri-restaurant-2-line"></i>Par plat</b>
+              <small class="ce-muted d-block">Repas facturés et montant@if (repasSansTarifPlats) { ({{ repasSansTarifPlats }} repas sans tarif non chiffrés) }</small></div>
+            <div class="ce-btns">
+              <button type="button" class="ce-btn ce-btn-mini" (click)="exporterSynthese('plat', 'excel')"><i class="ri-file-excel-2-line ce-c-vert"></i>Excel</button>
+              <button type="button" class="ce-btn ce-btn-mini" (click)="exporterSynthese('plat', 'pdf')"><i class="ri-file-pdf-line ce-c-rouge"></i>PDF</button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="ce-table">
+              <thead><tr><th>Plat</th><th class="ce-n">Repas</th><th class="ce-n">Montant</th><th class="ce-part"></th></tr></thead>
+              <tbody>
+                @for (p of platsAffiches.lignes; track p.plat) {
+                  <tr><td><b>{{ p.plat }}</b></td><td class="ce-n">{{ formatMontant(p.nb_repas) }}</td><td class="ce-n"><b>{{ formatMontant(p.montant) }} F</b></td>
+                    <td class="ce-part"><span class="ce-jauge ce-jauge-fine ce-jauge-vert"><i [style.width.%]="p.montant / maxMontantPlat * 100"></i></span></td></tr>
+                }
+                @if (platsAffiches.autres; as p) {
+                  <tr><td><b>{{ p.plat }}</b></td><td class="ce-n">{{ formatMontant(p.nb_repas) }}</td><td class="ce-n"><b>{{ formatMontant(p.montant) }} F</b></td>
+                    <td class="ce-part"><span class="ce-jauge ce-jauge-fine ce-jauge-vert"><i [style.width.%]="p.montant / maxMontantPlat * 100"></i></span></td></tr>
+                }
+                <tr class="ce-total"><td>Total</td><td class="ce-n">{{ formatMontant(totalNbCommandes) }}</td><td class="ce-n">{{ formatMontant(totalMontant) }} F</td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    }
+
     <div class="ce-g-factu">
       <!-- Détail par agent -->
       <div class="ce-carte ce-carte-table">

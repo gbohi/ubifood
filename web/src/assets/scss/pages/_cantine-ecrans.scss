@@ -345,6 +345,12 @@ app-facturation-commande {
   }
   .ce-frise-mois { background: none; border: 0; padding: 0; font-weight: 600; color: var(--ce-navy); text-transform: capitalize; &:hover { color: var(--ce-navy2); text-decoration: underline; } }
   .ce-pt { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; font-size: 14px; }
+  .ce-g-synth { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .ce-table-hd b i { margin-right: 6px; color: var(--ce-navy2); }
+  .ce-part { width: 120px; white-space: nowrap; small { margin-left: 6px; color: var(--ce-gris); } .ce-jauge { display: inline-block; vertical-align: middle; width: 70px; } }
+  .ce-jauge-vert i { background: linear-gradient(90deg, var(--ce-vert), var(--ce-vert2)); }
+  .ce-synth-alerte { margin: 10px 16px 0; > div { flex: 1 1 220px; } }
+  .ce-g-synth .ce-table-hd { flex-wrap: nowrap; align-items: flex-start; > div:first-child { min-width: 0; flex: 1; } .ce-btns { flex-wrap: nowrap; } }
   .ce-autre-mois { display: flex; gap: 6px; align-items: center; padding-top: 10px; border-top: 1px solid var(--ce-bord); input { max-width: 150px; } }
 }
 
@@ -400,7 +406,7 @@ app-liste-commandes {
 
 // ══ Écrans étroits ═════════════════════════════════════════════
 @media (max-width: 1199.98px) {
-  app-facturation-commande .ce-g-factu, app-retrait-commande .ce-g-comptoir { grid-template-columns: minmax(0, 1fr); }
+  app-facturation-commande .ce-g-factu, app-facturation-commande .ce-g-synth, app-retrait-commande .ce-g-comptoir { grid-template-columns: minmax(0, 1fr); }
   app-facturation-commande .ce-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   app-retrait-commande .ce-bandeau { grid-template-columns: 1fr; gap: 14px; }
 }

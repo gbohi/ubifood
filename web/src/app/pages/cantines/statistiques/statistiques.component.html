@@ -1,0 +1,332 @@
+<div class="st">
+
+  <!-- ── En-tête + export du rapport ──────────────────────────── -->
+  <app-page-entete titre="Statistiques" icone="ri-bar-chart-2-line"
+                   [fil]="[{ label: 'Cantine' }]" [sousTitre]="sousTitre">
+    <div class="st-rapport btn-group" dropdown placement="bottom right">
+      <button type="button" class="st-rapport-main" [disabled]="!d || !!exportRapport" (click)="exporterRapportPdf()">
+        @if (exportRapport) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-download-2-line"></i> }
+        Exporter le rapport
+      </button>
+      <button type="button" class="st-rapport-fleche" dropdownToggle [disabled]="!d || !!exportRapport" aria-label="Choisir le format du rapport">
+        <i class="ri-arrow-down-s-line"></i>
+      </button>
+      <ul *dropdownMenu class="dropdown-menu dropdown-menu-end st-menu st-menu-rapport" role="menu">
+        <li><button type="button" class="dropdown-item" (click)="exporterRapportPdf()">
+          <i class="ri-file-pdf-line st-c-rouge"></i><span><b>Rapport PDF complet</b><small>Chiffres clés + tous les graphiques et tableaux</small></span></button></li>
+        <li><button type="button" class="dropdown-item" (click)="exporterClasseur()">
+          <i class="ri-file-excel-2-line st-c-vert"></i><span><b>Classeur Excel (une feuille par bloc)</b><small>Commandes, repas & catégories, plats & avis, fréquentation</small></span></button></li>
+        <li class="st-menu-pied"><i class="ri-information-line"></i>{{ filtresTexte }}</li>
+      </ul>
+    </div>
+  </app-page-entete>
+
+  <!-- ── Filtres ──────────────────────────────────────────────── -->
+  <div class="st-carte st-filtres">
+    <div class="st-chips" role="group" aria-label="Période">
+      <span class="st-chips-l"><i class="ri-calendar-line"></i>Période</span>
+      @for (p of periodes; track p.id) {
+        <button type="button" class="st-chip" [class.on]="periode === p.id" (click)="choisirPeriode(p.id)">
+          @if (p.id === 'perso') { <i class="ri-calendar-2-line"></i> }{{ p.libelle }}
+        </button>
+      }
+    </div>
+    @if (periode === 'perso') {
+      <div class="st-perso">
+        <label class="st-champ"><span class="st-muted">Du</span><input type="date" [(ngModel)]="debutPerso" aria-label="Date de début"></label>
+        <label class="st-champ"><span class="st-muted">au</span><input type="date" [(ngModel)]="finPerso" aria-label="Date de fin"></label>
+        <button type="button" class="st-btn st-btn-navy" (click)="appliquerPerso()"><i class="ri-check-line"></i>Appliquer</button>
+      </div>
+    }
+    <div class="st-selects">
+      <label class="st-champ">
+        <i class="ri-building-line"></i>
+        <select [(ngModel)]="agence" (ngModelChange)="charger()" aria-label="Agence">
+          <option [ngValue]="null">{{ agences.length === 1 ? agences[0].nom_agence : (d?.agences?.length ? 'Toutes mes agences' : 'Toutes les agences') }}</option>
+          @if (agences.length > 1) { @for (a of agences; track a.id) { <option [ngValue]="a.id">{{ a.nom_agence }}</option> } }
+        </select>
+      </label>
+      <label class="st-champ">
+        <i class="ri-team-line"></i>
+        <select [(ngModel)]="typeequipe" (ngModelChange)="charger()" aria-label="Équipe">
+          <option [ngValue]="null">Toutes les équipes</option>
+          @for (t of typeequipes; track t.id) { <option [ngValue]="t.id">{{ t.libelle }}</option> }
+        </select>
+      </label>
+    </div>
+    @if (d) { <p class="st-filtres-note">{{ noteFiltres }}</p> }
+  </div>
+
+  @if (erreur) {
+    <div class="st-alerte"><i class="ri-error-warning-line"></i><div>{{ erreur }}</div>
+      <button type="button" class="st-btn st-btn-mini ms-auto" (click)="charger()">Réessayer</button></div>
+  }
+
+  @if (!d && chargement) {
+    <div class="st-carte st-vide"><span class="spinner-border" role="status"></span><span>Calcul des statistiques…</span></div>
+  }
+
+  @if (d) {
+    <div class="st-contenu" [class.st-attente]="chargement">
+
+      <!-- ── 5 chiffres clés ──────────────────────────────────── -->
+      <div class="st-kpis">
+        @for (k of kpis; track k.id) {
+          <div class="st-kpi">
+            <div class="st-kpi-hd"><span>{{ k.libelle }}</span><span class="st-pastille" [class]="'st-pastille ' + k.pastille"><i [class]="k.icone"></i></span></div>
+            <b class="st-kpi-v">{{ k.valeur }}@if (k.unite) { <small>{{ k.unite }}</small> }</b>
+            <div class="st-kpi-cmp">
+              @if (k.neutre) { <span class="st-var st-neutre">{{ k.neutre }}</span> }
+              @else if (k.variation) { <span class="st-var" [class]="'st-var ' + k.variation.classe"><i [class]="k.variation.icone"></i>{{ k.variation.texte }}</span> }
+              <span class="st-muted">{{ k.note }}</span>
+            </div>
+          </div>
+        }
+      </div>
+
+      <!-- ── Sections ─────────────────────────────────────────── -->
+      <nav class="st-nav" aria-label="Sections">
+        @for (s of sections; track s.id) {
+          <button type="button" [class.on]="section === s.id" (click)="allerA(s.id)">
+            <i [class]="s.icone"></i>{{ s.libelle }}@if (s.nouveau) { <span class="st-nouveau">Nouveau</span> }
+          </button>
+        }
+        <span class="st-nav-aide"><i class="ri-more-2-fill"></i> = export du bloc</span>
+      </nav>
+
+      <!-- ════ COMMANDES ════ -->
+      <div class="st-sec" id="st-commandes">
+        <div class="st-sec-titre">Commandes</div>
+        <div class="st-g st-g-2-1">
+          <app-stat-bloc titre="Commandes par mois" icone="ri-bar-chart-box-line"
+                         [sousTitre]="d.par_mois.length + ' derniers mois · répartition par statut'"
+                         (excel)="exportBloc('mois', 'excel')" (png)="exportBloc('mois', 'png')" (csv)="exportBloc('mois', 'csv')">
+            @if (gMois) {
+              <apx-chart #chMois [series]="gMois.series" [chart]="gMois.chart" [colors]="gMois.colors" [plotOptions]="gMois.plotOptions"
+                         [dataLabels]="gMois.dataLabels" [xaxis]="gMois.xaxis" [yaxis]="gMois.yaxis" [legend]="gMois.legend"
+                         [grid]="gMois.grid" [tooltip]="gMois.tooltip" dir="ltr"></apx-chart>
+            } @else { <div class="st-vide"><i class="ri-bar-chart-2-line"></i>Aucune commande</div> }
+          </app-stat-bloc>
+
+          <app-stat-bloc titre="Par agence" icone="ri-building-line" [sousTitre]="periodeTitre + ' · par statut'"
+                         (excel)="exportBloc('agence', 'excel')" (png)="exportBloc('agence', 'png')" (csv)="exportBloc('agence', 'csv')">
+            @if (gAgence) {
+              <apx-chart #chAgence [series]="gAgence.series" [chart]="gAgence.chart" [colors]="gAgence.colors" [plotOptions]="gAgence.plotOptions"
+                         [dataLabels]="gAgence.dataLabels" [xaxis]="gAgence.xaxis" [legend]="gAgence.legend" [grid]="gAgence.grid"
+                         [tooltip]="gAgence.tooltip" dir="ltr"></apx-chart>
+              <table class="st-table st-table-mini">
+                <thead><tr><th>Agence</th><th class="st-n">Cmd</th><th class="st-n">Retrait</th><th class="st-n">Note</th></tr></thead>
+                <tbody>
+                  @for (a of d.par_agence; track a.agence_id) {
+                    <tr><td><b>{{ a.agence }}</b></td><td class="st-n">{{ nombreFr(a.commandes) }}</td>
+                      <td class="st-n">{{ pourcentFr(a.taux_retrait) }}</td>
+                      <td class="st-n">@if (a.note) { {{ noteFr(a.note) }} <i class="ri-star-fill st-c-jaune"></i> } @else { — }</td></tr>
+                  }
+                </tbody>
+              </table>
+            } @else { <div class="st-vide"><i class="ri-building-line"></i>Aucune commande</div> }
+          </app-stat-bloc>
+        </div>
+
+        <app-stat-bloc titre="Évolution par date de menu" icone="ri-line-chart-line"
+                       [sousTitre]="periodeTitre + ' · commandes (hors annulations) et repas retirés pour chaque jour de menu'"
+                       (excel)="exportBloc('evolution', 'excel')" (png)="exportBloc('evolution', 'png')" (csv)="exportBloc('evolution', 'csv')">
+          @if (gEvolution) {
+            <apx-chart #chEvolution [series]="gEvolution.series" [chart]="gEvolution.chart" [colors]="gEvolution.colors" [stroke]="gEvolution.stroke"
+                       [markers]="gEvolution.markers" [dataLabels]="gEvolution.dataLabels" [xaxis]="gEvolution.xaxis" [yaxis]="gEvolution.yaxis"
+                       [legend]="gEvolution.legend" [grid]="gEvolution.grid" [tooltip]="gEvolution.tooltip" [annotations]="gEvolution.annotations" dir="ltr"></apx-chart>
+            @if (gEvolution.annotations?.xaxis) { <p class="st-legende-note"><span class="st-carre st-carre-avenir"></span>À venir (commandes encore ouvertes ou repas à servir)</p> }
+          } @else { <div class="st-vide"><i class="ri-line-chart-line"></i>Aucun menu sur la période</div> }
+        </app-stat-bloc>
+
+        <app-stat-bloc titre="Détail mensuel" icone="ri-table-line" sousTitre="Le même tableau part tel quel dans l'export Excel" [image]="false"
+                       (excel)="exportBloc('detail_mensuel', 'excel')" (csv)="exportBloc('detail_mensuel', 'csv')">
+          <div class="table-responsive">
+            <table class="st-table">
+              <thead><tr><th>Mois</th><th class="st-n">Commandes</th><th class="st-n">Retirées</th><th class="st-n">En attente</th>
+                <th class="st-n">Non retirés</th><th class="st-n">Annulées</th><th class="st-taux">Taux de retrait</th><th class="st-n">Note</th></tr></thead>
+              <tbody>
+                @for (m of moisDecroissants; track m.annee * 100 + m.mois) {
+                  <tr>
+                    <td><b>{{ libelleMois(m.annee, m.mois) }}</b>@if (m.en_cours && m.annee * 100 + m.mois === +d.periode.aujourdhui.slice(0, 4) * 100 + +d.periode.aujourdhui.slice(5, 7)) { <span class="st-tag st-tag-or">en cours</span> }</td>
+                    <td class="st-n"><b>{{ nombreFr(m.commandes) }}</b></td>
+                    <td class="st-n">{{ nombreFr(m.servis) }}</td>
+                    <td class="st-n">{{ m.a_servir ? nombreFr(m.a_servir) : '—' }}</td>
+                    <td class="st-n">{{ nombreFr(m.non_retires) }}</td>
+                    <td class="st-n">{{ nombreFr(m.annulees) }}</td>
+                    <td class="st-taux"><span class="st-jauge"><i [style.width.%]="m.taux_retrait ?? 0"></i></span><b>{{ pourcentFr(m.taux_retrait) }}</b></td>
+                    <td class="st-n">@if (m.note) { {{ noteFr(m.note) }} <i class="ri-star-fill st-c-jaune"></i> } @else { — }</td>
+                  </tr>
+                }
+                <tr class="st-total">
+                  <td>Total {{ d.par_mois.length }} mois</td>
+                  <td class="st-n">{{ nombreFr(totalMois.commandes) }}</td><td class="st-n">{{ nombreFr(totalMois.servis) }}</td>
+                  <td class="st-n">{{ totalMois.a_servir ? nombreFr(totalMois.a_servir) : '—' }}</td><td class="st-n">{{ nombreFr(totalMois.non_retires) }}</td>
+                  <td class="st-n">{{ nombreFr(totalMois.annulees) }}</td><td class="st-taux"><b>{{ pourcentFr(totalMois.taux_retrait) }}</b></td>
+                  <td class="st-n">@if (totalMois.note) { {{ noteFr(totalMois.note) }} <i class="ri-star-fill st-c-jaune"></i> } @else { — }</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </app-stat-bloc>
+      </div>
+
+      <!-- ════ REPAS & CATÉGORIES ════ -->
+      <div class="st-sec" id="st-repas">
+        <div class="st-sec-titre">Repas & catégories <span class="st-nouveau">Nouveau</span></div>
+        <div class="st-g st-g-1-1">
+          <app-stat-bloc titre="Par repas (plat)" icone="ri-restaurant-2-line" [image]="false"
+                         [sousTitre]="periodeTitre + ' · hors annulations · une ligne ouvre la liste nominative'"
+                         (excel)="exportBloc('repas', 'excel')" (csv)="exportBloc('repas', 'csv')">
+            @if (d.par_repas.length) {
+              <div class="table-responsive">
+                <table class="st-table st-table-clic">
+                  <thead><tr><th>Plat</th><th class="st-n">Commandés</th><th class="st-n">Servis</th><th class="st-n">Non retirés</th><th class="st-n">À servir</th><th></th></tr></thead>
+                  <tbody>
+                    @for (r of repasAffiches.lignes; track r.plat_id) {
+                      <tr (click)="ouvrirDetail('repas', r)" tabindex="0" (keydown.enter)="ouvrirDetail('repas', r)">
+                        <td><b>{{ r.plat }}</b><span class="st-mini">@let b = barre(r);<i class="s" [style.width.%]="b.s"></i><i class="n" [style.width.%]="b.n"></i><i class="a" [style.width.%]="b.a"></i></span></td>
+                        <td class="st-n"><b>{{ nombreFr(r.commandes) }}</b></td><td class="st-n">{{ nombreFr(r.servis) }}</td>
+                        <td class="st-n">{{ r.non_retires ? nombreFr(r.non_retires) : '—' }}</td>
+                        <td class="st-n st-c-orange">{{ r.a_servir ? nombreFr(r.a_servir) : '—' }}</td>
+                        <td class="st-chev"><i class="ri-arrow-right-s-line"></i></td>
+                      </tr>
+                    }
+                    @if (repasAffiches.autres; as a) {
+                      <tr (click)="ouvrirDetail('repas', null)" tabindex="0" (keydown.enter)="ouvrirDetail('repas', null)">
+                        <td><b>Autres plats ({{ a.nb }})</b><span class="st-mini">@let b = barre(a);<i class="s" [style.width.%]="b.s"></i><i class="n" [style.width.%]="b.n"></i><i class="a" [style.width.%]="b.a"></i></span></td>
+                        <td class="st-n"><b>{{ nombreFr(a.commandes) }}</b></td><td class="st-n">{{ nombreFr(a.servis) }}</td>
+                        <td class="st-n">{{ a.non_retires ? nombreFr(a.non_retires) : '—' }}</td>
+                        <td class="st-n st-c-orange">{{ a.a_servir ? nombreFr(a.a_servir) : '—' }}</td>
+                        <td class="st-chev"><i class="ri-arrow-right-s-line"></i></td>
+                      </tr>
+                    }
+                    <tr class="st-total"><td>Total</td><td class="st-n">{{ nombreFr(d.total_repas.commandes) }}</td><td class="st-n">{{ nombreFr(d.total_repas.servis) }}</td>
+                      <td class="st-n">{{ nombreFr(d.total_repas.non_retires) }}</td><td class="st-n st-c-orange">{{ nombreFr(d.total_repas.a_servir) }}</td><td></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="st-bloc-pied">
+                <span class="st-legende"><i class="st-carre s"></i>Servis <i class="st-carre n"></i>Non retirés (passé) <i class="st-carre a"></i>À servir (à venir)</span>
+                <button type="button" class="st-lien" (click)="ouvrirDetail('repas', null)">Voir le détail <i class="ri-arrow-right-line"></i></button>
+              </div>
+            } @else { <div class="st-vide"><i class="ri-restaurant-2-line"></i>Aucun repas commandé</div> }
+          </app-stat-bloc>
+
+          <app-stat-bloc titre="Par catégorie de salarié" icone="ri-user-star-line" [image]="false"
+                         [sousTitre]="periodeTitre + ' · hors annulations · une ligne ouvre la liste nominative'"
+                         (excel)="exportBloc('categorie', 'excel')" (csv)="exportBloc('categorie', 'csv')">
+            @if (d.par_categorie.length) {
+              <div class="table-responsive">
+                <table class="st-table st-table-clic">
+                  <thead><tr><th>Catégorie</th><th class="st-n">Commandés</th><th class="st-n">Servis</th><th class="st-n">Non retirés</th><th class="st-n">À servir</th><th></th></tr></thead>
+                  <tbody>
+                    @for (c of d.par_categorie; track $index) {
+                      <tr (click)="ouvrirDetail('categorie', c)" tabindex="0" (keydown.enter)="ouvrirDetail('categorie', c)">
+                        <td>@if (c.categorie) { <b>{{ c.categorie }}</b> } @else { <span class="st-tag st-tag-ro">Sans catégorie</span> }
+                          <span class="st-mini">@let b = barre(c);<i class="s" [style.width.%]="b.s"></i><i class="n" [style.width.%]="b.n"></i><i class="a" [style.width.%]="b.a"></i></span></td>
+                        <td class="st-n"><b>{{ nombreFr(c.commandes) }}</b></td><td class="st-n">{{ nombreFr(c.servis) }}</td>
+                        <td class="st-n">{{ c.non_retires ? nombreFr(c.non_retires) : '—' }}</td>
+                        <td class="st-n st-c-orange">{{ c.a_servir ? nombreFr(c.a_servir) : '—' }}</td>
+                        <td class="st-chev"><i class="ri-arrow-right-s-line"></i></td>
+                      </tr>
+                    }
+                    <tr class="st-total"><td>Total</td><td class="st-n">{{ nombreFr(totalCategories.commandes) }}</td><td class="st-n">{{ nombreFr(totalCategories.servis) }}</td>
+                      <td class="st-n">{{ nombreFr(totalCategories.non_retires) }}</td><td class="st-n st-c-orange">{{ nombreFr(totalCategories.a_servir) }}</td><td></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="st-bloc-pied">
+                <span class="st-legende"><i class="st-carre s"></i>Servis <i class="st-carre n"></i>Non retirés (passé) <i class="st-carre a"></i>À servir (à venir)</span>
+                <button type="button" class="st-lien" (click)="ouvrirDetail('categorie', null)">Voir le détail <i class="ri-arrow-right-line"></i></button>
+              </div>
+              @if (tauxParCategorie) {
+                <p class="st-info"><i class="ri-information-line"></i><span><b>Taux de retrait</b> : {{ tauxParCategorie }} (jours passés)</span></p>
+              }
+            } @else { <div class="st-vide"><i class="ri-user-star-line"></i>Aucun repas commandé</div> }
+          </app-stat-bloc>
+        </div>
+      </div>
+
+      <!-- ════ PLATS & AVIS ════ -->
+      <div class="st-sec" id="st-plats">
+        <div class="st-sec-titre">Plats & avis</div>
+        <div class="st-g st-g-3-2">
+          <app-stat-bloc titre="Top plats" icone="ri-trophy-line" [sousTitre]="periodeTitre + ' · commandes hors annulations'"
+                         (excel)="exportBloc('top', 'excel')" (png)="exportBloc('top', 'png')" (csv)="exportBloc('top', 'csv')">
+            @if (gTop) {
+              <apx-chart #chTop [series]="gTop.series" [chart]="gTop.chart" [colors]="gTop.colors" [plotOptions]="gTop.plotOptions"
+                         [dataLabels]="gTop.dataLabels" [xaxis]="gTop.xaxis" [grid]="gTop.grid" [tooltip]="gTop.tooltip" dir="ltr"></apx-chart>
+            } @else { <div class="st-vide"><i class="ri-trophy-line"></i>Aucune commande</div> }
+          </app-stat-bloc>
+          <app-stat-bloc titre="Par type de plat" icone="ri-pie-chart-2-line" [sousTitre]="'Part des commandes · ' + periodeTitre"
+                         (excel)="exportBloc('type', 'excel')" (png)="exportBloc('type', 'png')" (csv)="exportBloc('type', 'csv')">
+            @if (gType) {
+              <apx-chart #chType [series]="gType.series" [labels]="gType.labels" [chart]="gType.chart" [colors]="gType.colors"
+                         [legend]="gType.legend" [dataLabels]="gType.dataLabels" [plotOptions]="gType.plotOptions"
+                         [responsive]="gType.responsive" [tooltip]="gType.tooltip" dir="ltr"></apx-chart>
+            } @else { <div class="st-vide"><i class="ri-pie-chart-2-line"></i>Aucune commande</div> }
+          </app-stat-bloc>
+        </div>
+        <app-stat-bloc titre="Classement des plats" icone="ri-star-line" [image]="false"
+                       sousTitre="Trié par note moyenne · plats ayant reçu au moins un avis sur la période"
+                       (excel)="exportBloc('classement', 'excel')" (csv)="exportBloc('classement', 'csv')">
+          @if (d.classement_plats.length) {
+            <div class="table-responsive">
+              <table class="st-table">
+                <thead><tr><th>#</th><th>Plat</th><th>Note moyenne</th><th class="st-n">Nb d'avis</th><th class="st-n">Commandes</th><th class="st-n">Taux d'avis</th></tr></thead>
+                <tbody>
+                  @for (c of d.classement_plats; track c.plat_id; let i = $index) {
+                    <tr>
+                      <td class="st-muted">{{ i + 1 }}</td><td><b>{{ c.plat }}</b></td>
+                      <td class="st-nw"><span class="st-etoiles">@for (e of etoiles(c.note); track $index) { <i [class]="e ? 'ri-star-fill' : 'ri-star-line'"></i> }</span> <b>{{ noteFr(c.note) }}</b></td>
+                      <td class="st-n">{{ nombreFr(c.nb_avis) }}</td><td class="st-n">{{ nombreFr(c.commandes) }}</td><td class="st-n">{{ pourcentFr(c.taux_avis) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else { <div class="st-vide"><i class="ri-star-line"></i>Aucun avis sur la période</div> }
+        </app-stat-bloc>
+      </div>
+
+      <!-- ════ FRÉQUENTATION ════ -->
+      <div class="st-sec" id="st-frequentation">
+        <div class="st-sec-titre">Fréquentation <span class="st-nouveau">Nouveau</span></div>
+        <div class="st-g st-g-3">
+          <app-stat-bloc titre="Repas non retirés par semaine" icone="ri-forbid-line"
+                         [sousTitre]="'Jamais récupérés · 10 dernières semaines'"
+                         (excel)="exportBloc('non_retires', 'excel')" (png)="exportBloc('non_retires', 'png')" (csv)="exportBloc('non_retires', 'csv')">
+            <apx-chart #chNonRetires [series]="gNonRetires.series" [chart]="gNonRetires.chart" [colors]="gNonRetires.colors"
+                       [plotOptions]="gNonRetires.plotOptions" [dataLabels]="gNonRetires.dataLabels" [xaxis]="gNonRetires.xaxis"
+                       [yaxis]="gNonRetires.yaxis" [grid]="gNonRetires.grid" [tooltip]="gNonRetires.tooltip" dir="ltr"></apx-chart>
+            <p class="st-bloc-note">
+              @if (d.perte_non_retires.repas) {
+                <b class="st-c-orange">≈ {{ perteTexte }}</b> de repas perdus ({{ nombreFr(d.perte_non_retires.repas) }} non retirés · {{ libellePeriodeCourte }}, au tarif prestataire)
+              } @else { <span class="st-muted">{{ perteTexte }}</span> }
+            </p>
+          </app-stat-bloc>
+          <app-stat-bloc titre="Annulations" icone="ri-close-circle-line" [sousTitre]="'Agent ou gestionnaire · ' + d.annulations.length + ' derniers mois'"
+                         (excel)="exportBloc('annulations', 'excel')" (png)="exportBloc('annulations', 'png')" (csv)="exportBloc('annulations', 'csv')">
+            <apx-chart #chAnnul [series]="gAnnul.series" [chart]="gAnnul.chart" [colors]="gAnnul.colors" [plotOptions]="gAnnul.plotOptions"
+                       [dataLabels]="gAnnul.dataLabels" [xaxis]="gAnnul.xaxis" [yaxis]="gAnnul.yaxis" [legend]="gAnnul.legend"
+                       [grid]="gAnnul.grid" [tooltip]="gAnnul.tooltip" dir="ltr"></apx-chart>
+          </app-stat-bloc>
+          <app-stat-bloc titre="Jours les plus fréquentés" icone="ri-calendar-check-line" sousTitre="Moyenne de commandes par jour · 3 derniers mois"
+                         (excel)="exportBloc('jours', 'excel')" (png)="exportBloc('jours', 'png')" (csv)="exportBloc('jours', 'csv')">
+            <apx-chart #chJours [series]="gJours.series" [chart]="gJours.chart" [colors]="gJours.colors" [plotOptions]="gJours.plotOptions"
+                       [dataLabels]="gJours.dataLabels" [xaxis]="gJours.xaxis" [yaxis]="gJours.yaxis" [grid]="gJours.grid"
+                       [tooltip]="gJours.tooltip" dir="ltr"></apx-chart>
+            @if (comparaisonJours) { <p class="st-bloc-note">{{ comparaisonJours }}</p> }
+          </app-stat-bloc>
+        </div>
+      </div>
+
+      <a class="st-facturation" routerLink="/cantines/facturation-commande">
+        <i class="ri-bill-line"></i>
+        <span><b>La facturation a sa propre page</b> — montants agents et prestataires, clôtures mensuelles.</span>
+        <span class="st-facturation-lien">Facturation <i class="ri-arrow-right-line"></i></span>
+      </a>
+    </div>
+  }
+</div>

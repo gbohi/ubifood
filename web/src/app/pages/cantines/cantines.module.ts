@@ -42,6 +42,11 @@ import { FacturationCommandeComponent } from './facturation-commande/facturation
 import { FacturationPrestataireComponent } from './facturation-prestataire/facturation-prestataire.component';
 import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
 import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.component';
+import { StatistiquesComponent } from './statistiques/statistiques.component';
+import { StatBlocComponent } from './statistiques/stat-bloc.component';
+
+// Graphiques (page Statistiques)
+import { NgApexchartsModule } from 'ng-apexcharts';
 
 // Aucun envoi par Dropzone : les fichiers sont collectés côté composant puis
 // envoyés au backend avec le formulaire (FormData). L'URL n'est qu'un placeholder.
@@ -64,7 +69,8 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     FacturationCommandeComponent,
     FacturationPrestataireComponent,
     AvisPlatsComponent,
-    AccueilEmployeComponent
+    AccueilEmployeComponent,
+    StatistiquesComponent
   ],
   imports: [
     CommonModule,
@@ -76,7 +82,9 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     ReactiveFormsModule,
     BsDatepickerModule.forRoot(),
     DropzoneModule,
-    NgSelectModule
+    NgSelectModule,
+    NgApexchartsModule,
+    StatBlocComponent
   ],
   providers: [
     DatePipe,

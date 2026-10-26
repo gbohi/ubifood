@@ -15,6 +15,7 @@ import { RetraitCommandeComponent } from './retrait-commande/retrait-commande/re
 import { FacturationCommandeComponent } from './facturation-commande/facturation-commande.component';
 import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
 import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.component';
+import { StatistiquesComponent } from './statistiques/statistiques.component';
 
 
 const routes: Routes = [
@@ -31,7 +32,9 @@ const routes: Routes = [
   { path: 'facturation-commande', component: FacturationCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   // Ancienne page : c'est désormais l'onglet « Prestataires » de la page Facturation
   { path: 'facturation-prestataire', redirectTo: () => inject(Router).createUrlTree(['/cantines/facturation-commande'], { queryParams: { onglet: 'prestataires' } }) },
-  { path: 'avis-plats', component: AvisPlatsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } }
+  { path: 'avis-plats', component: AvisPlatsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  // Statistiques détaillées (graphiques, classements, exports) : gestionnaires et administrateurs
+  { path: 'statistiques', component: StatistiquesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } }
 ];
 
 @NgModule({

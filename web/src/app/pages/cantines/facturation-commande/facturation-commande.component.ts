@@ -49,6 +49,21 @@ export interface LigneFacturation {
   };
 }
 
+/** Synthèse par catégorie de salarié (mêmes lignes que le détail : totaux identiques) */
+export interface SyntheseCategorie {
+  categorie: string | null;
+  nb_agents: number;
+  nb_repas: number;
+  montant: number;
+  repas_sans_tarif: number;
+  tarif: number | null;
+  tarif_min: number | null;
+  tarif_max: number | null;
+  agents_sans_categorie: { user_id: number; username: string; nom_prenom: string; agence: string; nb_repas: number }[];
+}
+
+export interface SynthesePlat { plat: string; nb_repas: number; montant: number; repas_sans_tarif: number; }
+
 export interface ClotureMensuelle {
   id: number;
   annee: number;
@@ -101,6 +116,8 @@ export class FacturationCommandeComponent implements OnInit {
   totalNbCommandes = 0;
   totalMontant     = 0;
   repasSansTarif   = 0;
+  parCategorie: SyntheseCategorie[] = [];
+  parPlat: SynthesePlat[] = [];
 
   // ── Clôtures mensuelles ─────────────────────────────────────
   clotures: ClotureMensuelle[] = [];
@@ -190,6 +207,8 @@ export class FacturationCommandeComponent implements OnInit {
           this.totalNbCommandes = data.total_repas;
           this.totalMontant     = data.total_montant;
           this.repasSansTarif   = data.repas_sans_tarif;
+          this.parCategorie     = data.par_categorie ?? [];
+          this.parPlat          = data.par_plat ?? [];
           this.lignesFacturation = (data.employes ?? []).map((e: any): LigneFacturation => ({
             userId:           e.user_id,
             username:         e.username,
@@ -403,6 +422,121 @@ export class FacturationCommandeComponent implements OnInit {
 
   get hasAgentsSansMontant(): boolean {
     return this.repasSansTarif > 0;
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // SYNTHÈSES PAR CATÉGORIE DE SALARIÉ ET PAR PLAT
+  // ══════════════════════════════════════════════════════════
+
+  get sansCategorie(): SyntheseCategorie | null {
+    return this.parCategorie.find(c => !c.categorie) ?? null;
+  }
+
+  /** Catégories renseignées mais sans tarif à la date du menu */
+  get categoriesSansTarif(): SyntheseCategorie[] {
+    return this.parCategorie.filter(c => c.categorie && c.repas_sans_tarif > 0);
+  }
+
+  get alerteSansCategorie(): string {
+    const s = this.sansCategorie;
+    if (!s) return '';
+    const agents = s.agents_sans_categorie;
+    const noms = agents.slice(0, 3).map(a => `${a.nom_prenom} (${a.agence || '—'})`).join(', ');
+    const reste = agents.length > 3 ? ` et ${agents.length - 3} autre${agents.length - 3 > 1 ? 's' : ''}` : '';
+    return `${noms}${reste} ${agents.length > 1 ? "n'ont" : "n'a"} pas de catégorie salarié.`;
+  }
+
+  libelleTarif(c: SyntheseCategorie): string {
+    if (c.tarif !== null) return `${this.formatMontant(c.tarif)} F`;
+    if (c.tarif_min !== null && c.tarif_max !== null) return `${this.formatMontant(c.tarif_min)} – ${this.formatMontant(c.tarif_max)} F`;
+    return '—';
+  }
+
+  part(montant: number): number {
+    return this.totalMontant ? Math.round(montant / this.totalMontant * 100) : 0;
+  }
+
+  /** Plats : les 7 premiers, puis « Autres plats (n) » */
+  get platsAffiches(): { lignes: SynthesePlat[]; autres: SynthesePlat | null } {
+    if (this.parPlat.length <= 8) return { lignes: this.parPlat, autres: null };
+    const reste = this.parPlat.slice(7);
+    return {
+      lignes: this.parPlat.slice(0, 7),
+      autres: { plat: `Autres plats (${reste.length})`, nb_repas: reste.reduce((s, p) => s + p.nb_repas, 0),
+                montant: reste.reduce((s, p) => s + p.montant, 0), repas_sans_tarif: reste.reduce((s, p) => s + p.repas_sans_tarif, 0) },
+    };
+  }
+
+  get maxMontantPlat(): number {
+    return Math.max(1, ...this.parPlat.map(p => p.montant));
+  }
+
+  get repasSansTarifPlats(): number {
+    return this.parPlat.reduce((s, p) => s + p.repas_sans_tarif, 0);
+  }
+
+  get periodeTexte(): string {
+    const { date_debut, date_fin } = this.filterForm.value;
+    return this.periodeLibre ? `du ${this.formatDate(date_debut)} au ${this.formatDate(date_fin)}` : this.libelleMoisCourant;
+  }
+
+  private lignesSynthese(type: 'categorie' | 'plat'): { titre: string; entete: string[]; lignes: (string | number)[][] } {
+    if (type === 'categorie') {
+      return {
+        titre: 'Facturation par catégorie de salarié',
+        entete: ['Catégorie', 'Agents', 'Repas', 'Tarif (FCFA)', 'Montant (FCFA)', 'Part (%)'],
+        lignes: [
+          ...this.parCategorie.map(c => [c.categorie ?? 'Sans catégorie', c.nb_agents, c.nb_repas,
+            c.tarif ?? (c.tarif_min !== null ? `${c.tarif_min} – ${c.tarif_max}` : ''),
+            c.categorie && !c.repas_sans_tarif ? c.montant : (c.montant || 'à compléter'), this.part(c.montant)]),
+          ['Total', this.parCategorie.reduce((s, c) => s + c.nb_agents, 0), this.totalNbCommandes, '', this.totalMontant, 100],
+        ],
+      };
+    }
+    return {
+      titre: 'Facturation par plat',
+      entete: ['Plat', 'Repas', 'Montant (FCFA)', 'Repas sans tarif'],
+      lignes: [
+        ...this.parPlat.map(p => [p.plat, p.nb_repas, p.montant, p.repas_sans_tarif]),
+        ['Total', this.totalNbCommandes, this.totalMontant, this.repasSansTarifPlats],
+      ],
+    };
+  }
+
+  exporterSynthese(type: 'categorie' | 'plat', format: 'excel' | 'pdf'): void {
+    const t = this.lignesSynthese(type);
+    const { date_debut, date_fin } = this.filterForm.value;
+    const fichier = `facturation-${type === 'categorie' ? 'par-categorie' : 'par-plat'}-${date_debut ?? ''}-${date_fin ?? ''}`;
+    const sous = `${this.periodeTexte} · ${this.libelleEtat(this.etatPeriode)} · ${this.regle || ''}`;
+    if (format === 'excel') {
+      const ws = XLSX.utils.aoa_to_sheet([[t.titre], [sous], [], t.entete, ...t.lignes]);
+      ws['!cols'] = t.entete.map((_, i) => ({ wch: i === 0 ? 28 : 16 }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, type === 'categorie' ? 'Par catégorie' : 'Par plat');
+      XLSX.writeFile(wb, `${fichier}.xlsx`);
+      return;
+    }
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const net = (v: any) => String(v ?? '').replace(/[\u202f\u00a0]/g, ' ').replace(/[–—]/g, '-');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(9, 36, 64);
+    doc.text(t.titre, 14, 15);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90, 112, 144);
+    doc.text(doc.splitTextToSize(net(sous), 180), 14, 21);
+    autoTable(doc, {
+      startY: 30,
+      head: [t.entete],
+      body: t.lignes.map(l => l.map((c, i) => net(i > 0 && typeof c === 'number' ? this.formatMontant(c) : c))),
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [9, 36, 64], textColor: 255, fontStyle: 'bold' },
+      columnStyles: Object.fromEntries(t.entete.map((_, i) => [i, { halign: i ? 'right' : 'left' }])),
+      didParseCell: d => {
+        if (d.section === 'body' && d.row.index === t.lignes.length - 1) {
+          d.cell.styles.fontStyle = 'bold';
+          d.cell.styles.fillColor = [234, 251, 241];
+        }
+      },
+    });
+    doc.save(`${fichier}.pdf`);
   }
 
   // ══════════════════════════════════════════════════════════

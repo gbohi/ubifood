@@ -115,6 +115,15 @@ export const MENU: MenuItem[] = [
                 link: '/cantines/avis-plats',
                 roles: GESTIONNAIRES,
                 parentId: 210
+            },
+            {
+                // Graphiques, classements et exports (déplacés de l'accueil gestionnaire)
+                id: 2111,
+                label: 'MENUITEMS.CANTINES.LIST.STATISTIQUES',
+                link: '/cantines/statistiques',
+                roles: GESTIONNAIRES,
+                isNew: true,
+                parentId: 210
             }
         ]
     },

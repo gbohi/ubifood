@@ -2407,7 +2407,8 @@ class FacturationView(APIView):
         else:
             qs = qs.filter(user=request.user)
 
-        employes = fact.synthese_par_employe(fact.lignes_facturation(qs))
+        lignes = fact.lignes_facturation(qs)
+        employes = fact.synthese_par_employe(lignes)
 
         infos = _infos_agents([e['user_id'] for e in employes])
         resultat = [
@@ -2429,6 +2430,16 @@ class FacturationView(APIView):
             'total_montant':    float(sum((e['total'] for e in employes), Decimal('0'))),
             'repas_sans_tarif': sum(e['repas_sans_tarif'] for e in employes),
             'employes':         resultat,
+            # Synthèses calculées sur les mêmes lignes : leurs totaux égalent total_montant
+            'par_categorie': [
+                {**{k: v for k, v in c.items() if k not in ('montant', 'tarif', 'tarif_min', 'tarif_max')},
+                 'montant':   float(c['montant']),
+                 'tarif':     float(c['tarif']) if c['tarif'] is not None else None,
+                 'tarif_min': float(c['tarif_min']) if c['tarif_min'] is not None else None,
+                 'tarif_max': float(c['tarif_max']) if c['tarif_max'] is not None else None}
+                for c in fact.synthese_par_categorie(lignes)
+            ],
+            'par_plat': [{**p, 'montant': float(p['montant'])} for p in fact.synthese_par_plat(lignes)],
         })
 
 

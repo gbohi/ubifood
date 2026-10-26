@@ -1505,3 +1505,175 @@ class ApplicationMobileTests(BaseAPITestCase):
         r = admin.patch(self.url, {'ios_url': 'pas-un-lien'}, format='json')
         self.assertEqual(r.status_code, 400)
         self.assertIsNone(APIClient().get(self.url).data['android']['url'])
+
+
+class StatistiquesTests(_FacturationBase):
+    """Page Statistiques, blocs « par repas / par catégorie » et liste nominative du détail."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import AvisPlat, Retrait
+        auj = timezone.localdate()
+        self.auj = auj
+        j = lambda n: auj + timedelta(days=n)
+        self.debut, self.fin = j(-5).isoformat(), j(2).isoformat()
+        # emp1 : catégorie actuelle Cadre ; emp2 : sans catégorie
+        servi = self.commander(self.employe, auj, statut='retiree')            # servi aujourd'hui
+        self.retrait = Retrait.objects.create(user=self.employe, menu=servi.menu, badge_matricule='emp1')
+        AvisPlat.objects.create(commande=servi, user=self.employe, plat=self.plat1, note=4)
+        self.commander(self.employe2, auj)                                     # à servir (aujourd'hui)
+        self.commander(self.employe, j(-3), plat=self.plat2)                   # non retiré
+        self.commander(self.employe2, j(-3), statut='retiree', plat=self.plat2)
+        self.commander(self.employe, j(1))                                     # à servir (demain)
+        annulee = self.commander(self.employe, j(-3), statut='annulee')        # annulée par le gestionnaire
+        annulee.annulee_par = self.gestionnaire
+        annulee.save()
+        annulee2 = self.commander(self.employe2, j(-2), statut='annulee')      # annulée par l'agent
+        annulee2.annulee_par = self.employe2
+        annulee2.save()
+        self.commander(self.employe, j(-8), statut='retiree')                  # période précédente
+        # Autre agence, que le gestionnaire ne gère pas
+        self.annexe = Agence.objects.create(nom_agence='Annexe')
+        menu = Menu.objects.create(date_menu=auj, agence=self.annexe, typeequipe=self.typeequipe)
+        MenuPlat.objects.create(menu=menu, plat=self.plat1)
+        Commande.objects.create(user=self.employe2, menu=menu, plat=self.plat1)
+
+    def stats(self, qui, url='', **params):
+        params.setdefault('debut', self.debut)
+        params.setdefault('fin', self.fin)
+        return self.client_pour(qui).get(f'{API}/statistiques/{url}', params)
+
+    def test_acces_reserve_aux_gestionnaires(self):
+        for url in ('', 'repas-categories/', 'detail/'):
+            self.assertEqual(self.stats(self.employe, url).status_code, 403)
+            self.assertEqual(self.client_pour().get(f'{API}/statistiques/{url}').status_code, 401)
+        # Agence non gérée : refus explicite
+        r = self.stats(self.gestionnaire, agence=self.annexe.id)
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.stats(self.gestionnaire, 'detail/', agence=self.annexe.id).status_code, 403)
+
+    def test_chiffres_cles_et_comparaison(self):
+        r = self.stats(self.gestionnaire)
+        self.assertEqual(r.status_code, 200, r.data)
+        k = r.data['kpis']
+        self.assertEqual((k['commandes'], k['servis'], k['a_servir'], k['non_retires'], k['annulees']),
+                         (5, 2, 2, 1, 2))
+        self.assertEqual(k['taux_retrait'], 66.7)
+        self.assertEqual((k['note_moyenne'], k['nb_avis']), (4.0, 1))
+        self.assertTrue(r.data['periode']['en_cours'])
+        self.assertEqual(r.data['agences'], ['Siège'])
+        # Période précédente : les 8 jours d'avant
+        prec = r.data['periode']['precedente']
+        self.assertEqual(prec['fin'], self.auj - timedelta(days=6))
+        self.assertEqual(prec['debut'], self.auj - timedelta(days=13))
+        self.assertEqual(r.data['precedent']['commandes'], 1)
+        # L'administrateur voit aussi l'Annexe
+        self.assertEqual(self.stats(self.admin).data['kpis']['commandes'], 6)
+        self.assertEqual(self.stats(self.admin, agence=self.annexe.id).data['kpis']['commandes'], 1)
+        # Résumé (accueil) : chiffres clés seulement
+        r = self.stats(self.gestionnaire, resume=1)
+        self.assertIn('kpis', r.data)
+        self.assertNotIn('par_mois', r.data)
+
+    def test_mois_entiers_compares_au_mois_precedent(self):
+        r = self.stats(self.gestionnaire, debut='2026-09-01', fin='2026-10-31', resume=1)
+        self.assertEqual(r.data['periode']['precedente'], {'debut': self.date(2026, 7, 1), 'fin': self.date(2026, 8, 31)})
+        r = self.stats(self.gestionnaire, debut='2026-01-01', fin='2026-01-31', resume=1)
+        self.assertEqual(r.data['periode']['precedente'], {'debut': self.date(2025, 12, 1), 'fin': self.date(2025, 12, 31)})
+
+    def test_blocs_de_la_page(self):
+        d = self.stats(self.gestionnaire).data
+        self.assertGreaterEqual(len(d['par_mois']), 6)
+        self.assertEqual(sum(m['commandes'] for m in d['par_mois']), 6)   # + la commande de j-8
+        self.assertEqual([(a['agence'], a['commandes']) for a in d['par_agence']], [('Siège', 5)])
+        self.assertEqual(sum(a['par_agent'] for a in d['annulations']), 1)
+        self.assertEqual(sum(a['par_gestionnaire'] for a in d['annulations']), 1)
+        self.assertTrue(any(e['futur'] for e in d['evolution']))
+        self.assertEqual(sum(s['non_retires'] for s in d['non_retires_semaine']), 1)
+        # Repas non retiré : coût estimé au tarif du prestataire (900 F depuis le 16/08/2026)
+        self.assertEqual(d['perte_non_retires']['repas'], 1)
+        self.assertEqual(d['perte_non_retires']['montant'], 900.0)
+        self.assertEqual(d['classement_plats'][0]['plat'], 'Garba')
+        self.assertEqual(d['total_repas']['commandes'], 5)
+
+    def test_par_repas_et_par_categorie(self):
+        d = self.stats(self.gestionnaire, 'repas-categories/').data
+        garba = next(p for p in d['par_repas'] if p['plat'] == 'Garba')
+        self.assertEqual((garba['commandes'], garba['servis'], garba['a_servir']), (3, 1, 2))
+        cats = {c['categorie']: c for c in d['par_categorie']}
+        self.assertEqual((cats['Cadre']['commandes'], cats['Cadre']['servis'], cats['Cadre']['non_retires'],
+                          cats['Cadre']['a_servir']), (3, 1, 1, 1))
+        self.assertEqual((cats[None]['commandes'], cats[None]['servis']), (2, 1))
+        self.assertIsNone(d['par_categorie'][-1]['categorie'])            # « Sans catégorie » en dernier
+        self.assertEqual(d['total']['commandes'], 5)
+        # Accueil : service du jour seulement
+        aujourd = self.auj.isoformat()
+        d = self.stats(self.gestionnaire, 'repas-categories/', debut=aujourd, fin=aujourd).data
+        self.assertEqual(d['total']['commandes'], 2)
+        self.assertEqual(d['par_repas'][0]['agences'], ['Siège'])
+
+    def test_detail_par_onglet(self):
+        r = self.stats(self.gestionnaire, 'detail/', liste='servis')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['compteurs'], {'commandes': 5, 'servis': 2, 'a_servir': 2, 'non_retires': 1})
+        self.assertEqual(r.data['count'], 2)
+        ligne = next(l for l in r.data['results'] if l['user_id'] == self.employe.id)
+        self.assertEqual((ligne['categorie'], ligne['agence'], ligne['statut']), ('Cadre', 'Siège', 'servi'))
+        self.assertIsNotNone(ligne['heure_retrait'])
+        self.assertEqual(r.data['results'][0]['user_id'], self.employe.id)   # retrait le plus récent d'abord
+        r = self.stats(self.gestionnaire, 'detail/', liste='non_retires')
+        self.assertEqual([l['statut'] for l in r.data['results']], ['non_retire'])
+        r = self.stats(self.gestionnaire, 'detail/', liste='a_servir', plat=self.plat1.id)
+        self.assertEqual(r.data['count'], 2)
+        r = self.stats(self.gestionnaire, 'detail/', categorie='aucune')
+        self.assertEqual({l['user_id'] for l in r.data['results']}, {self.employe2.id})
+        self.assertEqual(r.data['compteurs']['commandes'], 2)
+        r = self.stats(self.gestionnaire, 'detail/', search='emp2')
+        self.assertEqual(r.data['count'], 2)
+        # Pagination et export complet
+        r = self.stats(self.gestionnaire, 'detail/', page_size=2, page=3)
+        self.assertEqual((r.data['count'], len(r.data['results'])), (5, 1))
+        r = self.stats(self.gestionnaire, 'detail/', page_size=2, export=1)
+        self.assertEqual(len(r.data['results']), 5)
+        self.assertEqual(self.stats(self.gestionnaire, 'detail/', liste='tout').status_code, 400)
+        # Le gestionnaire ne voit pas la commande de l'Annexe ; l'administrateur si
+        self.assertEqual(self.stats(self.admin, 'detail/').data['count'], 6)
+
+
+class FacturationSynthesesTests(_FacturationBase):
+    """Facturation : synthèses par catégorie de salarié et par plat, mêmes totaux que le détail."""
+
+    def test_par_categorie_et_par_plat(self):
+        d = self.date
+        self.commander(self.employe, d(2026, 8, 5))                      # Agent : 500
+        self.commander(self.employe, d(2026, 8, 12), statut='retiree')   # Cadre : 1000
+        self.commander(self.employe, d(2026, 8, 20), plat=self.plat2)    # Cadre : 1500
+        self.commander(self.employe2, d(2026, 8, 20))                    # sans catégorie
+        self.commander(self.employe, d(2026, 8, 25), statut='annulee')   # non facturé
+        r = self.client_pour(self.gestionnaire).get(
+            f'{API}/facturation/', {'date_debut': '2026-08-01', 'date_fin': '2026-08-31'})
+        data = r.data
+        cats = {c['categorie']: c for c in data['par_categorie']}
+        self.assertEqual(set(cats), {'Cadre', 'Agent', None})
+        self.assertEqual((cats['Cadre']['nb_repas'], cats['Cadre']['montant'], cats['Cadre']['nb_agents']),
+                         (2, 2500.0, 1))
+        self.assertIsNone(cats['Cadre']['tarif'])                         # deux tarifs dans le mois
+        self.assertEqual((cats['Cadre']['tarif_min'], cats['Cadre']['tarif_max']), (1000.0, 1500.0))
+        self.assertEqual(cats['Agent']['tarif'], 500.0)
+        sans = cats[None]
+        self.assertEqual((sans['nb_repas'], sans['repas_sans_tarif'], sans['montant']), (1, 1, 0.0))
+        self.assertEqual([a['username'] for a in sans['agents_sans_categorie']], ['emp2'])
+        self.assertEqual(sum(c['montant'] for c in data['par_categorie']), data['total_montant'])
+        self.assertEqual(sum(c['nb_repas'] for c in data['par_categorie']), data['total_repas'])
+        plats = {p['plat']: p for p in data['par_plat']}
+        self.assertEqual((plats['Garba']['nb_repas'], plats['Garba']['montant']), (3, 1500.0))
+        self.assertEqual(sum(p['montant'] for p in data['par_plat']), data['total_montant'])
+
+    def test_mois_cloture_montants_figes(self):
+        self.commander(self.employe, self.date(2026, 8, 20))
+        self.client_pour(self.admin).post(f'{API}/facturation/clotures/cloturer/', {'annee': 2026, 'mois': 8})
+        PlatCategoriesalarie.objects.update(montant=Decimal('9999'))
+        data = self.client_pour(self.gestionnaire).get(
+            f'{API}/facturation/', {'date_debut': '2026-08-01', 'date_fin': '2026-08-31'}).data
+        self.assertEqual(data['par_categorie'][0]['montant'], 1500.0)
+        self.assertEqual(data['par_plat'][0]['montant'], 1500.0)

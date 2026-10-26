@@ -6,15 +6,13 @@ import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { DashboardsRoutingModule } from './dashboards-routing.module';
 import { SharedModule } from 'src/app/shared/shared.module';
 
-// Apex Chart Package
-// Pas de TooltipModule (ngx-bootstrap) ici : son sélecteur [tooltip] s'appliquait
-// aux <apx-chart [tooltip]="..."> et affichait « [object Object] » au survol.
-import { NgApexchartsModule } from 'ng-apexcharts';
-import { NgSelectModule } from '@ng-select/ng-select';
+// Fenêtre « Voir le détail » du service du jour (BsModalService)
+import { ModalModule } from 'ngx-bootstrap/modal';
 
 // component
 import { DashboardCantineComponent } from './dashboard-cantine/dashboard-cantine.component';
 
+// Les graphiques ont rejoint la page Cantine › Statistiques (module cantines).
 @NgModule({
   declarations: [
     DashboardCantineComponent
@@ -23,10 +21,9 @@ import { DashboardCantineComponent } from './dashboard-cantine/dashboard-cantine
     CommonModule,
     DashboardsRoutingModule,
     SharedModule,
-    NgApexchartsModule,
     FormsModule,
     ReactiveFormsModule,
-    NgSelectModule
+    ModalModule.forRoot()
   ]
 })
 export class DashboardsModule { }

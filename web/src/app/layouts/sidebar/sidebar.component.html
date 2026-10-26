@@ -81,7 +81,7 @@
                                 }@else {
                                 <a [routerLink]="subitem.link" class="nav-link" [attr.data-parent]="subitem.parentId" [attr.data-actif-sur]="subitem.actifSur?.join(' ')" (click)="updateActive($event)">
                                     {{ subitem.label | translate}}
-                                    <span class="badge badge-pill bg-success" *ngIf="subitem.isNew">New</span>
+                                    <span class="badge badge-pill bg-success menu-nouveau" *ngIf="subitem.isNew">Nouveau</span>
                                 </a>
                                 }
                             </li>

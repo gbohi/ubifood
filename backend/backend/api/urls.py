@@ -6,6 +6,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import *
 from .accueil import AccueilView
 from .planning import PlanningView
+from .statistiques import DetailServiceView, RepasCategoriesView, StatistiquesView
 
 
 class ConnexionSerializer(TokenObtainPairSerializer):
@@ -94,6 +95,9 @@ urlpatterns = [
     path('api/dashboard-cantine/', DashboardCantineView.as_view(), name='dashboard-cantine'),
     path('api/accueil/', AccueilView.as_view(), name='accueil'),
     path('api/planning/', PlanningView.as_view(), name='planning'),
+    path('api/statistiques/', StatistiquesView.as_view(), name='statistiques'),
+    path('api/statistiques/repas-categories/', RepasCategoriesView.as_view(), name='statistiques-repas-categories'),
+    path('api/statistiques/detail/', DetailServiceView.as_view(), name='statistiques-detail'),
     path('api/facturation/', FacturationView.as_view(), name='facturation'),
     path('api/facturation/prestataires/', FacturationPrestataireView.as_view(), name='facturation-prestataires'),
     path('api/parametres-societe/', ParametresSocieteView.as_view(), name='parametres-societe'),

@@ -15,4 +15,6 @@ export interface MenuItem {
     sansRoles?: string[];
     /** Autres adresses (préfixes) pour lesquelles l'entrée est affichée comme active */
     actifSur?: string[];
+    /** Pastille « Nouveau » à côté du libellé */
+    isNew?: boolean;
 }

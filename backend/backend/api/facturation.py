@@ -156,6 +156,61 @@ def synthese_par_employe(lignes):
     return sorted(par_user.values(), key=lambda e: e['username'])
 
 
+def synthese_par_categorie(lignes):
+    """
+    Regroupe les lignes par catégorie de salarié appliquée (celle de la date
+    du menu, ou figée à la clôture) : agents, repas, tarif(s), montant.
+    Les repas sans catégorie forment une ligne à part (categorie None), avec
+    la liste des agents concernés. Les totaux sont ceux de synthese_par_employe.
+    """
+    groupes = {}
+    for l in lignes:
+        cle = l['categorie'] or None
+        g = groupes.setdefault(cle, {
+            'categorie': cle, 'agents': set(), 'nb_repas': 0, 'montant': Decimal('0'),
+            'repas_sans_tarif': 0, 'tarifs': set(), 'agents_sans_categorie': {},
+        })
+        g['agents'].add(l['user_id'])
+        g['nb_repas'] += 1
+        if l['montant'] is None:
+            g['repas_sans_tarif'] += 1
+        else:
+            g['montant'] += l['montant']
+            g['tarifs'].add(l['montant'])
+        if cle is None:
+            u = l['commande'].user
+            a = g['agents_sans_categorie'].setdefault(u.id, {
+                'user_id': u.id, 'username': u.username,
+                'nom_prenom': f"{u.nom or ''} {u.prenom or ''}".strip() or u.username,
+                'agence': l['agence_menu'], 'nb_repas': 0,
+            })
+            a['nb_repas'] += 1
+    resultat = []
+    for g in groupes.values():
+        tarifs = sorted(g.pop('tarifs'))
+        g['nb_agents'] = len(g.pop('agents'))
+        g['tarif'] = tarifs[0] if len(tarifs) == 1 else None
+        g['tarif_min'] = tarifs[0] if tarifs else None
+        g['tarif_max'] = tarifs[-1] if tarifs else None
+        g['agents_sans_categorie'] = sorted(g['agents_sans_categorie'].values(), key=lambda a: a['nom_prenom'])
+        resultat.append(g)
+    return sorted(resultat, key=lambda g: (g['categorie'] is None, -g['montant'], g['categorie'] or ''))
+
+
+def synthese_par_plat(lignes):
+    """Repas facturés et montant par plat (repas sans tarif comptés, non chiffrés)."""
+    groupes = {}
+    for l in lignes:
+        g = groupes.setdefault(l['plat'], {'plat': l['plat'], 'nb_repas': 0, 'montant': Decimal('0'),
+                                           'repas_sans_tarif': 0})
+        g['nb_repas'] += 1
+        if l['montant'] is None:
+            g['repas_sans_tarif'] += 1
+        else:
+            g['montant'] += l['montant']
+    return sorted(groupes.values(), key=lambda g: (-g['nb_repas'], -g['montant'], g['plat']))
+
+
 # ══════════════════════════════════════════════════════════════
 # CÔTÉ PRESTATAIRES
 # ══════════════════════════════════════════════════════════════
