@@ -29,6 +29,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Compte prestataire : ni commandes ni allergies (routes employé, 403)
+      if (context.read<AuthProvider>().user?.isComptePrestataire ?? false) {
+        return;
+      }
       context.read<AllergieProvider>().loadAllergies();
       context.read<CommandeProvider>().loadMesCommandes();
     });
@@ -40,14 +44,15 @@ class _ProfilScreenState extends State<ProfilScreen> {
     final theme = context.watch<ThemeProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = auth.user;
-    final role = user?.isAdmin == true
-        ? 'Administrateur'
-        : auth.isGestionnaire
-            ? 'Gestionnaire'
-            : 'Employé';
+    final presta = user?.isComptePrestataire ?? false;
+    final role = user?.libelleRole ?? 'Employé';
     final detailIdentite = [
-      if ((user?.username ?? '').isNotEmpty) 'Matricule ${user!.username}',
-      if (user?.derniereAgence != null) user!.derniereAgence!,
+      if ((user?.username ?? '').isNotEmpty)
+        presta ? user!.username : 'Matricule ${user!.username}',
+      if (presta && (user?.prestataireLibelle ?? '').isNotEmpty)
+        user!.prestataireLibelle!
+      else if (user?.derniereAgence != null)
+        user!.derniereAgence!,
     ].join(' · ');
     final identite = Row(children: [
       // Photo de profil : toucher pour la changer
@@ -123,15 +128,21 @@ class _ProfilScreenState extends State<ProfilScreen> {
                       ? Icons.shield_outlined
                       : auth.isGestionnaire
                           ? Icons.admin_panel_settings_outlined
-                          : Icons.person_outline_rounded,
+                          : presta
+                              ? Icons.storefront_outlined
+                              : Icons.person_outline_rounded,
                   size: 12,
                   color: AppColors.accent),
               const SizedBox(width: 4),
-              Text(role,
-                  style: const TextStyle(
-                      color: AppColors.accent,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700)),
+              Flexible(
+                child: Text(role,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: AppColors.accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700)),
+              ),
             ]),
           ),
         ]),
@@ -143,80 +154,87 @@ class _ProfilScreenState extends State<ProfilScreen> {
         padding: EdgeInsets.zero,
         children: [
           // ── En-tête marine + chiffres en une ligne ─────────────
-          Stack(clipBehavior: Clip.none, children: [
-            Column(children: [
-              EnTeteMarine(titre: 'Mon profil', bas: identite, margeBas: 46),
-              const SizedBox(height: 34),
+          if (presta)
+            EnTeteMarine(titre: 'Mon profil', bas: identite)
+          else
+            Stack(clipBehavior: Clip.none, children: [
+              Column(children: [
+                EnTeteMarine(titre: 'Mon profil', bas: identite, margeBas: 46),
+                const SizedBox(height: 34),
+              ]),
+              Positioned(
+                left: 14,
+                right: 14,
+                bottom: 0,
+                child: Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
+                  final cmds = cmdProv.mesCommandes;
+                  final retirees = cmds
+                      .where((c) => etatCommande(c) == EtatCommande.retiree)
+                      .length;
+                  final aRetirer = cmds.where((c) {
+                    final e = etatCommande(c);
+                    return e == EtatCommande.aVenir ||
+                        e == EtatCommande.aRetirer;
+                  }).length;
+                  return _Chiffres(chiffres: [
+                    (
+                      cmds.length,
+                      cmds.length > 1 ? 'commandes' : 'commande',
+                      null
+                    ),
+                    (
+                      retirees,
+                      retirees > 1 ? 'retirées' : 'retirée',
+                      isDark ? AppColors.accent : const Color(0xFF1F9D55)
+                    ),
+                    (
+                      aRetirer,
+                      'à retirer',
+                      isDark ? const Color(0xFFFFC94D) : const Color(0xFFB97800)
+                    ),
+                  ]);
+                }),
+              ),
             ]),
-            Positioned(
-              left: 14,
-              right: 14,
-              bottom: 0,
-              child: Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
-                final cmds = cmdProv.mesCommandes;
-                final retirees = cmds
-                    .where((c) => etatCommande(c) == EtatCommande.retiree)
-                    .length;
-                final aRetirer = cmds.where((c) {
-                  final e = etatCommande(c);
-                  return e == EtatCommande.aVenir || e == EtatCommande.aRetirer;
-                }).length;
-                return _Chiffres(chiffres: [
-                  (
-                    cmds.length,
-                    cmds.length > 1 ? 'commandes' : 'commande',
-                    null
-                  ),
-                  (
-                    retirees,
-                    retirees > 1 ? 'retirées' : 'retirée',
-                    isDark ? AppColors.accent : const Color(0xFF1F9D55)
-                  ),
-                  (
-                    aRetirer,
-                    'à retirer',
-                    isDark ? const Color(0xFFFFC94D) : const Color(0xFFB97800)
-                  ),
-                ]);
-              }),
-            ),
-          ]),
 
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 40),
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ── Cantine ──────────────────────────────────
-                  const LibelleSection('Cantine'),
-                  CarteListe(lignes: [
-                    _Ligne(
-                      icone: Icons.qr_code_2_rounded,
-                      titre: 'Mon badge QR',
-                      sousTitre: 'À présenter au comptoir',
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const QrCodeScreen())),
-                    ),
-                    Consumer<AllergieProvider>(builder: (_, allergieProv, __) {
-                      final count = allergieProv.allergies.length;
-                      return _Ligne(
-                        icone: Icons.warning_amber_rounded,
-                        rouge: true,
-                        titre: 'Mes allergies',
-                        sousTitre: count == 0
-                            ? 'Aucune allergie déclarée'
-                            : '$count allergie${count > 1 ? 's' : ''} '
-                                'déclarée${count > 1 ? 's' : ''}',
+                  // ── Cantine (employés : badge, allergies) ────
+                  if (!presta) ...[
+                    const LibelleSection('Cantine'),
+                    CarteListe(lignes: [
+                      _Ligne(
+                        icone: Icons.qr_code_2_rounded,
+                        titre: 'Mon badge QR',
+                        sousTitre: 'À présenter au comptoir',
                         onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) => const AllergiesScreen())),
-                      );
-                    }),
-                  ]),
-                  const SizedBox(height: 10),
+                                builder: (_) => const QrCodeScreen())),
+                      ),
+                      Consumer<AllergieProvider>(
+                          builder: (_, allergieProv, __) {
+                        final count = allergieProv.allergies.length;
+                        return _Ligne(
+                          icone: Icons.warning_amber_rounded,
+                          rouge: true,
+                          titre: 'Mes allergies',
+                          sousTitre: count == 0
+                              ? 'Aucune allergie déclarée'
+                              : '$count allergie${count > 1 ? 's' : ''} '
+                                  'déclarée${count > 1 ? 's' : ''}',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const AllergiesScreen())),
+                        );
+                      }),
+                    ]),
+                    const SizedBox(height: 10),
+                  ],
 
                   // ── Compte ───────────────────────────────────
                   const LibelleSection('Compte'),

@@ -46,6 +46,10 @@ class AuthUser {
   /// Photo de profil (URL absolue) ; null → initiales
   final String? photoUrl;
 
+  /// Compte prestataire : prestataire rattaché (id et libellé)
+  final int? prestataireId;
+  final String? prestataireLibelle;
+
   const AuthUser({
     required this.id,
     required this.username,
@@ -62,6 +66,8 @@ class AuthUser {
     this.derniereCategoriesalarieLibelle,
     this.derniereAgenceId,
     this.photoUrl,
+    this.prestataireId,
+    this.prestataireLibelle,
   });
 
   String get fullName => '$nom $prenom'.trim();
@@ -82,6 +88,28 @@ class AuthUser {
   /// Gestionnaire de cantine (les administrateurs ont aussi ces droits)
   bool get isGestionnaire => isAdmin || roles.contains('gestionnaire');
 
+  /// Responsable d'un prestataire (espace prestataire complet)
+  bool get isPrestataireResponsable => roles.contains('prestataire');
+
+  /// Agent de comptoir d'un prestataire (comptoir et liste du jour)
+  bool get isAgentComptoir =>
+      roles.contains('agent_comptoir') && !isPrestataireResponsable;
+
+  /// Compte prestataire (responsable ou agent) : espace réduit, aucune
+  /// route employé / gestionnaire (le serveur répondrait 403)
+  bool get isComptePrestataire => isPrestataireResponsable || isAgentComptoir;
+
+  /// « Prestataire (responsable) », « Agent de comptoir », « Gestionnaire »…
+  String get libelleRole => isAdmin
+      ? 'Administrateur'
+      : isGestionnaire
+          ? 'Gestionnaire'
+          : isPrestataireResponsable
+              ? 'Prestataire (responsable)'
+              : isAgentComptoir
+                  ? 'Agent de comptoir'
+                  : 'Employé';
+
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
         id: json['id'],
         username: json['username'] ?? '',
@@ -100,6 +128,10 @@ class AuthUser {
             ?['categoriesalarie_libelle'],
         derniereAgenceId: json['derniere_agence']?['agence'],
         photoUrl: _absoluteUrl(json['photo_url'] as String?),
+        prestataireId: json['prestataire'] is num
+            ? (json['prestataire'] as num).toInt()
+            : null,
+        prestataireLibelle: json['prestataire_libelle'] as String?,
       );
 }
 
@@ -826,9 +858,8 @@ class AFaire {
         titre: j['titre']?.toString() ?? '',
         detail: j['detail']?.toString() ?? '',
         date: _jour(j['date']),
-        listeAgences: (j['agences'] as List? ?? [])
-            .map((e) => e.toString())
-            .toList(),
+        listeAgences:
+            (j['agences'] as List? ?? []).map((e) => e.toString()).toList(),
       );
 }
 

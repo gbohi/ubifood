@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../shared/providers/app_provider.dart';
+import '../contestation/retrait_detail_screen.dart';
 
 // ══════════════════════════════════════════════════════════════
 // NAVIGATION DEPUIS UNE NOTIFICATION
@@ -33,6 +35,10 @@ class NotificationItem {
   final int? commandeId;
   final int? menuId;
 
+  /// Retrait validé (« Je n'ai pas retiré ce repas ») / contestation liée
+  final int? retraitId;
+  final int? contestationId;
+
   const NotificationItem({
     required this.id,
     required this.type,
@@ -42,7 +48,15 @@ class NotificationItem {
     required this.createdAt,
     this.commandeId,
     this.menuId,
+    this.retraitId,
+    this.contestationId,
   });
+
+  /// Ouvre le détail du retrait (contestation possible / suivi)
+  bool get ouvreRetrait =>
+      commandeId != null &&
+      ((type == 'retrait_valide' && retraitId != null) ||
+          type == 'contestation_decidee');
 
   factory NotificationItem.fromJson(Map<String, dynamic> j) => NotificationItem(
         id: j['id'],
@@ -54,9 +68,15 @@ class NotificationItem {
         // de toute la liste)
         createdAt: (DateTime.tryParse(j['created_at'] ?? '') ?? DateTime.now())
             .toLocal(),
-        commandeId: j['commande_id'],
-        menuId: j['menu_id'],
+        commandeId: _id(j['commande_id']),
+        menuId: _id(j['menu_id']),
+        retraitId: _id(j['retrait_id']),
+        contestationId: _id(j['contestation_id']),
       );
+
+  /// Identifiant entier, ou chaîne (données FCM), vide → null
+  static int? _id(dynamic v) =>
+      v is num ? v.toInt() : int.tryParse(v?.toString() ?? '');
 
   NotificationItem copyWith({bool? lu}) => NotificationItem(
         id: id,
@@ -67,6 +87,8 @@ class NotificationItem {
         createdAt: createdAt,
         commandeId: commandeId,
         menuId: menuId,
+        retraitId: retraitId,
+        contestationId: contestationId,
       );
 }
 
@@ -270,11 +292,15 @@ String titreSansEmoji(String titre) => titre
 enum _FiltreNotif { toutes, nonLues, commandes, menus }
 
 bool _estCommande(NotificationItem n) =>
-    n.type.startsWith('commande_') || n.type.startsWith('retrait_');
+    n.type.startsWith('commande_') ||
+    n.type.startsWith('retrait_') ||
+    n.type.startsWith('contestation_');
 
 bool _estMenu(NotificationItem n) =>
     n.type == 'menu_disponible' ||
     n.type == 'rappel_48h' ||
+    n.type == 'menu_corrige' ||
+    n.type == 'plat_masque' ||
     (n.menuId != null && !_estCommande(n));
 
 class NotificationScreen extends StatefulWidget {
@@ -449,6 +475,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
                         heure: _heure(notif.createdAt, aujourdhui, hier),
                         onTap: () {
                           if (!notif.lu) prov.marquerLu(notif.id);
+                          // Retrait validé / décision : détail du retrait
+                          // (« Je n'ai pas retiré ce repas », suivi)
+                          final user = context.read<AuthProvider>().user;
+                          if (notif.ouvreRetrait &&
+                              !(user?.isComptePrestataire ?? false)) {
+                            Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => RetraitDetailScreen(
+                                    commandeId: notif.commandeId!)));
+                            return;
+                          }
                           // Retour à l'écran principal sur l'onglet utile :
                           // commandes (passée, annulée, retirée → avis) ou
                           // menus (nouveau menu, rappel)
@@ -494,6 +530,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   CibleNotification? _cible(NotificationItem n) {
+    // Espace prestataire, contestation (traitée sur le web) : pas d'onglet
+    if (n.type.startsWith('contestation_') ||
+        n.type == 'menu_corrige' ||
+        n.type == 'plat_masque') {
+      return null;
+    }
     if (n.type.startsWith('commande_') ||
         n.type == 'retrait_valide' ||
         n.type == 'retrait_annule') {
@@ -549,7 +591,7 @@ class _NotificationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final (icone, ton) = _typeConfig(notif.type);
+    final (icone, ton) = configTypeNotification(notif.type, notif.titre);
     final (fondIcone, couleurIcone) = couleursPastille(ton, isDark);
     final gris =
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
@@ -650,24 +692,40 @@ class _NotificationTile extends StatelessWidget {
       ),
     );
   }
+}
 
-  (IconData, TonPastille) _typeConfig(String type) {
-    switch (type) {
-      case 'commande_passee':
-        return (Icons.check_circle_outline_rounded, TonPastille.vert);
-      case 'commande_annulee':
-        return (Icons.cancel_outlined, TonPastille.rouge);
-      case 'retrait_valide':
-        return (Icons.restaurant_rounded, TonPastille.vert);
-      case 'retrait_annule':
-        return (Icons.undo_rounded, TonPastille.or);
-      case 'menu_disponible':
-        return (Icons.restaurant_menu_rounded, TonPastille.bleu);
-      case 'rappel_48h':
-        return (Icons.timer_outlined, TonPastille.or);
-      default:
-        return (Icons.notifications_none_rounded, TonPastille.bleu);
-    }
+/// Icône et couleur d'une notification selon son type (décision de
+/// contestation : acceptée / rejetée d'après le titre envoyé par le serveur)
+(IconData, TonPastille) configTypeNotification(String type,
+    [String titre = '']) {
+  switch (type) {
+    case 'commande_passee':
+      return (Icons.check_circle_outline_rounded, TonPastille.vert);
+    case 'commande_annulee':
+      return (Icons.cancel_outlined, TonPastille.rouge);
+    case 'retrait_valide':
+      return (Icons.restaurant_rounded, TonPastille.vert);
+    case 'retrait_annule':
+      return (Icons.undo_rounded, TonPastille.or);
+    case 'menu_disponible':
+      return (Icons.restaurant_menu_rounded, TonPastille.bleu);
+    case 'rappel_48h':
+      return (Icons.timer_outlined, TonPastille.or);
+    case 'contestation_nouvelle':
+      return (Icons.report_gmailerrorred_rounded, TonPastille.rouge);
+    case 'contestation_decidee':
+      final t = titre.toLowerCase();
+      if (t.contains('accept')) {
+        return (Icons.verified_outlined, TonPastille.vert);
+      }
+      if (t.contains('rejet')) return (Icons.gavel_rounded, TonPastille.rouge);
+      return (Icons.gavel_rounded, TonPastille.or);
+    case 'menu_corrige':
+      return (Icons.edit_note_rounded, TonPastille.or);
+    case 'plat_masque':
+      return (Icons.visibility_off_outlined, TonPastille.rouge);
+    default:
+      return (Icons.notifications_none_rounded, TonPastille.bleu);
   }
 }
 

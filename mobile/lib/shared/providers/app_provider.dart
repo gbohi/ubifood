@@ -71,6 +71,13 @@ class AuthProvider extends ChangeNotifier {
   /// 3 et 4 codés en dur, faux dès que la base est recréée).
   bool get isGestionnaire => _user?.isGestionnaire ?? false;
 
+  /// Tests : session ouverte sans serveur
+  @visibleForTesting
+  set utilisateurPourTest(AuthUser? u) {
+    _user = u;
+    notifyListeners();
+  }
+
   AuthProvider() {
     // Refresh token refusé par le serveur → retour à l'écran de connexion
     apiClient.onSessionExpiree = () {
@@ -529,7 +536,8 @@ class RetraitProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> validerRetrait(int userId, int menuId, String badge) async {
+  Future<bool> validerRetrait(int userId, int menuId, String badge,
+      {String? mode}) async {
     // Validation déjà en cours (double appui) : ignorée
     if (_loading) return false;
     _loading = true;
@@ -540,6 +548,7 @@ class RetraitProvider extends ChangeNotifier {
         userId: userId,
         menuId: menuId,
         badgeMatricule: badge,
+        mode: mode,
       );
       if (_result != null) {
         _result = RechercheParBadgeResult(

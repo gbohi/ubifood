@@ -239,12 +239,26 @@ class RetraitService {
     required int userId,
     required int menuId,
     required String badgeMatricule,
+    String? mode, // scan | saisie
   }) async {
     await apiClient.post('/retraits/', data: {
       'user_id': userId,
       'menu_id': menuId,
       'badge_matricule': badgeMatricule,
+      if (mode != null) 'mode': mode,
     });
+  }
+
+  /// Derniers retraits d'un menu (avec l'agent qui a validé)
+  Future<List<Map<String, dynamic>>> derniersRetraits(int menuId,
+      {int limite = 5}) async {
+    final res = await apiClient
+        .get('/retraits/service/', params: {'menu': menuId, 'limite': limite});
+    final derniers = res.data is Map ? res.data['derniers'] : null;
+    return (derniers as List? ?? [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 }
 

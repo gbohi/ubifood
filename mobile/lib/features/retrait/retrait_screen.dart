@@ -7,7 +7,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../shared/models/models.dart';
@@ -15,6 +14,8 @@ import '../../core/widgets/common_widgets.dart';
 import '../../core/api/api_client.dart';
 import '../../core/services/cantine_service.dart';
 import '../dashboard/dashboard_screen.dart' show MainShellNavigator;
+import 'scanner_badge.dart';
+import '../../shared/models/prestataire_models.dart' show RetraitComptoir;
 
 class RetraitScreen extends StatefulWidget {
   const RetraitScreen({super.key});
@@ -39,6 +40,13 @@ class _RetraitScreenState extends State<RetraitScreen> {
   /// GET /commandes/par-agence-periode/ existant, filtré sur le menu
   List<Commande>? _commandesMenu;
   int _requeteStats = 0;
+
+  /// Derniers retraits du menu avec l'agent qui a validé
+  /// (GET /retraits/service/ ; null : indisponible, liste des commandes)
+  List<RetraitComptoir>? _derniers;
+
+  /// Badge lu par la caméra (mode « scan ») ou matricule tapé (« saisie »)
+  bool _badgeScanne = false;
 
   /// Agents servis depuis cet écran (les plus récents en premier)
   final List<String> _servisIci = [];
@@ -130,9 +138,19 @@ class _RetraitScreenState extends State<RetraitScreen> {
     final menu = _menuSelectionne;
     final num = ++_requeteStats;
     if (menu == null) {
-      setState(() => _commandesMenu = null);
+      setState(() {
+        _commandesMenu = null;
+        _derniers = null;
+      });
       return;
     }
+    retraitService.derniersRetraits(menu.id).then((liste) {
+      if (!mounted || num != _requeteStats) return;
+      setState(() => _derniers = liste.map(RetraitComptoir.fromJson).toList());
+    }).catchError((Object _) {
+      if (!mounted || num != _requeteStats) return;
+      setState(() => _derniers = null);
+    });
     try {
       final liste = await commandeService.getCommandesParAgencePeriode(
           dateDebut: menu.dateMenu,
@@ -151,6 +169,7 @@ class _RetraitScreenState extends State<RetraitScreen> {
     setState(() {
       _menuId = id;
       _commandesMenu = null;
+      _derniers = null;
     });
     context.read<RetraitProvider>().reset();
     _chargerStats();
@@ -356,7 +375,7 @@ class _RetraitScreenState extends State<RetraitScreen> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (_scanMode && _visible) ...[
-          _ScannerWidget(onScan: _onBadgeScan),
+          ScannerBadge(onScan: _onBadgeScan),
           TextButton.icon(
             icon: const Icon(Icons.close_rounded, size: 18),
             label: const Text('Fermer la caméra'),
@@ -532,33 +551,79 @@ class _RetraitScreenState extends State<RetraitScreen> {
           ),
         ]),
         const SizedBox(height: 4),
-        if (retirees.isEmpty)
+        if (_derniers != null) ...[
+          if (_derniers!.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('Aucun repas servi pour ce menu',
+                  style: TextStyle(fontSize: 12.5, color: gris)),
+            ),
+          for (final r in _derniers!) _ligneDernier(r, gris),
+        ] else if (retirees.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text('Aucun repas servi pour ce menu',
                 style: TextStyle(fontSize: 12.5, color: gris)),
           ),
-        for (final c in retirees.take(5))
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 7),
-            child: Row(children: [
-              const Icon(Icons.check_circle_rounded,
-                  size: 17, color: AppColors.accentDark),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                    [c.userNom, if (c.platDetail != null) c.platDetail!.nom]
-                        .join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyLarge
-                        ?.copyWith(fontSize: 12.5)),
-              ),
-              const PastilleStatut(label: 'Retiré', ton: TonPastille.vert),
-            ]),
-          ),
+        if (_derniers == null)
+          for (final c in retirees.take(5))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: Row(children: [
+                const Icon(Icons.check_circle_rounded,
+                    size: 17, color: AppColors.accentDark),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                      [c.userNom, if (c.platDetail != null) c.platDetail!.nom]
+                          .join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyLarge
+                          ?.copyWith(fontSize: 12.5)),
+                ),
+                const PastilleStatut(label: 'Retiré', ton: TonPastille.vert),
+              ]),
+            ),
+      ]),
+    );
+  }
+
+  /// Retrait récent : employé, plat, heure et agent qui a validé
+  Widget _ligneDernier(RetraitComptoir r, Color gris) {
+    final heure = r.dateRetrait == null
+        ? r.heure
+        : DateFormat('HH:mm').format(r.dateRetrait!.toLocal());
+    final detail = [
+      if (heure.isNotEmpty) heure,
+      if (r.valideParNom != null) 'Validé par ${r.valideParNom}',
+      if (r.libelleMode.isNotEmpty) r.libelleMode,
+    ].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(children: [
+        const Icon(Icons.check_circle_rounded,
+            size: 17, color: AppColors.accentDark),
+        const SizedBox(width: 10),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text([r.userNom, ...r.plats].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyLarge
+                    ?.copyWith(fontSize: 12.5)),
+            if (detail.isNotEmpty)
+              Text(detail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: gris)),
+          ]),
+        ),
       ]),
     );
   }
@@ -573,11 +638,12 @@ class _RetraitScreenState extends State<RetraitScreen> {
       _badgeCtrl.text = value;
       _scanMode = false;
     });
-    _rechercher();
+    _rechercher(scanne: true);
     return true;
   }
 
-  void _rechercher() {
+  void _rechercher({bool scanne = false}) {
+    _badgeScanne = scanne;
     final badge = _badgeCtrl.text.trim();
     if (badge.isEmpty) return;
     final menu = _menuSelectionne;
@@ -593,7 +659,8 @@ class _RetraitScreenState extends State<RetraitScreen> {
       RetraitProvider rProv, RechercheParBadgeResult result) async {
     final menu = _menuSelectionne;
     if (menu == null) return;
-    final ok = await rProv.validerRetrait(result.userId, menu.id, result.badge);
+    final ok = await rProv.validerRetrait(result.userId, menu.id, result.badge,
+        mode: _badgeScanne ? 'scan' : 'saisie');
     if (!ok || !mounted) return;
     _servisIci
       ..remove(result.userNom)
@@ -797,96 +864,6 @@ class _SuccessCard extends StatelessWidget {
           label: const Text('Nouveau retrait'),
         ),
       ]),
-    );
-  }
-}
-
-// ── Scanner QR/Badge ───────────────────────────────────────────
-
-class _ScannerWidget extends StatefulWidget {
-  /// Renvoie false si la lecture n'est pas prise en compte.
-  final bool Function(String) onScan;
-  const _ScannerWidget({required this.onScan});
-  @override
-  State<_ScannerWidget> createState() => _ScannerWidgetState();
-}
-
-class _ScannerWidgetState extends State<_ScannerWidget> {
-  bool _scanned = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 240,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.accentDark, width: 2),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: MobileScanner(
-        onDetect: (capture) {
-          if (_scanned) return;
-          // QR code vide ou illisible : on continue de scanner
-          final valeur = capture.barcodes.firstOrNull?.rawValue?.trim() ?? '';
-          if (valeur.isEmpty) return;
-          _scanned = widget.onScan(valeur);
-        },
-        // Caméra refusée ou indisponible : message explicite (avant : icône seule)
-        errorBuilder: (context, erreur, _) => ColoredBox(
-          color: Colors.black,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.no_photography_outlined,
-                    color: Colors.white, size: 36),
-                const SizedBox(height: 10),
-                Text(
-                  erreur.errorCode == MobileScannerErrorCode.permissionDenied
-                      ? "Accès à la caméra refusé. Autorisez-le dans les "
-                          "réglages du téléphone ou saisissez le badge."
-                      : 'Caméra indisponible. Saisissez le badge manuellement.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
-                ),
-              ]),
-            ),
-          ),
-        ),
-        // Cadre de visée : non affiché si la caméra est en erreur
-        overlay: Stack(children: [
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                  color: AppColors.primary.withOpacity(0.3), width: 40),
-            ),
-          ),
-          Center(
-              child: Container(
-            width: 160,
-            height: 160,
-            decoration: BoxDecoration(
-              border: Border.all(color: AppColors.primary, width: 3),
-              borderRadius: BorderRadius.circular(12),
-            ),
-          )),
-          Positioned(
-            bottom: 12,
-            left: 0,
-            right: 0,
-            child: Center(
-                child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text('Pointez le badge vers la caméra',
-                  style: TextStyle(color: Colors.white, fontSize: 12)),
-            )),
-          ),
-        ]),
-      ),
     );
   }
 }

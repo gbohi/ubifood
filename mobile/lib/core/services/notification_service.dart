@@ -7,6 +7,7 @@
 //   4. Configurer les handlers (foreground / background / terminated)
 //   5. Afficher les notifications locales quand l'app est au premier plan
 
+import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -14,6 +15,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 import '../../firebase_options.dart';
 import '../api/api_client.dart';
+import 'notification_routage.dart';
 
 // ── Handler background / terminated (doit être une fonction top-level) ────────
 @pragma('vm:entry-point')
@@ -112,10 +114,27 @@ class NotificationService {
         // ouverte) : même ouverture que pour une notification FCM
         // (avant : le tap ne faisait rien).
         debugPrint('🔔 Tap notification locale : ${details.payload}');
-        onMessageTap?.call(RemoteMessage(
-            data: {if (details.payload != null) 'type': details.payload!}));
+        onMessageTap?.call(RemoteMessage(data: {
+          ..._lirePayload(details.payload),
+          // Bouton « Je n'ai pas retiré ce repas »
+          if (details.actionId != null) 'action': details.actionId!,
+        }));
       },
     );
+
+    // Application relancée par une notification locale (ou son bouton)
+    try {
+      final lancement = await _localNotif.getNotificationAppLaunchDetails();
+      final reponse = lancement?.notificationResponse;
+      if ((lancement?.didNotificationLaunchApp ?? false) && reponse != null) {
+        Future.delayed(const Duration(seconds: 1), () {
+          onMessageTap?.call(RemoteMessage(data: {
+            ..._lirePayload(reponse.payload),
+            if (reponse.actionId != null) 'action': reponse.actionId!,
+          }));
+        });
+      }
+    } catch (_) {}
 
     // Créer le canal Android (obligatoire Android 8+)
     if (Platform.isAndroid) {
@@ -153,6 +172,16 @@ class NotificationService {
     });
   }
 
+  /// Données de la notification (JSON) ; ancien format : le type seul
+  static Map<String, dynamic> _lirePayload(String? payload) {
+    if (payload == null || payload.isEmpty) return {};
+    try {
+      final d = jsonDecode(payload);
+      if (d is Map) return Map<String, dynamic>.from(d);
+    } catch (_) {}
+    return {'type': payload};
+  }
+
   // ── Afficher une notification locale (foreground) ─────────
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
@@ -171,6 +200,19 @@ class NotificationService {
           importance: Importance.high,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
+          styleInformation: BigTextStyleInformation(notif.body ?? ''),
+          // « Retrait validé » : contestation en un appui
+          actions: commandeRetraitAOuvrir(message.data) != null &&
+                  message.data['type'] == 'retrait_valide'
+              ? const [
+                  AndroidNotificationAction(
+                    actionContester,
+                    "Je n'ai pas retiré ce repas",
+                    showsUserInterface: true,
+                    cancelNotification: true,
+                  ),
+                ]
+              : null,
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: true,
@@ -178,7 +220,7 @@ class NotificationService {
           presentSound: true,
         ),
       ),
-      payload: message.data['type'],
+      payload: jsonEncode(message.data),
     );
   }
 
@@ -241,14 +283,12 @@ class NotificationService {
 
   Future<void> deleteToken() async {
     try {
-      final token =
-          await _fcm.getToken().timeout(const Duration(seconds: 5));
+      final token = await _fcm.getToken().timeout(const Duration(seconds: 5));
       if (token != null) {
         // Passé en paramètre (encodé) et non concaténé dans l'URL ;
         // hors ligne, on n'attend pas plus de 5 s
-        await apiClient
-            .delete('/device-tokens/supprimer/', params: {'token': token})
-            .timeout(const Duration(seconds: 5));
+        await apiClient.delete('/device-tokens/supprimer/',
+            params: {'token': token}).timeout(const Duration(seconds: 5));
       }
     } catch (e) {
       debugPrint('⚠️ Token FCM non supprimé côté serveur : $e');

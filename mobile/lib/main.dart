@@ -7,8 +7,11 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/notification_routage.dart';
 import 'shared/theme/app_theme.dart';
 import 'shared/providers/app_provider.dart';
+import 'shared/providers/prestataire_provider.dart';
+import 'features/contestation/retrait_detail_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/main_shell.dart';
 import 'features/splash/splash_screen.dart';
@@ -63,12 +66,19 @@ class CantineApp extends StatelessWidget {
         // Commande, annulation, retrait : l'accueil se met à jour
         ChangeNotifierProvider(
             create: (ctx) => CommandeProvider()
-              ..apresModification = () => ctx.read<AccueilProvider>().charger()),
+              ..apresModification =
+                  () => ctx.read<AccueilProvider>().charger()),
         ChangeNotifierProvider(
             create: (ctx) => RetraitProvider()
               ..apresRetrait = () => ctx.read<AccueilProvider>().charger()),
         ChangeNotifierProvider(create: (_) => FacturationProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
+        // Espace prestataire (comptoir, liste du jour, accueil du responsable)
+        ChangeNotifierProvider(create: (_) => EspacePrestataireProvider()),
+        ChangeNotifierProvider(create: (_) => ComptoirProvider()),
+        ChangeNotifierProvider(create: (_) => ListeDuJourProvider()),
+        // Contestations de retrait de l'employé
+        ChangeNotifierProvider(create: (_) => ContestationProvider()),
         ChangeNotifierProxyProvider<AuthProvider, AllergieProvider>(
           create: (_) => AllergieProvider(),
           update: (_, auth, allergies) {
@@ -114,6 +124,7 @@ class _AuthGateState extends State<_AuthGate> {
     // → utilise navigatorKey pour naviguer sans recréer l'app
     notificationService.onMessageTap = (message) {
       if (!mounted) return;
+      _donneesNotif = Map<String, dynamic>.from(message.data);
       // Pas encore connecté (app lancée par la notification : la session est
       // en cours de restauration) → ouverture dès la connexion.
       // Avant : le tap était ignoré et l'écran ne s'ouvrait jamais.
@@ -127,14 +138,32 @@ class _AuthGateState extends State<_AuthGate> {
 
   /// Notification tapée avant que la session soit restaurée
   bool _notifEnAttente = false;
+
+  /// Données de la dernière notification tapée (commande, action…)
+  Map<String, dynamic> _donneesNotif = const {};
   bool _notifOuvertes = false;
 
   void _ouvrirNotifications() {
     _notifEnAttente = false;
-    // Déjà affiché : pas de second écran par-dessus
-    if (_notifOuvertes) return;
     final nav = navigatorKey.currentState;
     if (nav == null) return;
+    // « Retrait validé » / décision de contestation (employé) : détail du
+    // retrait, formulaire ouvert si le bouton « Je n'ai pas retiré ce
+    // repas » a été touché
+    final donnees = _donneesNotif;
+    _donneesNotif = const {};
+    final commandeId = commandeRetraitAOuvrir(donnees);
+    final user = context.read<AuthProvider>().user;
+    if (commandeId != null && !(user?.isComptePrestataire ?? false)) {
+      context.read<NotificationProvider>().charger();
+      nav.push(MaterialPageRoute(
+          builder: (_) => RetraitDetailScreen(
+              commandeId: commandeId,
+              ouvrirFormulaire: ouvrirFormulaireContestation(donnees))));
+      return;
+    }
+    // Déjà affiché : pas de second écran par-dessus
+    if (_notifOuvertes) return;
     // La notification vient d'arriver : liste à jour sans attendre le polling
     context.read<NotificationProvider>().charger();
     _notifOuvertes = true;
@@ -184,6 +213,10 @@ class _AuthGateState extends State<_AuthGate> {
     context.read<AccueilProvider>().reset();
     context.read<RetraitProvider>().reset();
     context.read<FacturationProvider>().reset();
+    context.read<EspacePrestataireProvider>().reset();
+    context.read<ComptoirProvider>().reset();
+    context.read<ListeDuJourProvider>().reset();
+    context.read<ContestationProvider>().reset();
   }
 
   @override
@@ -227,7 +260,6 @@ class _AuthGateState extends State<_AuthGate> {
     );
   }
 }
-
 
 /// Serveur injoignable au démarrage alors qu'une session existe :
 /// on propose de réessayer au lieu de déconnecter l'utilisateur.

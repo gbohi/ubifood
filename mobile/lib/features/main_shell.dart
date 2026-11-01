@@ -16,6 +16,9 @@ import 'allergies/allergies_screen.dart';
 import 'gestion/gestion_commandes_screen.dart';
 import 'notifications/notification_screen.dart';
 import 'popup/popup_connexion.dart';
+import 'prestataire/accueil_prestataire_screen.dart';
+import 'prestataire/comptoir_screen.dart';
+import 'prestataire/liste_du_jour_screen.dart';
 
 class _NavItem {
   final IconData activeIcon;
@@ -43,8 +46,13 @@ class _MainShellState extends State<MainShell> {
     // Arrivée sur l'application (connexion ou session restaurée au
     // lancement) : MainShell n'est créé qu'une fois par session, la fenêtre
     // n'apparaît donc pas à chaque retour au premier plan. Sans attendre.
+    // Compte prestataire : pas de fenêtre (route réservée aux employés)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) afficherPopupConnexion(context);
+      if (!mounted) return;
+      if (context.read<AuthProvider>().user?.isComptePrestataire ?? false) {
+        return;
+      }
+      afficherPopupConnexion(context);
     });
   }
 
@@ -59,6 +67,10 @@ class _MainShellState extends State<MainShell> {
     final cible = cibleNotification.value;
     if (cible == null || !mounted) return;
     cibleNotification.value = null;
+    // Espace prestataire : ni menus ni commandes employé
+    if (context.read<AuthProvider>().user?.isComptePrestataire ?? false) {
+      return;
+    }
     final isGestionnaire = context.read<AuthProvider>().isGestionnaire;
     switch (cible) {
       case CibleNotification.menus:
@@ -109,9 +121,89 @@ class _MainShellState extends State<MainShell> {
         const ProfilScreen(),
       ];
 
+  /// Espace prestataire réduit : responsable → Accueil, Comptoir, Liste du
+  /// jour, Profil ; agent de comptoir → Comptoir, Liste du jour, Profil.
+  /// Aucun écran employé / gestionnaire (le serveur répondrait 403).
+  List<_NavItem> _navItemsPrestataire(bool responsable) => [
+        if (responsable)
+          const _NavItem(Icons.home_rounded, Icons.home_outlined, 'Accueil'),
+        const _NavItem(Icons.qr_code_scanner_rounded,
+            Icons.qr_code_scanner_outlined, 'Comptoir'),
+        const _NavItem(
+            Icons.checklist_rounded, Icons.checklist_outlined, 'Liste du jour'),
+        const _NavItem(
+            Icons.person_rounded, Icons.person_outline_rounded, 'Profil'),
+      ];
+
+  List<Widget> _screensPrestataire(bool responsable) {
+    final dec = responsable ? 1 : 0;
+    return [
+      if (responsable) const AccueilPrestataireScreen(ongletComptoir: 1),
+      ComptoirScreen(ongletListe: 1 + dec),
+      const ListeDuJourScreen(),
+      const ProfilScreen(),
+    ];
+  }
+
+  Widget _shellPrestataire(BuildContext context, bool responsable) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final items = _navItemsPrestataire(responsable);
+    final screens = _screensPrestataire(responsable);
+    if (_index >= items.length) _index = 0;
+    return MainShellNavigator(
+      navigateTo: (i) => setState(() => _index = i),
+      child: PopScope(
+        canPop: _index == 0,
+        onPopInvoked: (didPop) {
+          if (!didPop) setState(() => _index = 0);
+        },
+        child: Scaffold(
+          body: IndexedStack(index: _index, children: screens),
+          bottomNavigationBar: _barre(isDark, items, false),
+        ),
+      ),
+    );
+  }
+
+  Widget _barre(bool isDark, List<_NavItem> items, bool compact) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          border: Border(
+              top: BorderSide(
+                  color:
+                      isDark ? AppColors.darkBorder : AppColors.lightBorder)),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
+                blurRadius: 16,
+                offset: const Offset(0, -4))
+          ],
+        ),
+        child: SafeArea(
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: List.generate(
+                  items.length,
+                  (i) => _NavBarItem(
+                        item: items[i],
+                        selected: _index == i,
+                        compact: compact,
+                        onTap: () => setState(() => _index = i),
+                      )),
+            ),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final user = auth.user;
+    if (user != null && user.isComptePrestataire) {
+      return _shellPrestataire(context, user.isPrestataireResponsable);
+    }
     final isGestionnaire = auth.isGestionnaire;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final items = _navItems(isGestionnaire);
@@ -145,38 +237,7 @@ class _MainShellState extends State<MainShell> {
           body: IndexedStack(index: _index, children: screens),
 
           // ── Bottom nav bar ─────────────────────────────────────
-          bottomNavigationBar: Container(
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-              border: Border(
-                  top: BorderSide(
-                      color: isDark
-                          ? AppColors.darkBorder
-                          : AppColors.lightBorder)),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
-                    blurRadius: 16,
-                    offset: const Offset(0, -4))
-              ],
-            ),
-            child: SafeArea(
-              child: SizedBox(
-                height: 56,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: List.generate(
-                      items.length,
-                      (i) => _NavBarItem(
-                            item: items[i],
-                            selected: _index == i,
-                            compact: isGestionnaire,
-                            onTap: () => setState(() => _index = i),
-                          )),
-                ),
-              ),
-            ),
-          ),
+          bottomNavigationBar: _barre(isDark, items, isGestionnaire),
         ),
       ),
     );

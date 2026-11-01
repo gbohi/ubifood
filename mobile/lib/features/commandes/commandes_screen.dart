@@ -13,6 +13,9 @@ import '../../core/widgets/common_widgets.dart';
 import '../../core/widgets/tic_echeance.dart';
 import '../avis/avis_widgets.dart';
 import '../dashboard/accueil_widgets.dart' show jourCourt;
+import '../../shared/models/prestataire_models.dart';
+import '../../shared/providers/prestataire_provider.dart';
+import '../contestation/retrait_detail_screen.dart';
 
 /// État affiché d'une commande (« non retirée » : jour passé sans retrait,
 /// comme sur l'accueil)
@@ -106,6 +109,8 @@ class _CommandesScreenState extends State<CommandesScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CommandeProvider>().loadMesCommandes();
+      // Suivi des contestations de retrait (fiche détaillée)
+      context.read<ContestationProvider?>()?.charger();
       // Montants de la fiche détaillée (gestionnaire : écran poussé)
       final fact = context.read<FacturationProvider>();
       if (!fact.loaded && !fact.loading) fact.charger();
@@ -114,6 +119,7 @@ class _CommandesScreenState extends State<CommandesScreen> {
 
   Future<void> _recharger() => Future.wait([
         context.read<CommandeProvider>().loadMesCommandes(),
+        context.read<ContestationProvider?>()?.charger() ?? Future.value(),
         context.read<FacturationProvider>().charger(),
       ]);
 
@@ -631,6 +637,7 @@ class DetailCommandeSheet extends StatelessWidget {
             .firstOrNull ??
         initiale;
     final fact = context.watch<FacturationProvider>();
+    final contestation = context.watch<ContestationProvider?>()?.pour(c.id);
     final menu = c.menuDetail;
     final j = c.jourMenu;
     String cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
@@ -757,6 +764,12 @@ class DetailCommandeSheet extends StatelessWidget {
                   const SizedBox(height: 16),
                   _Chronologie(etapes: etapes),
 
+                  // ── Retrait : détail, contestation ────────
+                  if (etat == EtatCommande.retiree || contestation != null) ...[
+                    const SizedBox(height: 14),
+                    _LienRetrait(commande: c, contestation: contestation),
+                  ],
+
                   // ── Avis (repas retiré) ───────────────────
                   if (c.peutNoter) ...[
                     const SizedBox(height: 14),
@@ -802,6 +815,76 @@ class DetailCommandeSheet extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// « Détail du retrait » : qui a validé, « Je n'ai pas retiré ce repas »,
+/// suivi de la contestation (ouverte / acceptée / rejetée)
+class _LienRetrait extends StatelessWidget {
+  final Commande commande;
+  final ContestationRetrait? contestation;
+  const _LienRetrait({required this.commande, this.contestation});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final c = contestation;
+    final (ton, icone) = switch (c?.statut) {
+      null => (TonPastille.rouge, Icons.error_outline_rounded),
+      StatutContestation.ouverte => (
+          TonPastille.or,
+          Icons.hourglass_top_rounded
+        ),
+      StatutContestation.acceptee => (TonPastille.vert, Icons.check_rounded),
+      StatutContestation.rejetee => (TonPastille.rouge, Icons.close_rounded),
+    };
+    final (fond, couleur) = couleursPastille(ton, isDark);
+    return Material(
+      color: isDark ? AppColors.darkCard : AppColors.lightBackground,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => RetraitDetailScreen(commandeId: commande.id))),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(color: fond, shape: BoxShape.circle),
+              child: Icon(c == null ? Icons.receipt_long_outlined : icone,
+                  size: 18, color: couleur),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(c == null ? 'Détail du retrait' : c.statut.label,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            fontSize: 13, fontWeight: FontWeight.w700)),
+                    Text(
+                        c == null
+                            ? "Ce n'est pas vous ? « Je n'ai pas retiré ce repas »"
+                            : c.statut == StatutContestation.rejetee &&
+                                    c.commentaireTraitement.isNotEmpty
+                                ? c.commentaireTraitement
+                                : c.motifLibelle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11.5, color: gris)),
+                  ]),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                color:
+                    isDark ? AppColors.darkTextHint : AppColors.lightTextHint),
+          ]),
         ),
       ),
     );
