@@ -111,10 +111,24 @@ class GroupSerializer(serializers.ModelSerializer):
 # RÉFÉRENTIELS
 # ============================================================
 
+def verifier_horaires_service(serializer, attrs):
+    """La fin du service doit suivre son début (horaires d'agence ou par défaut)."""
+    inst = serializer.instance
+    debut = attrs.get('heure_debut_service', getattr(inst, 'heure_debut_service', None))
+    fin = attrs.get('heure_fin_service', getattr(inst, 'heure_fin_service', None))
+    if debut and fin and fin <= debut:
+        raise serializers.ValidationError(
+            {'heure_fin_service': "L'heure de fin du service doit être après l'heure de début."})
+    return attrs
+
+
 class AgenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agence
         fields = '__all__'
+
+    def validate(self, attrs):
+        return verifier_horaires_service(self, super().validate(attrs))
 
 
 class EtatSerializer(serializers.ModelSerializer):
@@ -306,6 +320,10 @@ class UserSerializer(serializers.ModelSerializer):
     password  = serializers.CharField(write_only=True, required=False)
     password2 = serializers.CharField(write_only=True, required=False)
     statut_libelle = serializers.ReadOnlyField(source='statut.libelle_statut')
+    # Espace prestataire : prestataire du compte (rôles prestataire / agent_comptoir)
+    prestataire = serializers.PrimaryKeyRelatedField(
+        queryset=Prestataire.objects.all(), required=False, allow_null=True)
+    prestataire_libelle = serializers.ReadOnlyField(source='prestataire.libelle')
 
     # Noms des rôles (super_admin, admin, gestionnaire, employe) :
     # les clients s'appuient dessus plutôt que sur des IDs de groupe.
@@ -340,7 +358,7 @@ class UserSerializer(serializers.ModelSerializer):
             'first_name', 'last_name',
             'statut', 'statut_libelle',
             'last_login', 'last_logout', 'is_active', 'is_superuser',
-            'groups', 'roles',
+            'groups', 'roles', 'prestataire', 'prestataire_libelle',
             # Listes complètes
             'user_services', 'user_agences', 'user_postes',
             'user_categoriesalaries', 'user_allergies',
@@ -447,7 +465,34 @@ class UserSerializer(serializers.ModelSerializer):
             'statut_libelle':           ligne.statut.libelle_statut if ligne.statut else None,
         }
 
+    def _verifier_compte_prestataire(self, attrs):
+        """
+        Rôles « prestataire » / « agent_comptoir » : un prestataire obligatoire,
+        et aucun autre rôle (un compte prestataire est cloisonné). Inversement,
+        un prestataire ne peut être associé qu'à un compte prestataire.
+        """
+        from .permissions import PRESTATAIRE_ROLES
+        inst = self.instance
+        if 'groups' in attrs:
+            noms = {g.name for g in attrs['groups']}
+        else:
+            noms = set(inst.groups.values_list('name', flat=True)) if inst else set()
+        prestataire = attrs['prestataire'] if 'prestataire' in attrs else getattr(inst, 'prestataire', None)
+        roles_presta = noms & PRESTATAIRE_ROLES
+        if roles_presta:
+            if noms - PRESTATAIRE_ROLES:
+                raise serializers.ValidationError({'groups': (
+                    "Un compte prestataire (responsable ou agent de comptoir) ne peut pas "
+                    "avoir d'autre rôle.")})
+            if prestataire is None:
+                raise serializers.ValidationError({'prestataire': (
+                    "Choisissez le prestataire de ce compte (rôle prestataire ou agent de comptoir).")})
+        elif prestataire is not None:
+            raise serializers.ValidationError({'prestataire': (
+                "Seul un compte prestataire ou agent de comptoir peut être rattaché à un prestataire.")})
+
     def validate(self, attrs):
+        self._verifier_compte_prestataire(attrs)
         password  = attrs.get('password')
         password2 = attrs.get('password2')
         if self.instance is None and not password:
@@ -642,6 +687,7 @@ class PlatSerializer(serializers.ModelSerializer):
     agence_id         = serializers.ReadOnlyField(source='agence.id')
     agence_nom        = serializers.ReadOnlyField(source='agence.nom_agence')
     images = PlatImageSerializer(many=True, read_only=True)
+    prestataire_libelle = serializers.ReadOnlyField(source='prestataire.libelle')
     # Avis des agents : note moyenne (1 décimale, None sans avis) et nombre d'avis
     note_moyenne = serializers.SerializerMethodField()
     nb_avis      = serializers.SerializerMethodField()
@@ -649,7 +695,9 @@ class PlatSerializer(serializers.ModelSerializer):
     class Meta:
         model = Plat
         fields = '__all__'
-        read_only_fields = ['user_created', 'user_updated']
+        # Masquage : actions /plats/{id}/masquer/ et /afficher/ ; prestataire :
+        # fixé par l'espace prestataire
+        read_only_fields = ['user_created', 'user_updated', 'prestataire', 'masque', 'motif_masquage']
 
     def _stats_avis(self, plat_id):
         """
@@ -736,6 +784,9 @@ def verifier_agence_geree(serializer, agence, objet):
     request = serializer.context.get('request')
     if request is None or agence is None:
         return
+    if serializer.context.get('espace_prestataire'):
+        # Espace prestataire : le périmètre (agences desservies) est vérifié par la vue
+        return
     geres = agences_gerees(request.user)
     if geres is not None and agence.pk not in geres:
         raise PermissionDenied(f"{objet} de l'agence {agence.nom_agence} : ce n'est pas votre agence.")
@@ -760,7 +811,8 @@ class MenuSerializer(serializers.ModelSerializer):
     class Meta:
         model = Menu
         fields = '__all__'
-        read_only_fields = ['user_created', 'user_updated']
+        # Masquage : actions /menus/{id}/masquer/ et /afficher/
+        read_only_fields = ['user_created', 'user_updated', 'date_publication', 'masque', 'motif_masquage']
 
     # Dates limites calculées par le serveur à partir des délais paramétrés :
     # le web et le mobile les affichent sans recalculer.
@@ -794,6 +846,12 @@ class MenuSerializer(serializers.ModelSerializer):
 
         if inst is None and not plat_ids:
             raise serializers.ValidationError({'plat_ids': "Sélectionnez au moins un plat."})
+        if plat_ids:
+            deja = set(inst.menu_plats.values_list('plat_id', flat=True)) if inst is not None else set()
+            masques = sorted(p.nom for p in plat_ids if p.masque and p.id not in deja)
+            if masques:
+                raise serializers.ValidationError(
+                    {'plat_ids': f"Plat masqué par UbiPharm, il ne peut pas être mis au menu : {', '.join(masques)}."})
         if plat_ids is not None and inst is not None and not plat_ids:
             raise serializers.ValidationError({'plat_ids': "Un menu doit contenir au moins un plat."})
 
@@ -968,6 +1026,8 @@ class CommandeSerializer(serializers.ModelSerializer):
                 )
 
         if menu and self.instance is None:
+            if not menu.publie or menu.masque:
+                raise serializers.ValidationError("Ce menu n'est pas disponible à la commande.")
             limite = date_limite_commande(menu.date_menu)
             if timezone.now() > limite:
                 raise serializers.ValidationError(
@@ -1022,6 +1082,10 @@ class CommandeAnnulationSerializer(serializers.ModelSerializer):
 class RetraitSerializer(serializers.ModelSerializer):
     user_nom    = serializers.SerializerMethodField(read_only=True)
     menu_detail = MenuSerializer(source='menu', read_only=True)
+    # Qui a validé le retrait (rempli par le serveur) et comment l'agent a été identifié
+    valide_par_nom = serializers.SerializerMethodField()
+    valide_par_prestataire = serializers.ReadOnlyField(source='valide_par.prestataire.libelle')
+    mode = serializers.ChoiceField(choices=Retrait.MODE_CHOICES, required=False, allow_blank=True)
 
     user_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), source='user', write_only=True
@@ -1036,11 +1100,15 @@ class RetraitSerializer(serializers.ModelSerializer):
             'id', 'date_retrait', 'badge_matricule',
             'user_nom', 'menu_detail',
             'user_id', 'menu_id',
+            'valide_par', 'valide_par_nom', 'valide_par_prestataire', 'mode',
         ]
-        read_only_fields = ['date_retrait']
+        read_only_fields = ['date_retrait', 'valide_par']
 
     def get_user_nom(self, obj):
         return nom_complet(obj.user)
+
+    def get_valide_par_nom(self, obj):
+        return nom_complet(obj.valide_par) if obj.valide_par_id else None
 
     def validate(self, attrs):
         if self.instance is not None:
@@ -1163,12 +1231,16 @@ class ParametresSocieteSerializer(serializers.ModelSerializer):
         fields = ['nom', 'adresse', 'ville', 'telephone', 'email', 'site_web',
                   'identifiant_fiscal', 'registre_commerce', 'pied_de_page',
                   'logo', 'logo_url', 'supprimer_logo',
-                  'delai_commande_heures', 'delai_annulation_heures', 'updated_at']
+                  'delai_commande_heures', 'delai_annulation_heures',
+                  'heure_debut_service', 'heure_fin_service', 'updated_at']
         read_only_fields = ['updated_at']
         extra_kwargs = {'logo': {'write_only': True, 'required': False}}
 
     def get_logo_url(self, obj):
         return obj.logo.url if obj.logo else None
+
+    def validate(self, attrs):
+        return verifier_horaires_service(self, super().validate(attrs))
 
     def validate_logo(self, logo):
         if logo and logo.size > 2 * 1024 * 1024:

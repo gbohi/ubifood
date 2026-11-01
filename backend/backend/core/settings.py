@@ -175,7 +175,8 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
+        # Refuse les comptes prestataires (cloisonnés dans /prestataire/…)
+        'api.permissions.IsAuthenticated',
     ),
     'DEFAULT_PAGINATION_CLASS': 'api.pagination.StandardPagination',
     'PAGE_SIZE': 10,
@@ -191,6 +192,8 @@ REST_FRAMEWORK = {
         'token_refresh':  '60/min',
         # Page publique « Télécharger l'application » : par adresse IP
         'application_mobile': '60/min',
+        # Contestation d'un retrait par un employé : par utilisateur
+        'contestation': '10/hour',
     },
 }
 

@@ -26,7 +26,9 @@ def init_firebase():
 def envoyer_notification_user(user, titre: str, message: str,
                                type_notif: str = 'info',
                                commande_id: int = None,
-                               menu_id: int = None):
+                               menu_id: int = None,
+                               retrait_id: int = None,
+                               contestation_id: int = None):
     """
     Envoie une notification FCM à tous les appareils d'un user
     ET crée une entrée en base Notification.
@@ -38,6 +40,8 @@ def envoyer_notification_user(user, titre: str, message: str,
         type_notif  : type parmi TYPE_CHOICES de Notification
         commande_id : optionnel, ID de la commande concernée
         menu_id     : optionnel, ID du menu concerné
+        retrait_id  : optionnel, ID du retrait (action « Je n'ai pas retiré ce repas »)
+        contestation_id : optionnel, ID de la contestation de retrait
     """
     from .models import DeviceToken, Notification
 
@@ -49,6 +53,8 @@ def envoyer_notification_user(user, titre: str, message: str,
         message=message,
         commande_id=commande_id,
         menu_id=menu_id,
+        retrait_id=retrait_id,
+        contestation_id=contestation_id,
     )
 
     # 2. Récupérer tous les tokens FCM de l'user
@@ -75,6 +81,8 @@ def envoyer_notification_user(user, titre: str, message: str,
                 'type':         type_notif,
                 'commande_id':  str(commande_id) if commande_id else '',
                 'menu_id':      str(menu_id)     if menu_id     else '',
+                'retrait_id':   str(retrait_id)  if retrait_id  else '',
+                'contestation_id': str(contestation_id) if contestation_id else '',
                 'notif_id':     str(notif.id),
             },
             android=messaging.AndroidConfig(

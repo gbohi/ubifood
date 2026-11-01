@@ -7,6 +7,8 @@ from .views import *
 from .accueil import AccueilView
 from .planning import PlanningView
 from .statistiques import DetailServiceView, RepasCategoriesView, StatistiquesView
+from .controle import ContestationRetraitViewSet, ControleRetraitsView
+from . import espace_prestataire as presta
 
 
 class ConnexionSerializer(TokenObtainPairSerializer):
@@ -72,6 +74,11 @@ router.register(r'factures-prestataires', FacturePrestataireViewSet, basename='f
 router.register(r'popups-connexion', PopupConnexionViewSet, basename='popup-connexion')
 router.register(r'bannieres',            BanniereViewSet, basename='banniere')
 router.register(r'avis-plats',           AvisPlatViewSet, basename='avis-plat')
+router.register(r'contestations-retrait', ContestationRetraitViewSet, basename='contestation-retrait')
+
+# Espace prestataire (comptes « prestataire » et « agent_comptoir »)
+router.register(r'prestataire/plats', presta.PlatEspaceViewSet, basename='prestataire-plat')
+router.register(r'prestataire/menus', presta.MenuEspaceViewSet, basename='prestataire-menu')
 
 urlpatterns = [
     path('api/', include(router.urls)),
@@ -110,6 +117,24 @@ urlpatterns = [
     path('api/parametres-cantine/', ParametresCantineView.as_view(), name='parametres-cantine'),
     path('api/allnopagin/plats/', AllPlatNopginListAPIView.as_view(), name='allnopagin-plat-list'),
     path('api/allnopagin/prestataires/', AllPrestataireNopginListAPIView.as_view(), name='allnopagin-prestataire-list'),
+    path('api/controle-retraits/', ControleRetraitsView.as_view(), name='controle-retraits'),
+    # Espace prestataire
+    path('api/prestataire/contexte/', presta.ContexteView.as_view(), name='prestataire-contexte'),
+    path('api/prestataire/accueil/', presta.AccueilPrestataireView.as_view(), name='prestataire-accueil'),
+    path('api/prestataire/a-preparer/', presta.APreparerView.as_view(), name='prestataire-a-preparer'),
+    path('api/prestataire/liste-du-jour/', presta.ListeDuJourView.as_view(), name='prestataire-liste-du-jour'),
+    path('api/prestataire/comptoir/service/', presta.ComptoirServiceView.as_view(),
+         name='prestataire-comptoir-service'),
+    path('api/prestataire/comptoir/recherche/', presta.ComptoirRechercheView.as_view(),
+         name='prestataire-comptoir-recherche'),
+    path('api/prestataire/comptoir/valider/', presta.ComptoirValiderView.as_view(),
+         name='prestataire-comptoir-valider'),
+    path('api/prestataire/comptoir/retraits/<int:pk>/annuler/', presta.ComptoirAnnulerView.as_view(),
+         name='prestataire-comptoir-annuler'),
+    path('api/prestataire/releves/', presta.RelevesView.as_view(), name='prestataire-releves'),
+    path('api/prestataire/statistiques/', presta.StatistiquesPrestataireView.as_view(),
+         name='prestataire-statistiques'),
+    path('api/prestataire/equipe/', presta.EquipeView.as_view(), name='prestataire-equipe'),
     path('api/device-tokens/', DeviceTokenView.as_view(), name='device-token'),
     path('api/device-tokens/supprimer/', DeviceTokenView.as_view(), name='device-token-delete'),
     path('api/notifications/mes-notifications/', NotificationListView.as_view(), name='mes-notifications'),

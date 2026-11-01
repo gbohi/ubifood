@@ -111,19 +111,38 @@ def _notifier_retrait(retrait_id):
     from .fcm_service import envoyer_notification_user
     from .models import Retrait
 
-    retrait = Retrait.objects.select_related('user', 'menu').filter(pk=retrait_id).first()
+    from .models import Commande
+    from .serializers import nom_complet
+
+    retrait = (Retrait.objects.select_related('user', 'menu__agence', 'valide_par__prestataire')
+               .filter(pk=retrait_id).first())
     if not retrait:
         return
+    commande = (Commande.objects.filter(user=retrait.user, menu=retrait.menu,
+                                        statut__in=('en_attente', 'retiree'))
+                .select_related('plat').first())
+    heure = timezone.localtime(retrait.date_retrait).strftime('%H:%M')
+    plat = f' · {commande.plat.nom}' if commande else ''
+    par = ''
+    if retrait.valide_par_id:
+        par = f', validé par {nom_complet(retrait.valide_par)}'
+        if retrait.valide_par.prestataire_id:
+            par += f' ({retrait.valide_par.prestataire.libelle})'
+    # commande_id + retrait_id : l'application propose « Je n'ai pas retiré ce repas »
     envoyer_notification_user(
         user=retrait.user,
-        titre='🍽️ Repas retiré',
-        message=f'Votre repas du {retrait.menu.date_menu.strftime("%d/%m/%Y")} a bien été retiré. Bon appétit !',
+        titre=f'🍽️ Retrait validé{plat}',
+        message=(f'Votre repas du {retrait.menu.date_menu.strftime("%d/%m/%Y")} a été remis à {heure} '
+                 f'au comptoir de {retrait.menu.agence.nom_agence}{par}. '
+                 "Ce n'est pas vous ? Signalez-le."),
         type_notif='retrait_valide',
         menu_id=retrait.menu_id,
+        commande_id=commande.id if commande else None,
+        retrait_id=retrait.id,
     )
 
 
-def _notifier_retrait_annule(user_id, menu_id):
+def _notifier_retrait_annule(user_id, menu_id, par='le gestionnaire'):
     from .fcm_service import envoyer_notification_user
     from .models import Menu, User
     user = User.objects.filter(pk=user_id).first()
@@ -134,14 +153,14 @@ def _notifier_retrait_annule(user_id, menu_id):
         user=user,
         titre='↩️ Retrait annulé',
         message=(f'Le retrait de votre repas du {menu.date_menu.strftime("%d/%m/%Y")} a été annulé '
-                 'par le gestionnaire : votre commande est de nouveau en attente.'),
+                 f'par {par} : votre commande est de nouveau en attente.'),
         type_notif='retrait_annule',
         menu_id=menu.id,
     )
 
 
-def notifier_retrait_annule(user_id, menu_id):
-    _en_arriere_plan(_notifier_retrait_annule, user_id, menu_id)
+def notifier_retrait_annule(user_id, menu_id, par='le gestionnaire'):
+    _en_arriere_plan(_notifier_retrait_annule, user_id, menu_id, par)
 
 
 @receiver(post_save, sender='api.Retrait')
@@ -188,11 +207,104 @@ def _notifier_menu(menu_id):
     )
 
 
+@receiver(pre_save, sender='api.Menu')
+def memoriser_publication_menu(sender, instance, **kwargs):
+    instance._etait_publie = bool(instance.pk) and sender.objects.filter(
+        pk=instance.pk, publie=True).exists()
+
+
 @receiver(post_save, sender='api.Menu')
 def notifier_menu_disponible(sender, instance, created, **kwargs):
-    # Pas de notification pour un menu déjà passé
-    if created and instance.date_menu >= timezone.localdate():
+    # Notification quand le menu devient visible des employés : à sa création
+    # (publication automatique) ou à la publication d'un brouillon. Pas de
+    # notification pour un menu déjà passé, ni quand on ré-affiche un menu masqué.
+    visible = instance.publie and not instance.masque
+    publication = created or not getattr(instance, '_etait_publie', True)
+    if visible and publication and instance.date_menu >= timezone.localdate():
         _en_arriere_plan(_notifier_menu, instance.pk)
+
+
+# ══════════════════════════════════════════════════════════════
+# ESPACE PRESTATAIRE — contestations, corrections d'UbiPharm
+# ══════════════════════════════════════════════════════════════
+
+def _gestionnaires_agence(agence_id):
+    """Gestionnaires rattachés aujourd'hui à l'agence ; à défaut, les administrateurs."""
+    from django.db.models import Q
+    from .models import User
+    maintenant = timezone.now()
+    actifs = User.objects.filter(is_active=True)
+    gest = actifs.filter(
+        groups__name='gestionnaire',
+        useragence__agence_id=agence_id, useragence__date_debut__lte=maintenant,
+    ).filter(Q(useragence__date_fin__isnull=True) | Q(useragence__date_fin__gte=maintenant)).distinct()
+    if gest.exists():
+        return list(gest)
+    return list(actifs.filter(Q(is_superuser=True) | Q(groups__name__in=['admin', 'super_admin'])).distinct())
+
+
+def _notifier_contestation_nouvelle(contestation_id):
+    from .fcm_service import envoyer_notification_user
+    from .models import ContestationRetrait
+    from .serializers import nom_complet
+    c = (ContestationRetrait.objects.select_related('user', 'menu__agence', 'commande__plat')
+         .filter(pk=contestation_id).first())
+    if not c:
+        return
+    for gestionnaire in _gestionnaires_agence(c.menu.agence_id):
+        envoyer_notification_user(
+            user=gestionnaire,
+            titre='⚠️ Retrait contesté',
+            message=(f'{nom_complet(c.user)} ({c.menu.agence.nom_agence}) indique ne pas avoir retiré '
+                     f'son repas du {c.menu.date_menu:%d/%m/%Y} ({c.commande.plat.nom}) : '
+                     f'{c.get_motif_display()}.'),
+            type_notif='contestation_nouvelle',
+            commande_id=c.commande_id, menu_id=c.menu_id, retrait_id=c.retrait_id,
+            contestation_id=c.id,
+        )
+
+
+def notifier_contestation_nouvelle(contestation_id):
+    _en_arriere_plan(_notifier_contestation_nouvelle, contestation_id)
+
+
+def _notifier_contestation_decidee(contestation_id):
+    from .fcm_service import envoyer_notification_user
+    from .models import ContestationRetrait
+    c = ContestationRetrait.objects.select_related('user', 'menu').filter(pk=contestation_id).first()
+    if not c:
+        return
+    if c.statut == 'acceptee':
+        titre = '✅ Contestation acceptée'
+        message = (f'Votre contestation du repas du {c.menu.date_menu:%d/%m/%Y} est acceptée : '
+                   'le retrait est annulé.')
+    else:
+        titre = '❌ Contestation rejetée'
+        message = (f'Votre contestation du repas du {c.menu.date_menu:%d/%m/%Y} est rejetée : '
+                   f'{c.commentaire_traitement}')
+    envoyer_notification_user(
+        user=c.user, titre=titre, message=message, type_notif='contestation_decidee',
+        commande_id=c.commande_id, menu_id=c.menu_id, contestation_id=c.id,
+    )
+
+
+def notifier_contestation_decidee(contestation_id):
+    _en_arriere_plan(_notifier_contestation_decidee, contestation_id)
+
+
+def _notifier_prestataire(prestataire_id, titre, message, type_notif, menu_id=None):
+    """Responsables (rôle prestataire) actifs du prestataire."""
+    from .fcm_service import envoyer_notification_user
+    from .models import User
+    for user in User.objects.filter(prestataire_id=prestataire_id, is_active=True,
+                                    groups__name='prestataire').distinct():
+        envoyer_notification_user(user=user, titre=titre, message=message,
+                                  type_notif=type_notif, menu_id=menu_id)
+
+
+def notifier_prestataire(prestataire_id, titre, message, type_notif, menu_id=None):
+    if prestataire_id:
+        _en_arriere_plan(_notifier_prestataire, prestataire_id, titre, message, type_notif, menu_id)
 
 
 # ══════════════════════════════════════════════════════════════

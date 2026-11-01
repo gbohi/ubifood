@@ -6,7 +6,9 @@ Règle commune : chaque repas commandé et NON annulé (en attente ou retiré)
 est facturé ; les tarifs appliqués sont ceux en vigueur à la DATE DU MENU.
   - Employé     : tarif de la catégorie salarié de l'agent (PlatCategoriesalarie).
   - Prestataire : le prestataire rattaché à l'agence du menu
-                  (AgencePrestataire), à son tarif (PlatPrestataire).
+                  (AgencePrestataire), à son tarif (PlatPrestataire) ; sauf
+                  les repas dont le retrait contesté a été annulé
+                  (ContestationRetrait acceptée).
 
 Mois clôturés : les montants viennent des factures figées
 (FactureMensuelle / LigneFacture, FacturePrestataire /
@@ -239,9 +241,12 @@ def lignes_prestataires(commandes_qs):
     """
     Une ligne par commande facturable (annulées exclues) avec son prestataire.
     Valeurs figées si le mois est clôturé, calculées sinon.
+    Un repas dont le retrait a été contesté avec succès par l'employé
+    (ContestationRetrait acceptée) n'est pas facturé au prestataire.
     """
     commandes = list(
         commandes_qs.filter(statut__in=STATUTS_FACTURES)
+        .exclude(contestation__statut='acceptee')
         .select_related('user', 'plat', 'menu__agence', 'menu__typeequipe')
         .order_by('menu__date_menu', 'id')
     )

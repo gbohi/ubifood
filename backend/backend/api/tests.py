@@ -1312,7 +1312,8 @@ class AccueilTests(BaseAPITestCase):
         self.assertEqual(r.data['repas_du_jour']['plat'], 'Garba')
         self.assertEqual(r.data['prochain_a_reserver']['date'], menu_loin.date_menu)
         self.assertEqual(r.data['prochain_a_reserver']['nb_plats'], 2)
-        jour = next(j for j in r.data['semaine'] if j['date'] == aujourdhui)
+        # Le week-end, aujourd'hui n'est pas dans la semaine affichée (lundi → vendredi)
+        jour = next((j for j in r.data['semaine'] if j['date'] == aujourdhui), None)
         if aujourdhui.weekday() < 5:
             self.assertEqual(jour['statut'], 'a_retirer')
         self.assertNotIn('gestion', r.data)
@@ -1858,3 +1859,566 @@ class RelevePrestationsTests(_FacturationBase):
         self.assertEqual(data['nb_repas'], 4)
         self.assertEqual(sum(g['montant'] for g in data['agences']), data['montant'])
         self.assertEqual(sum(c['montant'] for c in data['par_categorie']), data['montant'])
+
+
+# ══════════════════════════════════════════════════════════════
+# ESPACE PRESTATAIRE
+# ══════════════════════════════════════════════════════════════
+
+def _synchrone(fonction, *args, **kwargs):
+    """Remplace _en_arriere_plan : notifications envoyées tout de suite (tests)."""
+    return fonction(*args, **kwargs)
+
+
+class _EspacePrestataireBase(BaseAPITestCase):
+    """
+    Deux prestataires : A sert le Siège, B sert Yopougon. Comptes : responsable
+    et agent de comptoir de A, responsable de B, un gestionnaire du Siège.
+    """
+
+    def setUp(self):
+        from .models import Retrait  # noqa: F401
+        debut = timezone.now() - timedelta(days=400)
+        self.yop = Agence.objects.create(nom_agence='Yopougon')
+        self.presta_a = Prestataire.objects.create(libelle='Traiteur A', statut=self.statut, date_debut=debut)
+        self.presta_b = Prestataire.objects.create(libelle='Traiteur B', statut=self.statut, date_debut=debut)
+        for p, a in ((self.presta_a, self.agence), (self.presta_b, self.yop)):
+            AgencePrestataire.objects.create(prestataire=p, agence=a, statut=self.statut, date_debut=debut)
+            PlatPrestataire.objects.create(prestataire=p, montant=Decimal('900'), statut=self.statut,
+                                           date_debut=debut)
+        for nom in ('prestataire', 'agent_comptoir'):
+            self.groupes[nom] = Group.objects.get_or_create(name=nom)[0]
+        self.resp_a = self.creer_compte('respa', 'prestataire', self.presta_a)
+        self.agent_a = self.creer_compte('agenta', 'agent_comptoir', self.presta_a)
+        self.agent_a2 = self.creer_compte('agenta2', 'agent_comptoir', self.presta_a)
+        self.resp_b = self.creer_compte('respb', 'prestataire', self.presta_b)
+        self.emp_yop = self.creer_user('empyop', 'employe')
+        UserAgence.objects.create(user=self.emp_yop, agence=self.yop, statut=self.statut,
+                                  date_debut=timezone.now() - timedelta(days=30))
+        self.plat_a = Plat.objects.create(nom='Alloco poulet', type_plat=self.typeplat, agence=self.agence,
+                                          prestataire=self.presta_a)
+        self.plat_a.agences.set([self.agence])
+        self.plat_b = Plat.objects.create(nom='Placali', type_plat=self.typeplat, agence=self.yop,
+                                          prestataire=self.presta_b)
+        self.plat_b.agences.set([self.yop])
+
+    def creer_compte(self, username, role, prestataire):
+        user = self.creer_user(username, 'employe')
+        user.groups.set([self.groupes[role]])
+        user.prestataire = prestataire
+        user.save()
+        return user
+
+    def menu_du_jour(self, agence=None, plats=None, jours=0):
+        menu = Menu.objects.create(date_menu=timezone.localdate() + timedelta(days=jours),
+                                   agence=agence or self.agence, typeequipe=self.typeequipe)
+        for p in plats or [self.plat_a]:
+            MenuPlat.objects.create(menu=menu, plat=p)
+        return menu
+
+
+class RolesPrestataireTests(_EspacePrestataireBase):
+
+    def test_roles_crees_par_migration(self):
+        self.assertTrue(Group.objects.filter(name='prestataire').exists())
+        self.assertTrue(Group.objects.filter(name='agent_comptoir').exists())
+
+    def test_admin_cree_un_compte_prestataire(self):
+        admin = self.client_pour(self.admin)
+        data = {'username': 'nguessan', 'password': MDP, 'password2': MDP, 'nom': "N'GUESSAN",
+                'prenom': 'Aya', 'statut': self.statut.id, 'groups': [self.groupes['agent_comptoir'].id]}
+        r = admin.post(f'{API}/users/', data, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('prestataire', r.data)
+        r = admin.post(f'{API}/users/', {**data, 'groups': [self.groupes['agent_comptoir'].id,
+                                                            self.groupes['gestionnaire'].id],
+                                         'prestataire': self.presta_a.id}, format='json')
+        self.assertEqual(r.status_code, 400)
+        r = admin.post(f'{API}/users/', {**data, 'prestataire': self.presta_a.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['prestataire_libelle'], 'Traiteur A')
+        # Un employé ne peut pas être rattaché à un prestataire
+        r = admin.patch(f'{API}/users/{self.employe.id}/', {'prestataire': self.presta_a.id}, format='json')
+        self.assertEqual(r.status_code, 400)
+
+    def test_compte_prestataire_cloisonne(self):
+        client = self.client_pour(self.resp_a)
+        for url in ('categoriesalaries/', 'allnopagin/categoriesalaries/', 'users/', 'commandes/', 'menus/',
+                    'plats/', 'agences/', 'retraits/', 'accueil/', 'facturation/', 'plat-categoriesalaries/',
+                    'user-categoriesalaries/', 'statistiques/', 'parametres-cantine/', 'controle-retraits/',
+                    'contestations-retrait/'):
+            self.assertEqual(client.get(f'{API}/{url}').status_code, 403, url)
+        # Routes personnelles ouvertes
+        r = client.get(f'{API}/users/me/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['roles'], ['prestataire'])
+        self.assertEqual(client.get(f'{API}/notifications/mes-notifications/').status_code, 200)
+        self.assertEqual(client.get(f'{API}/allnopagin/typeplats/').status_code, 200)
+        self.assertEqual(client.get(f'{API}/allnopagin/typeequipes/').status_code, 200)
+
+    def test_employe_et_gestionnaire_sans_acces_a_l_espace(self):
+        for user in (self.employe, self.gestionnaire):
+            client = self.client_pour(user)
+            for url in ('contexte/', 'accueil/', 'plats/', 'menus/', 'a-preparer/', 'liste-du-jour/',
+                        'comptoir/service/', 'releves/', 'statistiques/', 'equipe/'):
+                self.assertEqual(client.get(f'{API}/prestataire/{url}').status_code, 403, url)
+
+    def test_agent_comptoir_limite_au_comptoir(self):
+        client = self.client_pour(self.agent_a)
+        for url in ('accueil/', 'plats/', 'menus/', 'a-preparer/', 'releves/', 'statistiques/', 'equipe/'):
+            self.assertEqual(client.get(f'{API}/prestataire/{url}').status_code, 403, url)
+        r = client.get(f'{API}/prestataire/contexte/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['user']['role'], 'agent_comptoir')
+        self.assertEqual([a['nom'] for a in r.data['agences']], ['Siège'])
+        self.assertNotIn('tarif', r.data)
+        self.assertEqual(client.get(f'{API}/prestataire/comptoir/service/').status_code, 200)
+        self.assertEqual(client.get(f'{API}/prestataire/liste-du-jour/').status_code, 200)
+        # Liste nominative : le jour du service seulement
+        hier = (timezone.localdate() - timedelta(days=1)).isoformat()
+        self.assertEqual(client.get(f'{API}/prestataire/liste-du-jour/?date={hier}').status_code, 403)
+
+    def test_equipe(self):
+        r = self.client_pour(self.resp_a).get(f'{API}/prestataire/equipe/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual({c['username'] for c in r.data}, {'respa', 'agenta', 'agenta2'})
+
+
+class PlatsPrestataireTests(_EspacePrestataireBase):
+
+    def test_crud_plat(self):
+        client = self.client_pour(self.resp_a)
+        r = client.post(f'{API}/prestataire/plats/', {
+            'nom': 'Garba', 'type_plat': self.typeplat.id, 'description': 'Attiéké thon',
+            'agences': [self.agence.id], 'mentions': ['Piment à part']}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['prix'], 900.0)
+        self.assertEqual(r.data['mentions'], ['Piment à part'])
+        plat = Plat.objects.get(pk=r.data['id'])
+        self.assertEqual(plat.prestataire, self.presta_a)
+        self.assertEqual(plat.agence, self.agence)
+        # Agence non desservie
+        r = client.post(f'{API}/prestataire/plats/', {
+            'nom': 'X', 'type_plat': self.typeplat.id, 'agences': [self.yop.id]}, format='json')
+        self.assertEqual(r.status_code, 400)
+        # Le prix n'est pas un champ modifiable
+        r = client.patch(f'{API}/prestataire/plats/{plat.id}/', {'nom': 'Garba thon', 'prix': 10}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['prix'], 900.0)
+        # Liste : uniquement ses plats
+        r = client.get(f'{API}/prestataire/plats/')
+        self.assertEqual({p['nom'] for p in r.data['plats']}, {'Alloco poulet', 'Garba thon'})
+        # Suppression protégée si utilisé
+        self.menu_du_jour(plats=[plat], jours=5)
+        self.assertEqual(client.delete(f'{API}/prestataire/plats/{plat.id}/').status_code, 400)
+        libre = Plat.objects.create(nom='Libre', type_plat=self.typeplat, agence=self.agence,
+                                    prestataire=self.presta_a)
+        self.assertEqual(client.delete(f'{API}/prestataire/plats/{libre.id}/').status_code, 204)
+
+    def test_photos_limitees_a_trois(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        png = (b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00'
+               b'\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00'
+               b'\x00\x00\x00IEND\xaeB`\x82')
+        client = self.client_pour(self.resp_a)
+        with self.settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            images = [SimpleUploadedFile(f'p{i}.png', png, content_type='image/png') for i in range(4)]
+            r = client.patch(f'{API}/prestataire/plats/{self.plat_a.id}/', {'new_images': images},
+                             format='multipart')
+            self.assertEqual(r.status_code, 400)
+            images = [SimpleUploadedFile(f'p{i}.png', png, content_type='image/png') for i in range(2)]
+            r = client.patch(f'{API}/prestataire/plats/{self.plat_a.id}/', {'new_images': images},
+                             format='multipart')
+            self.assertEqual(r.status_code, 200, r.data)
+            self.assertEqual(len(r.data['images']), 2)
+            self.assertEqual(sum(i['is_principale'] for i in r.data['images']), 1)
+
+    def test_scoping_plats(self):
+        client = self.client_pour(self.resp_a)
+        self.assertEqual(client.get(f'{API}/prestataire/plats/{self.plat_b.id}/').status_code, 404)
+        self.assertEqual(client.patch(f'{API}/prestataire/plats/{self.plat_b.id}/', {'nom': 'X'},
+                                      format='json').status_code, 404)
+        self.assertEqual(client.delete(f'{API}/prestataire/plats/{self.plat_b.id}/').status_code, 404)
+
+    def test_gestionnaire_masque_un_plat(self):
+        with patch('api.signals._en_arriere_plan', _synchrone):
+            r = self.client_pour(self.gestionnaire).post(f'{API}/plats/{self.plat_a.id}/masquer/', {}, format='json')
+            self.assertEqual(r.status_code, 400)
+            r = self.client_pour(self.gestionnaire).post(f'{API}/plats/{self.plat_a.id}/masquer/',
+                                                         {'motif': 'Photo non conforme'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        from .models import Notification
+        self.assertTrue(Notification.objects.filter(user=self.resp_a, type='plat_masque').exists())
+        # Un plat masqué ne peut plus être mis au menu
+        r = self.client_pour(self.resp_a).post(f'{API}/prestataire/menus/', {
+            'date_menu': str(timezone.localdate() + timedelta(days=5)), 'agence': self.agence.id,
+            'typeequipe': self.typeequipe.id, 'plat_ids': [self.plat_a.id]}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('masqué', str(r.data))
+
+
+class MenusPrestataireTests(_EspacePrestataireBase):
+
+    def data_menu(self, jours=5, **extra):
+        return {'date_menu': str(timezone.localdate() + timedelta(days=jours)), 'agence': self.agence.id,
+                'typeequipe': self.typeequipe.id, 'plat_ids': [self.plat_a.id], **extra}
+
+    def test_publication_automatique_et_notification(self):
+        from .models import MenuHistorique, Notification
+        client = self.client_pour(self.resp_a)
+        with patch('api.signals._en_arriere_plan', _synchrone):
+            r = client.post(f'{API}/prestataire/menus/', self.data_menu(), format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertTrue(r.data['publie'])
+        self.assertTrue(r.data['modifiable'])
+        self.assertTrue(Notification.objects.filter(user=self.employe, type='menu_disponible',
+                                                    menu_id=r.data['id']).exists())
+        self.assertFalse(Notification.objects.filter(user=self.emp_yop, type='menu_disponible').exists())
+        h = MenuHistorique.objects.get(menu_id=r.data['id'])
+        self.assertEqual((h.action, h.user, h.par_prestataire), ('creation', self.resp_a, True))
+        # L'employé voit le menu
+        r2 = self.client_pour(self.employe).get(f'{API}/menus/{r.data["id"]}/')
+        self.assertEqual(r2.status_code, 200)
+
+    def test_brouillon_invisible_puis_publie(self):
+        from .models import Notification
+        client = self.client_pour(self.resp_a)
+        with patch('api.signals._en_arriere_plan', _synchrone):
+            r = client.post(f'{API}/prestataire/menus/', self.data_menu(publie=False), format='json')
+            self.assertEqual(r.status_code, 201, r.data)
+            menu_id = r.data['id']
+            self.assertFalse(Notification.objects.filter(type='menu_disponible').exists())
+            self.assertEqual(self.client_pour(self.employe).get(f'{API}/menus/{menu_id}/').status_code, 404)
+            r = self.client_pour(self.employe).post(f'{API}/commandes/', {'menu_id': menu_id,
+                                                                          'plat_id': self.plat_a.id})
+            self.assertEqual(r.status_code, 400)
+            r = client.post(f'{API}/prestataire/menus/publier/', {'ids': [menu_id]}, format='json')
+        self.assertEqual(r.data['publies'], [menu_id])
+        self.assertTrue(Notification.objects.filter(user=self.employe, type='menu_disponible').exists())
+        self.assertEqual(self.client_pour(self.employe).get(f'{API}/menus/{menu_id}/').status_code, 200)
+
+    def test_verrou_date_limite(self):
+        client = self.client_pour(self.resp_a)
+        # Délai de commande 48 h : le menu de demain n'est plus composable
+        r = client.post(f'{API}/prestataire/menus/', self.data_menu(jours=1), format='json')
+        self.assertEqual(r.status_code, 400)
+        menu = self.menu_du_jour(jours=1)
+        r = client.patch(f'{API}/prestataire/menus/{menu.id}/', {'plat_ids': [self.plat_a.id]}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('date limite', str(r.data))
+        self.assertEqual(client.delete(f'{API}/prestataire/menus/{menu.id}/').status_code, 400)
+        r = client.get(f'{API}/prestataire/menus/{menu.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.data['modifiable'])
+        # Le gestionnaire corrige toujours
+        with patch('api.signals._en_arriere_plan', _synchrone):
+            r = self.client_pour(self.gestionnaire).patch(
+                f'{API}/menus/{menu.id}/', {'plat_ids': [self.plat1.id], 'motif': 'Plat déjà servi'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        from .models import Notification
+        self.assertTrue(Notification.objects.filter(user=self.resp_a, type='menu_corrige').exists())
+        r = client.get(f'{API}/prestataire/menus/historique/')
+        self.assertEqual(r.data[0]['action'], 'modification')
+        self.assertFalse(r.data[0]['par_prestataire'])
+        self.assertEqual(r.data[0]['motif'], 'Plat déjà servi')
+
+    def test_scoping_menus(self):
+        client = self.client_pour(self.resp_a)
+        menu_b = self.menu_du_jour(agence=self.yop, plats=[self.plat_b], jours=5)
+        r = client.post(f'{API}/prestataire/menus/', self.data_menu(agence=self.yop.id), format='json')
+        self.assertEqual(r.status_code, 400)
+        r = client.post(f'{API}/prestataire/menus/', self.data_menu(plat_ids=[self.plat_b.id]), format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(client.get(f'{API}/prestataire/menus/{menu_b.id}/').status_code, 404)
+        fin = (timezone.localdate() + timedelta(days=10)).isoformat()
+        r = client.get(f'{API}/prestataire/menus/?date_debut={timezone.localdate()}&date_fin={fin}')
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn(menu_b.id, [m['id'] for m in r.data])
+
+    def test_masquage_gestionnaire(self):
+        menu = self.menu_du_jour(jours=5)
+        gest = self.client_pour(self.gestionnaire)
+        r = gest.post(f'{API}/menus/{menu.id}/masquer/', {'motif': 'Erreur'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['masque'])
+        self.assertEqual(self.client_pour(self.employe).get(f'{API}/menus/{menu.id}/').status_code, 404)
+        r = self.client_pour(self.resp_a).get(f'{API}/prestataire/menus/{menu.id}/')
+        self.assertFalse(r.data['modifiable'])
+        self.assertEqual(gest.post(f'{API}/menus/{menu.id}/afficher/').status_code, 200)
+        self.assertEqual(self.client_pour(self.employe).get(f'{API}/menus/{menu.id}/').status_code, 200)
+
+    def test_copier_semaine(self):
+        client = self.client_pour(self.resp_a)
+        lundi = timezone.localdate() - timedelta(days=timezone.localdate().weekday()) + timedelta(days=7)
+        for i in range(2):
+            Menu.objects.create(date_menu=lundi + timedelta(days=i), agence=self.agence,
+                                typeequipe=self.typeequipe).menu_plats.create(plat=self.plat_a)
+        r = client.post(f'{API}/prestataire/menus/copier-semaine/', {
+            'agence': self.agence.id, 'semaine_source': str(lundi),
+            'semaine_cible': str(lundi + timedelta(days=7))}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(len(r.data['crees']), 2)
+
+
+class APreparerTests(_EspacePrestataireBase):
+
+    def test_quantites_et_liste_nominative(self):
+        menu = self.menu_du_jour()
+        menu_b = self.menu_du_jour(agence=self.yop, plats=[self.plat_b])
+        demain = self.menu_du_jour(jours=1)
+        Commande.objects.create(user=self.employe, menu=menu, plat=self.plat_a, statut='retiree')
+        Commande.objects.create(user=self.employe2, menu=menu, plat=self.plat_a)
+        Commande.objects.create(user=self.emp_yop, menu=menu_b, plat=self.plat_b)
+        Commande.objects.create(user=self.employe, menu=demain, plat=self.plat_a)
+        Commande.objects.create(user=self.employe2, menu=demain, plat=self.plat_a, statut='annulee')
+        r = self.client_pour(self.resp_a).get(f'{API}/prestataire/a-preparer/')
+        self.assertEqual(r.status_code, 200, r.data)
+        jour, lendemain = r.data['jours'][0], r.data['jours'][1]
+        self.assertEqual(jour['etat'], 'en_service')
+        self.assertEqual(jour['total'], 2)                 # Yopougon (prestataire B) exclu
+        self.assertEqual(jour['plats'][0]['par_agence'], {str(self.agence.id): 2})
+        self.assertEqual(lendemain['total'], 1)            # annulée exclue
+        self.assertFalse(lendemain['provisoire'])          # délai de 48 h passé : figé
+        self.assertEqual(r.data['semaine']['tarif'], 900.0)
+
+        r = self.client_pour(self.agent_a).get(f'{API}/prestataire/liste-du-jour/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual((r.data['total'], r.data['retires']), (2, 1))
+        ligne = r.data['lignes'][0]
+        self.assertEqual(set(ligne), {'commande_id', 'menu_id', 'nom', 'prenoms', 'nom_complet', 'matricule',
+                                      'agence', 'user_id', 'agence_id', 'plat_id', 'plat', 'statut',
+                                      'heure_retrait', 'valide_par_nom'})
+        # Agence d'un autre prestataire
+        r = self.client_pour(self.agent_a).get(f'{API}/prestataire/liste-du-jour/?agence={self.yop.id}')
+        self.assertEqual(r.status_code, 403)
+
+    def test_accueil_et_statistiques(self):
+        menu = self.menu_du_jour()
+        Commande.objects.create(user=self.employe, menu=menu, plat=self.plat_a)
+        r = self.client_pour(self.resp_a).get(f'{API}/prestataire/accueil/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['service_du_jour'][0]['commandees'], 1)
+        self.assertEqual([a['nom'] for a in r.data['agences']], ['Siège'])
+        r = self.client_pour(self.resp_a).get(f'{API}/prestataire/statistiques/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['kpis']['commandes'], 1)
+        self.assertNotIn('par_categorie', r.data)
+
+
+class ComptoirPrestataireTests(_EspacePrestataireBase):
+
+    def test_validation_et_annulation_2_minutes(self):
+        from .models import Notification, Retrait
+        menu = self.menu_du_jour()
+        cmd = Commande.objects.create(user=self.employe, menu=menu, plat=self.plat_a)
+        agent = self.client_pour(self.agent_a)
+        r = agent.get(f'{API}/prestataire/comptoir/recherche/?badge=EMP1')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['a_retirer'])
+        self.assertEqual(r.data['menu_id'], menu.id)
+        self.assertNotIn('categorie', str(r.data))
+        self.assertEqual(agent.get(f'{API}/prestataire/comptoir/recherche/?badge=inconnu').status_code, 404)
+        # Mode obligatoire
+        r = agent.post(f'{API}/prestataire/comptoir/valider/', {'menu_id': menu.id, 'user_id': self.employe.id},
+                       format='json')
+        self.assertEqual(r.status_code, 400)
+        with patch('api.signals._en_arriere_plan', _synchrone):
+            r = agent.post(f'{API}/prestataire/comptoir/valider/',
+                           {'menu_id': menu.id, 'user_id': self.employe.id, 'mode': 'saisie'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['valide_par_nom'], 'AGENTA Test')
+        self.assertEqual(r.data['valide_par_prestataire'], 'Traiteur A')
+        self.assertTrue(r.data['annulable_par_moi'])
+        retrait = Retrait.objects.get()
+        self.assertEqual((retrait.valide_par, retrait.mode), (self.agent_a, 'saisie'))
+        cmd.refresh_from_db()
+        self.assertEqual(cmd.statut, 'retiree')
+        n = Notification.objects.get(user=self.employe, type='retrait_valide')
+        self.assertEqual((n.retrait_id, n.commande_id), (retrait.id, cmd.id))
+        # Second passage : alerte « déjà retiré »
+        r = agent.post(f'{API}/prestataire/comptoir/valider/',
+                       {'menu_id': menu.id, 'user_id': self.employe.id, 'mode': 'scan'}, format='json')
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data['code'], 'deja_retire')
+        # Un autre agent ne peut pas annuler ; l'auteur, oui (dans les 2 minutes)
+        url = f'{API}/prestataire/comptoir/retraits/{retrait.id}/annuler/'
+        self.assertEqual(self.client_pour(self.agent_a2).post(url).status_code, 403)
+        self.assertEqual(agent.post(url).status_code, 200)
+        cmd.refresh_from_db()
+        self.assertEqual(cmd.statut, 'en_attente')
+        # Au-delà de 2 minutes : refusé
+        r = agent.post(f'{API}/prestataire/comptoir/valider/',
+                       {'menu_id': menu.id, 'user_id': self.employe.id, 'mode': 'scan'}, format='json')
+        self.assertEqual(r.status_code, 201)
+        Retrait.objects.update(date_retrait=timezone.now() - timedelta(minutes=3))
+        r = agent.post(f'{API}/prestataire/comptoir/retraits/{r.data["id"]}/annuler/')
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('gestionnaire', str(r.data))
+
+    def test_comptoir_autre_prestataire_refuse(self):
+        menu_b = self.menu_du_jour(agence=self.yop, plats=[self.plat_b])
+        Commande.objects.create(user=self.emp_yop, menu=menu_b, plat=self.plat_b)
+        agent = self.client_pour(self.agent_a)
+        r = agent.post(f'{API}/prestataire/comptoir/valider/',
+                       {'menu_id': menu_b.id, 'user_id': self.emp_yop.id, 'mode': 'scan'}, format='json')
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(agent.get(f'{API}/prestataire/comptoir/service/?agence={self.yop.id}').status_code, 403)
+        # Retraits et relevés de B invisibles pour A
+        resp = self.client_pour(self.resp_a)
+        self.assertEqual(resp.get(f'{API}/facturation/prestataires/{self.presta_b.id}/releve-pdf/').status_code, 403)
+        self.assertEqual(resp.get(f'{API}/facturation/prestataires/releve/?prestataire={self.presta_b.id}')
+                         .status_code, 403)
+        r = resp.get(f'{API}/facturation/prestataires/releve/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['prestataire']['id'], self.presta_a.id)
+        self.assertEqual([p['id'] for p in r.data['prestataires']], [self.presta_a.id])
+        self.assertEqual(self.client_pour(self.agent_a).get(f'{API}/facturation/prestataires/releve/')
+                         .status_code, 403)
+        self.assertEqual(resp.get(f'{API}/prestataire/releves/').status_code, 200)
+
+    def test_retrait_secours_gestionnaire_trace(self):
+        from .models import Retrait
+        menu = self.menu_du_jour()
+        Commande.objects.create(user=self.employe, menu=menu, plat=self.plat_a)
+        r = self.client_pour(self.gestionnaire).post(f'{API}/retraits/', {
+            'user_id': self.employe.id, 'menu_id': menu.id, 'badge_matricule': 'emp1', 'mode': 'scan'})
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Retrait.objects.get().valide_par, self.gestionnaire)
+        self.assertEqual(r.data['valide_par_nom'], 'GEST1 Test')
+
+
+class ContestationTests(_EspacePrestataireBase):
+
+    def setUp(self):
+        super().setUp()
+        from .models import Retrait
+        self.menu = self.menu_du_jour()
+        self.cmd = Commande.objects.create(user=self.employe, menu=self.menu, plat=self.plat_a, statut='retiree')
+        self.retrait = Retrait.objects.create(user=self.employe, menu=self.menu, badge_matricule='emp1',
+                                              valide_par=self.agent_a, mode='saisie')
+
+    def test_flux_contestation_acceptee(self):
+        from .models import ContestationRetrait, Notification, Retrait
+        emp = self.client_pour(self.employe)
+        r = emp.get(f'{API}/commandes/{self.cmd.id}/retrait/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['contestable'])
+        self.assertEqual(r.data['retrait']['valide_par_nom'], 'AGENTA Test')
+        # Motif « autre » : commentaire obligatoire
+        r = emp.post(f'{API}/contestations-retrait/', {'commande_id': self.cmd.id, 'motif': 'autre'})
+        self.assertEqual(r.status_code, 400)
+        # Pas la commande d'un autre
+        r = self.client_pour(self.employe2).post(f'{API}/contestations-retrait/',
+                                                 {'commande_id': self.cmd.id, 'motif': 'absent'})
+        self.assertEqual(r.status_code, 403)
+        with patch('api.signals._en_arriere_plan', _synchrone):
+            r = emp.post(f'{API}/contestations-retrait/', {'commande_id': self.cmd.id, 'motif': 'absent',
+                                                           'commentaire': 'En mission'})
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['retrait_valide_par_nom'], 'AGENTA Test')
+        self.assertTrue(Notification.objects.filter(user=self.gestionnaire, type='contestation_nouvelle').exists())
+        # Une seule fois
+        r2 = emp.post(f'{API}/contestations-retrait/', {'commande_id': self.cmd.id, 'motif': 'absent'})
+        self.assertEqual(r2.status_code, 400)
+        # Employé : pas de décision possible
+        self.assertEqual(emp.post(f'{API}/contestations-retrait/{r.data["id"]}/accepter/').status_code, 403)
+        # Le prestataire voit l'alerte sur son accueil
+        acc = self.client_pour(self.resp_a).get(f'{API}/prestataire/accueil/')
+        self.assertIn('contestation', [a['type'] for a in acc.data['alertes']])
+        self.assertEqual(len(fact.lignes_prestataires(Commande.objects.filter(pk=self.cmd.pk))), 1)
+        gest = self.client_pour(self.gestionnaire)
+        self.assertEqual(len(gest.get(f'{API}/contestations-retrait/?statut=ouverte').data), 1)
+        with patch('api.signals._en_arriere_plan', _synchrone):
+            r = gest.post(f'{API}/contestations-retrait/{r.data["id"]}/accepter/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut'], 'acceptee')
+        self.cmd.refresh_from_db()
+        self.assertEqual(self.cmd.statut, 'en_attente')
+        self.assertFalse(Retrait.objects.exists())
+        self.assertEqual(ContestationRetrait.objects.get().retrait_mode, 'saisie')
+        # Hors du relevé du prestataire (mais toujours facturé à l'employé)
+        self.assertEqual(fact.lignes_prestataires(Commande.objects.filter(pk=self.cmd.pk)), [])
+        self.assertEqual(len(fact.lignes_facturation(Commande.objects.filter(pk=self.cmd.pk))), 1)
+        self.assertTrue(Notification.objects.filter(user=self.employe, type='contestation_decidee').exists())
+        self.assertEqual(gest.post(f'{API}/contestations-retrait/{r.data["id"]}/rejeter/',
+                                   {'commentaire': 'x'}).status_code, 400)
+
+    def test_rejet_commentaire_obligatoire(self):
+        from .models import Notification
+        r = self.client_pour(self.employe).post(f'{API}/contestations-retrait/',
+                                                {'commande_id': self.cmd.id, 'motif': 'badge_utilise'})
+        self.assertEqual(r.status_code, 201, r.data)
+        url = f'{API}/contestations-retrait/{r.data["id"]}/rejeter/'
+        gest = self.client_pour(self.gestionnaire)
+        self.assertEqual(gest.post(url).status_code, 400)
+        with patch('api.signals._en_arriere_plan', _synchrone):
+            r = gest.post(url, {'commentaire': 'Badge scanné, aucune absence.'})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut'], 'rejetee')
+        self.cmd.refresh_from_db()
+        self.assertEqual(self.cmd.statut, 'retiree')
+        n = Notification.objects.get(user=self.employe, type='contestation_decidee')
+        self.assertIn('Badge scanné', n.message)
+
+    def test_contestation_mois_cloture_refusee(self):
+        from .models import ClotureMensuelle
+        d = self.menu.date_menu
+        ClotureMensuelle.objects.create(annee=d.year, mois=d.month)
+        r = self.client_pour(self.employe).post(f'{API}/contestations-retrait/',
+                                                {'commande_id': self.cmd.id, 'motif': 'absent'})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('clôturé', str(r.data))
+
+    def test_gestionnaire_autre_agence(self):
+        r = self.client_pour(self.employe).post(f'{API}/contestations-retrait/',
+                                                {'commande_id': self.cmd.id, 'motif': 'absent'})
+        gest_yop = self.creer_user('gestyop', 'gestionnaire')
+        UserAgence.objects.create(user=gest_yop, agence=self.yop, statut=self.statut,
+                                  date_debut=timezone.now() - timedelta(days=30))
+        self.assertEqual(self.client_pour(gest_yop).post(
+            f'{API}/contestations-retrait/{r.data["id"]}/accepter/').status_code, 404)
+
+
+class ControleRetraitsTests(_EspacePrestataireBase):
+
+    def test_anomalies(self):
+        from datetime import date, datetime, time as dtime
+        from .models import Retrait
+        d = date(2025, 3, 20)
+        tz = timezone.get_current_timezone()
+        employes = [self.creer_user(f'e{i}', 'employe') for i in range(7)]
+        menu = Menu.objects.create(date_menu=d, agence=self.agence, typeequipe=self.typeequipe)
+        midi = datetime.combine(d, dtime(12, 0), tzinfo=tz)
+        # 6 retraits en 75 secondes par le même agent : rafale
+        for i, e in enumerate(employes[:6]):
+            Commande.objects.create(user=e, menu=menu, plat=self.plat_a, statut='retiree')
+            Retrait.objects.create(user=e, menu=menu, badge_matricule=e.username, valide_par=self.agent_a,
+                                   mode='scan', date_retrait=midi + timedelta(seconds=15 * i))
+        # Hors horaires (16:00, service 11:30 – 14:30)
+        Commande.objects.create(user=employes[6], menu=menu, plat=self.plat_a, statut='retiree')
+        Retrait.objects.create(user=employes[6], menu=menu, badge_matricule='e6', valide_par=self.agent_a2,
+                               mode='saisie', date_retrait=datetime.combine(d, dtime(16, 0), tzinfo=tz))
+        # Matricule de e6 saisi 4 fois dans le mois
+        for j in range(1, 4):
+            m = Menu.objects.create(date_menu=d - timedelta(days=j), agence=self.agence, typeequipe=self.typeequipe)
+            Retrait.objects.create(user=employes[6], menu=m, badge_matricule='e6', valide_par=self.agent_a2,
+                                   mode='saisie', date_retrait=datetime.combine(m.date_menu, dtime(12, 5), tzinfo=tz))
+        r = self.client_pour(self.gestionnaire).get(f'{API}/controle-retraits/?date={d}')
+        self.assertEqual(r.status_code, 200, r.data)
+        types = sorted(a['type'] for a in r.data['anomalies'])
+        self.assertEqual(types, ['hors_horaires', 'rafale', 'saisie_manuelle'])
+        self.assertEqual(r.data['chiffres']['retraits'], 7)
+        agent = r.data['agents'][0]
+        self.assertEqual((agent['agent_nom'], agent['nb_retraits'], agent['premier'], agent['dernier']),
+                         ('AGENTA Test', 6, '12:00', '12:01'))
+        self.assertEqual(agent['prestataire'], 'Traiteur A')
+        self.assertEqual(agent['rythme'], [{'debut': '12:00', 'nb': 6}])
+        # Horaires propres à l'agence : 16:00 devient normal
+        self.agence.heure_fin_service = dtime(17, 0)
+        self.agence.save()
+        r = self.client_pour(self.gestionnaire).get(f'{API}/controle-retraits/?date={d}')
+        self.assertNotIn('hors_horaires', [a['type'] for a in r.data['anomalies']])
+        # Réservé aux gestionnaires de l'agence
+        self.assertEqual(self.client_pour(self.employe).get(f'{API}/controle-retraits/').status_code, 403)
+        self.assertEqual(self.client_pour(self.gestionnaire).get(
+            f'{API}/controle-retraits/?agence={self.yop.id}').status_code, 403)

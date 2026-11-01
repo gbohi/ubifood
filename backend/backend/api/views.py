@@ -3,7 +3,7 @@ import logging
 import secrets
 
 from rest_framework import viewsets, filters, status
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import AllowAny
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -19,7 +19,11 @@ from .permissions import (
     IsAdminRole, IsGestionnaireRole, IsOwnerOrGestionnaire,
     ReadAuthenticatedWriteAdmin, ReadAuthenticatedWriteGestionnaire,
     ReadGestionnaireWriteAdmin, is_admin, is_gestionnaire, is_super_admin, agences_gerees,
-    ADMIN_ROLES, ROLE_SUPER_ADMIN,
+    ADMIN_ROLES, ROLE_SUPER_ADMIN, LIBELLES_ROLES, PRESTATAIRE_ROLES,
+    # IsAuthenticated de l'application : refuse les comptes prestataires.
+    # IsConnecte : routes personnelles ouvertes aussi aux comptes prestataires.
+    IsAuthenticated, IsConnecte, IsGestionnaireOuPrestataire,
+    is_compte_prestataire, is_prestataire_responsable,
 )
 from django.conf import settings
 from django.contrib.auth.models import Group
@@ -413,14 +417,14 @@ class UserViewSet(BaseViewSet):
             status=status.HTTP_201_CREATED
         )
 
-    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['get'], permission_classes=[IsConnecte])
     def me(self, request):
         user = self._prefetch(User.objects.filter(pk=request.user.pk)).get()
         serializer = self.get_serializer(user)
         return Response(serializer.data)
 
     @action(detail=False, methods=['post', 'delete'], url_path='me/photo',
-            permission_classes=[IsAuthenticated], parser_classes=[MultiPartParser, FormParser])
+            permission_classes=[IsConnecte], parser_classes=[MultiPartParser, FormParser])
     def ma_photo(self, request):
         """
         POST   /api/api/users/me/photo/   champ « photo » (JPEG, PNG ou WebP, 5 Mo max)
@@ -461,7 +465,7 @@ class UserViewSet(BaseViewSet):
             user.photo.storage.delete(ancien)
         return Response(self.get_serializer(user).data)
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['post'], permission_classes=[IsConnecte])
     def logout(self, request):
         """
         POST /api/api/users/logout/   body : { "refresh": "<refresh token>" }
@@ -702,7 +706,7 @@ class UserViewSet(BaseViewSet):
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['patch'], url_path='changer-mot-de-passe',
-            permission_classes=[IsAuthenticated])
+            permission_classes=[IsConnecte])
     def changer_mot_de_passe(self, request, pk=None):
         """
         PATCH /api/api/users/{id}/changer-mot-de-passe/
@@ -769,15 +773,15 @@ class AllUserNopginListAPIView(ListAPIView):
 class GroupViewSet(viewsets.ModelViewSet):
     """
     Rôles (groupes Django) : réservé aux administrateurs.
-    Les quatre rôles de l'application ne peuvent pas être supprimés ni renommés.
+    Les rôles de l'application (dont prestataire et agent_comptoir) ne peuvent
+    pas être supprimés ni renommés.
     """
     queryset = Group.objects.all().order_by('id')
     serializer_class = GroupSerializer
     permission_classes = [IsAdminRole]
 
-    ROLES_SYSTEME = {'super_admin', 'admin', 'gestionnaire', 'employe'}
-    LIBELLES = {'super_admin': 'Super administrateur', 'admin': 'Administrateur',
-                'gestionnaire': 'Gestionnaire', 'employe': 'Employé'}
+    ROLES_SYSTEME = set(LIBELLES_ROLES)
+    LIBELLES = LIBELLES_ROLES
     ordering_fields = ['id', 'name']
 
     def get_queryset(self):
@@ -1261,14 +1265,14 @@ class TypeEquipeViewSet(BaseViewSet):
 class PublicTypePlatListAPIView(ListAPIView):
     queryset = TypePlat.objects.all()
     serializer_class = TypePlatSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsConnecte]   # référentiel lu aussi par l'espace prestataire
     pagination_class = None
 
 
 class PublicTypeEquipeListAPIView(ListAPIView):
     queryset = TypeEquipe.objects.all()
     serializer_class = TypeEquipeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsConnecte]   # référentiel lu aussi par l'espace prestataire
     pagination_class = None
 
 
@@ -1325,6 +1329,36 @@ class PlatViewSet(BaseViewSet):
                 for a in qs.exclude(commentaire='')[:5]
             ],
         })
+
+    def _changer_masquage(self, request, masque):
+        plat = self.get_object()
+        geres = agences_gerees(request.user)
+        if geres is not None and plat.agence_id not in geres \
+                and not plat.agences.filter(id__in=geres).exists():
+            raise PermissionDenied("Ce plat n'est pas celui de votre agence.")
+        motif = str(request.data.get('motif') or '').strip()
+        if masque and not motif:
+            raise ValidationError({'motif': "Indiquez le motif du masquage (communiqué au prestataire)."})
+        plat.masque = masque
+        plat.motif_masquage = motif[:255] if masque else ''
+        plat.user_updated = request.user
+        plat.save(update_fields=['masque', 'motif_masquage', 'user_updated', 'updated_at'])
+        if masque and plat.prestataire_id:
+            from .signals import notifier_prestataire
+            notifier_prestataire(plat.prestataire_id, '🙈 Plat masqué par UbiPharm',
+                                 f"Votre plat « {plat.nom} » a été masqué — motif : {motif}. "
+                                 "Il ne peut plus être mis au menu.", 'plat_masque')
+        return Response(self.get_serializer(self.get_queryset().get(pk=plat.pk)).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsGestionnaireRole])
+    def masquer(self, request, pk=None):
+        """POST /plats/{id}/masquer/ { motif } : le plat ne peut plus être mis au menu."""
+        return self._changer_masquage(request, True)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsGestionnaireRole])
+    def afficher(self, request, pk=None):
+        """POST /plats/{id}/afficher/ : annule le masquage."""
+        return self._changer_masquage(request, False)
 
     def verifier_suppression(self, instance):
         geres = agences_gerees(self.request.user)
@@ -1432,7 +1466,100 @@ class MenuViewSet(BaseViewSet):
     bulk_delete_permission_classes = [IsGestionnaireRole]
 
     def get_queryset(self):
-        return filtrer_agences_gerees(self.request, super().get_queryset(), 'agence_id')
+        qs = filtrer_agences_gerees(self.request, super().get_queryset(), 'agence_id')
+        if not is_gestionnaire(self.request.user):
+            # Employés : menus publiés et non masqués seulement
+            qs = qs.filter(publie=True, masque=False)
+        return qs
+
+    def _prevenir_prestataire(self, menu, titre, message):
+        """Correction d'UbiPharm sur un menu : le prestataire de l'agence est prévenu."""
+        from .prestataires import prestataire_de_l_agence
+        from .signals import notifier_prestataire
+        p = prestataire_de_l_agence(menu.agence_id, menu.date_menu)
+        if p is not None:
+            notifier_prestataire(p.id, titre, message, 'menu_corrige', menu_id=menu.id)
+
+    @staticmethod
+    def _plats(menu):
+        return ', '.join(sorted(menu.menu_plats.values_list('plat__nom', flat=True)))
+
+    def perform_create(self, serializer):
+        from .prestataires import tracer_menu
+        super().perform_create(serializer)
+        menu = serializer.instance
+        tracer_menu(menu, 'creation', self.request.user, f"Plats : {self._plats(menu)}")
+
+    def perform_update(self, serializer):
+        from .prestataires import tracer_menu
+        avant = self._plats(serializer.instance)
+        super().perform_update(serializer)
+        menu = serializer.instance
+        apres = self._plats(menu)
+        description = f"Plats : {avant} → {apres}" if avant != apres else "Menu modifié"
+        motif = str(self.request.data.get('motif') or '')[:255]
+        tracer_menu(menu, 'modification', self.request.user, description, motif)
+        self._prevenir_prestataire(
+            menu, '✏️ Menu corrigé par UbiPharm',
+            f"Le menu du {menu.date_menu:%d/%m/%Y} ({menu.agence.nom_agence}) a été corrigé : {description}"
+            + (f" — motif : {motif}" if motif else '') + '.')
+
+    def perform_destroy(self, instance):
+        from .prestataires import tracer_menu
+        self.verifier_suppression(instance)
+        tracer_menu(instance, 'suppression', self.request.user, f"Plats : {self._plats(instance)}")
+        instance.delete()
+
+    def _changer_masquage(self, request, masque):
+        menu = self.get_object()
+        verifier_menu_gere(request.user, menu)
+        motif = str(request.data.get('motif') or '').strip()
+        if masque and not motif:
+            raise ValidationError({'motif': "Indiquez le motif du masquage (communiqué au prestataire)."})
+        menu.masque = masque
+        menu.motif_masquage = motif[:255] if masque else ''
+        menu.user_updated = request.user
+        menu.save(update_fields=['masque', 'motif_masquage', 'user_updated', 'updated_at'])
+        from .prestataires import tracer_menu
+        tracer_menu(menu, 'masquage' if masque else 'affichage', request.user,
+                    'Menu masqué aux employés' if masque else 'Menu de nouveau visible', motif)
+        if masque:
+            self._prevenir_prestataire(
+                menu, '🙈 Menu masqué par UbiPharm',
+                f"Le menu du {menu.date_menu:%d/%m/%Y} ({menu.agence.nom_agence}) a été masqué aux "
+                f"employés — motif : {motif}.")
+        return Response(self.get_serializer(menu).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsGestionnaireRole])
+    def masquer(self, request, pk=None):
+        """POST /menus/{id}/masquer/ { motif } : le menu n'est plus visible ni commandable."""
+        return self._changer_masquage(request, True)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsGestionnaireRole])
+    def afficher(self, request, pk=None):
+        """POST /menus/{id}/afficher/ : annule le masquage."""
+        return self._changer_masquage(request, False)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsGestionnaireRole])
+    def historique(self, request):
+        """
+        GET /menus/historique/?agence=&date_debut=&date_fin=&menu=   historique des menus
+        (créations, modifications, publications, masquages), agences gérées.
+        """
+        from .prestataires import historique_json
+        qs = MenuHistorique.objects.select_related('user')
+        geres = agences_gerees(request.user)
+        if geres is not None:
+            qs = qs.filter(agence_id__in=geres)
+        try:
+            for param, champ in (('agence', 'agence_id'), ('menu', 'menu_id'),
+                                 ('date_debut', 'date_menu__gte'), ('date_fin', 'date_menu__lte')):
+                if request.query_params.get(param):
+                    qs = qs.filter(**{champ: request.query_params[param]})
+            lignes = list(qs[:200])
+        except (ValueError, DjangoValidationError):
+            raise ValidationError("Paramètres de filtre invalides.")
+        return Response([historique_json(h) for h in lignes])
 
     def verifier_suppression(self, instance):
         verifier_menu_gere(self.request.user, instance)
@@ -1619,6 +1746,18 @@ class CommandeViewSet(BaseViewSet):
         annuler_retrait(retrait, request.user, commande=commande)
         commande.refresh_from_db()
         return Response(CommandeSerializer(commande, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='retrait')
+    def detail_retrait(self, request, pk=None):
+        """
+        GET /commandes/{id}/retrait/   détail du retrait (heure, comptoir, validé par,
+        mode) et possibilité de le contester (« Je n'ai pas retiré ce repas »).
+        """
+        from .controle import detail_retrait
+        commande = self.get_object()
+        if commande.user_id != request.user.id:
+            verifier_menu_gere(request.user, commande.menu)
+        return Response(detail_retrait(commande))
 
     @action(detail=False, methods=['get'], url_path='mes-commandes')
     def mes_commandes(self, request):
@@ -2016,7 +2155,7 @@ class RetraitViewSet(BaseViewSet):
     def get_queryset(self):
         qs = (
             Retrait.objects
-            .select_related('user', 'menu__agence', 'menu__typeequipe')
+            .select_related('user', 'menu__agence', 'menu__typeequipe', 'valide_par__prestataire')
             .order_by('-date_retrait')
         )
         geres = agences_gerees(self.request.user)
@@ -2024,6 +2163,8 @@ class RetraitViewSet(BaseViewSet):
 
     def perform_create(self, serializer):
         verifier_menu_gere(self.request.user, serializer.validated_data['menu'])
+        # Retrait de secours : enregistré au nom du gestionnaire connecté
+        serializer.validated_data['valide_par'] = self.request.user
         super().perform_create(serializer)
 
     def verifier_suppression(self, instance):
@@ -2061,7 +2202,7 @@ class RetraitViewSet(BaseViewSet):
             limite = min(max(int(request.query_params.get('limite', 8)), 1), 50)
         except ValueError:
             limite = 8
-        derniers = list(Retrait.objects.filter(menu=menu).select_related('user')
+        derniers = list(Retrait.objects.filter(menu=menu).select_related('user', 'valide_par')
                         .order_by('-date_retrait')[:limite])
         plats_retires = {}
         for c in (Commande.objects.filter(menu=menu, statut='retiree',
@@ -2087,11 +2228,13 @@ class RetraitViewSet(BaseViewSet):
                 'username': r.user.username,
                 'date_retrait': r.date_retrait,
                 'plats': plats_retires.get(r.user_id, []),
+                'valide_par_nom': nom_complet(r.valide_par) if r.valide_par_id else None,
+                'mode': r.mode,
             } for r in derniers],
         })
 
 
-def annuler_retrait(retrait, par, commande=None):
+def annuler_retrait(retrait, par, commande=None, par_libelle='le gestionnaire', notifier=True):
     """
     Annule un retrait (erreur de scan…) : les commandes de l'agent repassent
     « en attente » et l'avis éventuel, donné sur un repas désormais non retiré,
@@ -2107,7 +2250,8 @@ def annuler_retrait(retrait, par, commande=None):
         user_id, menu_id = source.user_id, source.menu_id
         if retrait is not None:
             retrait.delete()
-        transaction.on_commit(lambda: notifier_retrait_annule(user_id, menu_id))
+        if notifier:
+            transaction.on_commit(lambda: notifier_retrait_annule(user_id, menu_id, par_libelle))
 
 
 class FonctionListAPIView(ListAPIView):
@@ -2180,7 +2324,7 @@ class DeviceTokenView(APIView):
     Enregistre ou met à jour le token FCM de l'appareil connecté.
     Appelé automatiquement par Flutter après login.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsConnecte]
 
     def post(self, request):
         token    = request.data.get('token', '').strip()
@@ -2251,7 +2395,7 @@ class NotificationListView(APIView):
     Retourne les notifications de l'user connecté
     avec le compteur de non lues.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsConnecte]
 
     def get(self, request):
         notifs = Notification.objects.filter(
@@ -2271,6 +2415,8 @@ class NotificationListView(APIView):
                 'lu':           n.lu,
                 'commande_id':  n.commande_id,
                 'menu_id':      n.menu_id,
+                'retrait_id':   n.retrait_id,
+                'contestation_id': n.contestation_id,
                 'created_at':   n.created_at.isoformat(),
             }
             for n in notifs
@@ -2287,7 +2433,7 @@ class NotificationDetailView(APIView):
     PATCH /api/api/notifications/{id}/marquer-lu/
     DELETE /api/api/notifications/{id}/supprimer/
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsConnecte]
 
     def _get_notif(self, request, pk):
         try:
@@ -2316,7 +2462,7 @@ class NotificationBulkView(APIView):
     PATCH /api/api/notifications/tout-marquer-lu/
     DELETE /api/api/notifications/tout-supprimer/
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsConnecte]
 
     def patch(self, request):
         count = Notification.objects.filter(
@@ -2577,9 +2723,10 @@ class FacturePrestataireViewSet(viewsets.ReadOnlyModelViewSet):
     """
     GET /api/api/factures-prestataires/?annee=&mois=&prestataire=   (gestionnaires)
     GET /api/api/factures-prestataires/{id}/pdf/                     relevé de prestations officiel (PDF)
+    Responsable d'un prestataire : ses propres relevés seulement.
     """
     serializer_class = FacturePrestataireSerializer
-    permission_classes = [IsGestionnaireRole]
+    permission_classes = [IsGestionnaireOuPrestataire]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['annee', 'mois', 'prestataire']
     queryset = (FacturePrestataire.objects
@@ -2588,6 +2735,8 @@ class FacturePrestataireViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if is_compte_prestataire(self.request.user):
+            return qs.filter(prestataire_id=self.request.user.prestataire_id)
         geres = agences_gerees(self.request.user)
         if geres is None:
             return qs
@@ -2649,6 +2798,14 @@ def _releve_contexte(request, prestataire_id=None):
     geres = agences_gerees(request.user)
     agence = _param_id(request, 'agence')
     typeequipe = _param_id(request, 'typeequipe')
+    if is_compte_prestataire(request.user):
+        # Responsable d'un prestataire : son relevé seulement, toutes agences
+        # confondues (les lignes sont celles de ce prestataire)
+        geres = None
+        demande = prestataire_id or _param_id(request, 'prestataire')
+        if demande is not None and demande != request.user.prestataire_id:
+            raise PermissionDenied("Ce relevé n'est pas celui de votre prestataire.")
+        prestataire_id = request.user.prestataire_id
     if agence is not None and geres is not None and agence not in geres:
         raise PermissionDenied("Cette agence n'est pas l'une des vôtres.")
     prestataire_id = prestataire_id or _param_id(request, 'prestataire')
@@ -2672,8 +2829,10 @@ class RelevePrestataireView(APIView):
     semaine), par agence, état de clôture et relevés officiels ; détail par
     agent avec agents=1. Mêmes lignes que /facturation/prestataires/
     (valeurs figées pour un mois clôturé). Gestionnaire : ses agences.
+    Responsable d'un prestataire : son propre relevé (sans les informations
+    internes : autres prestataires, obstacles de clôture, services et postes).
     """
-    permission_classes = [IsGestionnaireRole]
+    permission_classes = [IsGestionnaireOuPrestataire]
 
     def get(self, request):
         from . import releves
@@ -2761,8 +2920,15 @@ class RelevePrestataireView(APIView):
             } for r in (releves.factures_visibles(ctx['geres']).filter(prestataire=p)
                         .order_by('-annee', '-mois')[:12] if p else [])],
         }
+        presta = is_compte_prestataire(request.user)
+        if presta:
+            reponse['prestataires'] = [t for t in reponse['prestataires'] if p and t['id'] == p.id]
+            reponse['agences_sans_prestataire'] = []
+            reponse['cloture']['obstacles'] = None
+            reponse['cloture']['prochain_numero'] = None
         if request.query_params.get('agents') in ('1', 'true'):
-            infos = _infos_agents([a['user_id'] for a in releves.par_agent(ctx['lignes']) if a['user_id']])
+            infos = {} if presta else _infos_agents(
+                [a['user_id'] for a in releves.par_agent(ctx['lignes']) if a['user_id']])
             reponse['agents'] = [{
                 'user_id': a['user_id'], 'username': a['username'], 'nom_prenom': a['nom_prenom'],
                 'agence': a['agence'], 'nb_repas': a['nb_repas'], 'retires': a['retires'],
@@ -2782,8 +2948,9 @@ class RelevePrestatairePdfView(APIView):
     Mois clôturé dont le relevé officiel est visible (sans filtre) : le relevé
     officiel numéroté. Sinon : document provisoire, sans numéro, avec
     filigrane « PROVISOIRE » (ou « EXTRAIT » pour un extrait de mois clôturé).
+    Responsable d'un prestataire : son propre relevé seulement (id = son prestataire).
     """
-    permission_classes = [IsGestionnaireRole]
+    permission_classes = [IsGestionnaireOuPrestataire]
 
     def get(self, request, pk):
         from . import releves

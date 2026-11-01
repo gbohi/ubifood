@@ -7,6 +7,16 @@ Les rôles sont des groupes Django :
     gestionnaire → gestion de la cantine (menus, plats, retraits, tableaux de bord)
     employe      → commande ses repas, gère ses allergies, consulte ses données
 
+Espace prestataire (compte rattaché à un Prestataire par User.prestataire) :
+    prestataire    → responsable : tout l'espace prestataire (plats, menus,
+                     à préparer, comptoir, relevés, statistiques, équipe)
+    agent_comptoir → comptoir et liste du jour seulement
+
+Les comptes prestataires sont cloisonnés : ils n'accèdent qu'aux routes de
+l'espace prestataire (/prestataire/…) et à quelques routes personnelles
+(profil, mot de passe, notifications). Toutes les autres vues utilisent
+IsAuthenticated de ce module (et non celui de DRF), qui les refuse.
+
 Un superuser Django est considéré comme super_admin.
 """
 
@@ -16,9 +26,19 @@ ROLE_SUPER_ADMIN  = 'super_admin'
 ROLE_ADMIN        = 'admin'
 ROLE_GESTIONNAIRE = 'gestionnaire'
 ROLE_EMPLOYE      = 'employe'
+ROLE_PRESTATAIRE    = 'prestataire'
+ROLE_AGENT_COMPTOIR = 'agent_comptoir'
 
 ADMIN_ROLES        = {ROLE_SUPER_ADMIN, ROLE_ADMIN}
 GESTIONNAIRE_ROLES = ADMIN_ROLES | {ROLE_GESTIONNAIRE}
+PRESTATAIRE_ROLES  = {ROLE_PRESTATAIRE, ROLE_AGENT_COMPTOIR}
+
+# Libellés des rôles (écrans d'administration, messages)
+LIBELLES_ROLES = {
+    ROLE_SUPER_ADMIN: 'Super administrateur', ROLE_ADMIN: 'Administrateur',
+    ROLE_GESTIONNAIRE: 'Gestionnaire', ROLE_EMPLOYE: 'Employé',
+    ROLE_PRESTATAIRE: 'Prestataire (responsable)', ROLE_AGENT_COMPTOIR: 'Agent de comptoir',
+}
 
 
 def get_roles(user):
@@ -46,6 +66,50 @@ def is_gestionnaire(user):
                 (user.is_superuser or get_roles(user) & GESTIONNAIRE_ROLES))
 
 
+def is_compte_prestataire(user):
+    """
+    Compte de l'espace prestataire (responsable ou agent de comptoir).
+    Un compte UbiPharm (gestionnaire, admin, superuser) n'en est jamais un.
+    """
+    return bool(user and user.is_authenticated and not user.is_superuser
+                and get_roles(user) & PRESTATAIRE_ROLES
+                and not get_roles(user) & GESTIONNAIRE_ROLES)
+
+
+def is_prestataire_responsable(user):
+    """Responsable du prestataire (tout l'espace prestataire), rattaché à un prestataire."""
+    return bool(is_compte_prestataire(user) and ROLE_PRESTATAIRE in get_roles(user)
+                and user.prestataire_id)
+
+
+def is_agent_comptoir(user):
+    """Agent de comptoir OU responsable : le comptoir leur est ouvert à tous deux."""
+    return bool(is_compte_prestataire(user) and user.prestataire_id)
+
+
+def agences_prestataire(user, a_date=None):
+    """
+    Agences que le prestataire du compte dessert à la date donnée (aujourd'hui
+    par défaut) : rattachements AgencePrestataire en cours. Ensemble vide pour
+    un compte sans prestataire ; None pour un compte UbiPharm (non concerné).
+    """
+    if not is_compte_prestataire(user):
+        return None
+    if not user.prestataire_id:
+        return set()
+    cle = f'_agences_prestataire_{a_date}'
+    if not hasattr(user, cle):
+        from django.utils import timezone
+        from .facturation import ligne_active
+        from .models import AgencePrestataire
+        d = a_date or timezone.localdate()
+        par_agence = {}
+        for ap in AgencePrestataire.objects.filter(prestataire_id=user.prestataire_id):
+            par_agence.setdefault(ap.agence_id, []).append(ap)
+        setattr(user, cle, {a for a, lignes in par_agence.items() if ligne_active(lignes, d)})
+    return getattr(user, cle)
+
+
 def agences_gerees(user):
     """
     Agences dont un gestionnaire s'occupe (commandes, retraits, menus, plats,
@@ -65,6 +129,49 @@ def agences_gerees(user):
             .values_list('agence_id', flat=True)
         )
     return user._agences_cache
+
+
+class IsAuthenticated(permissions.BasePermission):
+    """
+    Utilisateur connecté de l'application UbiPharm : les comptes prestataires
+    sont refusés (à utiliser à la place du IsAuthenticated de DRF).
+    """
+    message = "Cet écran n'est pas accessible depuis l'espace prestataire."
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated
+                    and not is_compte_prestataire(request.user))
+
+
+class IsConnecte(permissions.BasePermission):
+    """Tout utilisateur connecté, comptes prestataires compris (profil, notifications…)."""
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated)
+
+
+class IsPrestataireResponsable(permissions.BasePermission):
+    """Responsable d'un prestataire (espace prestataire complet)."""
+    message = "Action réservée au responsable du prestataire."
+
+    def has_permission(self, request, view):
+        return is_prestataire_responsable(request.user)
+
+
+class IsAgentComptoir(permissions.BasePermission):
+    """Comptoir : agents de comptoir et responsables d'un prestataire."""
+    message = "Accès réservé aux comptes du prestataire."
+
+    def has_permission(self, request, view):
+        return is_agent_comptoir(request.user)
+
+
+class IsGestionnaireOuPrestataire(permissions.BasePermission):
+    """Gestionnaires / administrateurs, ou responsable d'un prestataire (relevés)."""
+    message = "Accès réservé aux gestionnaires."
+
+    def has_permission(self, request, view):
+        return is_gestionnaire(request.user) or is_prestataire_responsable(request.user)
 
 
 class IsAdminRole(permissions.BasePermission):
@@ -88,7 +195,7 @@ class ReadAuthenticatedWriteAdmin(permissions.BasePermission):
     message = "Modification réservée aux administrateurs."
 
     def has_permission(self, request, view):
-        if not (request.user and request.user.is_authenticated):
+        if not (request.user and request.user.is_authenticated) or is_compte_prestataire(request.user):
             return False
         if request.method in permissions.SAFE_METHODS:
             return True
@@ -100,7 +207,7 @@ class ReadAuthenticatedWriteGestionnaire(permissions.BasePermission):
     message = "Modification réservée aux gestionnaires."
 
     def has_permission(self, request, view):
-        if not (request.user and request.user.is_authenticated):
+        if not (request.user and request.user.is_authenticated) or is_compte_prestataire(request.user):
             return False
         if request.method in permissions.SAFE_METHODS:
             return True
@@ -123,6 +230,9 @@ class IsOwnerOrGestionnaire(permissions.BasePermission):
     `user_created`) ou un gestionnaire / administrateur.
     """
     message = "Vous n'avez pas accès à cet élément."
+
+    def has_permission(self, request, view):
+        return not is_compte_prestataire(request.user)
 
     def has_object_permission(self, request, view, obj):
         if is_gestionnaire(request.user):

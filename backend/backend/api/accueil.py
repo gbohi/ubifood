@@ -13,13 +13,12 @@ from decimal import Decimal
 
 from django.db.models import Count, Q
 from django.utils import timezone
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import facturation as fact
 from .models import Agence, Commande, Menu, MenuPlat, ParametresSociete, PlatImage
-from .permissions import agences_gerees, is_gestionnaire
+from .permissions import IsAuthenticated, agences_gerees, is_gestionnaire
 from .serializers import agence_actuelle, date_limite_commande, libelle_date_limite
 
 JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
@@ -88,7 +87,9 @@ class AccueilView(APIView):
 
         menus_agence = {}
         if agence:
-            for m in (Menu.objects.filter(agence=agence, date_menu__gte=jours[0], date_menu__lte=horizon)
+            # Menus visibles des employés : publiés et non masqués
+            for m in (Menu.objects.filter(agence=agence, publie=True, masque=False,
+                                          date_menu__gte=jours[0], date_menu__lte=horizon)
                       .annotate(nb_plats=Count('menu_plats'))):
                 menus_agence.setdefault(m.date_menu, []).append(m)
 

@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractUser
 from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
+from datetime import time
 
 class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -35,6 +36,10 @@ class User(AbstractUser):
     # Photo de profil (modifiable par l'utilisateur lui-même, web et mobile)
     photo = models.ImageField(upload_to='photos_profil/', null=True, blank=True,
                               validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'webp'])])
+    # Comptes de l'espace prestataire (rôles « prestataire » et « agent_comptoir ») :
+    # le prestataire auquel le compte appartient (vide pour les comptes UbiPharm).
+    prestataire = models.ForeignKey('Prestataire', on_delete=models.PROTECT, null=True, blank=True,
+                                    related_name='comptes')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -56,6 +61,10 @@ class User(AbstractUser):
 
 class Agence(BaseModel):
     nom_agence = models.CharField(max_length=255)
+    # Horaires du service de la cantine de l'agence (vides : horaires par
+    # défaut de Paramètres → Société). Servent au contrôle des retraits.
+    heure_debut_service = models.TimeField(null=True, blank=True)
+    heure_fin_service   = models.TimeField(null=True, blank=True)
 
 class Etat(BaseModel):
     libelle_etat = models.CharField(max_length=255)
@@ -142,7 +151,19 @@ class Plat(BaseModel):
     nom = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     type_plat = models.ForeignKey(TypePlat, on_delete=models.CASCADE)
+    # Agence principale du plat (gestion UbiPharm). Les plats d'un prestataire
+    # peuvent être proposés dans plusieurs agences : voir `agences`.
     agence = models.ForeignKey(Agence, on_delete=models.CASCADE)
+    # Prestataire auteur du plat (vide : plat créé par UbiPharm)
+    prestataire = models.ForeignKey('Prestataire', on_delete=models.PROTECT, null=True, blank=True,
+                                    related_name='plats')
+    # Agences où le plat est proposé (plats des prestataires ; contient l'agence principale)
+    agences = models.ManyToManyField(Agence, blank=True, related_name='plats_proposes')
+    # Mentions affichées aux employés (« Piment à part », « Arachide »…)
+    mentions = models.JSONField(default=list, blank=True)
+    # Masqué par un gestionnaire (photo non conforme…) : ne peut plus être mis au menu
+    masque = models.BooleanField(default=False)
+    motif_masquage = models.CharField(max_length=255, blank=True)
 
 class PlatImage(BaseModel):
     plat = models.ForeignKey(Plat, on_delete=models.CASCADE, related_name="images")
@@ -154,6 +175,44 @@ class Menu(BaseModel):
     date_menu = models.DateField()
     agence = models.ForeignKey(Agence, on_delete=models.CASCADE)
     typeequipe = models.ForeignKey(TypeEquipe, on_delete=models.CASCADE)
+    # Publication : un menu non publié (brouillon du prestataire) ou masqué
+    # par un gestionnaire n'est ni visible ni commandable par les employés.
+    publie = models.BooleanField(default=True)
+    date_publication = models.DateTimeField(null=True, blank=True)
+    masque = models.BooleanField(default=False)
+    motif_masquage = models.CharField(max_length=255, blank=True)
+
+
+class MenuHistorique(models.Model):
+    """
+    Historique d'un menu : création, modification, publication, masquage…
+    par le prestataire ou par UbiPharm (visible des deux côtés). Les
+    informations utiles sont recopiées : la ligne survit à la suppression du menu.
+    """
+    ACTION_CHOICES = [
+        ('creation',     'Création'),
+        ('modification', 'Modification'),
+        ('publication',  'Publication'),
+        ('masquage',     'Masquage'),
+        ('affichage',    'Affichage'),
+        ('suppression',  'Suppression'),
+    ]
+    menu       = models.ForeignKey(Menu, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='historique')
+    date_menu  = models.DateField()
+    agence     = models.ForeignKey(Agence, on_delete=models.CASCADE, related_name='+')
+    action     = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    description = models.CharField(max_length=500, blank=True)
+    motif      = models.CharField(max_length=255, blank=True)
+    user       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='+')
+    # Auteur côté prestataire (sinon UbiPharm)
+    par_prestataire = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'menu_historique'
+        ordering = ['-created_at', '-id']
 
 class MenuPlat(BaseModel):
     menu = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name="menu_plats")
@@ -196,6 +255,12 @@ class Retrait(BaseModel):
     menu           = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name='retraits')
     date_retrait   = models.DateTimeField(default=timezone.now)
     badge_matricule = models.CharField(max_length=100)
+    MODE_CHOICES = [('scan', 'Badge scanné'), ('saisie', 'Matricule saisi')]
+    # Qui a validé le retrait au comptoir (agent du prestataire ou gestionnaire
+    # en secours) et comment l'employé a été identifié (vide : non précisé)
+    valide_par     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                       related_name='retraits_valides')
+    mode           = models.CharField(max_length=10, choices=MODE_CHOICES, blank=True)
 
     class Meta:
         # Un agent ne peut retirer qu'une seule fois par menu
@@ -320,6 +385,10 @@ class Notification(models.Model):
         ('retrait_annule',   'Retrait annulé'),
         ('menu_disponible',  'Menu disponible'),
         ('rappel_48h',       'Rappel avant la date limite'),
+        ('contestation_nouvelle', 'Nouvelle contestation de retrait'),
+        ('contestation_decidee',  'Contestation traitée'),
+        ('menu_corrige',     'Menu corrigé par UbiPharm'),
+        ('plat_masque',      'Plat masqué par UbiPharm'),
         ('info',             'Information'),
     ]
 
@@ -334,6 +403,8 @@ class Notification(models.Model):
     lu          = models.BooleanField(default=False)
     commande_id = models.IntegerField(null=True, blank=True)
     menu_id     = models.IntegerField(null=True, blank=True)
+    retrait_id  = models.IntegerField(null=True, blank=True)
+    contestation_id = models.IntegerField(null=True, blank=True)
     created_at  = models.DateTimeField(auto_now_add=True)
     updated_at  = models.DateTimeField(auto_now=True)
 
@@ -501,6 +572,9 @@ class ParametresSociete(models.Model):
     application_ios_version     = models.CharField('Version iPhone', max_length=30, blank=True)
     application_mise_a_jour     = models.DateTimeField(
         "Dernière mise à jour de l'application", null=True, blank=True)
+    # Horaires du service par défaut (une agence peut avoir les siens)
+    heure_debut_service = models.TimeField('Début du service', default=time(11, 30))
+    heure_fin_service   = models.TimeField('Fin du service', default=time(14, 30))
     updated_at         = models.DateTimeField(auto_now=True)
     user_updated       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                            related_name='+')
@@ -601,3 +675,52 @@ class AvisPlat(models.Model):
 
     def __str__(self):
         return f"{self.plat} : {self.note}/5"
+
+
+class ContestationRetrait(models.Model):
+    """
+    « Je n'ai pas retiré ce repas » : un employé conteste un retrait validé
+    à son nom au comptoir. Le gestionnaire de l'agence tranche :
+      - acceptée : le retrait est annulé (repas « non retiré ») et le repas
+        sort du relevé du prestataire ;
+      - rejetée  : commentaire obligatoire, envoyé à l'employé.
+    Les informations du retrait sont recopiées (le retrait est supprimé si
+    la contestation est acceptée).
+    """
+    MOTIF_CHOICES = [
+        ('absent',         "J'étais absent(e) (mission, congé…)"),
+        ('badge_utilise',  "Quelqu'un a utilisé mon badge / matricule"),
+        ('autre',          'Autre raison'),
+    ]
+    STATUT_CHOICES = [
+        ('ouverte',  'Ouverte'),
+        ('acceptee', 'Acceptée'),
+        ('rejetee',  'Rejetée'),
+    ]
+    commande    = models.OneToOneField(Commande, on_delete=models.CASCADE, related_name='contestation')
+    retrait     = models.ForeignKey(Retrait, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='contestations')
+    user        = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contestations')
+    menu        = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name='contestations')
+    motif       = models.CharField(max_length=20, choices=MOTIF_CHOICES)
+    commentaire = models.TextField(blank=True, max_length=1000)
+    statut      = models.CharField(max_length=10, choices=STATUT_CHOICES, default='ouverte')
+    # Retrait contesté (recopié)
+    date_retrait       = models.DateTimeField(null=True, blank=True)
+    retrait_valide_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                           related_name='+')
+    retrait_mode       = models.CharField(max_length=10, blank=True)
+    # Décision
+    traite_par  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='contestations_traitees')
+    commentaire_traitement = models.TextField(blank=True, max_length=1000)
+    date_traitement = models.DateTimeField(null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'contestation_retrait'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Contestation {self.user} — {self.menu.date_menu} [{self.statut}]"
