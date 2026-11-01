@@ -49,6 +49,9 @@ export interface ServiceComptoir {
   derniers: {
     id: number; user_id: number; user_nom: string; username: string; date_retrait: string;
     plats: { commande_id: number; plat: string }[];
+    /** Agent qui a validé le retrait (prestataire ou gestionnaire en secours) */
+    valide_par_nom?: string | null;
+    mode?: string;
   }[];
 }
 

@@ -218,6 +218,7 @@
                     <span class="muted">—</span>
                   }
                 </div>
+                @if (data.prestataire_libelle) { <small class="d-block"><i class="ri-store-2-line"></i> {{ data.prestataire_libelle }}</small> }
               </td>
               <td data-label="Compte">
                 <div>
@@ -350,13 +351,34 @@
                     <input class="form-check-input" type="checkbox"
                            [id]="'group_'+g.id" [checked]="isGroupSelected(g.id)" (change)="toggleGroup(g.id)">
                     <label class="form-check-label fw-medium" [for]="'group_'+g.id" style="cursor:pointer;">
-                      <i class="ri-shield-check-line me-1 text-primary"></i>{{ g.name }}
+                      <i class="ri-shield-check-line me-1 text-primary"></i>{{ getGroupeName(g.id) }}
                     </label>
                   </div>
                 </div>
               }
             }
           </div>
+
+          <!-- Compte de l'espace prestataire : prestataire obligatoire, aucun autre rôle -->
+          @if (estRolePrestataire) {
+            <div class="row g-3 mb-4">
+              <div class="col-md-6">
+                <label class="form-label" for="user-prestataire">Prestataire du compte <span class="text-danger">*</span></label>
+                <select id="user-prestataire" class="form-select" formControlName="prestataire"
+                        [class.is-invalid]="submitted && !userForm.get('prestataire')?.value">
+                  <option [ngValue]="null">-- Choisir le prestataire --</option>
+                  @for (p of prestataires; track p.id) { <option [ngValue]="p.id">{{ p.libelle }}</option> }
+                </select>
+                @if (submitted && !userForm.get('prestataire')?.value) {
+                  <div class="invalid-feedback d-block">Choisissez le prestataire de ce compte (rôle prestataire ou agent de comptoir).</div>
+                }
+              </div>
+              <div class="col-md-6 d-flex align-items-end">
+                <p class="text-muted small mb-0"><i class="ri-information-line me-1"></i>Un compte prestataire (responsable ou agent de comptoir) n'a aucun autre rôle :
+                  il n'accède qu'à l'espace prestataire. Les agences, postes et catégories ci-dessous ne le concernent pas.</p>
+              </div>
+            </div>
+          }
 
           <!-- Mot de passe création -->
           @if (!f['id'].value) {

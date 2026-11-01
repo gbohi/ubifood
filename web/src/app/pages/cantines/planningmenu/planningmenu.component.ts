@@ -86,6 +86,15 @@ export class PlanningMenuComponent implements OnInit {
   creationEnvoi = false;
   creationErreur: string | null = null;
 
+  // ── Publication / masquage (menus des prestataires) ─────────
+  // Le planning (GET /planning/) ne renvoie pas ces champs : ils sont lus dans
+  // GET /menus/ pour la semaine affichée.
+  etats = new Map<number, { publie: boolean; masque: boolean; motif: string; prestataire: string | null }>();
+  @ViewChild('masquerModal', { static: false }) masquerModal?: ModalDirective;
+  aMasquer: PlanningMenu | null = null;
+  motifMasquage = '';
+  masquageEnvoi = false;
+
   constructor(public store: Store) {}
 
   ngOnInit(): void {
@@ -111,12 +120,57 @@ export class PlanningMenuComponent implements OnInit {
     this.http.get<PlanningReponse>(`${this.apiUrl}/planning/`, { params })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: data => { this.planning = data; this.isLoading = false; },
+        next: data => { this.planning = data; this.isLoading = false; this.chargerEtats(); },
         error: err => {
           this.isLoading = false;
           this.erreur = typeof err === 'string' ? err : 'Le planning n\'a pas pu être chargé.';
         },
       });
+  }
+
+  private chargerEtats(): void {
+    const d = this.versDate(this.lundi);
+    d.setDate(d.getDate() + 6);
+    const params = new HttpParams().set('gerees', '1').set('page_size', '200')
+      .set('date_menu__gte', this.lundi).set('date_menu__lte', this.iso(d));
+    this.http.get<any>(`${this.apiUrl}/menus/`, { params }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: r => {
+        this.etats = new Map((r?.results ?? r ?? []).map((m: any) => [m.id, {
+          publie: m.publie !== false, masque: !!m.masque, motif: m.motif_masquage ?? '',
+          prestataire: (m.menu_plats ?? []).find((mp: any) => mp.plat?.prestataire_libelle)?.plat.prestataire_libelle ?? null,
+        }]));
+      },
+      error: () => this.etats = new Map(),
+    });
+  }
+
+  demanderMasquage(m: PlanningMenu): void {
+    this.aMasquer = m;
+    this.motifMasquage = '';
+    this.masquerModal?.show();
+  }
+
+  masquerMenu(): void {
+    const m = this.aMasquer;
+    const motif = this.motifMasquage.trim();
+    if (!m || !motif || this.masquageEnvoi) return;
+    this.masquageEnvoi = true;
+    this.http.post(`${this.apiUrl}/menus/${m.id}/masquer/`, { motif }).subscribe({
+      next: () => {
+        this.masquageEnvoi = false;
+        this.masquerModal?.hide();
+        this.toastr.success('Menu masqué aux employés : le prestataire est notifié.');
+        this.chargerEtats();
+      },
+      error: err => { this.masquageEnvoi = false; this.toastr.error(typeof err === 'string' ? err : 'Action impossible.'); },
+    });
+  }
+
+  afficherMenu(m: PlanningMenu): void {
+    this.http.post(`${this.apiUrl}/menus/${m.id}/afficher/`, {}).subscribe({
+      next: () => { this.toastr.success('Menu de nouveau visible par les employés.'); this.chargerEtats(); },
+      error: err => this.toastr.error(typeof err === 'string' ? err : 'Action impossible.'),
+    });
   }
 
   semaine(decalage: number): void {

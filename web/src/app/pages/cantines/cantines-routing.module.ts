@@ -16,6 +16,7 @@ import { FacturationCommandeComponent } from './facturation-commande/facturation
 import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
 import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.component';
 import { StatistiquesComponent } from './statistiques/statistiques.component';
+import { ControleRetraitsComponent } from './controle-retraits/controle-retraits.component';
 
 
 const routes: Routes = [
@@ -29,6 +30,8 @@ const routes: Routes = [
   { path: 'mes-commandes', component: MesCommandesComponent },
   { path: 'gestion-commandes', component: GestionCommandesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'retrait-commande', component: RetraitCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
+  // Retraits validés par les agents des prestataires, contestations, anomalies
+  { path: 'controle-retraits', component: ControleRetraitsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES }, title: 'Contrôle des retraits | UbiFood' },
   { path: 'facturation-commande', component: FacturationCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   // Ancienne page : c'est désormais l'onglet « Prestataires » de la page Facturation
   { path: 'facturation-prestataire', redirectTo: () => inject(Router).createUrlTree(['/cantines/facturation-commande'], { queryParams: { onglet: 'prestataires' } }) },

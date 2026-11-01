@@ -66,6 +66,12 @@
 
                 }
 
+                @if (prestataireAffiche) {
+                <div class="ms-1 header-item d-none d-md-flex">
+                    <span class="ep-top-presta"><i class="ri-store-2-line"></i>{{ prestataireAffiche }}</span>
+                </div>
+                }
+
                 <div class="ms-1 header-item d-none d-sm-flex">
                     <button type="button" class="btn btn-icon btn-topbar btn-ghost-dark rounded-circle" data-toggle="fullscreen" (click)="fullscreen()">
                         <i class="ri-fullscreen-line fs-lg"></i>

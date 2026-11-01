@@ -1,0 +1,194 @@
+<div class="ce ce-retrait" [class.ce-plein]="pleinEcran">
+
+  <div class="ce-entete">
+    <div class="ce-entete-txt">
+      <h1><span class="ce-ic"><i class="ri-qr-scan-2-line"></i></span>Comptoir</h1>
+      <p>Scannez le badge ou saisissez le matricule, vérifiez le plat, validez.</p>
+    </div>
+    <div class="ce-btns">
+      @if ((contexte?.agences?.length ?? 0) > 1) {
+        <label class="ce-champ">
+          <i class="ri-building-line"></i>
+          <select [ngModel]="agenceId" (ngModelChange)="choisirAgence($event)" aria-label="Agence du comptoir">
+            @for (a of contexte!.agences; track a.id) { <option [ngValue]="a.id">{{ a.nom }}</option> }
+          </select>
+        </label>
+      }
+      <a class="ce-btn" routerLink="/prestataire/liste-du-jour"><i class="ri-file-list-3-line"></i>Liste du jour</a>
+      <button type="button" class="ce-btn" (click)="basculerPleinEcran()">
+        <i [class]="pleinEcran ? 'ri-fullscreen-exit-line' : 'ri-fullscreen-line'"></i>{{ pleinEcran ? 'Quitter le plein écran' : 'Plein écran comptoir' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Bandeau : jour, agence, avancement ───────────────────── -->
+  <div class="ce-bandeau">
+    <div class="ce-bandeau-sel ep-bandeau-fixe">
+      <i class="ri-calendar-check-line ce-bandeau-ic"></i>
+      <span class="ce-bandeau-sel-txt">
+        <b>{{ titreJour || 'Aujourd\'hui' }} · {{ agenceNom }}</b>
+        <small>@if (service?.agence; as a) { Service {{ a.heure_debut_service }} – {{ a.heure_fin_service }} · }{{ service?.menus?.length ? 'menu du jour' : 'aucun menu aujourd\'hui' }}</small>
+      </span>
+    </div>
+    <div class="ce-bandeau-prog">
+      <div class="ce-bandeau-prog-l"><span>Avancement du service</span><span>{{ service?.pct_servis ?? 0 }} %</span></div>
+      <div class="ce-jauge"><i [style.width.%]="service?.pct_servis ?? 0"></i></div>
+    </div>
+    <div class="ce-bandeau-chif">
+      <span><b>{{ service?.servies ?? 0 }}</b>servis</span>
+      <span><b>{{ service?.a_servir ?? 0 }}</b>à servir</span>
+      <span><b>{{ service?.commandees ?? 0 }}</b>commandes</span>
+    </div>
+  </div>
+
+  @if (erreurService) {
+    <div class="ce-alerte ce-alerte-ro"><i class="ri-error-warning-line"></i><div>{{ erreurService }}</div></div>
+  }
+
+  <div class="ce-g-comptoir">
+    <div class="ce-pile">
+      <!-- ── Champ de scan (toujours actif) ─────────────────── -->
+      <div class="ce-scan">
+        <i class="ri-qr-scan-2-line ce-scan-ic"></i>
+        <div class="ce-scan-in">
+          <input #champBadge type="text" [(ngModel)]="badge" (keydown)="onKeydown($event)" (paste)="onPaste()"
+                 placeholder="Scannez le badge ou saisissez le matricule…" aria-label="Badge ou matricule"
+                 autocomplete="off" autofocus [disabled]="enRecherche">
+          <small>Scannez le badge (QR) ou saisissez le matricule — validation avec <span class="ce-kbd">Entrée</span></small>
+        </div>
+        @if (enRecherche) {
+          <span class="spinner-border spinner-border-sm ce-c-gris" role="status"></span>
+        } @else if (badge || recherche || erreurRecherche) {
+          <button class="ce-btn ce-btn-ic" type="button" title="Effacer" aria-label="Effacer" (click)="reinitialiser()"><i class="ri-close-line"></i></button>
+        }
+      </div>
+
+      @if (erreurRecherche) {
+        <div class="ce-alerte ce-alerte-or ce-alerte-grande" role="alert"><i class="ri-error-warning-line"></i><div><b>{{ erreurRecherche }}</b></div></div>
+      }
+
+      @if (recherche; as r) {
+        <!-- Déjà retiré (recherche) ou 409 à la validation -->
+        @if ((r.deja_retire && !valide) || alerteDejaRetire) {
+          <div class="ce-alerte ce-alerte-or ce-alerte-grande" role="alert">
+            <i class="ri-error-warning-line"></i>
+            <div>
+              <b>{{ alerteDejaRetire || r.message }}</b>
+              <span>Repas déjà remis : ne rien servir. Aucun second retrait n'est possible.</span>
+            </div>
+            <button class="ce-btn ms-auto" type="button" (click)="reinitialiser()"><i class="ri-refresh-line"></i>Suivant</button>
+          </div>
+        }
+
+        <div class="ce-res" [class.ce-res-ok]="valide">
+          <div class="ce-res-hd">
+            <span class="ce-av ce-av-xl" [style.background]="couleur(r.employe.id)">{{ initiales(r.employe.nom_complet) }}</span>
+            <div class="ce-res-qui">
+              <h2>{{ r.employe.nom_complet }}</h2>
+              <small>Matricule {{ r.employe.matricule }} · Agence {{ r.employe.agence }}</small>
+            </div>
+            @if (valide) {
+              <span class="ce-tag ce-tag-ve ce-tag-l"><i class="ri-check-double-line"></i>Retrait enregistré</span>
+            } @else if (r.a_retirer) {
+              <span class="ce-tag ce-tag-ve ce-tag-l"><i class="ri-check-line"></i>Commande du jour trouvée</span>
+            } @else if (!r.commandes.length) {
+              <span class="ce-tag ce-tag-gr ce-tag-l"><i class="ri-close-circle-line"></i>Pas de commande</span>
+            }
+          </div>
+
+          @if (!r.commandes.length) {
+            <div class="ce-res-vide"><i class="ri-file-list-3-line"></i><b>{{ r.message }}</b><span>Rien à remettre à cet employé.</span></div>
+          }
+
+          @for (c of r.commandes; track c.commande_id; let premier = $first) {
+            <div class="ce-res-plat">
+              <div class="ce-photo">
+                @if (urlMedia(c.plat_image_url); as url) { <img [src]="url" [alt]="c.plat"> } @else { <i class="ri-restaurant-2-line"></i> }
+              </div>
+              <div class="ce-res-plat-txt">
+                <p>Commande n° {{ c.commande_id }} · passée le {{ dateCommande(c.date_commande) }}</p>
+                <h3>{{ c.plat }}</h3>
+                <p>{{ c.statut === 'retiree' ? 'Déjà retiré' : '1 portion' }}</p>
+              </div>
+              @if (premier) {
+                @if (valide) {
+                  <button type="button" class="ce-valider ce-valider-fait" (click)="reinitialiser()">
+                    <i class="ri-checkbox-circle-line"></i><span>Servi<small>employé suivant : scannez</small></span>
+                  </button>
+                } @else if (r.a_retirer) {
+                  <button type="button" class="ce-valider" [disabled]="envoi" (click)="valider()">
+                    @if (envoi) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-check-double-line"></i> }
+                    <span>Valider le retrait<small>ou appuyer sur Entrée</small></span>
+                  </button>
+                }
+              }
+            </div>
+          }
+
+          @if (valide; as v) {
+            <div class="ep-valide">
+              <i class="ri-checkbox-circle-fill"></i>
+              <div>
+                <b>Retrait validé à {{ v.heure }}</b>
+                <small>L'employé reçoit une notification « Retrait validé » avec un bouton pour le contester.</small>
+                <span class="lst-tag t-ve"><i class="ri-shield-check-line"></i>Validé par : {{ v.valide_par_nom }}@if (v.valide_par_prestataire) { ({{ v.valide_par_prestataire }}) } · {{ v.mode === 'scan' ? 'badge scanné' : 'matricule saisi' }}</span>
+              </div>
+              @if (secondesRestantes(v) > 0) {
+                <button type="button" class="ce-btn ms-auto" (click)="annuler(v)"><i class="ri-arrow-go-back-line"></i>Annuler ({{ compteRebours(v) }})</button>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      @if (!recherche && !erreurRecherche) {
+        <div class="ce-attente-scan"><i class="ri-user-search-line"></i><span>En attente d'un badge…</span></div>
+      }
+    </div>
+
+    <!-- ── Colonne droite ──────────────────────────────────── -->
+    <div class="ce-pile">
+      <div class="ce-carte">
+        <h3><i class="ri-restaurant-2-line"></i>Reste à servir <small>par plat</small></h3>
+        <div class="ce-reste">
+          @for (p of service?.plats ?? []; track p.plat_id) {
+            <div class="ce-reste-l">
+              <b>{{ p.nom }}</b>
+              <span class="ce-muted">{{ p.a_servir }} / {{ p.commandees }}</span>
+              <div class="ce-jauge ce-jauge-fine"><i [style.width.%]="pct(p.a_servir, p.commandees)"></i></div>
+            </div>
+          } @empty {
+            <span class="ce-muted">Aucune commande aujourd'hui.</span>
+          }
+        </div>
+      </div>
+
+      <div class="ce-carte">
+        <h3><i class="ri-history-line"></i>Derniers retraits <small>validé par</small></h3>
+        <ul class="ce-fil">
+          @for (r of service?.derniers ?? []; track r.id) {
+            <li>
+              <span class="ce-av ce-av-s" [style.background]="couleur(r.user_id)">{{ initiales(r.user_nom) }}</span>
+              <div class="ce-fil-txt">
+                <b>{{ r.user_nom }}</b>
+                <small>{{ platsTexte(r) }}</small>
+              </div>
+              <span class="ep-fil-droite">
+                <span class="ce-fil-h">{{ r.heure }}</span>
+                <small [class.ep-moi]="estMoi(r)">{{ estMoi(r) ? 'vous' : (r.valide_par_nom || '—') }}</small>
+              </span>
+              @if (secondesRestantes(r) > 0) {
+                <button type="button" class="ce-lien-ic ep-annul" [title]="'Annuler ce retrait (' + compteRebours(r) + ')'" aria-label="Annuler ce retrait" (click)="annuler(r)">
+                  <i class="ri-arrow-go-back-line"></i><small>{{ compteRebours(r) }}</small>
+                </button>
+              }
+            </li>
+          } @empty {
+            <li class="ce-muted">Aucun retrait pour l'instant.</li>
+          }
+        </ul>
+        @if (service) { <p class="ce-muted ce-petit mb-0 mt-2">Vos retraits aujourd'hui : <b>{{ service.mes_retraits_aujourdhui }}</b> · annulation possible 2 min, ensuite par UbiPharm.</p> }
+      </div>
+    </div>
+  </div>
+</div>

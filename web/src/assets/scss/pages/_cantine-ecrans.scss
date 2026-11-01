@@ -3,7 +3,7 @@
 // Styles globaux limités aux composants concernés (budget des feuilles de
 // style de composant, voir angular.json), préfixe « ce- ».
 
-app-planning-menus, app-retrait-commande, app-facturation-commande, app-liste-commandes {
+app-planning-menus, app-retrait-commande, app-facturation-commande, app-liste-commandes, app-comptoir-presta, app-controle-retraits {
   & {
     --ce-navy: #092440;
     --ce-navy2: #0F3A6E;
@@ -215,8 +215,8 @@ app-planning-menus {
   }
 }
 
-// ══ Retrait (comptoir) ═════════════════════════════════════════
-app-retrait-commande {
+// ══ Retrait (comptoir) — aussi le comptoir de l'espace prestataire ══
+app-retrait-commande, app-comptoir-presta {
   .ce-plein {
     position: fixed; inset: 0; z-index: 1040; background: #F3F5F9; overflow: auto; padding: 20px 24px; align-content: start;
     .ce-entete h1 { font-size: 26px; }
@@ -455,21 +455,21 @@ app-liste-commandes {
 
 // ══ Écrans étroits ═════════════════════════════════════════════
 @media (max-width: 1199.98px) {
-  app-facturation-commande .ce-g-factu, app-facturation-commande .ce-g-synth, app-retrait-commande .ce-g-comptoir { grid-template-columns: minmax(0, 1fr); }
+  app-facturation-commande .ce-g-factu, app-facturation-commande .ce-g-synth, app-retrait-commande .ce-g-comptoir, app-comptoir-presta .ce-g-comptoir { grid-template-columns: minmax(0, 1fr); }
   app-facturation-commande .ce-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   app-facturation-commande .ce-g-presta { grid-template-columns: minmax(0, 1fr); }
-  app-retrait-commande .ce-bandeau { grid-template-columns: 1fr; gap: 14px; }
+  app-retrait-commande .ce-bandeau, app-comptoir-presta .ce-bandeau { grid-template-columns: 1fr; gap: 14px; }
 }
 
 @media (max-width: 767.98px) {
-  app-planning-menus, app-retrait-commande, app-facturation-commande, app-liste-commandes {
+  app-planning-menus, app-retrait-commande, app-facturation-commande, app-liste-commandes, app-comptoir-presta, app-controle-retraits {
     .ce-entete h1 { font-size: 19px; }
     .ce-nav-titre { min-width: 0; flex: 1; font-size: 13.5px; }
     .ce-barre { padding: 10px 12px; }
     .ce-champ { flex: 1 1 160px; select, input { width: 100%; } }
   }
   app-planning-menus .ce-legende .ce-legende-note { margin-left: 0; }
-  app-retrait-commande {
+  app-retrait-commande, app-comptoir-presta {
     .ce-res-plat { grid-template-columns: 90px minmax(0, 1fr); gap: 12px; padding: 14px; }
     .ce-photo { width: 90px; height: 72px; font-size: 28px; }
     .ce-res-plat-txt h3 { font-size: 20px; }

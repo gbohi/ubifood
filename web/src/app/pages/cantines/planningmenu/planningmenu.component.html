@@ -93,6 +93,15 @@
               @for (m of jour.menus; track m.id) {
                 <div class="ce-cal-menu">
                   @if (jour.menus.length > 1 && m.typeequipe) { <div class="ce-cal-equipe">{{ m.typeequipe }}</div> }
+                  @if (etats.get(m.id); as e) {
+                    @if (e.prestataire || e.masque || !e.publie) {
+                      <div class="ce-cal-statut">
+                        @if (e.prestataire) { <span class="ce-tag ce-tag-or" title="Publié par le prestataire"><i class="ri-store-2-line"></i>{{ e.prestataire }}</span> }
+                        @if (e.masque) { <span class="ce-tag ce-tag-ro" [title]="'Motif : ' + (e.motif || '—')"><i class="ri-eye-off-line"></i>Masqué</span> }
+                        @else if (!e.publie) { <span class="ce-tag ce-tag-gr"><i class="ri-draft-line"></i>Brouillon</span> }
+                      </div>
+                    }
+                  }
                   @for (p of m.plats; track p.id; let i = $index) {
                     <div class="ce-cal-plat" [title]="p.nom + ' : ' + p.commandes + ' commande(s)'">
                       <span class="ce-pastille" [ngClass]="teinte(i)"><i class="ri-restaurant-2-line"></i></span>
@@ -104,6 +113,11 @@
                     <span class="ce-tag" [ngClass]="classeEtat(m)">
                       @if (iconeEtat(m)) { <i [class]="iconeEtat(m)"></i> }{{ libelleEtat(m) }}
                     </span>
+                    @if (etats.get(m.id)?.masque) {
+                      <button type="button" class="ce-lien-ic" title="Afficher de nouveau aux employés" aria-label="Afficher le menu" (click)="afficherMenu(m)"><i class="ri-eye-line"></i></button>
+                    } @else if (m.etat !== 'termine') {
+                      <button type="button" class="ce-lien-ic" title="Masquer aux employés (motif communiqué au prestataire)" aria-label="Masquer le menu" (click)="demanderMasquage(m)"><i class="ri-eye-off-line"></i></button>
+                    }
                     @switch (m.etat) {
                       @case ('en_service') {
                         <a class="ce-lien-ic" [routerLink]="['/cantines/retrait-commande']" [queryParams]="{ menu: m.id }" title="Ouvrir le retrait">
@@ -182,6 +196,28 @@
           </button>
         </div>
       }
+    </div>
+  </div>
+</div>
+
+
+<!-- ── Masquer un menu (motif communiqué au prestataire) ─────────── -->
+<div bsModal #masquerModal="bs-modal" class="modal fade" tabindex="-1" aria-labelledby="masquerTitre">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content ce-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="masquerTitre"><i class="ri-eye-off-line me-2"></i>Masquer le menu du {{ aMasquer ? libelleJour(aMasquer.date_menu) + ' ' + jourCourt(aMasquer.date_menu) : '' }}</h5>
+        <button type="button" class="btn-close" (click)="masquerModal.hide()" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        <p class="ce-muted">Le menu ne sera plus visible ni commandable par les employés. Le prestataire est notifié avec le motif.</p>
+        <label class="form-label" for="motif-planning">Motif <span class="text-danger">*</span></label>
+        <textarea id="motif-planning" class="form-control" rows="3" maxlength="255" [(ngModel)]="motifMasquage"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ce-btn" (click)="masquerModal.hide()">Annuler</button>
+        <button type="button" class="ce-btn ce-btn-navy" [disabled]="!motifMasquage.trim() || masquageEnvoi" (click)="masquerMenu()"><i class="ri-eye-off-line"></i>Masquer</button>
+      </div>
     </div>
   </div>
 </div>

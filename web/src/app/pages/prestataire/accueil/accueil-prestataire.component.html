@@ -1,0 +1,241 @@
+<div class="ep">
+
+  <!-- ── Salutation + agences desservies ─────────────────────── -->
+  <div class="ep-salut">
+    <div>
+      <h1>Bonjour {{ prenom }},</h1>
+      <p>{{ dateLongue }} — voici votre journée chez UbiPharm</p>
+    </div>
+    <div class="ep-salut-droite">
+      @for (ag of donnees?.agences ?? []; track ag.id) {
+        <div class="ep-ag-chip">
+          <span class="ep-ag-chip-ic"><i class="ri-building-line"></i></span>
+          <span><b>{{ ag.nom }}</b><small>{{ nombreFr(ag.nb_employes) }} employé{{ ag.nb_employes > 1 ? 's' : '' }} · {{ ag.heure_debut_service }} – {{ ag.heure_fin_service }}</small></span>
+        </div>
+      }
+      <a class="btn-ubi" routerLink="/prestataire/comptoir"><i class="ri-qr-scan-2-line"></i>Ouvrir le comptoir</a>
+    </div>
+  </div>
+
+  @if (chargement) {
+    <div class="lst-charge"><div class="spinner-border" role="status"><span class="visually-hidden">Chargement…</span></div></div>
+  }
+  @if (erreur) {
+    <div class="ep-alerte a-ro"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div>
+  }
+
+  @if (donnees; as d) {
+
+    <!-- ── Service en cours, par agence ──────────────────────── -->
+    <div class="ep-grille ep-g2">
+      @for (s of d.service_du_jour; track s.agence_id) {
+        <section class="ep-carte">
+          <div class="ep-carte-hd">
+            <span class="ep-ag"><i class="ri-building-line"></i>{{ s.agence_nom }}</span>
+            <b>Service du jour</b>
+            <small>{{ s.heure_debut_service }} – {{ s.heure_fin_service }}</small>
+            <span class="lst-tag t-ve ms-auto"><i class="ri-checkbox-blank-circle-fill"></i>{{ s.pct_servis }} % servis</span>
+          </div>
+          <div class="ep-kpis3">
+            <div><b>{{ nombreFr(s.commandees) }}</b><small>commandés</small></div>
+            <div class="vert"><b>{{ nombreFr(s.servies) }}</b><small>servis</small></div>
+            <div class="orange"><b>{{ nombreFr(s.a_servir) }}</b><small>à servir</small></div>
+          </div>
+          <div class="ep-plats-av">
+            @for (p of s.plats; track p.plat_id) {
+              <div class="ep-plat-av">
+                @if (urlMedia(p.image_url); as url) { <img class="ep-ph" [src]="url" [alt]="p.plat"> }
+                @else { <span class="ep-ph vide"><i class="ri-image-line"></i></span> }
+                <b>{{ p.plat }}</b>
+                <span class="ep-barre"><i [style.width.%]="pct(p.servies, p.commandees)"></i></span>
+                <span class="ep-nb"><b>{{ p.servies }}</b> / {{ p.commandees }}</span>
+              </div>
+            } @empty {
+              <p class="ep-muted mb-0">Aucune commande aujourd'hui dans cette agence.</p>
+            }
+          </div>
+        </section>
+      } @empty {
+        <section class="ep-carte ep-vide-carte">
+          <i class="ri-calendar-todo-line"></i>
+          <div><b>Pas de service aujourd'hui</b><small>Aucun menu du jour dans vos agences.</small></div>
+        </section>
+      }
+    </div>
+
+    <!-- ── À préparer · équipe · à faire ─────────────────────── -->
+    <div class="ep-grille ep-g3">
+      <section class="ep-carte ep-carte-t">
+        <div class="ep-carte-hd">
+          <div>
+            <b><i class="ri-list-check-2"></i>À préparer</b>
+            @if (d.a_preparer; as ap) { <small>{{ ap.libelle }} · par plat et par agence</small> }
+          </div>
+          @if (d.a_preparer; as ap) {
+            @if (ap.provisoire) {
+              <span class="lst-tag t-or ms-auto"><i class="ri-time-line"></i>Provisoire · {{ ap.libelle_limite }}</span>
+            } @else {
+              <span class="lst-tag t-ve ms-auto"><i class="ri-lock-line"></i>Quantités définitives</span>
+            }
+          }
+        </div>
+        @if (d.a_preparer; as ap) {
+          <div class="lst-table-wrap">
+            <table class="lst-table ep-table">
+              <thead>
+                <tr>
+                  <th>Plat</th>
+                  @for (ag of agencesAPreparer; track ag.id) { <th class="n">{{ ag.nom }}</th> }
+                  <th class="n">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (p of ap.plats; track p.plat_id) {
+                  <tr>
+                    <td><b>{{ p.plat }}</b></td>
+                    @for (ag of agencesAPreparer; track ag.id) { <td class="n">{{ qte(p.par_agence, ag.id) || '—' }}</td> }
+                    <td class="n"><b>{{ p.total }}</b></td>
+                  </tr>
+                }
+                <tr class="ep-tot">
+                  <td>Total</td>
+                  @for (ag of agencesAPreparer; track ag.id) { <td class="n">{{ qte(ap.totaux_par_agence, ag.id) }}</td> }
+                  <td class="n">{{ ap.total }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="ep-carte-pied">
+            <span><i class="ri-information-line"></i>{{ ap.provisoire ? 'Commandes ouvertes jusqu\'au ' + ap.libelle_limite : 'Commandes closes : quantités figées' }}</span>
+            <a class="ep-lien" routerLink="/prestataire/a-preparer"><i class="ri-printer-line"></i>Fiche de production</a>
+          </div>
+        } @else {
+          <p class="ep-muted px-3 pb-3 mb-0">Aucune commande dans les 7 prochains jours.</p>
+        }
+      </section>
+
+      <section class="ep-carte">
+        <div class="ep-carte-hd">
+          <b><i class="ri-team-line"></i>Mon équipe au comptoir</b>
+          <small class="ms-auto">aujourd'hui</small>
+        </div>
+        <ul class="ep-equipe">
+          @for (a of d.equipe.agents; track a.user_id) {
+            <li>
+              <span class="lst-av" [style.background]="couleur(a.user_id)">{{ initiales(a.nom) }}</span>
+              <span class="ep-equipe-txt">
+                <b>{{ a.nom }}</b>
+                <small>{{ a.agences.join(', ') || '—' }}@if (a.premier_retrait) { · depuis {{ a.premier_retrait }} }</small>
+              </span>
+              <b class="ep-equipe-nb">{{ a.nb_retraits }}</b>
+            </li>
+          } @empty {
+            <li class="ep-muted">Aucun retrait validé aujourd'hui.</li>
+          }
+        </ul>
+        <div class="ep-equipe-tot"><span>Retraits validés aujourd'hui</span><b>{{ d.equipe.total }}</b></div>
+      </section>
+
+      <section class="ep-carte">
+        <div class="ep-carte-hd">
+          <b><i class="ri-notification-3-line"></i>À faire</b>
+          <small class="ms-auto">{{ nbAlertes }} alerte{{ nbAlertes > 1 ? 's' : '' }}</small>
+        </div>
+        <div class="ep-alertes">
+          @for (a of d.alertes; track $index) {
+            @switch (a.type) {
+              @case ('menus_a_composer') {
+                <div class="ep-alerte a-or">
+                  <i class="ri-calendar-event-line"></i>
+                  <div><b>Menus de la semaine du {{ jourCourt(a.semaine_du) }}</b><small>{{ resumeComposer(a) }}</small></div>
+                  <a class="btn-ubi sm" routerLink="/prestataire/menus" [queryParams]="{ semaine: a.semaine_du }">Composer</a>
+                </div>
+              }
+              @case ('contestation') {
+                <div class="ep-alerte a-ro">
+                  <i class="ri-error-warning-line"></i>
+                  <div><b>Retrait contesté ({{ jourCourt(a.date_menu) }})</b>
+                    <small>{{ a.agence_nom }} · {{ a.plat }} · validé par {{ a.valide_par_nom || '—' }} à {{ a.heure_retrait }} — en examen chez UbiPharm</small></div>
+                </div>
+              }
+              @case ('releve') {
+                <div class="ep-alerte a-bl">
+                  <i class="ri-file-text-line"></i>
+                  <div><b>Relevé de {{ a.libelle }} {{ a.etat === 'cloture' ? 'émis' : 'à clôturer' }}</b>
+                    <small>{{ a.numero ? a.numero + ' · ' : '' }}{{ nombreFr(a.nb_repas) }} repas · {{ montantFr(a.montant) }}</small></div>
+                  <a class="btn-ubi sm" routerLink="/prestataire/releves">Ouvrir</a>
+                </div>
+              }
+              @case ('plat_masque') {
+                <div class="ep-alerte a-ro">
+                  <i class="ri-eye-off-line"></i>
+                  <div><b>Plat masqué par UbiPharm : {{ a.plat }}</b><small>Motif : {{ a.motif || '—' }}</small></div>
+                  <a class="btn-ubi sm" routerLink="/prestataire/plats">Voir</a>
+                </div>
+              }
+              @default {
+                <div class="ep-alerte a-bl"><i class="ri-information-line"></i><div><b>{{ a.libelle || a.type }}</b></div></div>
+              }
+            }
+          } @empty {
+            <p class="ep-muted mb-0"><i class="ri-checkbox-circle-line me-1"></i>Rien à faire pour le moment.</p>
+          }
+        </div>
+      </section>
+    </div>
+
+    <!-- ── Relevés · note ────────────────────────────────────── -->
+    <div class="ep-grille ep-g-releves">
+      <section class="ep-carte ep-carte-t">
+        <div class="ep-carte-hd">
+          <div><b><i class="ri-bank-line"></i>Relevés</b><small>Repas servis et montants, mois par mois</small></div>
+          <a class="ep-lien ms-auto" routerLink="/prestataire/releves">Tous les relevés<i class="ri-arrow-right-line"></i></a>
+        </div>
+        <div class="lst-table-wrap">
+          <table class="lst-table ep-table">
+            <thead><tr><th>Mois</th><th>Relevé</th><th class="n">Repas</th><th class="n">Montant</th><th>État</th></tr></thead>
+            <tbody>
+              @for (r of d.releves; track r.annee * 100 + r.mois) {
+                <tr>
+                  <td><b>{{ r.libelle }}</b></td>
+                  <td>{{ r.numero || '—' }}</td>
+                  <td class="n">{{ nombreFr(r.nb_repas) }}</td>
+                  <td class="n"><b>{{ montantFr(r.montant) }}</b></td>
+                  <td><span class="lst-tag" [ngClass]="classeEtat(r)">{{ libelleEtat(r) }}</span></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="ep-muted">Aucun relevé pour le moment.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="ep-pile">
+        <section class="ep-carte ep-kpi">
+          <span class="ep-kpi-ic bl"><i class="ri-star-line"></i></span>
+          <div>
+            <small>Note moyenne des employés</small>
+            <b>{{ d.note_moyenne?.note != null ? noteFr(d.note_moyenne!.note) + ' / 5' : '—' }}</b>
+            <span>{{ nombreFr(d.note_moyenne?.nb_avis) }} avis@if (d.note_moyenne?.mois) { · {{ d.note_moyenne!.mois }} }</span>
+          </div>
+        </section>
+        @if (d.releves[0]; as r) {
+          <section class="ep-carte ep-kpi">
+            <span class="ep-kpi-ic ve"><i class="ri-restaurant-line"></i></span>
+            <div>
+              <small>{{ r.libelle }} · {{ r.etat === 'cloture' ? 'clôturé' : 'provisoire' }}</small>
+              <b>{{ montantFr(r.montant) }}</b>
+              <span>{{ nombreFr(r.nb_repas) }} repas servis</span>
+            </div>
+          </section>
+        }
+        <a class="ep-carte ep-kpi ep-kpi-lien" routerLink="/prestataire/statistiques">
+          <span class="ep-kpi-ic or"><i class="ri-bar-chart-2-line"></i></span>
+          <div><small>Statistiques</small><b class="fs-6">Par plat et par agence</b><span>taux de retrait, notes</span></div>
+          <i class="ri-arrow-right-s-line ms-auto"></i>
+        </a>
+      </div>
+    </div>
+  }
+</div>

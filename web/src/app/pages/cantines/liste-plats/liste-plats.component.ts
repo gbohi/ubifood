@@ -104,6 +104,12 @@ export class ListePlatsComponent implements OnInit {
   @ViewChild('addPlat', { static: false }) addPlat?: ModalDirective;
   @ViewChild('deleteRecordModal', { static: false }) deleteRecordModal?: ModalDirective;
   @ViewChild('viewPlat', { static: false }) viewPlat?: ModalDirective;
+  @ViewChild('masquerModal', { static: false }) masquerModal?: ModalDirective;
+
+  // ── Masquage par UbiPharm (plats des prestataires) ──────────
+  aMasquer: PlatModel | null = null;
+  motifMasquage = '';
+  masquageEnvoi = false;
   @ViewChild('mainContainer', { static: false }) mainContainer?: ElementRef;
   @ViewChild(DropzoneComponent, { static: false }) dropzone?: DropzoneComponent;
 
@@ -508,6 +514,36 @@ export class ListePlatsComponent implements OnInit {
     const url: string | undefined = img?.url ?? img?.image;
     if (!url) return null;
     return /^https?:\/\//.test(url) ? url : this.getFullUrl(url);
+  }
+
+  demanderMasquage(p: PlatModel): void {
+    this.aMasquer = p;
+    this.motifMasquage = '';
+    this.masquerModal?.show();
+  }
+
+  masquerPlat(): void {
+    const p = this.aMasquer;
+    const motif = this.motifMasquage.trim();
+    if (!p?.id || !motif || this.masquageEnvoi) return;
+    this.masquageEnvoi = true;
+    this.http.post(`${environment.apiUrl}/api/api/plats/${p.id}/masquer/`, { motif }).subscribe({
+      next: () => {
+        this.masquageEnvoi = false;
+        this.masquerModal?.hide();
+        this.toastService.success(`« ${p.nom} » est masqué : il ne peut plus être mis au menu.`, 'Succès');
+        this.loadData(this.currentPage);
+      },
+      error: err => { this.masquageEnvoi = false; this.toastService.error(typeof err === 'string' ? err : 'Action impossible.', 'Erreur'); },
+    });
+  }
+
+  afficherPlat(p: PlatModel): void {
+    if (!p.id) return;
+    this.http.post(`${environment.apiUrl}/api/api/plats/${p.id}/afficher/`, {}).subscribe({
+      next: () => { this.toastService.success(`« ${p.nom} » peut de nouveau être mis au menu.`, 'Succès'); this.loadData(this.currentPage); },
+      error: err => this.toastService.error(typeof err === 'string' ? err : 'Action impossible.', 'Erreur'),
+    });
   }
 
   getFullUrl(path: string): string {

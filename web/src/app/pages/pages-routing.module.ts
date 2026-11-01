@@ -1,7 +1,7 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { RoleGuard } from '../core/guards/role.guard';
-import { ADMINS } from '../core/helpers/roles';
+import { ADMINS, PRESTATAIRES } from '../core/helpers/roles';
 
 const routes: Routes = [
   {
@@ -18,6 +18,11 @@ const routes: Routes = [
   },
   {
     path: 'cantines', loadChildren: () => import('./cantines/cantines.module').then(m => m.CantinesModule)
+  },
+  {
+    // Espace prestataire (responsable et agents de comptoir) ; rôle vérifié route par route
+    path: 'prestataire', loadChildren: () => import('./prestataire/prestataire.module').then(m => m.PrestataireModule),
+    canActivate: [RoleGuard], data: { roles: PRESTATAIRES }
   },
 ];
 

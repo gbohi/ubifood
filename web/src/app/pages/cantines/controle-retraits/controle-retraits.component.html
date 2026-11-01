@@ -1,0 +1,231 @@
+<div class="lst ep ep-controle">
+  <app-page-entete titre="Contrôle des retraits" icone="ri-shield-check-line" [fil]="[{label: 'Cantine'}]"
+                   sousTitre="Les retraits sont validés au comptoir par les agents du prestataire : vous contrôlez, vous tranchez les contestations">
+    <input type="date" class="form-control ep-select" [(ngModel)]="date" (change)="charger()" aria-label="Jour contrôlé">
+    <select class="form-select ep-select" [(ngModel)]="agence" (change)="charger()" aria-label="Agence">
+      <option value="">Toutes les agences</option>
+      @for (a of agences; track a.id) { <option [ngValue]="a.id">{{ a.nom_agence }}</option> }
+    </select>
+    <a class="btn-ubi" routerLink="/cantines/retrait-commande"><i class="ri-qr-scan-2-line"></i><span class="pe-lib">Retrait de secours</span></a>
+  </app-page-entete>
+
+  @if (erreur) { <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+  @if (chargement && !donnees) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+
+  @if (donnees; as d) {
+    <div class="ep-kpis-ligne ep-kpis-4" [class.ep-attente]="chargement">
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-check-double-line"></i></span>
+        <div><small>Retraits du jour</small><b>{{ d.chiffres.retraits }}</b><span>{{ d.chiffres.par_prestataire }} par le prestataire · {{ d.chiffres.en_secours }} en secours UbiPharm</span></div></div>
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ro"><i class="ri-feedback-line"></i></span>
+        <div><small>Contestations à traiter</small><b>{{ d.chiffres.contestations_a_traiter }}</b><span>dont {{ d.chiffres.contestations_du_jour }} sur ce jour</span></div></div>
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-alarm-warning-line"></i></span>
+        <div><small>Anomalies détectées</small><b>{{ d.chiffres.anomalies }}</b><span>rythme anormal · hors horaires · saisies</span></div></div>
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-arrow-go-back-line"></i></span>
+        <div><small>Retraits annulés en {{ moisCourant }}</small><b>{{ d.chiffres.retraits_annules_mois }}</b><span>{{ d.chiffres.annulable_jusqu_a_cloture ? 'annulables jusqu\'à la clôture du mois' : 'mois clôturé' }}</span></div></div>
+    </div>
+
+    <!-- ── Retraits du jour par agent ───────────────────────── -->
+    <div class="lst-carte">
+      <div class="lst-barre bord">
+        <div>
+          <b class="ep-titre-carte"><i class="ri-store-2-line"></i>Retraits du {{ titreJour }} par agent</b>
+          <small class="ep-muted d-block">Chaque retrait enregistre l'agent qui l'a validé et l'heure exacte</small>
+        </div>
+      </div>
+      <div class="lst-table-wrap">
+        <table class="lst-table ep-table-controle">
+          <thead><tr><th>Agent</th><th>Prestataire</th><th>Agence</th><th class="text-end">Retraits</th><th>Plage</th><th>Rythme (par 5 min)</th><th>Contrôle</th><th class="lst-c-act"></th></tr></thead>
+          <tbody>
+            @for (a of d.agents; track cle(a)) {
+              <tr>
+                <td><div class="lst-qui"><span class="lst-av" [style.background]="couleur(a.agent_id)">{{ initiales(a.agent_nom) }}</span><b>{{ a.agent_nom }}</b></div></td>
+                <td [class.ep-muted]="a.secours">{{ a.prestataire }}</td>
+                <td><div class="lst-tags">@for (ag of a.agences; track ag) { <span class="lst-tag t-bl">{{ ag }}</span> }</div></td>
+                <td class="text-end"><b>{{ a.nb_retraits }}</b></td>
+                <td class="lst-nowrap">{{ a.premier || '—' }}@if (a.dernier && a.dernier !== a.premier) { → {{ a.dernier }} }</td>
+                <td>
+                  @if (graphes.get(cle(a)); as g) {
+                    <apx-chart [series]="g.series" [chart]="g.chart" [colors]="g.colors" [plotOptions]="g.plotOptions"
+                               [xaxis]="g.xaxis" [tooltip]="g.tooltip" [legend]="g.legend" dir="ltr"></apx-chart>
+                  } @else { <span class="ep-muted">—</span> }
+                </td>
+                <td>
+                  <div class="lst-tags">
+                    @if (!a.anomalies.length && !a.nb_contestations) { <span class="lst-tag t-ve">RAS</span> }
+                    @for (an of a.anomalies; track $index) { <span class="lst-tag" [ngClass]="an.type === 'rafale' ? 't-ro' : 't-or'" [title]="an.description">{{ an.description }}</span> }
+                    @if (a.nb_contestations) { <span class="lst-tag t-ro">{{ a.nb_contestations }} contestation{{ a.nb_contestations > 1 ? 's' : '' }}</span> }
+                    @if (a.secours) { <span class="lst-tag t-gr">accès de secours</span> }
+                  </div>
+                </td>
+                <td class="lst-c-act">
+                  @if (a.retraits.length) {
+                    <button type="button" class="ep-lien" (click)="basculer(a)" [attr.aria-expanded]="ouverts.has(cle(a))">Détail<i [class]="ouverts.has(cle(a)) ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i></button>
+                  }
+                </td>
+              </tr>
+              @if (ouverts.has(cle(a))) {
+                <tr class="ep-detail">
+                  <td colspan="8">
+                    <table class="ep-sous-table">
+                      <thead><tr><th>Heure</th><th>Employé</th><th>Matricule</th><th>Agence</th><th>Plat</th><th>Mode</th><th></th></tr></thead>
+                      <tbody>
+                        @for (r of a.retraits; track r.id) {
+                          <tr>
+                            <td><b>{{ r.heure }}</b></td><td>{{ r.user_nom }}</td><td>{{ r.matricule }}</td><td>{{ r.agence_nom }}</td>
+                            <td>{{ r.plats.join(', ') }}</td>
+                            <td><span class="lst-tag" [ngClass]="r.mode === 'saisie' ? 't-or' : r.mode === 'scan' ? 't-gr' : 't-gr'">{{ libelleMode(r.mode) }}</span></td>
+                            <td class="text-end">
+                              @if (d.chiffres.annulable_jusqu_a_cloture) {
+                                <button type="button" class="btn-ubi sm rouge" (click)="demanderAnnulation(r)"><i class="ri-arrow-go-back-line"></i>Annuler</button>
+                              }
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              }
+            }
+            @if (!d.agents.length) {
+              <tr><td colspan="8"><div class="lst-vide"><i class="ri-qr-scan-2-line"></i><h5>Aucun retrait ce jour-là</h5></div></td></tr>
+            }
+            @if (d.agents.length) {
+              <tr class="ep-tot">
+                <td colspan="3">Total du jour</td><td class="text-end">{{ d.chiffres.retraits }}</td>
+                <td colspan="4" class="ep-muted fw-normal">sur {{ d.chiffres.commandes }} commandes · {{ d.chiffres.a_servir }} restent à servir</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="ep-grille ep-g2">
+      <!-- ── Contestations ─────────────────────────────────── -->
+      <section class="ep-carte">
+        <div class="ep-carte-hd">
+          <b><i class="ri-feedback-line ep-c-rouge"></i>Contestations à traiter</b>
+          <small class="ms-auto">{{ d.contestations.length }} en attente</small>
+        </div>
+        <div class="ep-contests">
+          @for (c of d.contestations; track c.id) {
+            <article class="ep-contest" [class.ep-contest-rejet]="rejetEnCours === c.id">
+              <header>
+                <span class="lst-av" [style.background]="couleur(c.user)">{{ initiales(c.user_nom) }}</span>
+                <div>
+                  <b>{{ c.user_nom }} · {{ c.agence_nom }}</b>
+                  <small>« {{ c.motif_libelle }} » — envoyée le {{ jourHeure(c.created_at) }}</small>
+                </div>
+                @if (!c.anciennete_jours) { <span class="lst-tag t-ro ms-auto">Nouvelle</span> }
+                @else { <span class="lst-tag t-or ms-auto">{{ c.anciennete_jours }} jour{{ c.anciennete_jours > 1 ? 's' : '' }}</span> }
+              </header>
+              @if (c.commentaire) { <blockquote>« {{ c.commentaire }} »</blockquote> }
+              <dl>
+                <div><dt>Repas</dt><dd>{{ c.plat }} · {{ jourCourt(c.date_menu) }}</dd></div>
+                <div><dt>Validé à</dt><dd>{{ heure(c.date_retrait) || '—' }}</dd></div>
+                <div><dt>Par</dt><dd>{{ c.retrait_valide_par_nom || '—' }}</dd></div>
+                <div><dt>Mode</dt><dd>{{ libelleMode(c.retrait_mode) }}</dd></div>
+                @if (c.rafale) { <div><dt>Rafale</dt><dd class="ep-c-rouge">{{ c.rafale.nb }} retraits {{ c.rafale.debut }} – {{ c.rafale.fin }}</dd></div> }
+                <div><dt>Matricule</dt><dd>{{ c.matricule }}</dd></div>
+              </dl>
+              @if (rejetEnCours === c.id) {
+                <label class="ep-lab" [for]="'rejet-' + c.id">Commentaire de rejet (envoyé à l'employé) <span class="text-danger">*</span></label>
+                <textarea [id]="'rejet-' + c.id" class="form-control mb-2" rows="3" [(ngModel)]="commentaireRejet"
+                          placeholder="Ex. Votre badge a été scanné au comptoir du Siège à 12:20 ; aucune absence n'est enregistrée ce jour-là."></textarea>
+                <div class="ep-contest-act">
+                  <button type="button" class="btn-ubi navy sm" [disabled]="envoi || !commentaireRejet.trim()" (click)="rejeter(c)"><i class="ri-check-line"></i>Confirmer le rejet</button>
+                  <button type="button" class="btn-ubi sm" (click)="rejetEnCours = null">Retour</button>
+                </div>
+              } @else {
+                <div class="ep-contest-act">
+                  <button type="button" class="btn-ubi sm ep-btn-rouge-plein" [disabled]="envoi" (click)="demanderAcceptation(c)"><i class="ri-arrow-go-back-line"></i>Annuler le retrait</button>
+                  <button type="button" class="btn-ubi sm" (click)="ouvrirRejet(c)"><i class="ri-close-line"></i>Rejeter la contestation</button>
+                </div>
+              }
+            </article>
+          } @empty {
+            <p class="ep-muted mb-0"><i class="ri-checkbox-circle-line me-1"></i>Aucune contestation en attente.</p>
+          }
+        </div>
+        <p class="ep-muted small mt-3 mb-0"><i class="ri-information-line"></i> Annuler un retrait : le repas repasse « non retiré » et sort du relevé du prestataire. Possible jusqu'à la clôture du mois.</p>
+      </section>
+
+      <!-- ── Anomalies + décisions ─────────────────────────── -->
+      <section class="ep-carte">
+        <div class="ep-carte-hd">
+          <b><i class="ri-alarm-warning-line ep-c-orange"></i>Anomalies détectées</b>
+          <small class="ms-auto">règles automatiques</small>
+        </div>
+        <ul class="ep-anomalies">
+          @for (an of d.anomalies; track $index) {
+            <li>
+              <span class="ep-anom-ic" [ngClass]="an.type"><i [class]="iconeAnomalie(an.type)"></i></span>
+              <div>
+                <b>{{ an.libelle }} · {{ an.agent_nom }}@if (an.agence_nom) { ({{ an.agence_nom }}) }</b>
+                <small>{{ an.description }}</small>
+              </div>
+            </li>
+          } @empty {
+            <li class="ep-muted"><i class="ri-checkbox-circle-line me-1"></i>Aucune anomalie ce jour-là.</li>
+          }
+          @if (d.decisions_mois.length) {
+            <li>
+              <span class="ep-anom-ic"><i class="ri-history-line"></i></span>
+              <div>
+                <b>Décisions du mois · {{ moisCourant }}</b>
+                @for (c of d.decisions_mois; track c.id) {
+                  <small>{{ jourCourt(c.date_traitement) }} — {{ c.user_nom }} ({{ c.plat }}, {{ jourCourt(c.date_menu) }}) :
+                    <b [class.ep-c-vert]="c.statut === 'acceptee'" [class.ep-c-rouge]="c.statut === 'rejetee'">{{ c.statut_libelle | lowercase }}</b>
+                    par {{ c.traite_par_nom || '—' }}@if (c.commentaire_traitement) { : « {{ c.commentaire_traitement }} » }</small>
+                }
+                <small>Toutes les décisions sont tracées (qui, quand, motif) et visibles par le prestataire.</small>
+              </div>
+            </li>
+          }
+        </ul>
+        <p class="ep-regles"><b>Règles actives</b> : plus de {{ d.regles.rafale_nb }} retraits en {{ d.regles.rafale_secondes / 60 }} min par un agent ·
+          retrait hors horaires de l'agence (par défaut {{ d.regles.horaires_defaut.debut }} – {{ d.regles.horaires_defaut.fin }}) ·
+          même matricule saisi à la main plus de {{ d.regles.saisies_max_mois }} fois dans le mois.</p>
+      </section>
+    </div>
+  }
+</div>
+
+<!-- ── Accepter une contestation ──────────────────────────────── -->
+<div bsModal #accepterModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4">
+        <div class="text-center"><i class="ri-arrow-go-back-line text-danger display-5"></i>
+          <h5 class="mt-3">Accepter la contestation et annuler le retrait ?</h5>
+          <p class="text-muted">Le repas de {{ aAccepter?.user_nom }} ({{ aAccepter?.plat }}, {{ jourCourt(aAccepter?.date_menu) }}) repasse « non retiré »,
+            sort du relevé du prestataire et l'employé est prévenu.</p>
+        </div>
+        <label class="ep-lab" for="acc-comm">Commentaire (facultatif, envoyé à l'employé)</label>
+        <textarea id="acc-comm" class="form-control mb-3" rows="2" [(ngModel)]="commentaireAcceptation"></textarea>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn-ubi" (click)="accepterModal.hide()">Retour</button>
+          <button type="button" class="btn-ubi ep-btn-rouge-plein" [disabled]="envoi" (click)="accepter()">Oui, annuler le retrait</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Annuler un retrait ─────────────────────────────────────── -->
+<div bsModal #annulerModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4 text-center">
+        <i class="ri-error-warning-line text-warning display-5"></i>
+        <h5 class="mt-3">Annuler ce retrait ?</h5>
+        <p class="text-muted mb-4">Le repas de « {{ retraitAAnnuler?.user_nom }} » ({{ retraitAAnnuler?.heure }}) repassera « en attente » et l'employé sera prévenu.</p>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn-ubi" (click)="annulerModal.hide()">Non</button>
+          <button type="button" class="btn-ubi ep-btn-rouge-plein" [disabled]="envoi" (click)="annulerRetrait()">Oui, annuler le retrait</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

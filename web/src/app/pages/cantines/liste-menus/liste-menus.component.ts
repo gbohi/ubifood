@@ -110,6 +110,12 @@ export class ListeMenusComponent implements OnInit {
   @ViewChild('addMenu', { static: false }) addMenu?: ModalDirective;
   @ViewChild('deleteRecordModal', { static: false }) deleteRecordModal?: ModalDirective;
   @ViewChild('viewMenu', { static: false }) viewMenu?: ModalDirective;
+  @ViewChild('masquerModal', { static: false }) masquerModal?: ModalDirective;
+
+  // ── Masquage (menus publiés par les prestataires) ───────────
+  aMasquer: MenulistModel | null = null;
+  motifMasquage = '';
+  masquageEnvoi = false;
   @ViewChild('mainContainer', { static: false }) mainContainer?: ElementRef;
 
   // ── DestroyRef ───────────────────────────────────────────────
@@ -448,6 +454,41 @@ export class ListeMenusComponent implements OnInit {
   }
 
   // ── Utilitaires ─────────────────────────────────────────────
+
+  /** Prestataire auteur des plats du menu (menu publié depuis l'espace prestataire) */
+  prestataireDuMenu(m: MenulistModel): string | null {
+    return m.menu_plats?.find(mp => mp.plat?.prestataire_libelle)?.plat.prestataire_libelle ?? null;
+  }
+
+  demanderMasquage(m: MenulistModel): void {
+    this.aMasquer = m;
+    this.motifMasquage = '';
+    this.masquerModal?.show();
+  }
+
+  masquerMenu(): void {
+    const m = this.aMasquer;
+    const motif = this.motifMasquage.trim();
+    if (!m?.id || !motif || this.masquageEnvoi) return;
+    this.masquageEnvoi = true;
+    this.http.post(`${this.apiUrl}/menus/${m.id}/masquer/`, { motif }).subscribe({
+      next: () => {
+        this.masquageEnvoi = false;
+        this.masquerModal?.hide();
+        this.toastService.success('Menu masqué aux employés : le prestataire est notifié.', 'Succès');
+        this.loadData(this.currentPage);
+      },
+      error: err => { this.masquageEnvoi = false; this.toastService.error(typeof err === 'string' ? err : 'Action impossible.', 'Erreur'); },
+    });
+  }
+
+  afficherMenu(m: MenulistModel): void {
+    if (!m.id) return;
+    this.http.post(`${this.apiUrl}/menus/${m.id}/afficher/`, {}).subscribe({
+      next: () => { this.toastService.success('Menu de nouveau visible par les employés.', 'Succès'); this.loadData(this.currentPage); },
+      error: err => this.toastService.error(typeof err === 'string' ? err : 'Action impossible.', 'Erreur'),
+    });
+  }
 
   getFullUrl(path: string): string {
     return this.baseUrl + path;

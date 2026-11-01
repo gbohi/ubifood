@@ -1,0 +1,61 @@
+<div class="lst ep ep-liste-jour">
+  <app-page-entete titre="Liste du jour" icone="ri-file-list-3-line" [fil]="[{label: 'Espace prestataire'}]"
+                   [sousTitre]="'Commandes du ' + titreDate + ' — nom et plat uniquement'">
+    <button type="button" class="btn-ubi" [disabled]="!liste?.lignes?.length" (click)="imprimer()"><i class="ri-printer-line"></i><span class="pe-lib">Imprimer la liste</span></button>
+    <a class="btn-ubi vert" routerLink="/prestataire/comptoir"><i class="ri-qr-scan-2-line"></i><span class="pe-lib">Comptoir</span></a>
+  </app-page-entete>
+
+  <div class="ep-kpis-ligne">
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-shopping-basket-2-line"></i></span><div><small>Commandés</small><b>{{ nombreFr(liste?.total) }}</b></div></div>
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-check-double-line"></i></span><div><small>Retirés</small><b>{{ nombreFr(liste?.retires) }}</b></div></div>
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-time-line"></i></span><div><small>À servir</small><b>{{ nombreFr(liste?.a_servir) }}</b></div></div>
+  </div>
+
+  <div class="lst-carte">
+    <div class="lst-barre">
+      <div class="lst-chips" role="group" aria-label="Statut">
+        @for (s of statuts; track s.cle) {
+          <button type="button" class="lst-chip" [class.on]="statut === s.cle" (click)="choisirStatut(s.cle)">{{ s.libelle }}</button>
+        }
+      </div>
+      <div class="lst-filtres">
+        <div class="lst-recherche">
+          <i class="ri-search-line"></i>
+          <input type="search" placeholder="Nom, matricule ou plat" aria-label="Rechercher" [(ngModel)]="recherche" (input)="rechercher()" (search)="rechercher()">
+        </div>
+        @if ((contexte?.agences?.length ?? 0) > 1) {
+          <select class="form-select" [(ngModel)]="agence" (change)="charger()" aria-label="Agence">
+            <option value="">Toutes mes agences</option>
+            @for (a of contexte!.agences; track a.id) { <option [ngValue]="a.id">{{ a.nom }}</option> }
+          </select>
+        }
+        @if (!agent) {
+          <input type="date" class="form-control" [(ngModel)]="date" (change)="charger()" aria-label="Date du service">
+        }
+      </div>
+    </div>
+
+    @if (erreur) { <div class="ep-alerte a-ro mx-3 mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+
+    <div class="lst-table-wrap lst-cartes-wrap">
+      <table class="lst-table lst-cartes">
+        <thead><tr><th>Employé</th><th>Plat</th><th>Agence</th><th>Statut</th><th>Validé par</th></tr></thead>
+        <tbody>
+          @for (l of liste?.lignes ?? []; track l.commande_id) {
+            <tr>
+              <td class="lst-c-principal"><b>{{ l.nom_complet }}</b><small class="d-block">{{ l.matricule }}</small></td>
+              <td data-label="Plat">{{ l.plat }}</td>
+              <td data-label="Agence"><span class="lst-tag t-bl">{{ l.agence }}</span></td>
+              <td data-label="Statut"><span class="lst-tag" [ngClass]="statutLigne(l.statut).classe">{{ statutLigne(l.statut).libelle }}@if (l.heure_retrait) { · {{ l.heure_retrait }} }</span></td>
+              <td data-label="Validé par">{{ l.valide_par_nom || '' }}</td>
+            </tr>
+          }
+          @if (!chargement && !erreur && !(liste?.lignes?.length)) {
+            <tr class="lst-l-vide"><td colspan="5" class="lst-c-plein"><div class="lst-vide"><i class="ri-file-list-3-line"></i><h5>Aucune commande</h5><p>Aucune ligne ne correspond pour ce jour.</p></div></td></tr>
+          }
+        </tbody>
+      </table>
+      @if (chargement) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+    </div>
+  </div>
+</div>

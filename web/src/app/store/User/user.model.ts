@@ -21,6 +21,9 @@ export interface UserModel {
   photo_url?:        string | null;
   // Groupes Django
   groups?:           number[];
+  /** Espace prestataire : prestataire du compte (rôles prestataire / agent_comptoir) */
+  prestataire?:      number | null;
+  prestataire_libelle?: string | null;
   // Listes complètes (historique) — utilisées dans le détail / modification
   user_services?:          any[];
   user_agences?:           any[];

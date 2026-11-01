@@ -7,6 +7,7 @@
       <p>Scannez le badge de l'agent, vérifiez le plat, validez.</p>
     </div>
     <div class="ce-btns">
+      <a class="ce-btn" routerLink="/cantines/controle-retraits"><i class="ri-shield-check-line"></i>Contrôle des retraits</a>
       <button type="button" class="ce-btn" (click)="basculerPleinEcran()">
         <i [class]="pleinEcran ? 'ri-fullscreen-exit-line' : 'ri-fullscreen-line'"></i>
         {{ pleinEcran ? 'Quitter le mode comptoir' : 'Mode plein écran comptoir' }}
@@ -214,7 +215,7 @@
 
       <div class="ce-carte">
         <h3><i class="ri-history-line"></i>Derniers retraits
-          <small>{{ service?.annulable === false ? 'mois clôturé' : 'annulables' }}</small>
+          <small>validé par · {{ service?.annulable === false ? 'mois clôturé' : 'annulables' }}</small>
         </h3>
         <ul class="ce-fil">
           @for (r of service?.derniers ?? []; track r.id) {
@@ -224,7 +225,10 @@
                 <b>{{ r.user_nom }}</b>
                 <small>{{ platsRetires(r) }}</small>
               </div>
-              <span class="ce-fil-h">{{ heure(r.date_retrait) }}</span>
+              <span class="ce-fil-h ep-fil-droite">
+                {{ heure(r.date_retrait) }}
+                @if (r.valide_par_nom) { <small title="Validé par">{{ r.valide_par_nom }}</small> }
+              </span>
               @if (service?.annulable) {
                 <button type="button" class="ce-lien-ic" title="Annuler ce retrait" aria-label="Annuler ce retrait"
                         (click)="demanderAnnulation(r)"><i class="ri-arrow-go-back-line"></i></button>

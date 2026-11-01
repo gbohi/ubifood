@@ -2,7 +2,7 @@ import { Component, ElementRef, EventEmitter, HostListener, Output, ViewChild } 
 
 import { MenuItem } from './menu.model';
 import { MENU } from './menu';
-import { filtrerMenu } from '../../core/helpers/roles';
+import { estAgentComptoir, estPrestataire, filtrerMenu } from '../../core/helpers/roles';
 import { TokenStorageService } from '../../core/services/token-storage.service';
 import { Router, NavigationEnd } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
@@ -19,6 +19,8 @@ export class SidebarComponent {
   @ViewChild('sideMenu') sideMenu!: ElementRef;
   @Output() mobileMenuButtonClicked = new EventEmitter();
   lastroute: any;
+  /** Espace prestataire : carte du prestataire en tête du menu */
+  espacePrestataire: { libelle: string; sous: string } | null = null;
 
   constructor(private router: Router, public translate: TranslateService, private tokenStorage: TokenStorageService) {
     translate.setDefaultLang('fr');
@@ -26,7 +28,14 @@ export class SidebarComponent {
 
   ngOnInit(): void {
     // Menu Items
-    this.menuItems = filtrerMenu(MENU, this.tokenStorage.getUser());
+    const user = this.tokenStorage.getUser();
+    this.menuItems = filtrerMenu(MENU, user);
+    if (estPrestataire(user)) {
+      this.espacePrestataire = {
+        libelle: user?.prestataire_libelle || 'Prestataire',
+        sous: estAgentComptoir(user) ? 'Comptoir' : 'Espace prestataire',
+      };
+    }
 
     this.router.events.subscribe((event) => {
       if (document.documentElement.getAttribute('data-layout') == 'vertical' || document.documentElement.getAttribute('data-layout') == 'horizontal') {

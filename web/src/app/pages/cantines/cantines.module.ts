@@ -44,6 +44,7 @@ import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
 import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.component';
 import { StatistiquesComponent } from './statistiques/statistiques.component';
 import { StatBlocComponent } from './statistiques/stat-bloc.component';
+import { ControleRetraitsComponent } from './controle-retraits/controle-retraits.component';
 
 // Graphiques (page Statistiques)
 import { NgApexchartsModule } from 'ng-apexcharts';
@@ -70,7 +71,8 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     OngletPrestatairesComponent,
     AvisPlatsComponent,
     AccueilEmployeComponent,
-    StatistiquesComponent
+    StatistiquesComponent,
+    ControleRetraitsComponent
   ],
   imports: [
     CommonModule,

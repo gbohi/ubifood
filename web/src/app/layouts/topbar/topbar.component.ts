@@ -4,7 +4,7 @@ import { ToastrService } from 'ngx-toastr';
 import { environment } from 'src/environments/environment';
 import { DOCUMENT } from '@angular/common';
 import { LanguageService } from 'src/app/core/services/language.service';
-import { GESTIONNAIRES, aUnRole, rolesUtilisateur } from 'src/app/core/helpers/roles';
+import { GESTIONNAIRES, LIBELLES_ROLES, aUnRole, estPrestataire, rolesUtilisateur } from 'src/app/core/helpers/roles';
 
 import { ModalDirective } from 'ngx-bootstrap/modal';
 import { RootReducerState } from 'src/app/store';
@@ -12,11 +12,10 @@ import { Store } from '@ngrx/store';
 import { logout } from 'src/app/store/Authentication/authentication.actions';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 
-const LIBELLES_ROLES: Record<string, string> = {
-  super_admin:  'Super administrateur',
-  admin:        'Administrateur',
-  gestionnaire: 'Gestionnaire',
-  employe:      'Employé',
+/** Libellés courts sous le nom (espace prestataire : le prestataire est affiché à côté) */
+const LIBELLES_COURTS: Record<string, string> = {
+  prestataire:    'Responsable',
+  agent_comptoir: 'Agent de comptoir',
 };
 
 /** Raccourcis du menu « Liens utiles » (mêmes droits que le menu latéral) */
@@ -57,8 +56,13 @@ export class TopbarComponent {
   /** Rôle le plus élevé de l'utilisateur */
   get roleAffiche(): string {
     const roles = rolesUtilisateur(this.userData);
-    const role = ['super_admin', 'admin', 'gestionnaire', 'employe'].find(r => roles.includes(r));
-    return role ? LIBELLES_ROLES[role] : 'Utilisateur';
+    const role = ['super_admin', 'admin', 'gestionnaire', 'prestataire', 'agent_comptoir', 'employe'].find(r => roles.includes(r));
+    return role ? (LIBELLES_COURTS[role] ?? LIBELLES_ROLES[role]) : 'Utilisateur';
+  }
+
+  /** Espace prestataire : nom du prestataire affiché dans la barre du haut */
+  get prestataireAffiche(): string | null {
+    return estPrestataire(this.userData) ? (this.userData?.prestataire_libelle || 'Prestataire') : null;
   }
 
   @Output() mobileMenuButtonClicked = new EventEmitter();

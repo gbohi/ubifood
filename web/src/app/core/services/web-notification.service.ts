@@ -150,6 +150,20 @@ export class WebNotificationService {
         case 'rappel_48h':
           this.toastr.warning(body, titre, { timeOut: 6000 });
           break;
+        // Espace prestataire / contrôle des retraits
+        case 'retrait_annule':
+          this.toastr.warning(body, titre, { timeOut: 6000 });
+          break;
+        case 'contestation_nouvelle':   // gestionnaires : un employé conteste un retrait
+          this.toastr.warning(body, titre, { timeOut: 8000, progressBar: true });
+          break;
+        case 'contestation_decidee':    // employé : contestation acceptée ou rejetée
+          this.toastr.info(body, titre, { timeOut: 8000 });
+          break;
+        case 'menu_corrige':            // responsable du prestataire : correction d'UbiPharm
+        case 'plat_masque':
+          this.toastr.warning(body, titre, { timeOut: 8000 });
+          break;
         default:
           this.toastr.info(body, titre, { timeOut: 4000 });
       }

@@ -4,7 +4,7 @@
 // Le backend applique les mêmes règles : ce fichier sert uniquement à
 // ne pas afficher de pages / menus inaccessibles à l'utilisateur.
 
-export type Role = 'super_admin' | 'admin' | 'gestionnaire' | 'employe';
+export type Role = 'super_admin' | 'admin' | 'gestionnaire' | 'employe' | 'prestataire' | 'agent_comptoir';
 
 export const ADMINS: Role[] = ['super_admin', 'admin'];
 
@@ -14,11 +14,43 @@ export const LIBELLES_ROLES: Record<string, string> = {
   admin:        'Administrateur',
   gestionnaire: 'Gestionnaire',
   employe:      'Employé',
+  prestataire:    'Prestataire (responsable)',
+  agent_comptoir: 'Agent de comptoir',
 };
 export const GESTIONNAIRES: Role[] = ['super_admin', 'admin', 'gestionnaire'];
 
 /** Page d'accueil d'un utilisateur sans droit de gestion */
 export const ACCUEIL_EMPLOYE = '/cantines/accueil';
+
+/**
+ * Comptes de l'espace prestataire (responsable et agents de comptoir).
+ * Ils sont cloisonnés : seules les pages /prestataire/… leur sont ouvertes
+ * (le serveur refuse toute autre route avec un 403).
+ */
+export const PRESTATAIRES: Role[] = ['prestataire', 'agent_comptoir'];
+/** Responsable du prestataire : tout l'espace prestataire */
+export const RESPONSABLES_PRESTATAIRE: Role[] = ['prestataire'];
+
+/** Préfixe des adresses de l'espace prestataire */
+export const ESPACE_PRESTATAIRE = '/prestataire';
+export const ACCUEIL_PRESTATAIRE = '/prestataire/accueil';
+export const ACCUEIL_COMPTOIR = '/prestataire/comptoir';
+
+export function estPrestataire(user: any): boolean {
+  return aUnRole(user, PRESTATAIRES);
+}
+
+/** Agent de comptoir seulement (menu réduit : Comptoir + Liste du jour) */
+export function estAgentComptoir(user: any): boolean {
+  return aUnRole(user, ['agent_comptoir']) && !aUnRole(user, ['prestataire']);
+}
+
+/** Page d'arrivée de l'utilisateur selon son rôle */
+export function accueilUtilisateur(user: any): string {
+  if (estAgentComptoir(user)) return ACCUEIL_COMPTOIR;
+  if (estPrestataire(user)) return ACCUEIL_PRESTATAIRE;
+  return estGestionnaire(user) ? '/' : ACCUEIL_EMPLOYE;
+}
 
 /** Rôles de l'utilisateur stocké après connexion (réponse de /users/me/) */
 export function rolesUtilisateur(user: any): string[] {

@@ -1,0 +1,171 @@
+<div class="lst ep ep-ecran">
+  <app-page-entete titre="À préparer" icone="ri-list-check-2" [fil]="[{label: 'Espace prestataire', lien: '/prestataire/accueil'}]"
+                   sousTitre="Quantités par jour, par plat et par agence — définitives après l'heure limite de commande">
+    <button type="button" class="btn-ubi" [disabled]="!donnees?.jours?.length" (click)="exporter()"><i class="ri-file-excel-2-line ep-c-vert"></i><span class="pe-lib">Excel</span></button>
+    <button type="button" class="btn-ubi navy" [disabled]="!jourParDefaut" (click)="imprimer()"><i class="ri-printer-line"></i><span class="pe-lib">Fiche de production</span></button>
+  </app-page-entete>
+
+  <div class="ep-barre-menus">
+    <div class="ep-onglets" role="tablist">
+      <button type="button" class="ep-onglet on" role="tab" aria-selected="true"><i class="ri-list-check-2"></i>Quantités</button>
+      <a class="ep-onglet" role="tab" routerLink="/prestataire/liste-du-jour"><i class="ri-user-line"></i>Liste nominative (jour de service)</a>
+    </div>
+    <div class="ep-semaine-nav">
+      <select class="form-select ep-select" [(ngModel)]="agence" (change)="charger()" aria-label="Agence">
+        <option value="">Toutes mes agences</option>
+        @for (a of contexte?.agences ?? []; track a.id) { <option [ngValue]="a.id">{{ a.nom }}</option> }
+      </select>
+      <button type="button" class="lst-ic" aria-label="Période précédente" (click)="decaler(-1)"><i class="ri-arrow-left-s-line"></i></button>
+      <b>{{ titrePeriode }}</b>
+      <button type="button" class="lst-ic" aria-label="Période suivante" (click)="decaler(1)"><i class="ri-arrow-right-s-line"></i></button>
+    </div>
+  </div>
+
+  @if (erreur) { <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+  @if (chargement && !donnees) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+
+  @if (donnees; as d) {
+    <div class="ep-grille ep-g3 ep-jours-prep" [class.ep-attente]="chargement">
+      @for (j of d.jours; track j.date) {
+        <section class="ep-carte ep-carte-t">
+          <div class="ep-carte-hd">
+            <b class="text-capitalize">{{ j.libelle }}</b>
+            <span class="lst-tag ms-auto" [ngClass]="etat(j).classe"><i [class]="etat(j).icone"></i>{{ etat(j).libelle }}</span>
+            @if (j.total) {
+              <button type="button" class="lst-ic" title="Imprimer la fiche de production de ce jour" aria-label="Imprimer la fiche de ce jour" (click)="imprimer(j)"><i class="ri-printer-line"></i></button>
+            }
+          </div>
+          <div class="lst-table-wrap">
+            <table class="lst-table ep-table">
+              <thead>
+                <tr><th>Plat</th>@for (a of agences; track a.id) { <th class="n">{{ a.nom }}</th> }<th class="n">Total</th></tr>
+              </thead>
+              <tbody>
+                @for (p of j.plats; track p.plat_id) {
+                  <tr>
+                    <td><b>{{ p.plat }}</b>@if (j.etat === 'en_service' || j.etat === 'passe') { <small class="d-block">{{ p.servis }} servi{{ p.servis > 1 ? 's' : '' }}</small> }</td>
+                    @for (a of agences; track a.id) { <td class="n">{{ qte(p.par_agence, a.id) || '—' }}</td> }
+                    <td class="n"><b>{{ p.total }}</b></td>
+                  </tr>
+                } @empty {
+                  <tr><td [attr.colspan]="agences.length + 2" class="ep-muted">Aucune commande.</td></tr>
+                }
+                @if (j.plats.length) {
+                  <tr class="ep-tot">
+                    <td>Total</td>
+                    @for (a of agences; track a.id) { <td class="n">{{ qte(j.totaux_par_agence, a.id) }}</td> }
+                    <td class="n">{{ j.total }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      }
+    </div>
+
+    <div class="ep-grille ep-g-liste">
+      <section class="ep-carte ep-carte-t">
+        <div class="ep-carte-hd">
+          <div>
+            <b><i class="ri-user-line"></i>Liste nominative · aujourd'hui</b>
+            <small>Nom et plat uniquement — utilisée au comptoir@if (liste) { · {{ liste.total }} commandes, {{ liste.retires }} retirées }</small>
+          </div>
+          <a class="ep-lien ms-auto" routerLink="/prestataire/liste-du-jour"><i class="ri-printer-line"></i>Ouvrir / imprimer</a>
+        </div>
+        <div class="lst-table-wrap">
+          <table class="lst-table ep-table">
+            <thead><tr><th>Employé</th><th>Plat</th><th>Agence</th><th>Statut</th></tr></thead>
+            <tbody>
+              @for (l of lignesListe; track l.commande_id) {
+                <tr>
+                  <td><b>{{ l.nom_complet }}</b></td>
+                  <td>{{ l.plat }}</td>
+                  <td>{{ l.agence }}</td>
+                  <td><span class="lst-tag" [ngClass]="statutListe(l.statut).classe">{{ statutListe(l.statut).libelle }}@if (l.heure_retrait) { {{ l.heure_retrait }} }</span></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="4" class="ep-muted">Aucune commande aujourd'hui.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if ((liste?.lignes?.length ?? 0) > 8) {
+          <button type="button" class="ep-plus" (click)="listeComplete = !listeComplete">
+            <i [class]="listeComplete ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i>
+            {{ listeComplete ? 'Réduire' : 'Afficher les ' + ((liste?.lignes?.length ?? 0) - 8) + ' autres' }}
+          </button>
+        }
+      </section>
+
+      <div class="ep-pile">
+        <div class="ep-alerte a-bl">
+          <i class="ri-shield-user-line"></i>
+          <div><b>Confidentialité</b><small>Le prestataire ne voit ni catégorie, ni poste, ni salaire : seulement le nom et le plat, le jour du service.</small></div>
+        </div>
+        @if (prochainProvisoire; as p) {
+          <div class="ep-alerte a-or">
+            <i class="ri-time-line"></i>
+            <div><b class="text-capitalize">{{ p.libelle }} se fige {{ heureLimite(p) }}</b><small>Après l'heure limite ({{ p.libelle_limite }}), plus aucune commande ni annulation : la fiche de production devient définitive.</small></div>
+          </div>
+        }
+        <section class="ep-carte">
+          <div class="ep-carte-hd"><b><i class="ri-bar-chart-box-line"></i>Semaine en cours</b><small class="ms-auto">{{ d.semaine.debut | date: 'dd/MM' }} → {{ d.semaine.fin | date: 'dd/MM' }}</small></div>
+          <div class="ep-kpis2">
+            <div><small>Repas commandés</small><b>{{ nombreFr(d.semaine.nb_repas) }}</b><span>lun. → dim. (estimé)</span></div>
+            <div><small>Montant estimé</small><b>{{ d.semaine.montant_estime != null ? montantFr(d.semaine.montant_estime) : '—' }}</b>
+              <span>@if (d.semaine.tarif) { {{ nombreFr(d.semaine.nb_repas) }} × {{ montantFr(d.semaine.tarif) }} }</span></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  }
+</div>
+
+<!-- ══ Fiche de production (A4) : affichée seulement à l'impression ══ -->
+@if (jourFiche; as j) {
+  <div class="ep-fiche-print">
+    <header class="ep-fp-hd">
+      <div>
+        <img src="assets/images/ubifood-logo.svg" alt="UbiFood" height="30">
+        <h1>Fiche de production</h1>
+        <p>{{ libelleJourLong(j.date) }} · {{ contexte?.prestataire?.libelle }}</p>
+      </div>
+      <div class="ep-fp-etat">
+        @if (j.provisoire) { <span class="ep-fp-badge">PROVISOIRE — figée {{ heureLimite(j) }}</span> }
+        @else { <span class="ep-fp-badge def">DÉFINITIVE</span> }
+        <small>Éditée le {{ editeLe }}</small>
+      </div>
+    </header>
+
+    <h2>Récapitulatif cuisine</h2>
+    <table class="ep-fp-table">
+      <thead><tr><th>Plat</th>@for (a of agencesFiche(j); track a.id) { <th class="n">{{ a.nom }}</th> }<th class="n">Total</th></tr></thead>
+      <tbody>
+        @for (p of j.plats; track p.plat_id) {
+          <tr><td>{{ p.plat }}</td>@for (a of agencesFiche(j); track a.id) { <td class="n">{{ qte(p.par_agence, a.id) || '—' }}</td> }<td class="n"><b>{{ p.total }}</b></td></tr>
+        }
+        <tr class="tot"><td>Total</td>@for (a of agencesFiche(j); track a.id) { <td class="n">{{ qte(j.totaux_par_agence, a.id) }}</td> }<td class="n">{{ j.total }}</td></tr>
+      </tbody>
+    </table>
+
+    @for (a of agencesFiche(j); track a.id) {
+      <h2>Agence {{ a.nom }} · service {{ a.heure_debut_service }} – {{ a.heure_fin_service }}</h2>
+      <table class="ep-fp-table">
+        <thead><tr><th>Plat</th><th class="n">Portions</th><th class="c">Prêt</th></tr></thead>
+        <tbody>
+          @for (p of platsAgence(j, a); track p.plat_id) {
+            <tr><td>{{ p.plat }}</td><td class="n">{{ qte(p.par_agence, a.id) }}</td><td class="c"><span class="ep-fp-case"></span></td></tr>
+          }
+          <tr class="tot"><td>Total {{ a.nom }}</td><td class="n">{{ qte(j.totaux_par_agence, a.id) }}</td><td></td></tr>
+        </tbody>
+      </table>
+    }
+
+    <div class="ep-fp-signatures">
+      <div>Chef de cuisine</div>
+      <div>Contrôle départ livraison</div>
+    </div>
+    <footer class="ep-fp-pied"><span>UbiFood · UbiPharm CI — document interne prestataire</span><span>{{ j.libelle_limite ? 'Commandes closes le ' + j.libelle_limite : '' }}</span></footer>
+  </div>
+}

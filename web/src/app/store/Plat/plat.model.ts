@@ -33,6 +33,14 @@ export interface PlatModel {
   created_at?: string;
   updated_at?: string;
 
+  // ── Espace prestataire : auteur, masquage par UbiPharm ─────
+  prestataire?: number | null;
+  prestataire_libelle?: string | null;
+  agences?: number[];
+  mentions?: string[];
+  masque?: boolean;
+  motif_masquage?: string;
+
   // ── UI uniquement (non envoyé à l'API) ─────────────────────
   state?: boolean;
 }

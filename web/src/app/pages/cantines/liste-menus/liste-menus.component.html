@@ -30,6 +30,7 @@
             <th class="tri" [class.actif]="tri.estActif('agence_nom')" (click)="onSort('agence_nom')">Agence<i class="ms-1" [ngClass]="tri.icone('agence_nom')"></i></th>
             <th class="tri" [class.actif]="tri.estActif('typeequipe_libelle')" (click)="onSort('typeequipe_libelle')">Équipe<i class="ms-1" [ngClass]="tri.icone('typeequipe_libelle')"></i></th>
             <th>Plats</th>
+            <th>Statut</th>
             <th class="tri" [class.actif]="tri.estActif('created_at')" (click)="onSort('created_at')">Créé le<i class="ms-1" [ngClass]="tri.icone('created_at')"></i></th>
             <th class="lst-c-act"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -60,6 +61,19 @@
                   <span class="lst-tag t-or"><i class="ri-error-warning-line"></i>Aucun plat</span>
                 }
               </td>
+              <td data-label="Statut">
+                <div class="lst-tags">
+                  @if (data.masque) {
+                    <span class="lst-tag t-ro" [title]="'Motif : ' + (data.motif_masquage || '—')"><i class="ri-eye-off-line"></i>Masqué</span>
+                  } @else if (data.publie === false) {
+                    <span class="lst-tag t-gr"><i class="ri-draft-line"></i>Brouillon</span>
+                  } @else {
+                    <span class="lst-tag t-ve"><i class="ri-eye-line"></i>Visible</span>
+                  }
+                  @if (prestataireDuMenu(data); as p) { <span class="lst-tag t-or" title="Publié par le prestataire"><i class="ri-store-2-line"></i>{{ p }}</span> }
+                </div>
+                @if (data.masque && data.motif_masquage) { <small class="d-block ep-motif-liste">{{ data.motif_masquage }}</small> }
+              </td>
               <td data-label="Créé le"><span class="lst-nowrap">{{ data.created_at | date: 'dd/MM/yyyy HH:mm' }}</span></td>
               <td class="lst-c-act">
                 <div class="lst-act">
@@ -69,6 +83,11 @@
                     <ul *dropdownMenu class="dropdown-menu dropdown-menu-end lst-menu" role="menu">
                       <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="viewDetails(data.id)"><i class="ri-eye-line"></i>Voir le détail</a></li>
                       <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="editList(data.id)"><i class="ri-pencil-line"></i>Modifier</a></li>
+                      @if (data.masque) {
+                        <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="afficherMenu(data)"><i class="ri-eye-line"></i>Afficher aux employés</a></li>
+                      } @else {
+                        <li role="menuitem"><a class="dropdown-item" href="javascript:void(0);" (click)="demanderMasquage(data)"><i class="ri-eye-off-line"></i>Masquer aux employés…</a></li>
+                      }
                       <li><hr class="dropdown-divider"></li>
                       <li role="menuitem"><a class="dropdown-item rg" href="javascript:void(0);" (click)="removeItem(data.id)"><i class="ri-delete-bin-6-line"></i>Supprimer</a></li>
                     </ul>
@@ -79,7 +98,7 @@
           }
           @if (menus.length === 0 && !isLoading) {
             <tr class="lst-l-vide">
-              <td colspan="7" class="lst-c-plein">
+              <td colspan="8" class="lst-c-plein">
                 <div class="lst-vide">
                   @if (term) {
                     <i class="ri-search-line"></i><h5>Aucun résultat</h5><p>Aucun menu ne correspond à « {{ term }} ».</p>
@@ -371,4 +390,29 @@
             </div>
         </div>
     </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     Masquer un menu (motif communiqué au prestataire)
+══════════════════════════════════════════════════════════ -->
+<div bsModal #masquerModal="bs-modal" class="modal fade" tabindex="-1" aria-labelledby="masquerTitre">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="masquerTitre"><i class="ri-eye-off-line me-1"></i>Masquer le menu du {{ aMasquer?.date_menu | date: 'dd/MM/yyyy' }}</h5>
+        <button type="button" class="btn-close" aria-label="Fermer" (click)="masquerModal.hide()"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">Le menu ({{ aMasquer?.agence_nom }}) ne sera plus visible ni commandable par les employés. Le prestataire est notifié avec le motif.</p>
+        <label class="form-label" for="motif-masquage">Motif <span class="text-danger">*</span></label>
+        <textarea id="motif-masquage" class="form-control" rows="3" maxlength="255" [(ngModel)]="motifMasquage"
+                  placeholder="Ex. Placali déjà servi le 18/11, varier la semaine"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-ubi" (click)="masquerModal.hide()">Annuler</button>
+        <button type="button" class="btn-ubi rouge" [disabled]="!motifMasquage.trim() || masquageEnvoi" (click)="masquerMenu()"><i class="ri-eye-off-line"></i>Masquer</button>
+      </div>
+    </div>
+  </div>
 </div>

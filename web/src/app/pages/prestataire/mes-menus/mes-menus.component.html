@@ -1,0 +1,232 @@
+<div class="lst ep">
+  <app-page-entete titre="Mes menus" icone="ri-calendar-2-line" [fil]="[{label: 'Espace prestataire', lien: '/prestataire/accueil'}]"
+                   sousTitre="Composez la semaine par agence : la publication est immédiate et les employés sont notifiés">
+    <button type="button" class="btn-ubi" [disabled]="!agenceId" (click)="ouvrirCopieSemaine()"><i class="ri-file-copy-line"></i><span class="pe-lib">Copier une semaine</span></button>
+    <button type="button" class="btn-ubi vert" [disabled]="!agenceId || envoi" (click)="publierSemaine()">
+      <i class="ri-send-plane-line"></i><span class="pe-lib">Publier toute la semaine</span>
+      @if (nbBrouillons) { <span class="ep-pastille">{{ nbBrouillons }}</span> }
+    </button>
+  </app-page-entete>
+
+  <div class="ep-barre-menus">
+    <div class="ep-onglets" role="tablist" aria-label="Agences">
+      @for (a of agences; track a.id) {
+        <button type="button" role="tab" class="ep-onglet" [class.on]="a.id === agenceId" [attr.aria-selected]="a.id === agenceId" (click)="choisirAgence(a.id)">
+          <i class="ri-building-line"></i>{{ a.nom }}<em>{{ nbPublies(a.id) }} / 5 publiés</em>
+        </button>
+      }
+    </div>
+    <div class="ep-semaine-nav">
+      <button type="button" class="lst-ic" aria-label="Semaine précédente" (click)="changerSemaine(-1)"><i class="ri-arrow-left-s-line"></i></button>
+      <b>{{ titreSemaine }}</b>
+      <button type="button" class="lst-ic" aria-label="Semaine suivante" (click)="changerSemaine(1)"><i class="ri-arrow-right-s-line"></i></button>
+    </div>
+  </div>
+
+  <div class="ep-alerte a-ve mb-3">
+    <i class="ri-notification-3-line"></i>
+    <div>
+      <b>Publication automatique</b>
+      <small>Dès que vous publiez un jour, le menu apparaît dans l'application et les employés de l'agence reçoivent une notification.
+        Un brouillon reste invisible des employés. Le gestionnaire UbiPharm peut encore masquer ou corriger un menu : vous êtes alors prévenu.</small>
+    </div>
+  </div>
+
+  @if (erreur) {
+    <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div>
+  }
+  @if (!agences.length && !chargement && !erreur) {
+    <div class="lst-carte"><div class="lst-vide"><i class="ri-building-line"></i><h5>Aucune agence desservie aujourd'hui</h5><p>UbiPharm rattache votre prestataire aux agences (Paramètres → Prestataires).</p></div></div>
+  }
+
+  @if (agenceId) {
+    <div class="ep-semaine" [class.ep-attente]="chargement">
+      @for (d of jours; track d) {
+        <section class="ep-jour" [class.ep-jour-auj]="d === aujourdhui" [class.ep-jour-passe]="d < aujourdhui">
+          <header class="ep-jour-hd">
+            <b>{{ libelleJour(d) }}</b>
+            @if (menusDuJour(d).length === 0) {
+              @if (estOuvert(d)) { <span class="lst-tag t-or">À composer</span> }
+              @else { <span class="lst-tag t-gr">Aucun menu</span> }
+            }
+          </header>
+          <small class="ep-jour-lim">
+            @if (estOuvert(d)) { commandes jusqu'au {{ libelleLimite(d) }} } @else { commandes closes }
+          </small>
+
+          @for (m of menusDuJour(d); track m.id) {
+            <div class="ep-menu" [class.ep-menu-masque]="m.masque" [class.ep-menu-brouillon]="!m.publie">
+              @if (menusDuJour(d).length > 1) { <div class="ep-menu-equipe">{{ m.typeequipe_libelle }}</div> }
+              @for (mp of m.menu_plats; track mp.id) {
+                <div class="ep-menu-plat">
+                  @if (photo(mp.plat); as url) { <img class="ep-ph" [src]="url" [alt]="mp.plat.nom"> }
+                  @else { <span class="ep-ph vide"><i class="ri-image-line"></i></span> }
+                  <span class="ep-menu-plat-txt"><b>{{ mp.plat.nom }}</b><small>{{ mp.plat.type_plat_libelle }}</small></span>
+                  @if (m.modifiable && !m.masque) {
+                    <button type="button" class="ep-x" title="Retirer ce plat" [attr.aria-label]="'Retirer ' + mp.plat.nom" (click)="retirerPlat(m, mp.plat.id)"><i class="ri-close-line"></i></button>
+                  }
+                </div>
+              }
+              @if (m.modifiable && !m.masque) {
+                <button type="button" class="ep-ajouter" (click)="ouvrirCompo(d, m)"><i class="ri-add-line"></i>Ajouter / changer les plats</button>
+              }
+
+              <footer class="ep-menu-pied">
+                @if (m.masque) {
+                  <span class="lst-tag t-ro"><i class="ri-eye-off-line"></i>Masqué par UbiPharm</span>
+                  <small class="ep-motif">Motif : {{ m.motif_masquage || '—' }}</small>
+                } @else if (!m.publie) {
+                  <span class="ep-brouillon"><span class="lst-tag t-gr">Brouillon</span><small>{{ m.menu_plats.length }} plat{{ m.menu_plats.length > 1 ? 's' : '' }} · invisible des employés</small></span>
+                  @if (m.modifiable) { <button type="button" class="btn-ubi vert sm" (click)="publierMenu(m)"><i class="ri-send-plane-line"></i>Publier</button> }
+                } @else {
+                  <span class="lst-tag t-ve"><i class="ri-checkbox-circle-fill"></i>Publié · employés notifiés</span>
+                  <small>{{ dateHeure(m.date_publication) }}@if (m.nb_employes_agence) { · {{ m.nb_employes_agence }} employés }</small>
+                }
+                @if (!m.modifiable && !m.masque) {
+                  <small class="ep-verrou-txt"><i class="ri-lock-line"></i>Verrouillé · {{ m.nb_commandes }} commande{{ m.nb_commandes > 1 ? 's' : '' }}</small>
+                }
+                @if (m.modifiable && !m.masque && !m.nb_commandes) {
+                  <button type="button" class="ep-lien-suppr" (click)="demanderSuppression(m)"><i class="ri-delete-bin-6-line"></i>Supprimer</button>
+                }
+              </footer>
+            </div>
+          }
+
+          @if (menusDuJour(d).length === 0 && estOuvert(d)) {
+            <div class="ep-jour-vide">
+              <button type="button" class="ep-ajouter" (click)="ouvrirCompo(d)"><i class="ri-add-line"></i>Ajouter un plat</button>
+              @if (menuACopier(d); as src) {
+                <button type="button" class="ep-ajouter ep-ajouter-copie" (click)="copierVers(d)"><i class="ri-file-copy-line"></i>Copier le menu du {{ libelleJour(src.date_menu) }}</button>
+              }
+              <small class="ep-muted">Publication possible jusqu'au {{ libelleLimite(d) }}</small>
+            </div>
+          }
+        </section>
+      }
+    </div>
+
+    <section class="ep-carte mt-3">
+      <div class="ep-carte-hd">
+        <b><i class="ri-history-line"></i>Dernières modifications</b>
+        <small class="ms-auto">{{ agence?.nom }}</small>
+      </div>
+      <ul class="ep-histo">
+        @for (h of historique; track h.id) {
+          <li [class.ep-histo-ubi]="!h.par_prestataire">
+            <i [class]="iconeHistorique(h)"></i>
+            <div>
+              <b>{{ libelleJour(h.date_menu) }} · {{ h.action_libelle }}@if (!h.par_prestataire) { par UbiPharm }</b>
+              <span>{{ h.description }}</span>
+              <small>{{ dateHeure(h.date) }}@if (h.par) { · {{ h.par }} }@if (h.motif) { — motif : « {{ h.motif }} » }</small>
+            </div>
+          </li>
+        } @empty {
+          <li class="ep-muted">Aucune modification récente.</li>
+        }
+      </ul>
+    </section>
+  }
+</div>
+
+<!-- ── Composition d'un jour ──────────────────────────────────── -->
+<div bsModal #compoModal="bs-modal" class="modal fade" tabindex="-1" aria-labelledby="compoTitre">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content ep-modal">
+      @if (compo; as c) {
+        <div class="modal-header">
+          <h5 class="modal-title" id="compoTitre"><i class="ri-calendar-2-line"></i>Menu du {{ libelleJour(c.date) }} · {{ agence?.nom }}</h5>
+          <button type="button" class="btn-close" aria-label="Fermer" (click)="compoModal.hide()"></button>
+        </div>
+        <div class="modal-body">
+          @if (typesEquipes.length > 1 && !c.menu) {
+            <label class="ep-lab" for="compo-equipe">Équipe</label>
+            <select id="compo-equipe" class="form-select mb-3" [(ngModel)]="c.typeequipe">
+              @for (t of typesEquipes; track t.id) { <option [ngValue]="t.id">{{ t.libelle }}</option> }
+            </select>
+          }
+          <div class="d-flex justify-content-between align-items-center mb-2 gap-2">
+            <label class="ep-lab mb-0">Plats ({{ c.choisis.length }} choisi{{ c.choisis.length > 1 ? 's' : '' }})</label>
+            <div class="lst-recherche ep-recherche-s">
+              <i class="ri-search-line"></i>
+              <input type="search" placeholder="Rechercher" aria-label="Rechercher un plat" [(ngModel)]="rechercheCompo">
+            </div>
+          </div>
+          <div class="ep-choix-plats">
+            @for (p of platsAgence; track p.id) {
+              <label class="ep-choix" [class.on]="c.choisis.includes(p.id)" [class.off]="p.masque">
+                <input type="checkbox" [checked]="c.choisis.includes(p.id)" [disabled]="p.masque" (change)="basculerPlat(p)">
+                @if (photo(p); as url) { <img class="ep-ph" [src]="url" [alt]="p.nom"> } @else { <span class="ep-ph vide"><i class="ri-image-line"></i></span> }
+                <span class="ep-choix-txt">
+                  <b>{{ p.nom }}</b>
+                  <small>{{ p.type_plat_libelle }}@if (p.masque) { · masqué par UbiPharm }</small>
+                </span>
+                @if (p.nb_avis) { <em><i class="ri-star-fill ep-etoile"></i>{{ noteFr(p.note_moyenne) }}</em> } @else if (!p.nb_servis) { <em>nouveau</em> }
+              </label>
+            } @empty {
+              <p class="ep-muted mb-0">Aucun plat proposé dans cette agence. <a routerLink="/prestataire/plats" (click)="compoModal.hide()">Créer un plat</a></p>
+            }
+          </div>
+          @if (c.choisis.length > platsConseilles) {
+            <small class="ep-muted d-block mt-2"><i class="ri-information-line"></i> {{ platsConseilles }} plats par jour sont conseillés.</small>
+          }
+          @if (erreurCompo) {
+            <div class="ep-alerte a-ro mt-3" role="alert"><i class="ri-error-warning-line"></i><div><b>{{ erreurCompo }}</b></div></div>
+          }
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-ubi" (click)="compoModal.hide()">Annuler</button>
+          @if (!c.menu) {
+            <button type="button" class="btn-ubi" [disabled]="envoi" (click)="enregistrerCompo(false)"><i class="ri-draft-line"></i>Brouillon</button>
+          } @else if (!c.menu.publie) {
+            <button type="button" class="btn-ubi" [disabled]="envoi" (click)="enregistrerCompo(false)"><i class="ri-save-line"></i>Enregistrer</button>
+          }
+          <button type="button" class="btn-ubi vert" [disabled]="envoi" (click)="enregistrerCompo(true)">
+            @if (envoi) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-send-plane-line"></i> }
+            {{ c.menu?.publie ? 'Enregistrer' : 'Publier' }}
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+<!-- ── Copier une semaine ─────────────────────────────────────── -->
+<div bsModal #copieModal="bs-modal" class="modal fade" tabindex="-1" aria-labelledby="copieTitre">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content ep-modal">
+      <div class="modal-header">
+        <h5 class="modal-title" id="copieTitre"><i class="ri-file-copy-line"></i>Copier une semaine · {{ agence?.nom }}</h5>
+        <button type="button" class="btn-close" aria-label="Fermer" (click)="copieModal.hide()"></button>
+      </div>
+      <div class="modal-body">
+        <label class="ep-lab" for="copie-source">Copier les menus de</label>
+        <select id="copie-source" class="form-select mb-2" [(ngModel)]="copie.source">
+          @for (s of semainesSources; track s.lundi) { <option [value]="s.lundi">{{ s.libelle }}</option> }
+        </select>
+        <p class="ep-muted small">vers la {{ titreSemaine.toLowerCase() }}. Les jours qui ont déjà un menu ou dont la date limite est passée sont ignorés.</p>
+        <label class="ep-case on"><input type="checkbox" [(ngModel)]="copie.publie">Publier immédiatement (employés notifiés)</label>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-ubi" (click)="copieModal.hide()">Annuler</button>
+        <button type="button" class="btn-ubi vert" [disabled]="envoi" (click)="copierSemaine()"><i class="ri-file-copy-line"></i>Copier</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Suppression d'un menu ──────────────────────────────────── -->
+<div bsModal #supprModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4 text-center">
+        <i class="ri-delete-bin-6-line text-danger display-5"></i>
+        <h5 class="mt-3">Supprimer le menu du {{ aSupprimer ? libelleJour(aSupprimer.date_menu) : '' }} ?</h5>
+        <p class="text-muted mb-4">Les employés de {{ aSupprimer?.agence_nom }} ne pourront plus le commander.</p>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn-ubi" (click)="supprModal.hide()">Annuler</button>
+          <button type="button" class="btn-ubi rouge" [disabled]="envoi" (click)="supprimer()">Oui, supprimer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

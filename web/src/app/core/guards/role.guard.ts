@@ -2,7 +2,7 @@
 import { Injectable } from '@angular/core';
 import { ActivatedRouteSnapshot, Router, UrlTree } from '@angular/router';
 import { TokenStorageService } from '../services/token-storage.service';
-import { ACCUEIL_EMPLOYE, aUnRole } from '../helpers/roles';
+import { aUnRole, accueilUtilisateur } from '../helpers/roles';
 
 /**
  * Restreint une route aux rôles listés dans `data.roles`.
@@ -10,7 +10,8 @@ import { ACCUEIL_EMPLOYE, aUnRole } from '../helpers/roles';
  *   { path: 'user', component: UserComponent,
  *     canActivate: [RoleGuard], data: { roles: ADMINS } }
  *
- * Un utilisateur sans le rôle requis est renvoyé vers son accueil (/cantines/accueil).
+ * Un utilisateur sans le rôle requis est renvoyé vers son accueil (accueilUtilisateur :
+ * /cantines/accueil, tableau de bord, accueil ou comptoir de l'espace prestataire).
  * (Le backend refuse de toute façon les appels non autorisés : ce garde
  * évite d'afficher des pages vides ou en erreur.)
  */
@@ -29,9 +30,10 @@ export class RoleGuard {
 
   private verifier(route: ActivatedRouteSnapshot): boolean | UrlTree {
     const roles: string[] | undefined = route.data?.['roles'];
-    if (aUnRole(this.tokenStorage.getUser(), roles)) {
+    const user = this.tokenStorage.getUser();
+    if (aUnRole(user, roles)) {
       return true;
     }
-    return this.router.parseUrl(ACCUEIL_EMPLOYE);
+    return this.router.parseUrl(accueilUtilisateur(user));
   }
 }

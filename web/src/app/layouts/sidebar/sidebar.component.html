@@ -28,6 +28,12 @@
 
             <div id="two-column-menu">
             </div>
+            @if (espacePrestataire) {
+            <div class="ep-side-presta">
+                <span class="ep-side-presta-ic"><i class="ri-store-2-line"></i></span>
+                <span class="ep-side-presta-txt"><b>{{ espacePrestataire.libelle }}</b><small>{{ espacePrestataire.sous }}</small></span>
+            </div>
+            }
             <ul class="navbar-nav" id="navbar-nav">
               
                 @for(item of menuItems; track $index){

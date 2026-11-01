@@ -1,0 +1,76 @@
+<div class="lst ep">
+  <app-page-entete titre="Statistiques" icone="ri-bar-chart-2-line" [fil]="[{label: 'Espace prestataire', lien: '/prestataire/accueil'}]"
+                   [sousTitre]="stats ? 'Du ' + (stats.debut | date: 'dd/MM/yyyy') + ' au ' + (stats.fin | date: 'dd/MM/yyyy') + (stats.en_cours ? ' · période en cours' : '') : 'Vos plats vus par les employés'">
+    <button type="button" class="btn-ubi" [disabled]="!stats?.par_plat?.length" (click)="exporter()"><i class="ri-file-excel-2-line ep-c-vert"></i><span class="pe-lib">Excel</span></button>
+  </app-page-entete>
+
+  <div class="lst-carte">
+    <div class="lst-barre">
+      <div class="lst-chips" role="group" aria-label="Période">
+        @for (p of periodes; track p.cle) {
+          <button type="button" class="lst-chip" [class.on]="periode === p.cle" (click)="choisirPeriode(p.cle)">{{ p.libelle }}</button>
+        }
+      </div>
+      <div class="lst-filtres">
+        @if (periode === 'perso') {
+          <input type="date" class="form-control" [(ngModel)]="debut" (change)="charger()" aria-label="Début">
+          <input type="date" class="form-control" [(ngModel)]="fin" (change)="charger()" aria-label="Fin">
+        }
+        @if ((contexte?.agences?.length ?? 0) > 1) {
+          <select class="form-select" [(ngModel)]="agence" (change)="charger()" aria-label="Agence">
+            <option value="">Toutes mes agences</option>
+            @for (a of contexte!.agences; track a.id) { <option [ngValue]="a.id">{{ a.nom }}</option> }
+          </select>
+        }
+      </div>
+    </div>
+  </div>
+
+  @if (erreur) { <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+
+  @if (stats; as s) {
+    <div class="ep-kpis-ligne ep-kpis-4" [class.ep-attente]="chargement">
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-shopping-basket-2-line"></i></span><div><small>Repas commandés</small><b>{{ nombreFr(s.kpis.commandes) }}</b><span>{{ nombreFr(s.kpis.annulees) }} annulés en plus</span></div></div>
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-check-double-line"></i></span><div><small>Servis</small><b>{{ nombreFr(s.kpis.servis) }}</b><span>{{ nombreFr(s.kpis.a_servir) }} encore à servir</span></div></div>
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-percent-line"></i></span><div><small>Taux de retrait</small><b>{{ pourcentFr(s.kpis.taux_retrait) }}</b><span>{{ nombreFr(s.kpis.non_retires) }} non retirés</span></div></div>
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-star-line"></i></span><div><small>Note des employés</small><b>{{ noteFr(s.kpis.note_moyenne) }} / 5</b><span>{{ nombreFr(s.kpis.nb_avis) }} avis</span></div></div>
+    </div>
+
+    <div class="lst-carte">
+      <div class="lst-barre bord">
+        <b class="ep-titre-carte"><i class="ri-restaurant-2-line"></i>Par plat</b>
+        <div class="lst-filtres">
+          <select class="form-select" [(ngModel)]="tri" aria-label="Trier par">
+            <option value="commandes">Trier : commandés</option>
+            <option value="servis">Trier : servis</option>
+            <option value="taux_retrait">Trier : taux de retrait</option>
+            <option value="note">Trier : note</option>
+          </select>
+        </div>
+      </div>
+      <div class="lst-table-wrap lst-cartes-wrap">
+        <table class="lst-table lst-cartes">
+          <thead><tr><th>Plat</th><th>Commandés</th><th class="text-end">Servis</th><th class="text-end">À servir</th><th class="text-end">Non retirés</th><th class="text-end">Taux</th><th class="text-end">Note</th></tr></thead>
+          <tbody>
+            @for (p of plats; track p.plat_id) {
+              <tr>
+                <td class="lst-c-principal"><b>{{ p.plat }}</b><small class="d-block">{{ p.agences.join(', ') }}</small></td>
+                <td data-label="Commandés"><span class="ep-barre-txt"><span class="ep-barre"><i [style.width.%]="pct(p.commandes, maxCommandes)"></i></span><b>{{ nombreFr(p.commandes) }}</b></span></td>
+                <td data-label="Servis" class="text-end">{{ nombreFr(p.servis) }}</td>
+                <td data-label="À servir" class="text-end">{{ nombreFr(p.a_servir) }}</td>
+                <td data-label="Non retirés" class="text-end">{{ nombreFr(p.non_retires) }}</td>
+                <td data-label="Taux" class="text-end">{{ pourcentFr(p.taux_retrait) }}</td>
+                <td data-label="Note" class="text-end">@if (p.nb_avis) { <i class="ri-star-fill ep-etoile"></i>{{ noteFr(p.note) }} <small>({{ p.nb_avis }})</small> } @else { — }</td>
+              </tr>
+            }
+            @if (!s.par_plat.length) {
+              <tr class="lst-l-vide"><td colspan="7" class="lst-c-plein"><div class="lst-vide"><i class="ri-bar-chart-2-line"></i><h5>Aucune commande sur la période</h5></div></td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  } @else if (chargement) {
+    <div class="lst-charge"><div class="spinner-border" role="status"></div></div>
+  }
+</div>

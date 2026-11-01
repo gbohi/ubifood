@@ -190,6 +190,8 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
       password2:       [''],
       is_active:       [true],
       groups:          [[]],
+      // Espace prestataire : prestataire du compte (rôles prestataire / agent_comptoir)
+      prestataire:     [null],
     }, { validators: passwordMatchValidator });
 
     this.mdpForm = this.fb.group({
@@ -239,6 +241,9 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.store.dispatch(fetchcategoriesalarieNoPaginateData());
     this.store.select(selectAllCategoriesalarieWithoutPagination).pipe(takeUntil(this.destroy$)).subscribe(d => this.categoriesalaries = d ?? []);
+
+    this.http.get<any[]>(`${environment.apiUrl}/api/api/allnopagin/prestataires/`).pipe(catchError(() => of([])), takeUntil(this.destroy$))
+      .subscribe(d => this.prestataires = (d ?? []).map(p => ({ id: p.id, libelle: p.libelle })));
 
     this.roleService.getAllRolesNoPaginate().pipe(takeUntil(this.destroy$)).subscribe(data => {
       this.groupes = data ?? [];
@@ -546,6 +551,8 @@ getDerniereCategorie(user: any): any | null {
       case 'super_admin':  return { classe: 't-na', icone: 'ri-shield-star-line' };
       case 'admin':        return { classe: 't-bl', icone: 'ri-shield-user-line' };
       case 'gestionnaire': return { classe: 't-ve', icone: 'ri-restaurant-line' };
+      case 'prestataire':    return { classe: 't-or', icone: 'ri-store-2-line' };
+      case 'agent_comptoir': return { classe: 't-or', icone: 'ri-qr-scan-2-line' };
       default:             return { classe: 't-gr', icone: 'ri-user-line' };
     }
   }
@@ -560,6 +567,8 @@ getDerniereCategorie(user: any): any | null {
     { cle: 'gestionnaire', libelle: 'Gestionnaires' },
     { cle: 'admin',        libelle: 'Administrateurs' },
     { cle: 'super_admin',  libelle: 'Super administrateurs' },
+    { cle: 'prestataire',  libelle: 'Prestataires' },
+    { cle: 'agent_comptoir', libelle: 'Agents de comptoir' },
     { cle: 'desactive',    libelle: 'Désactivés' },
   ];
 
@@ -614,11 +623,32 @@ getDerniereCategorie(user: any): any | null {
   getGroupesLibelle(ids: number[]): string { return !ids || !ids.length ? '—' : ids.map(id => this.getGroupeName(id)).join(', '); }
   isGroupSelected(groupId: number): boolean { return (this.userForm.get('groups')?.value || []).map(Number).includes(Number(groupId)); }
   toggleGroup(groupId: number): void {
-    const current: number[] = [...(this.userForm.get('groups')?.value || [])].map(Number);
+    let current: number[] = [...(this.userForm.get('groups')?.value || [])].map(Number);
     const id = Number(groupId);
     const idx = current.indexOf(id);
-    if (idx > -1) current.splice(idx, 1); else current.push(id);
-    this.userForm.get('groups')?.setValue(current);
+    if (idx > -1) current.splice(idx, 1);
+    else {
+      // Un compte prestataire (responsable / agent de comptoir) n'a aucun autre rôle
+      // (règle du serveur) : cocher l'un retire les autres
+      const presta = this.idsRolesPrestataire;
+      current = presta.includes(id) ? [id] : current.filter(g => !presta.includes(g));
+      current.push(id);
+    }
+    this.userForm.get('groups')?.setValue([...new Set(current)]);
+    if (!this.estRolePrestataire) this.userForm.get('prestataire')?.setValue(null);
+  }
+
+  /** Prestataires (rattachement des comptes de l'espace prestataire) */
+  prestataires: { id: number; libelle: string }[] = [];
+
+  private get idsRolesPrestataire(): number[] {
+    return this.groupes.filter(g => g.name === 'prestataire' || g.name === 'agent_comptoir').map(g => Number(g.id));
+  }
+
+  /** Le compte édité a le rôle prestataire ou agent de comptoir */
+  get estRolePrestataire(): boolean {
+    const ids = this.idsRolesPrestataire;
+    return (this.userForm?.get('groups')?.value || []).map(Number).some((g: number) => ids.includes(g));
   }
 
   // ══════════════════════════════════════════════════════════
@@ -653,7 +683,7 @@ getDerniereCategorie(user: any): any | null {
     this.lastActiveElement = document.activeElement as HTMLElement;
     this.currentUserId = null; this._resetAllLignes();
     this.submitted = false; this.userForm.reset();
-    this.userForm.patchValue({ is_active: true, groups: [] });
+    this.userForm.patchValue({ is_active: true, groups: [], prestataire: null });
     this._motDePasseObligatoire(true);
     this.setModalTitle('Ajouter un utilisateur'); this.setModalBtn('Enregistrer'); this.addUser?.show();
   }
@@ -668,7 +698,7 @@ getDerniereCategorie(user: any): any | null {
     const editData = this.users.find(u => u.id === id);
     if (!editData) return;
     this.currentUserId = id; this._resetAllLignes(); this.submitted = false;
-    this.userForm.patchValue({ ...editData, password: '', password2: '', groups: (editData.groups || []).map(Number) });
+    this.userForm.patchValue({ ...editData, password: '', password2: '', groups: (editData.groups || []).map(Number), prestataire: editData.prestataire ?? null });
     this._motDePasseObligatoire(false);
     this._chargerHistorique(editData);
     this.setModalTitle('Modifier l\'utilisateur'); this.setModalBtn('Enregistrer'); this.addUser?.show();
@@ -748,6 +778,9 @@ getDerniereCategorie(user: any): any | null {
   saveProperty(): void {
     this.submitted = true;
     if (this.userForm.invalid) { this.toastService.error('Veuillez vérifier les informations saisies.', 'Erreur'); return; }
+    if (this.estRolePrestataire && !this.userForm.get('prestataire')?.value) {
+      this.toastService.error('Choisissez le prestataire de ce compte (rôle prestataire ou agent de comptoir).', 'Erreur'); return;
+    }
     if (!this._validerLignesAvecDate(this.serviceLignes, 'service') ||
         !this._validerLignesAvecDate(this.agenceLignes, 'agence')   ||
         !this._validerLignesAvecDate(this.posteLignes, 'poste')     ||
@@ -758,6 +791,7 @@ getDerniereCategorie(user: any): any | null {
     const formValue = { ...this.userForm.value };
     if (!formValue.password) { delete formValue.password; delete formValue.password2; }
     formValue.groups = (formValue.groups || []).map(Number);
+    formValue.prestataire = this.estRolePrestataire && formValue.prestataire ? Number(formValue.prestataire) : null;
     formValue.email = formValue.email || '';
     formValue.contact = formValue.contact || '';
     formValue.poste_telephone = formValue.poste_telephone || '';

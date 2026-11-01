@@ -10,6 +10,8 @@ export interface PlatResume {
   type_plat_libelle?: string;
   agence_nom?: string;
   images?: { id: number; url: string; is_principale: boolean }[];
+  prestataire?: number | null;
+  prestataire_libelle?: string | null;
 }
 
 /**
@@ -56,6 +58,12 @@ export interface MenulistModel {
   // ── Dates limites calculées par le serveur (délais paramétrés) ──
   date_limite_commande?: string;    // ISO 8601
   date_limite_annulation?: string;  // ISO 8601
+
+  // ── Publication (espace prestataire) et masquage par UbiPharm ──
+  publie?: boolean;                 // false : brouillon invisible des employés
+  date_publication?: string | null;
+  masque?: boolean;                 // masqué par un gestionnaire (motif communiqué au prestataire)
+  motif_masquage?: string;
 }
 
 /**
