@@ -814,6 +814,11 @@ class ListeDuJourView(APIView):
         if d != aujourdhui and not is_prestataire_responsable(request.user):
             raise PermissionDenied("La liste nominative n'est disponible que pour le jour du service.")
         agence = _agence_demandee(request)
+        if agence is None:
+            # Sans ?agence= : l'agence desservie ce jour-là si elle est la seule
+            desservies = agences_prestataire(request.user, d)
+            if desservies and len(desservies) == 1:
+                agence = next(iter(desservies))
         qs = (commandes_du_prestataire(request.user.prestataire_id)
               .filter(statut__in=ACTIVES, menu__date_menu=d)
               .select_related('user', 'plat', 'menu__agence'))

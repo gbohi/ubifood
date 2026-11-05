@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../core/api/api_client.dart';
+import '../../core/services/notification_routage.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../shared/providers/app_provider.dart';
 import '../contestation/retrait_detail_screen.dart';
@@ -39,6 +40,9 @@ class NotificationItem {
   final int? retraitId;
   final int? contestationId;
 
+  /// Données propres au type (contestation_decidee : statut, cause)
+  final Map<String, dynamic> donnees;
+
   const NotificationItem({
     required this.id,
     required this.type,
@@ -50,7 +54,12 @@ class NotificationItem {
     this.menuId,
     this.retraitId,
     this.contestationId,
+    this.donnees = const {},
   });
+
+  /// Décision sur une contestation (données du serveur, sinon d'après le titre)
+  ({String? statut, String? cause}) get decision =>
+      decisionContestation(donnees, titre);
 
   /// Ouvre le détail du retrait (contestation possible / suivi)
   bool get ouvreRetrait =>
@@ -72,6 +81,9 @@ class NotificationItem {
         menuId: _id(j['menu_id']),
         retraitId: _id(j['retrait_id']),
         contestationId: _id(j['contestation_id']),
+        donnees: j['donnees'] is Map
+            ? Map<String, dynamic>.from(j['donnees'] as Map)
+            : const {},
       );
 
   /// Identifiant entier, ou chaîne (données FCM), vide → null
@@ -89,6 +101,7 @@ class NotificationItem {
         menuId: menuId,
         retraitId: retraitId,
         contestationId: contestationId,
+        donnees: donnees,
       );
 }
 
@@ -591,7 +604,8 @@ class _NotificationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final (icone, ton) = configTypeNotification(notif.type, notif.titre);
+    final (icone, ton) =
+        configTypeNotification(notif.type, notif.titre, notif.donnees);
     final (fondIcone, couleurIcone) = couleursPastille(ton, isDark);
     final gris =
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
@@ -695,9 +709,10 @@ class _NotificationTile extends StatelessWidget {
 }
 
 /// Icône et couleur d'une notification selon son type (décision de
-/// contestation : acceptée / rejetée d'après le titre envoyé par le serveur)
+/// contestation : statut et cause envoyés par le serveur dans `donnees`,
+/// sinon d'après le titre pour les anciennes notifications)
 (IconData, TonPastille) configTypeNotification(String type,
-    [String titre = '']) {
+    [String titre = '', Map<String, dynamic> donnees = const {}]) {
   switch (type) {
     case 'commande_passee':
       return (Icons.check_circle_outline_rounded, TonPastille.vert);
@@ -714,11 +729,16 @@ class _NotificationTile extends StatelessWidget {
     case 'contestation_nouvelle':
       return (Icons.report_gmailerrorred_rounded, TonPastille.rouge);
     case 'contestation_decidee':
-      final t = titre.toLowerCase();
-      if (t.contains('accept')) {
-        return (Icons.verified_outlined, TonPastille.vert);
+      final d = decisionContestation(donnees, titre);
+      if (d.statut == 'acceptee') {
+        // Badge utilisé par un tiers : acceptée mais repas dû
+        return d.cause == 'badge_tiers'
+            ? (Icons.verified_outlined, TonPastille.or)
+            : (Icons.verified_outlined, TonPastille.vert);
       }
-      if (t.contains('rejet')) return (Icons.gavel_rounded, TonPastille.rouge);
+      if (d.statut == 'rejetee') {
+        return (Icons.gavel_rounded, TonPastille.rouge);
+      }
       return (Icons.gavel_rounded, TonPastille.or);
     case 'menu_corrige':
       return (Icons.edit_note_rounded, TonPastille.or);

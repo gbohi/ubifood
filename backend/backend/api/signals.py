@@ -27,10 +27,22 @@ def user_logged_out_handler(sender, request, user, **kwargs):
 
 # ══════════════════════════════════════════════════════════════
 # ENVOI EN ARRIÈRE-PLAN
-# Les notifications partent après la validation de la transaction,
-# dans un thread : la requête HTTP n'attend plus Firebase (avant, la
-# création d'un menu notifiait chaque agent un par un, en bloquant).
+# Les notifications partent après la validation de la transaction
+# (transaction.on_commit : rien n'est envoyé si elle est annulée) :
+#   - serveur (gunicorn, runserver) : dans un thread, la requête HTTP
+#     n'attend pas Firebase. Thread non « daemon » : à l'arrêt normal du
+#     processus (redémarrage d'un worker), Python attend la fin des envois
+#     en cours au lieu de les abandonner ;
+#   - processus courts (commandes manage.py, scripts, tests) ou réglage
+#     NOTIFICATIONS_SYNCHRONES : envoi synchrone, sinon le processus peut se
+#     terminer avant le thread et la notification serait perdue.
 # ══════════════════════════════════════════════════════════════
+
+def envoi_synchrone():
+    """Notifications envoyées dans le fil courant (voir NOTIFICATIONS_SYNCHRONES dans settings)."""
+    from django.conf import settings
+    return bool(getattr(settings, 'NOTIFICATIONS_SYNCHRONES', False))
+
 
 def _en_arriere_plan(fonction, *args, **kwargs):
     def executer():
@@ -38,11 +50,18 @@ def _en_arriere_plan(fonction, *args, **kwargs):
             fonction(*args, **kwargs)
         except Exception:
             logger.exception("Envoi de notification en échec")
+
+    def executer_thread():
+        try:
+            executer()
         finally:
             close_old_connections()
 
     def demarrer():
-        threading.Thread(target=executer, daemon=True).start()
+        if envoi_synchrone():
+            executer()
+        else:
+            threading.Thread(target=executer_thread, daemon=False).start()
 
     transaction.on_commit(demarrer)
 
@@ -268,23 +287,40 @@ def notifier_contestation_nouvelle(contestation_id):
     _en_arriere_plan(_notifier_contestation_nouvelle, contestation_id)
 
 
+def message_contestation_decidee(c):
+    """(titre, message, données) de la notification envoyée à l'employé."""
+    date = f'{c.menu.date_menu:%d/%m/%Y}'
+    if c.statut == 'acceptee':
+        if c.cause == 'badge_tiers':
+            titre = '✅ Contestation acceptée — repas dû'
+            message = (f'Votre contestation du repas du {date} est acceptée : votre badge a été utilisé par '
+                       'un tiers (badge prêté ou perdu). Le repas a bien été servi : il reste dû et vous '
+                       'sera facturé. Pensez à signaler un badge perdu.')
+        elif c.cause == 'erreur_comptoir':
+            titre = '✅ Contestation acceptée — repas non facturé'
+            message = (f'Votre contestation du repas du {date} est acceptée : le retrait résultait d\'une '
+                       'erreur au comptoir. Le repas est annulé et ne vous sera pas facturé.')
+        else:
+            titre = '✅ Contestation acceptée'
+            message = f'Votre contestation du repas du {date} est acceptée : le retrait est annulé.'
+        if c.commentaire_traitement:
+            message += f' {c.commentaire_traitement}'
+    else:
+        titre = '❌ Contestation rejetée'
+        message = f'Votre contestation du repas du {date} est rejetée : {c.commentaire_traitement}'
+    return titre, message, {'statut': c.statut, 'cause': c.cause or ''}
+
+
 def _notifier_contestation_decidee(contestation_id):
     from .fcm_service import envoyer_notification_user
     from .models import ContestationRetrait
     c = ContestationRetrait.objects.select_related('user', 'menu').filter(pk=contestation_id).first()
     if not c:
         return
-    if c.statut == 'acceptee':
-        titre = '✅ Contestation acceptée'
-        message = (f'Votre contestation du repas du {c.menu.date_menu:%d/%m/%Y} est acceptée : '
-                   'le retrait est annulé.')
-    else:
-        titre = '❌ Contestation rejetée'
-        message = (f'Votre contestation du repas du {c.menu.date_menu:%d/%m/%Y} est rejetée : '
-                   f'{c.commentaire_traitement}')
+    titre, message, donnees = message_contestation_decidee(c)
     envoyer_notification_user(
         user=c.user, titre=titre, message=message, type_notif='contestation_decidee',
-        commande_id=c.commande_id, menu_id=c.menu_id, contestation_id=c.id,
+        commande_id=c.commande_id, menu_id=c.menu_id, contestation_id=c.id, donnees=donnees,
     )
 
 

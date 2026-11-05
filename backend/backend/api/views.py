@@ -1757,7 +1757,7 @@ class CommandeViewSet(BaseViewSet):
         commande = self.get_object()
         if commande.user_id != request.user.id:
             verifier_menu_gere(request.user, commande.menu)
-        return Response(detail_retrait(commande))
+        return Response(detail_retrait(commande, request))
 
     @action(detail=False, methods=['get'], url_path='mes-commandes')
     def mes_commandes(self, request):
@@ -2417,6 +2417,8 @@ class NotificationListView(APIView):
                 'menu_id':      n.menu_id,
                 'retrait_id':   n.retrait_id,
                 'contestation_id': n.contestation_id,
+                # Données propres au type (contestation_decidee : statut, cause)
+                'donnees':      n.donnees or {},
                 'created_at':   n.created_at.isoformat(),
             }
             for n in notifs

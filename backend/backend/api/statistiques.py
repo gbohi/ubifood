@@ -9,7 +9,10 @@ Définitions (commandes d'un menu dont la date est dans la période) :
   - à servir    : en_attente, menu aujourd'hui ou à venir ;
   - non retirés : en_attente, menu passé (jamais récupérés) ;
   - annulées    : comptées à part ; « par le gestionnaire » si annulee_par
-                  est un autre utilisateur que l'agent, sinon « par l'agent ».
+                  est un autre utilisateur que l'agent, sinon « par l'agent » ;
+                  « contestation » (annulees_contestation) : retrait contesté
+                  et accepté pour erreur au comptoir (motif_annulation), ni
+                  servi ni non retiré, compté à part des annulations du gestionnaire.
   - taux de retrait : servis / (servis + non retirés), c.-à-d. sur les repas
                   dont le sort est connu (les repas à servir n'y entrent pas).
 Catégorie de salarié et poste : ceux de l'agent AUJOURD'HUI (ligne active,
@@ -151,6 +154,7 @@ def compteurs(aujourdhui):
         'a_servir':    Count('id', filter=Q(statut='en_attente', menu__date_menu__gte=aujourdhui)),
         'non_retires': Count('id', filter=Q(statut='en_attente', menu__date_menu__lt=aujourdhui)),
         'annulees':    Count('id', filter=Q(statut='annulee')),
+        'annulees_contestation': Count('id', filter=Q(statut='annulee', motif_annulation='contestation')),
     }
 
 
@@ -165,7 +169,8 @@ def _note(v):
 
 def _ligne(row):
     """Compteurs d'une ligne d'agrégat + taux de retrait."""
-    d = {k: int(row.get(k) or 0) for k in ('commandes', 'servis', 'a_servir', 'non_retires', 'annulees')}
+    d = {k: int(row.get(k) or 0) for k in ('commandes', 'servis', 'a_servir', 'non_retires', 'annulees',
+                                           'annulees_contestation')}
     d['taux_retrait'] = taux_retrait(d['servis'], d['non_retires'])
     if 'note' in row:
         d['note'] = _note(row['note'])
@@ -292,10 +297,12 @@ class StatistiquesView(APIView):
             (r['m'].year, r['m'].month): r for r in
             qs_mois.annotate(m=TruncMonth('menu__date_menu')).values('m')
             .annotate(**compteurs(auj), note=Avg('avis__note'), nb_avis=Count('avis'),
-                      annul_agent=Count('id', filter=Q(statut='annulee') & (
+                      annul_agent=Count('id', filter=Q(statut='annulee') & ~Q(motif_annulation='contestation') & (
                           Q(annulee_par__isnull=True) | Q(annulee_par_id=F('user_id')))),
                       annul_gest=Count('id', filter=Q(statut='annulee', annulee_par__isnull=False)
-                                       & ~Q(annulee_par_id=F('user_id'))))
+                                       & ~Q(motif_annulation='contestation')
+                                       & ~Q(annulee_par_id=F('user_id'))),
+                      annul_contest=Count('id', filter=Q(statut='annulee', motif_annulation='contestation')))
             .order_by('m')
         }
         par_mois, annulations = [], []
@@ -306,7 +313,8 @@ class StatistiquesView(APIView):
                              **_ligne({**r, 'note': r.get('note'), 'nb_avis': r.get('nb_avis')})})
             annulations.append({'annee': a, 'mois': m,
                                 'par_agent': int(r.get('annul_agent') or 0),
-                                'par_gestionnaire': int(r.get('annul_gest') or 0)})
+                                'par_gestionnaire': int(r.get('annul_gest') or 0),
+                                'par_contestation': int(r.get('annul_contest') or 0)})
 
         # ── Par agence ───────────────────────────────────────────
         agence_rows = (qs.values('menu__agence_id', 'menu__agence__nom_agence')

@@ -5,6 +5,7 @@
 // absente ou au mauvais format ne fait pas échouer tout l'écran.
 
 import '../../core/config.dart';
+import '../../core/services/notification_routage.dart';
 
 int _int(dynamic v) =>
     v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
@@ -716,6 +717,14 @@ class ContestationRetrait {
   final DateTime? createdAt;
   final DateTime? dateTraitement;
 
+  /// Cause retenue à l'acceptation : erreur_comptoir (repas non facturé)
+  /// ou badge_tiers (badge utilisé par un tiers, repas dû) ; null sinon
+  final String? cause;
+  final String? causeLibelle;
+
+  /// Conséquence expliquée par le serveur (null : contestation ouverte)
+  final String? explication;
+
   const ContestationRetrait({
     required this.id,
     this.commandeId,
@@ -726,7 +735,41 @@ class ContestationRetrait {
     this.commentaireTraitement = '',
     this.createdAt,
     this.dateTraitement,
+    this.cause,
+    this.causeLibelle,
+    this.explication,
   });
+
+  /// « Acceptée — repas non facturé », « Acceptée — badge utilisé par un
+  /// tiers, repas dû », « Rejetée », « En cours d'examen »
+  String get libelleDecision => statut == StatutContestation.ouverte
+      ? statut.label
+      : libelleDecisionContestation(statut.name, cause);
+
+  /// Le repas reste dû par l'employé (rejet, ou badge utilisé par un tiers)
+  bool get repasDu =>
+      statut == StatutContestation.rejetee ||
+      (statut == StatutContestation.acceptee && cause == 'badge_tiers');
+
+  /// Explication de la décision pour l'employé (le libellé de la décision
+  /// est affiché à part)
+  String get texteDecision {
+    if ((explication ?? '').isNotEmpty) return explication!;
+    return switch (statut) {
+      StatutContestation.ouverte =>
+        'Le gestionnaire cantine examine votre contestation.',
+      StatutContestation.acceptee => switch (cause) {
+          'badge_tiers' => 'Votre badge a été utilisé par un tiers (prêté ou '
+              'perdu) : le repas a bien été servi, il reste dû et vous sera '
+              'facturé.',
+          'erreur_comptoir' =>
+            "Le retrait résultait d'une erreur au comptoir : "
+                'le repas est annulé, il ne vous sera pas facturé.',
+          _ => 'Le retrait a été annulé.',
+        },
+      StatutContestation.rejetee => 'Le repas reste retiré et facturé.',
+    };
+  }
 
   factory ContestationRetrait.fromJson(Map<String, dynamic> j) =>
       ContestationRetrait(
@@ -739,6 +782,9 @@ class ContestationRetrait {
         commentaireTraitement: _str(j['commentaire_traitement']),
         createdAt: _dateHeure(j['created_at']),
         dateTraitement: _dateHeure(j['date_traitement']),
+        cause: _strOuNull(j['cause']),
+        causeLibelle: _strOuNull(j['cause_libelle']),
+        explication: _strOuNull(j['explication']),
       );
 }
 
@@ -795,7 +841,13 @@ class DetailRetraitCommande {
   final String statut;
   final DateTime? dateMenu;
   final String plat;
+
+  /// Photo du plat (URL absolue), null : icône de substitution
+  final String? platImageUrl;
   final String agence;
+
+  /// Commande annulée suite à la contestation (erreur au comptoir)
+  final bool annuleeParContestation;
   final InfoRetrait? retrait;
   final ContestationRetrait? contestation;
   final bool contestable;
@@ -808,7 +860,9 @@ class DetailRetraitCommande {
     this.statut = '',
     this.dateMenu,
     this.plat = '',
+    this.platImageUrl,
     this.agence = '',
+    this.annuleeParContestation = false,
     this.retrait,
     this.contestation,
     this.contestable = false,
@@ -829,7 +883,9 @@ class DetailRetraitCommande {
       statut: _str(j['statut']),
       dateMenu: _jour(j['date_menu']),
       plat: _str(j['plat']),
+      platImageUrl: _url(j['plat_image_url']),
       agence: _str(j['agence']),
+      annuleeParContestation: j['annulee_par_contestation'] == true,
       retrait: retrait == null ? null : InfoRetrait.fromJson(retrait),
       contestation: contestation == null
           ? null

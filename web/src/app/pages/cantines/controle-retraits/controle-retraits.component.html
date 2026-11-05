@@ -19,9 +19,9 @@
       <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ro"><i class="ri-feedback-line"></i></span>
         <div><small>Contestations à traiter</small><b>{{ d.chiffres.contestations_a_traiter }}</b><span>dont {{ d.chiffres.contestations_du_jour }} sur ce jour</span></div></div>
       <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-alarm-warning-line"></i></span>
-        <div><small>Anomalies détectées</small><b>{{ d.chiffres.anomalies }}</b><span>rythme anormal · hors horaires · saisies</span></div></div>
+        <div><small>Anomalies détectées</small><b>{{ d.chiffres.anomalies }}</b><span>rythme anormal · hors horaires · saisies · erreurs au comptoir</span></div></div>
       <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-arrow-go-back-line"></i></span>
-        <div><small>Retraits annulés en {{ moisCourant }}</small><b>{{ d.chiffres.retraits_annules_mois }}</b><span>{{ d.chiffres.annulable_jusqu_a_cloture ? 'annulables jusqu\'à la clôture du mois' : 'mois clôturé' }}</span></div></div>
+        <div><small>Retraits annulés (erreur comptoir) en {{ moisCourant }}</small><b>{{ d.chiffres.retraits_annules_mois }}</b><span>{{ d.chiffres.annulable_jusqu_a_cloture ? 'annulables jusqu\'à la clôture du mois' : 'mois clôturé' }}</span></div></div>
     </div>
 
     <!-- ── Retraits du jour par agent ───────────────────────── -->
@@ -139,7 +139,7 @@
                 </div>
               } @else {
                 <div class="ep-contest-act">
-                  <button type="button" class="btn-ubi sm ep-btn-rouge-plein" [disabled]="envoi" (click)="demanderAcceptation(c)"><i class="ri-arrow-go-back-line"></i>Annuler le retrait</button>
+                  <button type="button" class="btn-ubi sm ep-btn-rouge-plein" [disabled]="envoi" (click)="demanderAcceptation(c)"><i class="ri-check-line"></i>Accepter</button>
                   <button type="button" class="btn-ubi sm" (click)="ouvrirRejet(c)"><i class="ri-close-line"></i>Rejeter la contestation</button>
                 </div>
               }
@@ -148,7 +148,8 @@
             <p class="ep-muted mb-0"><i class="ri-checkbox-circle-line me-1"></i>Aucune contestation en attente.</p>
           }
         </div>
-        <p class="ep-muted small mt-3 mb-0"><i class="ri-information-line"></i> Annuler un retrait : le repas repasse « non retiré » et sort du relevé du prestataire. Possible jusqu'à la clôture du mois.</p>
+        <p class="ep-muted small mt-3 mb-0"><i class="ri-information-line"></i> Accepter : choisissez la cause. Erreur au comptoir : retrait annulé, repas facturé ni à l'employé ni au prestataire.
+          Badge utilisé par un tiers : repas servi, dû par l'employé et payé au prestataire. Possible jusqu'à la clôture du mois.</p>
       </section>
 
       <!-- ── Anomalies + décisions ─────────────────────────── -->
@@ -176,7 +177,8 @@
                 <b>Décisions du mois · {{ moisCourant }}</b>
                 @for (c of d.decisions_mois; track c.id) {
                   <small>{{ jourCourt(c.date_traitement) }} — {{ c.user_nom }} ({{ c.plat }}, {{ jourCourt(c.date_menu) }}) :
-                    <b [class.ep-c-vert]="c.statut === 'acceptee'" [class.ep-c-rouge]="c.statut === 'rejetee'">{{ c.statut_libelle | lowercase }}</b>
+                    <b [class.ep-c-vert]="c.statut === 'acceptee' && c.cause !== 'badge_tiers'" [class.ep-c-orange]="c.cause === 'badge_tiers'"
+                       [class.ep-c-rouge]="c.statut === 'rejetee'">{{ libelleDecision(c) }}</b>
                     par {{ c.traite_par_nom || '—' }}@if (c.commentaire_traitement) { : « {{ c.commentaire_traitement }} » }</small>
                 }
                 <small>Toutes les décisions sont tracées (qui, quand, motif) et visibles par le prestataire.</small>
@@ -186,27 +188,37 @@
         </ul>
         <p class="ep-regles"><b>Règles actives</b> : plus de {{ d.regles.rafale_nb }} retraits en {{ d.regles.rafale_secondes / 60 }} min par un agent ·
           retrait hors horaires de l'agence (par défaut {{ d.regles.horaires_defaut.debut }} – {{ d.regles.horaires_defaut.fin }}) ·
-          même matricule saisi à la main plus de {{ d.regles.saisies_max_mois }} fois dans le mois.</p>
+          même matricule saisi à la main plus de {{ d.regles.saisies_max_mois }} fois dans le mois ·
+          {{ d.regles.erreurs_comptoir_max_mois ?? 3 }} contestations ou plus acceptées pour erreur au comptoir pour un même agent dans le mois.</p>
       </section>
     </div>
   }
 </div>
 
-<!-- ── Accepter une contestation ──────────────────────────────── -->
+<!-- ── Accepter une contestation (cause obligatoire) ──────────── -->
 <div bsModal #accepterModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
       <div class="modal-body p-4">
-        <div class="text-center"><i class="ri-arrow-go-back-line text-danger display-5"></i>
-          <h5 class="mt-3">Accepter la contestation et annuler le retrait ?</h5>
-          <p class="text-muted">Le repas de {{ aAccepter?.user_nom }} ({{ aAccepter?.plat }}, {{ jourCourt(aAccepter?.date_menu) }}) repasse « non retiré »,
-            sort du relevé du prestataire et l'employé est prévenu.</p>
+        <div class="text-center"><i class="ri-feedback-line text-danger display-5"></i>
+          <h5 class="mt-3">Accepter la contestation</h5>
+          <p class="text-muted">{{ resumeAAccepter }} Quelle est la cause ?</p>
+        </div>
+        <div class="ep-causes" role="radiogroup" aria-label="Cause de la contestation" aria-required="true">
+          @for (ca of causes; track ca.valeur) {
+            <label class="ep-cause" [class.actif]="cause === ca.valeur" [for]="'cause-' + ca.valeur">
+              <input type="radio" class="form-check-input" name="cause" [id]="'cause-' + ca.valeur" [value]="ca.valeur" [(ngModel)]="cause" required>
+              <span class="ep-cause-ic"><i [class]="ca.icone"></i></span>
+              <span><b>{{ ca.libelle }}</b><small>{{ ca.consequence }}</small></span>
+            </label>
+          }
         </div>
         <label class="ep-lab" for="acc-comm">Commentaire (facultatif, envoyé à l'employé)</label>
         <textarea id="acc-comm" class="form-control mb-3" rows="2" [(ngModel)]="commentaireAcceptation"></textarea>
         <div class="d-flex gap-2 justify-content-center">
           <button type="button" class="btn-ubi" (click)="accepterModal.hide()">Retour</button>
-          <button type="button" class="btn-ubi ep-btn-rouge-plein" [disabled]="envoi" (click)="accepter()">Oui, annuler le retrait</button>
+          <button type="button" class="btn-ubi ep-btn-rouge-plein" [disabled]="envoi || !cause" (click)="accepter()">
+            {{ cause === 'badge_tiers' ? 'Accepter — repas dû par l\'employé' : 'Accepter — annuler le retrait et le repas' }}</button>
         </div>
       </div>
     </div>

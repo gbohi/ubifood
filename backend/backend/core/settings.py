@@ -2,6 +2,8 @@
 Django settings for core project.
 """
 
+import os
+import sys
 from pathlib import Path
 from decouple import config, Csv
 from datetime import timedelta
@@ -266,6 +268,18 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 FIREBASE_SERVICE_ACCOUNT_KEY = config(
     'FIREBASE_SERVICE_ACCOUNT_KEY',
     default=str(BASE_DIR / 'firebase-service-account.json'),
+)
+
+# Envoi des notifications (api/signals.py) : dans un thread pour un serveur
+# (gunicorn, runserver), dans le fil courant pour les processus courts
+# (commandes manage.py, scripts, tests) qui pourraient se terminer avant le
+# thread. Forçable par NOTIFICATIONS_SYNCHRONES=True/False dans le .env.
+_COMMANDE_MANAGE = (sys.argv[1] if len(sys.argv) > 1 and os.path.basename(sys.argv[0]) == 'manage.py'
+                    else None)
+NOTIFICATIONS_SYNCHRONES = config(
+    'NOTIFICATIONS_SYNCHRONES',
+    default=_COMMANDE_MANAGE is not None and _COMMANDE_MANAGE != 'runserver',
+    cast=bool,
 )
 
 

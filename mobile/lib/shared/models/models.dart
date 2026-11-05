@@ -321,6 +321,10 @@ class Commande {
   /// true : annulée par un gestionnaire / administrateur (et non par l'agent)
   final bool annuleeParGestionnaire;
 
+  /// « contestation » : retrait contesté et accepté pour erreur au comptoir
+  /// (repas non facturé) ; vide sinon
+  final String motifAnnulation;
+
   const Commande({
     required this.id,
     required this.statut,
@@ -332,11 +336,19 @@ class Commande {
     this.avis,
     this.annuleeParNom,
     this.annuleeParGestionnaire = false,
+    this.motifAnnulation = '',
   });
+
+  /// Annulée suite à une contestation acceptée (erreur au comptoir)
+  bool get annuleeParContestation =>
+      statut == StatutCommande.annulee && motifAnnulation == 'contestation';
 
   /// « Annulée par Jean DUPONT (gestionnaire) », null si l'agent a lui-même
   /// annulé (ou si la commande n'est pas annulée).
   String? get libelleAnnulationGestionnaire {
+    if (annuleeParContestation) {
+      return 'Annulée — contestation acceptée, repas non facturé';
+    }
     if (statut != StatutCommande.annulee || !annuleeParGestionnaire) {
       return null;
     }
@@ -378,6 +390,7 @@ class Commande {
         avis: avis,
         annuleeParNom: annuleeParNom,
         annuleeParGestionnaire: annuleeParGestionnaire,
+        motifAnnulation: motifAnnulation,
       );
 
   factory Commande.fromJson(Map<String, dynamic> j) => Commande(
@@ -395,6 +408,7 @@ class Commande {
             : null,
         annuleeParNom: j['annulee_par_nom'] as String?,
         annuleeParGestionnaire: j['annulee_par_gestionnaire'] == true,
+        motifAnnulation: (j['motif_annulation'] ?? '').toString(),
       );
 }
 

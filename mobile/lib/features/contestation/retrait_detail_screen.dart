@@ -6,6 +6,7 @@
 // Ouvert depuis la notification « Retrait validé » ou la fiche d'une
 // commande retirée.
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -165,17 +166,25 @@ class DetailRetraitCorps extends StatelessWidget {
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
     final r = detail.retrait;
     final c = detail.contestation;
+    final accepteeErreur =
+        c?.statut == StatutContestation.acceptee && c?.cause != 'badge_tiers';
     final pastille = detail.statut == 'retiree'
         ? const PastilleStatut(
             label: 'Retrait validé',
             icone: Icons.check_rounded,
             ton: TonPastille.vert)
-        : c?.statut == StatutContestation.acceptee
+        : detail.annuleeParContestation
             ? const PastilleStatut(
-                label: 'Retrait annulé',
+                label: 'Repas annulé · non facturé',
                 icone: Icons.undo_rounded,
                 ton: TonPastille.gris)
-            : const PastilleStatut(label: 'Non retiré', ton: TonPastille.gris);
+            : accepteeErreur
+                ? const PastilleStatut(
+                    label: 'Retrait annulé',
+                    icone: Icons.undo_rounded,
+                    ton: TonPastille.gris)
+                : const PastilleStatut(
+                    label: 'Non retiré', ton: TonPastille.gris);
 
     Widget ligne(String libelle, String valeur) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -207,7 +216,7 @@ class DetailRetraitCorps extends StatelessWidget {
           ),
           child: Column(children: [
             Row(children: [
-              const VignettePlat(url: null, taille: 52, rayon: 12),
+              PhotoPlatRetrait(url: detail.platImageUrl),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -249,7 +258,7 @@ class DetailRetraitCorps extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Text(
-                    c?.statut == StatutContestation.acceptee
+                    accepteeErreur
                         ? 'Le retrait a été annulé suite à votre contestation.'
                         : 'Aucun retrait enregistré pour ce repas.',
                     style: TextStyle(fontSize: 12.5, color: gris)),
@@ -365,21 +374,71 @@ class CarteContestation extends StatelessWidget {
               texte: 'Le gestionnaire cantine examine votre contestation.'),
         ] else ...[
           const SizedBox(height: 10),
+          Text(c.libelleDecision,
+              key: const Key('decision-contestation'),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyLarge
+                  ?.copyWith(fontSize: 13.5, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
           BandeauInfo(
             icone: c.statut == StatutContestation.acceptee
-                ? Icons.check_circle_outline_rounded
+                ? (c.repasDu
+                    ? Icons.badge_outlined
+                    : Icons.check_circle_outline_rounded)
                 : Icons.cancel_outlined,
-            ton: ton,
+            ton: c.statut == StatutContestation.acceptee && c.repasDu
+                ? TonPastille.or
+                : ton,
             texte: [
-              c.statut == StatutContestation.acceptee
-                  ? 'Acceptée : le retrait est annulé, le repas ne vous est pas facturé.'
-                  : 'Rejetée : le repas reste retiré.',
+              c.texteDecision,
               if (c.commentaireTraitement.isNotEmpty)
                 'Réponse : ${c.commentaireTraitement}',
             ].join('\n'),
           ),
         ],
       ]),
+    );
+  }
+}
+
+/// Photo du plat (CachedNetworkImage), icône de substitution sans photo
+/// ou en cas d'erreur de chargement
+class PhotoPlatRetrait extends StatelessWidget {
+  final String? url;
+  final double taille;
+  const PhotoPlatRetrait({super.key, required this.url, this.taille = 64});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final substitut = Container(
+      key: const Key('photo-plat-substitut'),
+      width: taille,
+      height: taille,
+      color: isDark
+          ? AppColors.accent.withOpacity(0.12)
+          : AppColors.primary.withOpacity(0.06),
+      child: Icon(Icons.restaurant_rounded,
+          size: taille * 0.45,
+          color: isDark
+              ? AppColors.accent.withOpacity(0.8)
+              : AppColors.primary.withOpacity(0.45)),
+    );
+    final u = url;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: u == null || u.isEmpty
+          ? substitut
+          : CachedNetworkImage(
+              imageUrl: u,
+              width: taille,
+              height: taille,
+              fit: BoxFit.cover,
+              fadeInDuration: Duration.zero,
+              placeholder: (_, __) => substitut,
+              errorWidget: (_, __, ___) => substitut,
+            ),
     );
   }
 }

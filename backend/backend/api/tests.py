@@ -2184,6 +2184,8 @@ class APreparerTests(_EspacePrestataireBase):
         r = self.client_pour(self.agent_a).get(f'{API}/prestataire/liste-du-jour/')
         self.assertEqual(r.status_code, 200)
         self.assertEqual((r.data['total'], r.data['retires']), (2, 1))
+        # Sans ?agence= : la seule agence desservie
+        self.assertEqual(r.data['agence'], self.agence.id)
         ligne = r.data['lignes'][0]
         self.assertEqual(set(ligne), {'commande_id', 'menu_id', 'nom', 'prenoms', 'nom_complet', 'matricule',
                                       'agence', 'user_id', 'agence_id', 'plat_id', 'plat', 'statut',
@@ -2328,20 +2330,204 @@ class ContestationTests(_EspacePrestataireBase):
         self.assertEqual(len(fact.lignes_prestataires(Commande.objects.filter(pk=self.cmd.pk))), 1)
         gest = self.client_pour(self.gestionnaire)
         self.assertEqual(len(gest.get(f'{API}/contestations-retrait/?statut=ouverte').data), 1)
+        # Cause obligatoire
+        url = f'{API}/contestations-retrait/{r.data["id"]}/accepter/'
+        self.assertEqual(gest.post(url).status_code, 400)
+        self.assertEqual(gest.post(url, {'cause': 'inconnue'}).status_code, 400)
+        self.assertEqual(ContestationRetrait.objects.get().statut, 'ouverte')
         with patch('api.signals._en_arriere_plan', _synchrone):
-            r = gest.post(f'{API}/contestations-retrait/{r.data["id"]}/accepter/')
+            r = gest.post(url, {'cause': 'erreur_comptoir'})
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(r.data['statut'], 'acceptee')
+        self.assertEqual((r.data['statut'], r.data['cause']), ('acceptee', 'erreur_comptoir'))
+        self.assertIn('pas facturé', r.data['explication'])
         self.cmd.refresh_from_db()
-        self.assertEqual(self.cmd.statut, 'en_attente')
+        # Erreur au comptoir : commande annulée (motif contestation) par le gestionnaire
+        self.assertEqual((self.cmd.statut, self.cmd.motif_annulation, self.cmd.annulee_par),
+                         ('annulee', 'contestation', self.gestionnaire))
         self.assertFalse(Retrait.objects.exists())
         self.assertEqual(ContestationRetrait.objects.get().retrait_mode, 'saisie')
-        # Hors du relevé du prestataire (mais toujours facturé à l'employé)
+        # Facturé ni au prestataire, ni à l'employé
         self.assertEqual(fact.lignes_prestataires(Commande.objects.filter(pk=self.cmd.pk)), [])
-        self.assertEqual(len(fact.lignes_facturation(Commande.objects.filter(pk=self.cmd.pk))), 1)
-        self.assertTrue(Notification.objects.filter(user=self.employe, type='contestation_decidee').exists())
+        self.assertEqual(fact.lignes_facturation(Commande.objects.filter(pk=self.cmd.pk)), [])
+        n = Notification.objects.get(user=self.employe, type='contestation_decidee')
+        self.assertIn('non facturé', n.titre)
+        self.assertEqual(n.donnees, {'statut': 'acceptee', 'cause': 'erreur_comptoir'})
+        # Pas de notification « Commande annulée » en plus de la décision
+        self.assertFalse(Notification.objects.filter(user=self.employe, type='commande_annulee').exists())
+        d = emp.get(f'{API}/commandes/{self.cmd.id}/retrait/').data
+        self.assertEqual((d['statut'], d['contestation']['cause']), ('annulee', 'erreur_comptoir'))
+        self.assertTrue(d['annulee_par_contestation'])
         self.assertEqual(gest.post(f'{API}/contestations-retrait/{r.data["id"]}/rejeter/',
                                    {'commentaire': 'x'}).status_code, 400)
+
+    def _tarifs(self):
+        from .models import Categoriesalarie, PlatCategoriesalarie, UserCategoriesalarie
+        debut = timezone.now() - timedelta(days=400)
+        cat = Categoriesalarie.objects.create(libelle='Agent')
+        PlatCategoriesalarie.objects.create(categoriesalarie=cat, montant=Decimal('500'), statut=self.statut,
+                                            date_debut=debut)
+        UserCategoriesalarie.objects.create(user=self.employe, categoriesalarie=cat, statut=self.statut,
+                                            date_debut=debut)
+
+    def _contester(self, motif='badge_utilise'):
+        r = self.client_pour(self.employe).post(f'{API}/contestations-retrait/',
+                                                {'commande_id': self.cmd.id, 'motif': motif})
+        self.assertEqual(r.status_code, 201, r.data)
+        return r.data['id']
+
+    def _totaux(self):
+        qs = Commande.objects.filter(pk=self.cmd.pk)
+        emp = fact.synthese_par_employe(fact.lignes_facturation(qs))
+        prest = fact.synthese_par_prestataire(fact.lignes_prestataires(qs))
+        return (sum(e['total'] for e in emp), sum(p['total'] for p in prest))
+
+    def test_acceptee_badge_tiers_repas_du(self):
+        from .models import Notification, Retrait
+        self._tarifs()
+        self.assertEqual(self._totaux(), (Decimal('500'), Decimal('900')))
+        cid = self._contester()
+        with patch('api.signals._en_arriere_plan', _synchrone):
+            r = self.client_pour(self.gestionnaire).post(f'{API}/contestations-retrait/{cid}/accepter/',
+                                                         {'cause': 'badge_tiers', 'commentaire': 'Badge prêté.'})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual((r.data['statut'], r.data['cause'], r.data['cause_libelle']),
+                         ('acceptee', 'badge_tiers', 'Badge utilisé par un tiers'))
+        # Repas réellement servi : retrait conservé, l'employé paie, le prestataire est payé
+        self.cmd.refresh_from_db()
+        self.assertEqual(self.cmd.statut, 'retiree')
+        self.assertTrue(Retrait.objects.filter(pk=self.retrait.pk).exists())
+        self.assertEqual(self._totaux(), (Decimal('500'), Decimal('900')))
+        n = Notification.objects.get(user=self.employe, type='contestation_decidee')
+        self.assertIn('repas dû', n.titre)
+        self.assertIn('facturé', n.message)
+        self.assertIn('Badge prêté.', n.message)
+        self.assertEqual(n.donnees, {'statut': 'acceptee', 'cause': 'badge_tiers'})
+        # API des notifications : statut et cause de la décision
+        notifs = self.client_pour(self.employe).get(f'{API}/notifications/mes-notifications/').data
+        decidee = [x for x in notifs['notifications'] if x['type'] == 'contestation_decidee'][0]
+        self.assertEqual(decidee['donnees'], {'statut': 'acceptee', 'cause': 'badge_tiers'})
+        d = self.client_pour(self.employe).get(f'{API}/commandes/{self.cmd.id}/retrait/').data
+        self.assertEqual(d['contestation']['cause'], 'badge_tiers')
+        self.assertIn('dû', d['contestation']['explication'])
+        self.assertFalse(d['contestable'])
+        # Contrôle : pas compté parmi les repas sortis du relevé
+        c = self.client_pour(self.gestionnaire).get(f'{API}/controle-retraits/').data
+        self.assertEqual(c['chiffres']['retraits_annules_mois'], 0)
+        self.assertEqual(c['decisions_mois'][0]['cause'], 'badge_tiers')
+
+    def test_acceptee_erreur_comptoir_totaux_et_statistiques(self):
+        self._tarifs()
+        cid = self._contester('absent')
+        gest = self.client_pour(self.gestionnaire)
+        r = gest.post(f'{API}/contestations-retrait/{cid}/accepter/', {'cause': 'erreur_comptoir'})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self._totaux(), (0, 0))
+        # Statistiques : annulée (contestation), ni servie ni non retirée
+        jour = self.menu.date_menu.isoformat()
+        st = gest.get(f'{API}/statistiques/', {'debut': jour, 'fin': jour}).data
+        k = st['kpis']
+        self.assertEqual((k['commandes'], k['servis'], k['non_retires'], k['annulees'],
+                          k['annulees_contestation']), (0, 0, 0, 1, 1))
+        mois = [a for a in st['annulations'] if (a['annee'], a['mois']) == (self.menu.date_menu.year,
+                                                                           self.menu.date_menu.month)][0]
+        self.assertEqual((mois['par_agent'], mois['par_gestionnaire'], mois['par_contestation']), (0, 0, 1))
+        c = gest.get(f'{API}/controle-retraits/').data
+        self.assertEqual(c['chiffres']['retraits_annules_mois'], 1)
+        self.assertEqual(c['decisions_mois'][0]['cause'], 'erreur_comptoir')
+        # Le relevé du prestataire (espace prestataire) ne le compte pas
+        rel = self.client_pour(self.resp_a).get(f'{API}/prestataire/releves/').data
+        self.assertEqual((rel[0]['nb_repas'], rel[0]['montant']), (0, 0))
+
+    def test_cloture_apres_decision(self):
+        """Mois clôturé ensuite : les factures figées respectent la cause ; plus de décision possible."""
+        from datetime import date
+        from .models import (ClotureMensuelle, ContestationRetrait, LigneFacture, LigneFacturePrestataire,
+                             Retrait)
+        self._tarifs()
+        premier = timezone.localdate().replace(day=1)
+        jour = premier - timedelta(days=3)
+        cmds = {}
+        for cause, emp in (('erreur_comptoir', self.employe), ('badge_tiers', self.employe2)):
+            menu = Menu.objects.create(date_menu=jour, agence=self.agence, typeequipe=self.typeequipe)
+            cmd = Commande.objects.create(user=emp, menu=menu, plat=self.plat_a, statut='retiree')
+            ret = Retrait.objects.create(user=emp, menu=menu, badge_matricule=emp.username, valide_par=self.agent_a)
+            c = ContestationRetrait.objects.create(commande=cmd, retrait=ret, user=emp, menu=menu, motif='absent',
+                                                   retrait_valide_par=self.agent_a)
+            r = self.client_pour(self.gestionnaire).post(f'{API}/contestations-retrait/{c.id}/accepter/',
+                                                         {'cause': cause})
+            self.assertEqual(r.status_code, 200, r.data)
+            cmds[cause] = cmd
+        from .models import UserCategoriesalarie
+        UserCategoriesalarie.objects.create(user=self.employe2, statut=self.statut,
+                                            categoriesalarie=UserCategoriesalarie.objects.get(
+                                                user=self.employe).categoriesalarie,
+                                            date_debut=timezone.now() - timedelta(days=400))
+        fact.cloturer_mois(jour.year, jour.month, self.admin)
+        e, b = cmds['erreur_comptoir'], cmds['badge_tiers']
+        self.assertFalse(LigneFacture.objects.filter(commande=e).exists())
+        self.assertFalse(LigneFacturePrestataire.objects.filter(commande=e).exists())
+        self.assertEqual(LigneFacture.objects.get(commande=b).montant, Decimal('500'))
+        self.assertEqual(LigneFacturePrestataire.objects.get(commande=b).montant, Decimal('900'))
+        # Mois clôturé : plus de décision (y compris badge_tiers, sans effet sur la facturation)
+        menu = Menu.objects.create(date_menu=jour, agence=self.agence, typeequipe=self.typeequipe)
+        emp3 = self.creer_user('emp3', 'employe')
+        cmd = Commande.objects.create(user=emp3, menu=menu, plat=self.plat_a, statut='retiree')
+        c = ContestationRetrait.objects.create(commande=cmd, user=emp3, menu=menu, motif='absent')
+        self.assertTrue(ClotureMensuelle.objects.filter(annee=jour.year, mois=jour.month).exists())
+        r = self.client_pour(self.gestionnaire).post(f'{API}/contestations-retrait/{c.id}/accepter/',
+                                                     {'cause': 'badge_tiers'})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('clôturé', str(r.data))
+        c.refresh_from_db()
+        self.assertEqual(c.statut, 'ouverte')
+
+    def test_contestation_sans_cause_historique(self):
+        """Décision antérieure aux causes : facturée à l'employé, hors relevé du prestataire."""
+        from .models import ContestationRetrait
+        ContestationRetrait.objects.create(commande=self.cmd, user=self.employe, menu=self.menu, motif='absent',
+                                           statut='acceptee')
+        self.cmd.statut = 'en_attente'
+        self.cmd.save()
+        qs = Commande.objects.filter(pk=self.cmd.pk)
+        self.assertEqual(fact.lignes_prestataires(qs), [])
+        self.assertEqual(len(fact.lignes_facturation(qs)), 1)
+
+    def test_anomalie_erreurs_comptoir_agent(self):
+        from .controle import SEUIL_ERREURS_AGENT
+        from .models import ContestationRetrait, Retrait
+        jour = timezone.localdate()
+        gest = self.client_pour(self.gestionnaire)
+
+        def erreurs(nb):
+            for i in range(nb):
+                emp = self.creer_user(f'x{ContestationRetrait.objects.count()}', 'employe')
+                menu = Menu.objects.create(date_menu=jour, agence=self.agence, typeequipe=self.typeequipe)
+                cmd = Commande.objects.create(user=emp, menu=menu, plat=self.plat_a, statut='retiree')
+                Retrait.objects.create(user=emp, menu=menu, badge_matricule=emp.username, valide_par=self.agent_a)
+                c = ContestationRetrait.objects.create(commande=cmd, user=emp, menu=menu, motif='absent',
+                                                       retrait_valide_par=self.agent_a)
+                self.assertEqual(gest.post(f'{API}/contestations-retrait/{c.id}/accepter/',
+                                           {'cause': 'erreur_comptoir'}).status_code, 200)
+
+        erreurs(SEUIL_ERREURS_AGENT - 1)
+        r = gest.get(f'{API}/controle-retraits/?date={jour}').data
+        self.assertNotIn('erreurs_comptoir', [a['type'] for a in r['anomalies']])
+        erreurs(1)
+        r = gest.get(f'{API}/controle-retraits/?date={jour}').data
+        a = [a for a in r['anomalies'] if a['type'] == 'erreurs_comptoir']
+        self.assertEqual(len(a), 1)
+        self.assertEqual((a[0]['agent_id'], a[0]['nb'], a[0]['prestataire']),
+                         (self.agent_a.id, SEUIL_ERREURS_AGENT, 'Traiteur A'))
+        self.assertEqual(r['regles']['erreurs_comptoir_max_mois'], SEUIL_ERREURS_AGENT)
+        agent = [x for x in r['agents'] if x['agent_id'] == self.agent_a.id][0]
+        self.assertEqual(agent['erreurs_comptoir_mois'], SEUIL_ERREURS_AGENT)
+        self.assertIn('erreurs_comptoir', [x['type'] for x in agent['anomalies']])
+
+    def test_detail_retrait_photo_du_plat(self):
+        from .models import PlatImage
+        PlatImage.objects.create(plat=self.plat_a, image='images_plats/alloco.png', is_principale=True)
+        d = self.client_pour(self.employe).get(f'{API}/commandes/{self.cmd.id}/retrait/').data
+        self.assertEqual(d['plat_image_url'], 'http://testserver/media/images_plats/alloco.png')
 
     def test_rejet_commentaire_obligatoire(self):
         from .models import Notification
@@ -2377,6 +2563,97 @@ class ContestationTests(_EspacePrestataireBase):
                                   date_debut=timezone.now() - timedelta(days=30))
         self.assertEqual(self.client_pour(gest_yop).post(
             f'{API}/contestations-retrait/{r.data["id"]}/accepter/').status_code, 404)
+
+
+class MessagesFcmTests(BaseAPITestCase):
+    """Construction des messages FCM (pas d'envoi réel : Firebase n'est pas joignable en test)."""
+
+    def test_retrait_valide_message_data_seulement(self):
+        from .fcm_service import construire_message, donnees_fcm
+        data = donnees_fcm('retrait_valide', notif_id=7, commande_id=3, menu_id=2, retrait_id=5)
+        m = construire_message(['tok'], '🍽️ Retrait validé', 'Votre repas…', 'retrait_valide', data)
+        # Pas de bloc notification : l'application affiche la notification avec son bouton d'action
+        self.assertIsNone(m.notification)
+        self.assertIsNone(m.android.notification)
+        self.assertEqual(m.android.priority, 'high')
+        self.assertEqual((m.data['type'], m.data['commande_id'], m.data['retrait_id'], m.data['notif_id']),
+                         ('retrait_valide', '3', '5', '7'))
+        self.assertEqual((m.data['titre'], m.data['message']), ('🍽️ Retrait validé', 'Votre repas…'))
+        # iOS : alerte avec la catégorie déclarant l'action
+        aps = m.apns.payload.aps
+        self.assertEqual((aps.alert.title, aps.category), ('🍽️ Retrait validé', 'RETRAIT_VALIDE'))
+        self.assertTrue(all(isinstance(v, str) for v in m.data.values()))
+
+    def test_autres_types_inchanges(self):
+        from .fcm_service import construire_message, donnees_fcm
+        data = donnees_fcm('contestation_decidee', notif_id=1, contestation_id=4,
+                           donnees={'statut': 'acceptee', 'cause': None})
+        self.assertEqual((data['statut'], data['cause'], data['contestation_id']), ('acceptee', '', '4'))
+        m = construire_message(['tok'], 'Titre', 'Texte', 'contestation_decidee', data)
+        self.assertEqual((m.notification.title, m.notification.body), ('Titre', 'Texte'))
+        self.assertEqual(m.android.notification.channel_id, 'ubifood_high')
+        self.assertNotIn('titre', m.data)
+        self.assertIsNone(m.apns.payload.aps.category)
+
+    def test_envoi_fcm_utilise_le_message_construit(self):
+        from .models import DeviceToken, Notification
+        from .fcm_service import envoyer_notification_user
+        DeviceToken.objects.create(user=self.employe, token='tok-1', platform='android')
+        envoye = {}
+
+        class Reponse:
+            success_count, failure_count, responses = 1, 0, []
+
+        def envoyer(message):
+            envoye['m'] = message
+            return Reponse()
+
+        with patch('api.fcm_service.init_firebase'), \
+                patch('api.fcm_service.messaging.send_each_for_multicast', envoyer):
+            n = envoyer_notification_user(self.employe, 'T', 'M', type_notif='retrait_valide', retrait_id=9)
+        self.assertIsNone(envoye['m'].notification)
+        self.assertEqual(envoye['m'].data['notif_id'], str(n.id))
+        self.assertEqual(Notification.objects.get().retrait_id, 9)
+
+
+class EnvoiNotificationsTests(BaseAPITestCase):
+    """_en_arriere_plan : après validation de la transaction ; synchrone pour les processus courts."""
+
+    def test_synchrone(self):
+        from .signals import _en_arriere_plan
+        appels = []
+        with override_settings(NOTIFICATIONS_SYNCHRONES=True), \
+                patch('api.signals.threading.Thread') as thread:
+            with self.captureOnCommitCallbacks(execute=True):
+                _en_arriere_plan(appels.append, 1)
+                self.assertEqual(appels, [])          # pas avant la validation
+        self.assertEqual(appels, [1])
+        thread.assert_not_called()
+
+    def test_thread_serveur(self):
+        from .signals import _en_arriere_plan
+        with override_settings(NOTIFICATIONS_SYNCHRONES=False), \
+                patch('api.signals.threading.Thread') as thread:
+            with self.captureOnCommitCallbacks(execute=True):
+                _en_arriere_plan(print, 1)
+        thread.assert_called_once()
+        self.assertFalse(thread.call_args.kwargs['daemon'])
+        thread.return_value.start.assert_called_once()
+
+    def test_erreur_journalisee(self):
+        from .signals import _en_arriere_plan
+
+        def echec():
+            raise RuntimeError('FCM indisponible')
+
+        with override_settings(NOTIFICATIONS_SYNCHRONES=True), self.assertLogs('api.signals', 'ERROR'):
+            with self.captureOnCommitCallbacks(execute=True):
+                _en_arriere_plan(echec)
+
+    def test_reglage_par_defaut_commande_manage(self):
+        from django.conf import settings
+        # manage.py test : processus court, envoi synchrone
+        self.assertTrue(settings.NOTIFICATIONS_SYNCHRONES)
 
 
 class ControleRetraitsTests(_EspacePrestataireBase):

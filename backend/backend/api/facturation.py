@@ -6,9 +6,15 @@ Règle commune : chaque repas commandé et NON annulé (en attente ou retiré)
 est facturé ; les tarifs appliqués sont ceux en vigueur à la DATE DU MENU.
   - Employé     : tarif de la catégorie salarié de l'agent (PlatCategoriesalarie).
   - Prestataire : le prestataire rattaché à l'agence du menu
-                  (AgencePrestataire), à son tarif (PlatPrestataire) ; sauf
-                  les repas dont le retrait contesté a été annulé
-                  (ContestationRetrait acceptée).
+                  (AgencePrestataire), à son tarif (PlatPrestataire).
+
+Contestations de retrait acceptées (ContestationRetrait) :
+  - cause erreur_comptoir : la commande est annulée (motif_annulation
+    « contestation ») : facturée ni à l'employé, ni au prestataire ;
+  - cause badge_tiers : repas servi (badge prêté / perdu) : facturé
+    normalement aux deux ;
+  - sans cause (décisions antérieures aux causes) : facturée à l'employé,
+    hors relevé du prestataire.
 
 Mois clôturés : les montants viennent des factures figées
 (FactureMensuelle / LigneFacture, FacturePrestataire /
@@ -28,6 +34,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import (
@@ -242,11 +249,13 @@ def lignes_prestataires(commandes_qs):
     Une ligne par commande facturable (annulées exclues) avec son prestataire.
     Valeurs figées si le mois est clôturé, calculées sinon.
     Un repas dont le retrait a été contesté avec succès par l'employé
-    (ContestationRetrait acceptée) n'est pas facturé au prestataire.
+    (ContestationRetrait acceptée) n'est pas facturé au prestataire, sauf si
+    la cause retenue est « badge utilisé par un tiers » (repas réellement servi).
+    Cause « erreur au comptoir » : commande annulée, donc déjà exclue.
     """
     commandes = list(
         commandes_qs.filter(statut__in=STATUTS_FACTURES)
-        .exclude(contestation__statut='acceptee')
+        .exclude(Q(contestation__statut='acceptee') & ~Q(contestation__cause='badge_tiers'))
         .select_related('user', 'plat', 'menu__agence', 'menu__typeequipe')
         .order_by('menu__date_menu', 'id')
     )

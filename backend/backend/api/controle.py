@@ -5,8 +5,10 @@ Contrôle des retraits (côté UbiPharm) et contestations des employés.
     (une fois par repas, jusqu'à la clôture du mois et au plus
     DELAI_CONTESTATION_JOURS jours après le repas) ;
   - Gestionnaire (ses agences) / administrateur : liste des contestations,
-    accepter (le retrait est annulé : repas « non retiré », hors relevé du
-    prestataire) ou rejeter (commentaire obligatoire, envoyé à l'employé) ;
+    accepter avec une cause (erreur_comptoir : retrait et commande annulés,
+    repas facturé ni à l'employé ni au prestataire ; badge_tiers : repas
+    servi à un tiers avec le badge de l'employé, facturé normalement) ou
+    rejeter (commentaire obligatoire, envoyé à l'employé) ;
   - Contrôle du jour : retraits par agent validant, rythme par tranche de
     5 minutes, contestations et anomalies calculées à la volée.
 """
@@ -25,7 +27,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from .models import (
-    Agence, ClotureMensuelle, Commande, ContestationRetrait, Menu, ParametresSociete, Retrait,
+    Agence, ClotureMensuelle, Commande, ContestationRetrait, Menu, ParametresSociete, Retrait, User,
 )
 from .permissions import IsAuthenticated, IsGestionnaireRole, agences_gerees, is_gestionnaire
 from .prestataires import horaires_service
@@ -37,6 +39,33 @@ RAFALE_NB = 5
 RAFALE_SECONDES = 120
 # Matricule saisi à la main plus de SAISIES_MAX fois dans le mois pour un même employé
 SAISIES_MAX = 3
+# Agent du prestataire ayant SEUIL_ERREURS_AGENT contestations ou plus acceptées
+# pour erreur au comptoir dans le mois
+SEUIL_ERREURS_AGENT = 3
+CAUSES = dict(ContestationRetrait.CAUSE_CHOICES)
+# Conséquence de chaque cause, telle qu'expliquée à l'employé
+EXPLICATIONS_CAUSE = {
+    'erreur_comptoir': ("Le retrait résultait d'une erreur au comptoir : le repas est annulé, "
+                        "il ne vous sera pas facturé."),
+    'badge_tiers': ("Votre badge a été utilisé par un tiers (prêté ou perdu) : le repas a bien été servi, "
+                    "il reste dû et vous sera facturé."),
+}
+
+
+def explication_decision(c):
+    """Texte expliquant la décision à l'employé (None si la contestation est ouverte)."""
+    if c.statut == 'acceptee':
+        return EXPLICATIONS_CAUSE.get(c.cause, "Le retrait a été annulé.")
+    if c.statut == 'rejetee':
+        return "Le repas reste retiré et facturé."
+    return None
+
+
+def filtre_erreurs_comptoir(prefixe=''):
+    """Contestations acceptées dont le repas sort du relevé du prestataire (erreur au comptoir ;
+    cause vide : décisions antérieures aux causes)."""
+    return (Q(**{f'{prefixe}statut': 'acceptee'})
+            & (Q(**{f'{prefixe}cause': 'erreur_comptoir'}) | Q(**{f'{prefixe}cause__isnull': True})))
 
 
 def _heure(dt):
@@ -82,6 +111,8 @@ class ContestationRetraitSerializer(serializers.ModelSerializer):
     plat = serializers.ReadOnlyField(source='commande.plat.nom')
     motif_libelle = serializers.CharField(source='get_motif_display', read_only=True)
     statut_libelle = serializers.CharField(source='get_statut_display', read_only=True)
+    cause_libelle = serializers.SerializerMethodField()
+    explication = serializers.SerializerMethodField()
     retrait_valide_par_nom = serializers.SerializerMethodField()
     retrait_valide_par_prestataire = serializers.SerializerMethodField()
     traite_par_nom = serializers.SerializerMethodField()
@@ -90,16 +121,22 @@ class ContestationRetraitSerializer(serializers.ModelSerializer):
         model = ContestationRetrait
         fields = ['id', 'commande_id', 'commande', 'retrait', 'user', 'user_nom', 'matricule', 'menu',
                   'date_menu', 'agence_id', 'agence_nom', 'plat', 'motif', 'motif_libelle', 'commentaire',
-                  'statut', 'statut_libelle', 'date_retrait', 'retrait_valide_par',
+                  'statut', 'statut_libelle', 'cause', 'cause_libelle', 'explication', 'date_retrait', 'retrait_valide_par',
                   'retrait_valide_par_nom', 'retrait_valide_par_prestataire', 'retrait_mode',
                   'traite_par', 'traite_par_nom', 'commentaire_traitement', 'date_traitement',
                   'created_at']
-        read_only_fields = ['retrait', 'user', 'menu', 'statut', 'date_retrait', 'retrait_valide_par',
+        read_only_fields = ['retrait', 'user', 'menu', 'statut', 'cause', 'date_retrait', 'retrait_valide_par',
                             'retrait_mode', 'traite_par', 'commentaire_traitement', 'date_traitement',
                             'created_at']
 
     def get_user_nom(self, obj):
         return nom_complet(obj.user)
+
+    def get_cause_libelle(self, obj):
+        return obj.get_cause_display() if obj.cause else None
+
+    def get_explication(self, obj):
+        return explication_decision(obj)
 
     def get_retrait_valide_par_nom(self, obj):
         return nom_complet(obj.retrait_valide_par) if obj.retrait_valide_par_id else None
@@ -131,7 +168,7 @@ class ContestationRetraitViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixi
       GET            employé : ses contestations ; gestionnaire : celles de ses agences
                      (?statut=ouverte|acceptee|rejetee &date_debut= &date_fin= &agence= &mes=1)
       POST           employé : { commande_id, motif, commentaire }
-      POST {id}/accepter/  { commentaire? }   gestionnaire
+      POST {id}/accepter/  { cause: erreur_comptoir|badge_tiers, commentaire? }   gestionnaire
       POST {id}/rejeter/   { commentaire }    gestionnaire (commentaire obligatoire)
     """
     serializer_class = ContestationRetraitSerializer
@@ -196,17 +233,36 @@ class ContestationRetraitViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixi
 
     @action(detail=True, methods=['post'])
     def accepter(self, request, pk=None):
-        """Accepte : retrait annulé (repas « non retiré »), repas retiré du relevé du prestataire."""
+        """
+        Accepte, avec la cause retenue (obligatoire) :
+          - erreur_comptoir : retrait annulé et commande annulée (motif
+            « contestation ») : repas facturé ni à l'employé, ni au prestataire ;
+          - badge_tiers : repas réellement servi (badge prêté / perdu) : le
+            retrait est conservé, l'employé paie et le prestataire est payé.
+        """
+        from .serializers import verifier_mois_ouvert
         from .signals import notifier_contestation_decidee
         from .views import annuler_retrait
         c = self._a_traiter(request)
+        cause = str(request.data.get('cause') or '').strip()
+        if cause not in CAUSES:
+            raise ValidationError({'cause': "Choisissez la cause : « erreur_comptoir » (erreur ou fraude au "
+                                            "comptoir) ou « badge_tiers » (badge utilisé par un tiers)."})
+        verifier_mois_ouvert(c.menu.date_menu)
         with transaction.atomic():
             commande = Commande.objects.select_for_update().get(pk=c.commande_id)
-            if commande.statut == 'retiree':
-                retrait = Retrait.objects.filter(user=commande.user, menu=commande.menu).first()
-                annuler_retrait(retrait, request.user, commande=commande, notifier=False)
-                c.retrait = None      # supprimé par l'annulation (informations recopiées)
+            if cause == 'erreur_comptoir':
+                if commande.statut == 'retiree':
+                    retrait = Retrait.objects.filter(user=commande.user, menu=commande.menu).first()
+                    annuler_retrait(retrait, request.user, commande=commande, notifier=False)
+                    c.retrait = None      # supprimé par l'annulation (informations recopiées)
+                # update() : pas de notification « Commande annulée » (l'employé reçoit la décision)
+                maintenant = timezone.now()
+                Commande.objects.filter(pk=commande.pk, statut__in=('en_attente', 'retiree')).update(
+                    statut='annulee', annulee_par=request.user, date_annulation=maintenant,
+                    motif_annulation='contestation', updated_at=maintenant, user_updated=request.user)
             c.statut = 'acceptee'
+            c.cause = cause
             c.traite_par = request.user
             c.commentaire_traitement = str(request.data.get('commentaire') or '').strip()[:1000]
             c.date_traitement = timezone.now()
@@ -231,8 +287,12 @@ class ContestationRetraitViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixi
         return Response(self.get_serializer(self.get_queryset().get(pk=c.pk)).data)
 
 
-def detail_retrait(commande):
+def detail_retrait(commande, request=None):
     """Détail du retrait d'une commande (écran employé « Retrait du 17/11 »)."""
+    from .espace_prestataire import _images
+    image = _images({commande.plat_id}).get(commande.plat_id)
+    if image and request is not None:
+        image = request.build_absolute_uri(image)
     retrait = (Retrait.objects.filter(user=commande.user, menu=commande.menu)
                .select_related('valide_par__prestataire', 'menu__agence').first())
     contestation = ContestationRetrait.objects.filter(commande=commande).first()
@@ -242,7 +302,9 @@ def detail_retrait(commande):
         'statut': commande.statut,
         'date_menu': commande.menu.date_menu.isoformat(),
         'plat': commande.plat.nom,
+        'plat_image_url': image,
         'agence': commande.menu.agence.nom_agence,
+        'annulee_par_contestation': commande.motif_annulation == 'contestation',
         'retrait': retrait and {
             'id': retrait.id,
             'date_retrait': retrait.date_retrait.isoformat(),
@@ -256,7 +318,11 @@ def detail_retrait(commande):
         },
         'contestation': contestation and {
             'id': contestation.id, 'statut': contestation.statut,
-            'statut_libelle': contestation.get_statut_display(), 'motif': contestation.motif,
+            'statut_libelle': contestation.get_statut_display(),
+            'cause': contestation.cause,
+            'cause_libelle': contestation.get_cause_display() if contestation.cause else None,
+            'explication': explication_decision(contestation),
+            'motif': contestation.motif,
             'motif_libelle': contestation.get_motif_display(),
             'commentaire': contestation.commentaire,
             'commentaire_traitement': contestation.commentaire_traitement,
@@ -415,6 +481,24 @@ class ControleRetraitsView(APIView):
         contest_agent = defaultdict(int)
         for c in cont.filter(menu__date_menu=d):
             contest_agent[c.retrait_valide_par_id] += 1
+        # Contestations acceptées pour erreur au comptoir, par agent, dans le mois
+        erreurs_agent = {
+            row['retrait_valide_par']: row['n'] for row in
+            cont.filter(statut='acceptee', cause='erreur_comptoir', retrait_valide_par__isnull=False,
+                        menu__date_menu__year=d.year, menu__date_menu__month=d.month)
+            .values('retrait_valide_par').annotate(n=Count('id'))
+        }
+        agents_erreurs = {u.id: u for u in User.objects.filter(id__in=[
+            a for a, n in erreurs_agent.items() if n >= SEUIL_ERREURS_AGENT]).select_related('prestataire')}
+        for agent_id, u in sorted(agents_erreurs.items(), key=lambda x: -erreurs_agent[x[0]]):
+            n = erreurs_agent[agent_id]
+            a = {'type': 'erreurs_comptoir', 'libelle': 'Contestations acceptées pour erreur au comptoir',
+                 'agent_id': agent_id, 'agent_nom': nom_complet(u),
+                 'prestataire': u.prestataire.libelle if u.prestataire_id else None, 'nb': n,
+                 'description': (f"{nom_complet(u)} : {n} contestations acceptées pour erreur au comptoir "
+                                 f"en {d.month:02d}/{d.year} (seuil : {SEUIL_ERREURS_AGENT})")}
+            anomalies.append(a)
+            anomalies_agent[agent_id].append(a)
         ouvertes = list(cont.filter(statut='ouverte').order_by('created_at'))
         debut_mois = d.replace(day=1)
         decisions = list(cont.exclude(statut='ouverte').filter(date_traitement__date__gte=debut_mois)
@@ -447,6 +531,7 @@ class ControleRetraitsView(APIView):
                 'premier': _heure(rs[0].date_retrait), 'dernier': _heure(rs[-1].date_retrait),
                 'rythme': _rythme(rs),
                 'nb_contestations': contest_agent.get(agent_id, 0),
+                'erreurs_comptoir_mois': erreurs_agent.get(agent_id, 0),
                 'anomalies': [{'type': a['type'], 'description': a['description']}
                               for a in anomalies_agent.get(agent_id, [])],
                 'retraits': [_retrait_ligne(r, plats) for r in rs],
@@ -454,7 +539,8 @@ class ControleRetraitsView(APIView):
         agents.sort(key=lambda a: (a['secours'], a['agent_id'] is None, -a['nb_retraits']))
         en_secours = sum(a['nb_retraits'] for a in agents if a['secours'])
         nb = len(retraits)
-        mois_d = cont.filter(statut='acceptee', menu__date_menu__year=d.year,
+        # Repas sortis du relevé du prestataire (erreur au comptoir) dans le mois
+        mois_d = cont.filter(filtre_erreurs_comptoir(), menu__date_menu__year=d.year,
                              menu__date_menu__month=d.month).count()
         return Response({
             'date': d.isoformat(),
@@ -477,6 +563,7 @@ class ControleRetraitsView(APIView):
             'anomalies': anomalies,
             'regles': {'rafale_nb': RAFALE_NB, 'rafale_secondes': RAFALE_SECONDES,
                        'saisies_max_mois': SAISIES_MAX,
+                       'erreurs_comptoir_max_mois': SEUIL_ERREURS_AGENT,
                        'horaires_defaut': {'debut': parametres.heure_debut_service.strftime('%H:%M'),
                                            'fin': parametres.heure_fin_service.strftime('%H:%M')}},
         })

@@ -235,6 +235,12 @@ class Commande(BaseModel):
     # Qui a annulé : l'agent lui-même ou un gestionnaire / administrateur
     annulee_par     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                         related_name='commandes_annulees')
+    # Annulation particulière : contestation de retrait acceptée pour erreur
+    # au comptoir (repas facturé ni à l'employé, ni au prestataire)
+    MOTIF_ANNULATION_CHOICES = [
+        ('contestation', 'Contestation acceptée — erreur au comptoir'),
+    ]
+    motif_annulation = models.CharField(max_length=20, choices=MOTIF_ANNULATION_CHOICES, blank=True)
 
     class Meta:
         # Un agent ne peut commander le même plat qu'une seule fois par menu
@@ -405,6 +411,9 @@ class Notification(models.Model):
     menu_id     = models.IntegerField(null=True, blank=True)
     retrait_id  = models.IntegerField(null=True, blank=True)
     contestation_id = models.IntegerField(null=True, blank=True)
+    # Données complémentaires propres au type (ex. contestation_decidee :
+    # {"statut": "acceptee", "cause": "badge_tiers"}), reprises dans le message FCM
+    donnees     = models.JSONField(default=dict, blank=True)
     created_at  = models.DateTimeField(auto_now_add=True)
     updated_at  = models.DateTimeField(auto_now=True)
 
@@ -681,11 +690,19 @@ class ContestationRetrait(models.Model):
     """
     « Je n'ai pas retiré ce repas » : un employé conteste un retrait validé
     à son nom au comptoir. Le gestionnaire de l'agence tranche :
-      - acceptée : le retrait est annulé (repas « non retiré ») et le repas
-        sort du relevé du prestataire ;
+      - acceptée, avec une cause :
+          · erreur_comptoir : erreur ou fraude au comptoir (mauvais badge
+            validé, retrait fictif) : le retrait est supprimé et la commande
+            annulée (motif « contestation ») : repas facturé ni à l'employé,
+            ni au prestataire ;
+          · badge_tiers : un tiers a utilisé le badge de l'employé (prêté,
+            perdu) : le repas a bien été servi, le retrait est conservé,
+            l'employé le paie et le prestataire est payé ;
+        (cause vide : contestation acceptée avant l'introduction des causes,
+        repas retiré du seul relevé du prestataire) ;
       - rejetée  : commentaire obligatoire, envoyé à l'employé.
     Les informations du retrait sont recopiées (le retrait est supprimé si
-    la contestation est acceptée).
+    la contestation est acceptée pour erreur au comptoir).
     """
     MOTIF_CHOICES = [
         ('absent',         "J'étais absent(e) (mission, congé…)"),
@@ -696,6 +713,10 @@ class ContestationRetrait(models.Model):
         ('ouverte',  'Ouverte'),
         ('acceptee', 'Acceptée'),
         ('rejetee',  'Rejetée'),
+    ]
+    CAUSE_CHOICES = [
+        ('erreur_comptoir', 'Erreur ou fraude au comptoir'),
+        ('badge_tiers',     'Badge utilisé par un tiers'),
     ]
     commande    = models.OneToOneField(Commande, on_delete=models.CASCADE, related_name='contestation')
     retrait     = models.ForeignKey(Retrait, on_delete=models.SET_NULL, null=True, blank=True,
@@ -715,6 +736,8 @@ class ContestationRetrait(models.Model):
                                     related_name='contestations_traitees')
     commentaire_traitement = models.TextField(blank=True, max_length=1000)
     date_traitement = models.DateTimeField(null=True, blank=True)
+    # Cause retenue à l'acceptation (vide tant que non décidée, ou si rejetée)
+    cause       = models.CharField(max_length=20, choices=CAUSE_CHOICES, null=True, blank=True)
     created_at  = models.DateTimeField(auto_now_add=True)
     updated_at  = models.DateTimeField(auto_now=True)
 

@@ -21,6 +21,78 @@ def init_firebase():
         logger.info("✅ Firebase Admin initialisé")
 
 
+# ── Construction du message FCM ──────────────────────────────
+
+# Types envoyés en message « data seulement » (sans bloc notification) :
+# sur Android, c'est l'application (gestionnaire d'arrière-plan Flutter) qui
+# affiche la notification, avec un bouton d'action — même application en
+# arrière-plan ou fermée. Un message avec bloc notification est affiché par
+# le système, sans bouton possible. iOS : alerte APNs avec une catégorie
+# (actions déclarées par l'application).
+TYPES_DONNEES_SEULES = {'retrait_valide'}
+CATEGORIES_IOS = {'retrait_valide': 'RETRAIT_VALIDE'}
+CANAL_ANDROID = 'ubifood_high'   # doit correspondre au canal Flutter
+
+
+def donnees_fcm(type_notif, notif_id=None, commande_id=None, menu_id=None, retrait_id=None,
+                contestation_id=None, donnees=None):
+    """Bloc data du message FCM (valeurs en chaînes, exigé par FCM)."""
+    data = {
+        # data payload : disponible même quand l'app est fermée
+        'type':         type_notif,
+        'commande_id':  str(commande_id) if commande_id else '',
+        'menu_id':      str(menu_id)     if menu_id     else '',
+        'retrait_id':   str(retrait_id)  if retrait_id  else '',
+        'contestation_id': str(contestation_id) if contestation_id else '',
+        'notif_id':     str(notif_id) if notif_id else '',
+    }
+    for cle, valeur in (donnees or {}).items():
+        data.setdefault(str(cle), '' if valeur is None else str(valeur))
+    return data
+
+
+def construire_message(tokens, titre, message, type_notif, data):
+    """MulticastMessage FCM (sans envoi) : voir TYPES_DONNEES_SEULES."""
+    aps_commun = {'sound': 'default', 'badge': 1}
+    if type_notif in TYPES_DONNEES_SEULES:
+        return messaging.MulticastMessage(
+            tokens=tokens,
+            # Titre et texte dans les données : l'application construit la notification
+            data={**data, 'titre': titre, 'message': message},
+            android=messaging.AndroidConfig(priority='high'),
+            apns=messaging.APNSConfig(
+                headers={'apns-priority': '10', 'apns-push-type': 'alert'},
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(
+                        alert=messaging.ApsAlert(title=titre, body=message),
+                        category=CATEGORIES_IOS.get(type_notif),
+                        **aps_commun,
+                    ),
+                ),
+            ),
+        )
+    return messaging.MulticastMessage(
+        tokens=tokens,
+        notification=messaging.Notification(
+            title=titre,
+            body=message,
+        ),
+        data=data,
+        android=messaging.AndroidConfig(
+            priority='high',
+            notification=messaging.AndroidNotification(
+                channel_id=CANAL_ANDROID,
+                sound='default',
+            ),
+        ),
+        apns=messaging.APNSConfig(
+            payload=messaging.APNSPayload(
+                aps=messaging.Aps(**aps_commun),
+            ),
+        ),
+    )
+
+
 # ── Envoi d'une notification à un user ───────────────────────
 
 def envoyer_notification_user(user, titre: str, message: str,
@@ -28,7 +100,8 @@ def envoyer_notification_user(user, titre: str, message: str,
                                commande_id: int = None,
                                menu_id: int = None,
                                retrait_id: int = None,
-                               contestation_id: int = None):
+                               contestation_id: int = None,
+                               donnees: dict = None):
     """
     Envoie une notification FCM à tous les appareils d'un user
     ET crée une entrée en base Notification.
@@ -42,6 +115,7 @@ def envoyer_notification_user(user, titre: str, message: str,
         menu_id     : optionnel, ID du menu concerné
         retrait_id  : optionnel, ID du retrait (action « Je n'ai pas retiré ce repas »)
         contestation_id : optionnel, ID de la contestation de retrait
+        donnees     : optionnel, données propres au type (stockées et ajoutées au bloc data FCM)
     """
     from .models import DeviceToken, Notification
 
@@ -55,6 +129,7 @@ def envoyer_notification_user(user, titre: str, message: str,
         menu_id=menu_id,
         retrait_id=retrait_id,
         contestation_id=contestation_id,
+        donnees=donnees or {},
     )
 
     # 2. Récupérer tous les tokens FCM de l'user
@@ -70,36 +145,9 @@ def envoyer_notification_user(user, titre: str, message: str,
     try:
         init_firebase()
 
-        fcm_message = messaging.MulticastMessage(
-            tokens=tokens,
-            notification=messaging.Notification(
-                title=titre,
-                body=message,
-            ),
-            data={
-                # data payload : disponible même quand l'app est fermée
-                'type':         type_notif,
-                'commande_id':  str(commande_id) if commande_id else '',
-                'menu_id':      str(menu_id)     if menu_id     else '',
-                'retrait_id':   str(retrait_id)  if retrait_id  else '',
-                'contestation_id': str(contestation_id) if contestation_id else '',
-                'notif_id':     str(notif.id),
-            },
-            android=messaging.AndroidConfig(
-                priority='high',
-                notification=messaging.AndroidNotification(
-                    channel_id='ubifood_high',  # doit correspondre au canal Flutter
-                    sound='default',
-                ),
-            ),
-            apns=messaging.APNSConfig(
-                payload=messaging.APNSPayload(
-                    aps=messaging.Aps(
-                        sound='default',
-                        badge=1,
-                    ),
-                ),
-            ),
+        fcm_message = construire_message(
+            tokens, titre, message, type_notif,
+            donnees_fcm(type_notif, notif.id, commande_id, menu_id, retrait_id, contestation_id, donnees),
         )
 
         response = messaging.send_each_for_multicast(fcm_message)

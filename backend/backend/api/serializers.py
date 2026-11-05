@@ -978,9 +978,9 @@ class CommandeSerializer(serializers.ModelSerializer):
             'plat_detail', 'menu_detail', 'user_nom', 'user_agence',
             'user_id', 'user_username',
             'menu_id', 'plat_id', 'avis',
-            'annulee_par_nom', 'annulee_par_gestionnaire',
+            'annulee_par_nom', 'annulee_par_gestionnaire', 'motif_annulation',
         ]
-        read_only_fields = ['date_commande', 'date_annulation', 'statut']
+        read_only_fields = ['date_commande', 'date_annulation', 'statut', 'motif_annulation']
 
     # Annulation faite par un gestionnaire / administrateur (et non par l'agent)
     annulee_par_nom          = serializers.SerializerMethodField()

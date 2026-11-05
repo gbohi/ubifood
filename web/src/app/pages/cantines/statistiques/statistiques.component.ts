@@ -363,9 +363,10 @@ export class StatistiquesComponent implements OnInit {
       series: [
         { name: "Par l'agent", data: an.map(a => a.par_agent) },
         { name: 'Par le gestionnaire', data: an.map(a => a.par_gestionnaire) },
+        { name: 'Contestation (erreur comptoir)', data: an.map(a => a.par_contestation ?? 0) },
       ],
       chart: base('bar', 230, { stacked: true }),
-      colors: [C.navy, C.rouge],
+      colors: [C.navy, C.rouge, C.orange],
       plotOptions: { bar: { columnWidth: '55%', borderRadius: 3,
         dataLabels: { total: { enabled: true, style: { fontSize: '10px', fontWeight: 700, color: '#092440' } } } } },
       dataLabels: { enabled: false },
@@ -569,9 +570,10 @@ export class StatistiquesComponent implements OnInit {
         };
       case 'annulations':
         return {
-          titre: 'Annulations', entete: ['Mois', "Par l'agent", 'Par le gestionnaire', 'Total'],
-          lignes: d.annulations.map(a => [this.libelleMois(a.annee, a.mois, false), a.par_agent, a.par_gestionnaire, a.par_agent + a.par_gestionnaire]),
-          droite: [1, 2, 3],
+          titre: 'Annulations', entete: ['Mois', "Par l'agent", 'Par le gestionnaire', 'Contestation (erreur comptoir)', 'Total'],
+          lignes: d.annulations.map(a => [this.libelleMois(a.annee, a.mois, false), a.par_agent, a.par_gestionnaire,
+                                          a.par_contestation ?? 0, a.par_agent + a.par_gestionnaire + (a.par_contestation ?? 0)]),
+          droite: [1, 2, 3, 4],
         };
       case 'jours':
         return {

@@ -306,7 +306,7 @@
               } @else { <span class="st-muted">{{ perteTexte }}</span> }
             </p>
           </app-stat-bloc>
-          <app-stat-bloc titre="Annulations" icone="ri-close-circle-line" [sousTitre]="'Agent ou gestionnaire · ' + d.annulations.length + ' derniers mois'"
+          <app-stat-bloc titre="Annulations" icone="ri-close-circle-line" [sousTitre]="'Agent, gestionnaire ou contestation · ' + d.annulations.length + ' derniers mois'"
                          (excel)="exportBloc('annulations', 'excel')" (png)="exportBloc('annulations', 'png')" (csv)="exportBloc('annulations', 'csv')">
             <apx-chart #chAnnul [series]="gAnnul.series" [chart]="gAnnul.chart" [colors]="gAnnul.colors" [plotOptions]="gAnnul.plotOptions"
                        [dataLabels]="gAnnul.dataLabels" [xaxis]="gAnnul.xaxis" [yaxis]="gAnnul.yaxis" [legend]="gAnnul.legend"

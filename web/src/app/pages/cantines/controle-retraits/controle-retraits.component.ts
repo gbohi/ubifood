@@ -1,7 +1,9 @@
 // Contrôle des retraits (maquette « espace-presta-7-controle ») — gestionnaires et
 // administrateurs : retraits du jour par agent validant (rythme par tranche de 5 min),
-// contestations des employés à trancher (accepter = annuler le retrait ; rejeter =
-// commentaire obligatoire), anomalies détectées automatiquement, décisions du mois.
+// contestations des employés à trancher (accepter avec une cause : erreur au comptoir =
+// retrait et repas annulés, facturés ni à l'employé ni au prestataire ; badge utilisé par
+// un tiers = repas servi, facturé normalement ; rejeter = commentaire obligatoire),
+// anomalies détectées automatiquement, décisions du mois.
 // API : GET /controle-retraits/, POST /contestations-retrait/{id}/accepter|rejeter/,
 // DELETE /retraits/{id}/ (annulation jusqu'à la clôture, route existante).
 import { Component, DestroyRef, OnInit, ViewChild, inject } from '@angular/core';
@@ -24,7 +26,7 @@ export interface RetraitControle {
 export interface AgentControle {
   agent_id: number | null; agent_nom: string; prestataire: string; secours: boolean; agences: string[];
   nb_retraits: number; premier: string | null; dernier: string | null;
-  rythme: { debut: string; nb: number }[]; nb_contestations: number;
+  rythme: { debut: string; nb: number }[]; nb_contestations: number; erreurs_comptoir_mois?: number;
   anomalies: { type: string; description: string }[];
   retraits: RetraitControle[];
 }
@@ -33,11 +35,28 @@ export interface Contestation {
   id: number; commande: number; retrait: number | null; user: number; user_nom: string; matricule: string;
   menu: number; date_menu: string; agence_id: number; agence_nom: string; plat: string;
   motif: string; motif_libelle: string; commentaire: string; statut: 'ouverte' | 'acceptee' | 'rejetee'; statut_libelle: string;
+  cause: CauseContestation | null; cause_libelle: string | null; explication: string | null;
   date_retrait: string | null; retrait_valide_par: number | null; retrait_valide_par_nom: string | null;
   retrait_valide_par_prestataire: string | null; retrait_mode: string;
   traite_par: number | null; traite_par_nom: string | null; commentaire_traitement: string; date_traitement: string | null;
   created_at: string; rafale?: { nb: number; debut: string; fin: string } | null; anciennete_jours?: number;
 }
+
+export type CauseContestation = 'erreur_comptoir' | 'badge_tiers';
+
+/** Causes possibles à l'acceptation d'une contestation et leurs conséquences (règle validée) */
+export const CAUSES_CONTESTATION: { valeur: CauseContestation; libelle: string; consequence: string; icone: string }[] = [
+  {
+    valeur: 'erreur_comptoir', libelle: 'Erreur ou fraude au comptoir', icone: 'ri-store-2-line',
+    consequence: "L'agent du prestataire a validé un mauvais badge ou un retrait fictif : le retrait est annulé, "
+      + "le repas n'est pas facturé à l'employé (hors retenue) et sort du relevé du prestataire.",
+  },
+  {
+    valeur: 'badge_tiers', libelle: 'Badge utilisé par un tiers', icone: 'ri-user-shared-line',
+    consequence: "Quelqu'un d'autre a utilisé le badge de l'employé (prêté ou perdu) : le repas a bien été servi. "
+      + "Le retrait est conservé, l'employé paie le repas et le prestataire est payé.",
+  },
+];
 
 export interface Controle {
   date: string; agence: number | null;
@@ -50,7 +69,8 @@ export interface Controle {
   contestations: Contestation[];
   decisions_mois: Contestation[];
   anomalies: any[];
-  regles: { rafale_nb: number; rafale_secondes: number; saisies_max_mois: number; horaires_defaut: { debut: string; fin: string } };
+  regles: { rafale_nb: number; rafale_secondes: number; saisies_max_mois: number; erreurs_comptoir_max_mois?: number;
+            horaires_defaut: { debut: string; fin: string } };
 }
 
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -87,6 +107,9 @@ export class ControleRetraitsComponent implements OnInit {
   envoi = false;
   aAccepter: Contestation | null = null;
   commentaireAcceptation = '';
+  readonly causes = CAUSES_CONTESTATION;
+  /** Cause choisie à l'acceptation (obligatoire ; par défaut : erreur au comptoir) */
+  cause: CauseContestation = 'erreur_comptoir';
   @ViewChild('accepterModal') accepterModal?: ModalDirective;
   retraitAAnnuler: RetraitControle | null = null;
   @ViewChild('annulerModal') annulerModal?: ModalDirective;
@@ -115,6 +138,22 @@ export class ControleRetraitsComponent implements OnInit {
 
   // ── Affichage ──────────────────────────────────────────────
   cle(a: AgentControle): string { return `${a.agent_id ?? 'x'}-${a.secours}`; }
+
+  /** « Repas de X (plat, 05/11), validé par Y à 12:22. » (dialogue d'acceptation) */
+  get resumeAAccepter(): string {
+    const c = this.aAccepter;
+    if (!c) return '';
+    return `Repas de ${c.user_nom} (${c.plat}, ${this.jourCourt(c.date_menu)}), validé`
+      + (c.retrait_valide_par_nom ? ` par ${c.retrait_valide_par_nom}` : '')
+      + (c.date_retrait ? ` à ${this.heure(c.date_retrait)}` : '') + '.';
+  }
+
+  /** Libellé court de la décision dans l'historique */
+  libelleDecision(c: Contestation): string {
+    if (c.statut !== 'acceptee') return (c.statut_libelle || '').toLowerCase();
+    return c.cause === 'badge_tiers' ? 'acceptée — badge utilisé par un tiers (repas dû)'
+      : c.cause === 'erreur_comptoir' ? 'acceptée — erreur au comptoir (repas non facturé)' : 'acceptée';
+  }
 
   basculer(a: AgentControle): void {
     const c = this.cle(a);
@@ -161,7 +200,8 @@ export class ControleRetraitsComponent implements OnInit {
   }
 
   iconeAnomalie(t: string): string {
-    return t === 'rafale' ? 'ri-flashlight-line' : t === 'hors_horaires' ? 'ri-moon-line' : 'ri-keyboard-line';
+    return t === 'rafale' ? 'ri-flashlight-line' : t === 'hors_horaires' ? 'ri-moon-line'
+      : t === 'erreurs_comptoir' ? 'ri-user-unfollow-line' : 'ri-keyboard-line';
   }
 
   /** Rythme par tranche de 5 min : barre rouge quand la tranche dépasse le seuil de rafale */
@@ -183,19 +223,25 @@ export class ControleRetraitsComponent implements OnInit {
   demanderAcceptation(c: Contestation): void {
     this.aAccepter = c;
     this.commentaireAcceptation = '';
+    this.cause = 'erreur_comptoir';
     this.accepterModal?.show();
   }
 
   accepter(): void {
     const c = this.aAccepter;
-    if (!c || this.envoi) return;
+    const cause = this.cause;
+    if (!c || !cause || this.envoi) return;
     this.envoi = true;
-    this.http.post<Contestation>(`${this.api}/contestations-retrait/${c.id}/accepter/`, { commentaire: this.commentaireAcceptation.trim() })
+    this.http.post<Contestation>(`${this.api}/contestations-retrait/${c.id}/accepter/`,
+      { cause, commentaire: this.commentaireAcceptation.trim() })
       .subscribe({
         next: () => {
           this.envoi = false;
           this.accepterModal?.hide();
-          this.toastr.success(`Retrait annulé : le repas de ${c.user_nom} sort du relevé du prestataire. L'employé est prévenu.`, 'Contestation acceptée');
+          this.toastr.success(cause === 'badge_tiers'
+            ? `Badge utilisé par un tiers : le repas de ${c.user_nom} reste dû et payé au prestataire. L'employé est prévenu.`
+            : `Erreur au comptoir : retrait annulé, le repas de ${c.user_nom} n'est facturé ni à l'employé ni au prestataire. L'employé est prévenu.`,
+            'Contestation acceptée');
           this.charger();
         },
         error: e => { this.envoi = false; this.toastr.error(typeof e === 'string' ? e : 'Action impossible.', 'Erreur'); },

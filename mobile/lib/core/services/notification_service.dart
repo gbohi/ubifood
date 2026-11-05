@@ -18,11 +18,83 @@ import '../api/api_client.dart';
 import 'notification_routage.dart';
 
 // ── Handler background / terminated (doit être une fonction top-level) ────────
+//
+// Les messages avec bloc notification sont affichés par le système. « Retrait
+// validé » arrive en message « data seulement » (Android, priorité haute) :
+// l'application l'affiche ici, avec le bouton « Je n'ai pas retiré ce repas »,
+// même en arrière-plan ou fermée. Le bouton (showsUserInterface) ouvre
+// l'application : onDidReceiveNotificationResponse si elle tourne encore,
+// getNotificationAppLaunchDetails sinon (voir _initLocalNotifications).
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Firebase doit être initialisé même en background
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint('🔔 [FCM Background] ${message.notification?.title}');
+  debugPrint('🔔 [FCM Background] ${message.data['type']}');
+  if (!aAfficherParLApplication(message.data,
+      aUnBlocNotification: message.notification != null)) {
+    return;
+  }
+  final plugin = FlutterLocalNotificationsPlugin();
+  await plugin.initialize(NotificationService.reglagesInitialisation);
+  if (Platform.isAndroid) {
+    await plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(NotificationService.androidChannel);
+  }
+  await afficherNotificationLocale(plugin, message.data);
+}
+
+/// Affiche une notification locale (premier plan, ou message « data
+/// seulement » reçu en arrière-plan) : titre et texte du bloc notification
+/// sinon des données ; bouton de contestation pour « Retrait validé ».
+Future<void> afficherNotificationLocale(
+  FlutterLocalNotificationsPlugin plugin,
+  Map<String, dynamic> data, {
+  String? titre,
+  String? message,
+}) async {
+  final contenu = contenuNotification(data, titre: titre, message: message);
+  if (contenu == null) return;
+  final action = proposerActionContester(data);
+  // Identifiant stable : la même notification n'apparaît qu'une fois
+  final id = int.tryParse(data['notif_id']?.toString() ?? '') ??
+      Object.hashAll([data['type'], data['retrait_id'], contenu.titre]);
+  const canal = NotificationService.androidChannel;
+  await plugin.show(
+    id & 0x7fffffff,
+    contenu.titre,
+    contenu.message,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        canal.id,
+        canal.name,
+        channelDescription: canal.description,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        styleInformation: BigTextStyleInformation(contenu.message),
+        // « Retrait validé » : contestation en un appui
+        actions: action
+            ? const [
+                AndroidNotificationAction(
+                  actionContester,
+                  "Je n'ai pas retiré ce repas",
+                  showsUserInterface: true,
+                  cancelNotification: true,
+                ),
+              ]
+            : null,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        categoryIdentifier: action ? categorieRetraitValide : null,
+      ),
+    ),
+    payload: jsonEncode(data),
+  );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -41,7 +113,7 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   // Canal Android pour les notifications locales
-  static const _androidChannel = AndroidNotificationChannel(
+  static const androidChannel = AndroidNotificationChannel(
     'ubifood_high', // id — doit correspondre à AndroidManifest
     'Notifications UbiFood', // nom affiché dans les paramètres Android
     description: 'Commandes, menus et rappels UbiFood',
@@ -96,19 +168,33 @@ class NotificationService {
 
   // ── Notifications locales (affichage foreground) ──────────
 
-  Future<void> _initLocalNotifications() async {
-    // Android : icône dans res/drawable (à créer)
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-
-    // iOS
-    const iosInit = DarwinInitializationSettings(
+  /// Réglages communs (application et gestionnaire d'arrière-plan). iOS :
+  /// catégorie RETRAIT_VALIDE avec le bouton « Je n'ai pas retiré ce repas »
+  /// (aussi utilisée par l'alerte APNs envoyée par le serveur).
+  static final reglagesInitialisation = InitializationSettings(
+    android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(
       requestAlertPermission: false, // déjà demandé via FCM
       requestBadgePermission: false,
       requestSoundPermission: false,
-    );
+      notificationCategories: [
+        DarwinNotificationCategory(
+          categorieRetraitValide,
+          actions: [
+            DarwinNotificationAction.plain(
+              actionContester,
+              "Je n'ai pas retiré ce repas",
+              options: {DarwinNotificationActionOption.foreground},
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
 
+  Future<void> _initLocalNotifications() async {
     await _localNotif.initialize(
-      const InitializationSettings(android: androidInit, iOS: iosInit),
+      reglagesInitialisation,
       onDidReceiveNotificationResponse: (details) {
         // L'utilisateur a tapé sur une notification locale (reçue app
         // ouverte) : même ouverture que pour une notification FCM
@@ -141,7 +227,7 @@ class NotificationService {
       await _localNotif
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(_androidChannel);
+          ?.createNotificationChannel(androidChannel);
     }
   }
 
@@ -150,7 +236,7 @@ class NotificationService {
   void _setupHandlers() {
     // ① App au premier plan → afficher une notification locale
     FirebaseMessaging.onMessage.listen((message) {
-      debugPrint('🔔 [FCM Foreground] ${message.notification?.title}');
+      debugPrint('🔔 [FCM Foreground] ${message.data['type']}');
       _showLocalNotification(message);
     });
 
@@ -185,43 +271,10 @@ class NotificationService {
   // ── Afficher une notification locale (foreground) ─────────
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
-    final notif = message.notification;
-    if (notif == null) return;
-
-    await _localNotif.show(
-      message.hashCode,
-      notif.title,
-      notif.body,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _androidChannel.id,
-          _androidChannel.name,
-          channelDescription: _androidChannel.description,
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-          styleInformation: BigTextStyleInformation(notif.body ?? ''),
-          // « Retrait validé » : contestation en un appui
-          actions: commandeRetraitAOuvrir(message.data) != null &&
-                  message.data['type'] == 'retrait_valide'
-              ? const [
-                  AndroidNotificationAction(
-                    actionContester,
-                    "Je n'ai pas retiré ce repas",
-                    showsUserInterface: true,
-                    cancelNotification: true,
-                  ),
-                ]
-              : null,
-        ),
-        iOS: const DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      ),
-      payload: jsonEncode(message.data),
-    );
+    // Bloc notification absent : message « data seulement » (Retrait validé)
+    await afficherNotificationLocale(_localNotif, message.data,
+        titre: message.notification?.title,
+        message: message.notification?.body);
   }
 
   // ── Gestion du token FCM ──────────────────────────────────

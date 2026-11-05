@@ -84,7 +84,7 @@ export interface Statistiques {
                       servis: number; taux_avis: number | null }[];
   non_retires_semaine: { semaine: string; non_retires: number; en_cours: boolean }[];
   perte_non_retires: { montant: number; repas: number; repas_sans_tarif: number };
-  annulations: { annee: number; mois: number; par_agent: number; par_gestionnaire: number }[];
+  annulations: { annee: number; mois: number; par_agent: number; par_gestionnaire: number; par_contestation?: number }[];
   jours: { jour: number; libelle: string; nb_jours: number; moyenne: number }[];
   jours_periode: { debut: string; fin: string };
 }

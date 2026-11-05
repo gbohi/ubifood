@@ -840,7 +840,9 @@ class _LienRetrait extends StatelessWidget {
           TonPastille.or,
           Icons.hourglass_top_rounded
         ),
-      StatutContestation.acceptee => (TonPastille.vert, Icons.check_rounded),
+      StatutContestation.acceptee => c!.repasDu
+          ? (TonPastille.or, Icons.badge_outlined)
+          : (TonPastille.vert, Icons.check_rounded),
       StatutContestation.rejetee => (TonPastille.rouge, Icons.close_rounded),
     };
     final (fond, couleur) = couleursPastille(ton, isDark);
@@ -866,7 +868,7 @@ class _LienRetrait extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(c == null ? 'Détail du retrait' : c.statut.label,
+                    Text(c == null ? 'Détail du retrait' : c.libelleDecision,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                             fontSize: 13, fontWeight: FontWeight.w700)),
                     Text(
@@ -875,7 +877,9 @@ class _LienRetrait extends StatelessWidget {
                             : c.statut == StatutContestation.rejetee &&
                                     c.commentaireTraitement.isNotEmpty
                                 ? c.commentaireTraitement
-                                : c.motifLibelle,
+                                : c.statut == StatutContestation.acceptee
+                                    ? c.texteDecision
+                                    : c.motifLibelle,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 11.5, color: gris)),
