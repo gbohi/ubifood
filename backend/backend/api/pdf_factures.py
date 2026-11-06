@@ -10,7 +10,8 @@ Documents PDF de la facturation (reportlab), A4 portrait :
       * officiel  : mois clôturé, numéroté (RP-AAAA-NNN), montants figés ;
       * provisoire : avant clôture, sans numéro, filigrane « PROVISOIRE ».
   - Relevé des repas — Retenues sur salaire (agents) : synthèse par
-    catégorie et une ligne par agent, regroupés par agence.
+    catégorie et une ligne par agent, regroupés par agence (consommé, payé
+    par le compte repas, payé à la caisse, reste à retenir).
 
 Les données viennent de releves.py (mêmes lignes que l'écran). L'en-tête
 société (ParametresSociete) est celui en vigueur au moment du
@@ -732,8 +733,8 @@ def generer_releve_agents(data, societe, debut, fin, agences_libelle='toutes'):
 
     # ── 4 chiffres ────────────────────────────────────────────
     sans = data['repas_sans_tarif']
-    chiffres = [('Agents', str(data['nb_agents'])), ('Repas facturés', str(data['nb_repas'])),
-                ('Montant à retenir', f"{fcfa(data['montant'])} F"), ('Repas sans tarif', str(sans))]
+    chiffres = [('Agents', str(data['nb_agents'])), ('Repas consommés', f"{data['nb_repas']} · {fcfa(data['montant'])} F"),
+                ('Montant à retenir', f"{fcfa(data['montant_retenue'])} F"), ('Repas sans tarif', str(sans))]
     largeur = (UTILE - 9 * mm) / 4
     cases = []
     for i, (l, v) in enumerate(chiffres):
@@ -771,15 +772,28 @@ def generer_releve_agents(data, societe, debut, fin, agences_libelle='toutes'):
     t.setStyle(TableStyle(_style_tableau(len(donnees), 1) + style_extra))
     elements.append(t)
 
+    # ── Règlement : compte repas et caisse, exclus de la retenue ─
+    def _repas(n):
+        return f"{n} repas"
+    elements += [Spacer(1, 3 * mm), _p(
+        f"Payés par compte repas : {_repas(data['nb_repas_compte'])} / {fcfa(data['montant_compte'])} F — "
+        "exclus de la retenue", st['n']), _p(
+        f"Payés à la caisse : {_repas(data['nb_repas_caisse'])} / {fcfa(data['montant_caisse'])} F — "
+        "exclus de la retenue", st['n']), _p(
+        f"Retenue sur salaire : {_repas(data['nb_repas_retenue'])} / {fcfa(data['montant_retenue'])} F", st['n'])]
+
     # ── Détail par agence ─────────────────────────────────────
-    cel = ParagraphStyle('ca', parent=st['cellule'], fontSize=7.6, leading=9.5)
+    cel = ParagraphStyle('ca', parent=st['cellule'], fontSize=7.4, leading=9.3)
+    largeurs = [7 * mm, UTILE - 130 * mm, 25 * mm, 12 * mm, 22 * mm, 20 * mm, 20 * mm, 24 * mm]
     for g in data['agences']:
         elements.append(_h2(f"Détail par agent — {g['agence']}", 'trié par nom · 1 ligne par agent', st))
-        donnees = [['N°', 'Agent (matricule)', 'Catégorie', 'Repas', 'Tarif', 'À retenir (FCFA)']]
-        style = _style_tableau(0, 3, total=False, taille=7.6)
+        donnees = [['N°', 'Agent (matricule)', 'Catégorie', 'Repas', 'Consommé', 'Compte', 'Caisse',
+                    'À retenir']]
+        style = _style_tableau(0, 3, total=False, taille=7.4)
         style += [('TOPPADDING', (0, 1), (-1, -1), .9 * mm), ('BOTTOMPADDING', (0, 1), (-1, -1), 1.1 * mm),
+                  ('LEFTPADDING', (0, 0), (-1, -1), 1.6 * mm), ('RIGHTPADDING', (0, 0), (-1, -1), 1.6 * mm),
                   ('ALIGN', (0, 0), (0, -1), 'RIGHT'), ('TEXTCOLOR', (0, 1), (0, -1), G400),
-                  ('FONTNAME', (5, 1), (5, -1), f['B'])]
+                  ('FONTNAME', (7, 1), (7, -1), f['B'])]
         for i, e in enumerate(g['agents'], start=1):
             sans_cat = not e['categorie']
             donnees.append([
@@ -789,24 +803,28 @@ def generer_releve_agents(data, societe, debut, fin, agences_libelle='toutes'):
                 Paragraph(escape(e['categorie'] or 'Sans catégorie'),
                           ParagraphStyle('cc', parent=cel, textColor=ROUGE if sans_cat else G900)),
                 str(e['nb_repas']),
-                fcfa(e['tarif_unitaire']) if e['tarif_unitaire'] is not None else '—',
-                fcfa(e['total']) if not e['repas_sans_tarif'] else
-                (f"{fcfa(e['total'])} + à compléter" if e['total'] else 'à compléter'),
+                fcfa(e['total']),
+                fcfa(e['montant_compte']) if e['montant_compte'] else '—',
+                fcfa(e['montant_caisse']) if e['montant_caisse'] else '—',
+                fcfa(e['montant_retenue']) if not e['repas_sans_tarif'] else
+                (f"{fcfa(e['montant_retenue'])} + à compléter" if e['montant_retenue'] else 'à compléter'),
             ])
             if e['repas_sans_tarif']:
-                style.append(('TEXTCOLOR', (5, i), (5, i), ROUGE))
+                style.append(('TEXTCOLOR', (7, i), (7, i), ROUGE))
         i = len(donnees)
         donnees.append(['', f"Sous-total {g['agence']} · {len(g['agents'])} agent{'s' if len(g['agents']) > 1 else ''}",
-                        '', str(g['nb_repas']), '', fcfa(g['montant'])])
+                        '', str(g['nb_repas']), fcfa(g['montant']), fcfa(g['montant_compte']),
+                        fcfa(g['montant_caisse']), fcfa(g['montant_retenue'])])
         style += [('SPAN', (1, i), (2, i)), ('BACKGROUND', (0, i), (-1, i), G50),
                   ('FONTNAME', (0, i), (-1, i), f['SB']), ('TEXTCOLOR', (0, i), (-1, i), G700)]
-        t = Table(donnees, colWidths=[8 * mm, UTILE - 106 * mm, 34 * mm, 16 * mm, 20 * mm, 28 * mm], repeatRows=1)
+        t = Table(donnees, colWidths=largeurs, repeatRows=1)
         t.setStyle(TableStyle(style))
         elements.append(t)
 
-    total = Table([['', f"TOTAL GÉNÉRAL · {data['nb_agents']} agents", str(data['nb_repas']), '',
-                    fcfa(data['montant'])]],
-                  colWidths=[8 * mm, UTILE - 72 * mm, 16 * mm, 20 * mm, 28 * mm])
+    total = Table([['', f"TOTAL GÉNÉRAL · {data['nb_agents']} agents", str(data['nb_repas']),
+                    fcfa(data['montant']), fcfa(data['montant_compte']), fcfa(data['montant_caisse']),
+                    fcfa(data['montant_retenue'])]],
+                  colWidths=[7 * mm, UTILE - 105 * mm, 12 * mm, 22 * mm, 20 * mm, 20 * mm, 24 * mm])
     total.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, -1), f['B']), ('FONTSIZE', (0, 0), (-1, -1), 8.6),
         ('BACKGROUND', (0, 0), (-1, -1), VERT_F), ('TEXTCOLOR', (0, 0), (-1, -1), NAVY),
@@ -816,7 +834,7 @@ def generer_releve_agents(data, societe, debut, fin, agences_libelle='toutes'):
     elements += [Spacer(1, 3 * mm), total]
 
     note = ("Repas commandés et non annulés (retirés ou non), au tarif de la catégorie salarié "
-            "en vigueur à la date du menu. ")
+            "en vigueur à la date du menu. À retenir = consommé − payé par le compte repas − payé à la caisse. ")
     note += ("Montants figés à la clôture du mois." if etat == 'cloturee' else
              "Montants provisoires tant que le mois n'est pas clôturé.")
     if sans:

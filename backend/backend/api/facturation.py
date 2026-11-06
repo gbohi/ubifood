@@ -21,6 +21,11 @@ Mois clôturés : les montants viennent des factures figées
 LigneFacturePrestataire) et ne bougent plus, même si un tarif, une
 catégorie ou un rattachement d'agence est modifié ensuite.
 
+Règlement des repas par l'employé (comptes_repas.py) : compte repas
+prépayé, caisse ou retenue sur salaire (ReglementRepas, un par repas). Le
+montant d'un repas déjà payé est celui payé ; le prestataire, lui, est payé
+pour chaque repas servi, quel que soit le mode de règlement de l'employé.
+
 Utilisé par :
   - GET  /facturation/                    (web « Facturation commandes », mobile « Ma facturation »)
   - GET  /facturation/prestataires/       (web « Facturation prestataire »)
@@ -39,7 +44,7 @@ from django.utils import timezone
 
 from .models import (
     AgencePrestataire, ClotureMensuelle, Commande, FactureMensuelle, FacturePrestataire,
-    LigneFacture, LigneFacturePrestataire, PlatCategoriesalarie, PlatPrestataire,
+    LigneFacture, LigneFacturePrestataire, PlatCategoriesalarie, PlatPrestataire, ReglementRepas,
     UserCategoriesalarie,
 )
 
@@ -88,7 +93,9 @@ class Tarificateur:
 def lignes_facturation(commandes_qs):
     """
     Une ligne par commande facturable du queryset (annulées exclues).
-    Montant figé si le mois est clôturé pour l'agent, calculé sinon.
+    Montant figé si le mois est clôturé pour l'agent, calculé sinon (ou
+    montant payé si le repas est déjà réglé par le compte ou la caisse).
+    reglement : 'compte', 'caisse', 'retenue' ou None (pas encore réglé).
     """
     commandes = list(
         commandes_qs.filter(statut__in=STATUTS_FACTURES)
@@ -102,6 +109,10 @@ def lignes_facturation(commandes_qs):
         l.commande_id: l for l in LigneFacture.objects.filter(
             commande_id__in=[c.id for c in commandes]).select_related('facture')
     }
+    reglements = {
+        r.commande_id: r for r in ReglementRepas.objects.filter(
+            commande_id__in=[c.id for c in commandes if c.id not in figees])
+    }
     tarif = Tarificateur({c.user_id for c in commandes})
 
     lignes = []
@@ -109,9 +120,14 @@ def lignes_facturation(commandes_qs):
         figee = figees.get(c.id)
         if figee:
             categorie, montant, source = figee.categorie_libelle, figee.montant, 'facture'
+            reglement = figee.reglement
         else:
             categorie, montant = tarif.prix(c.user_id, c.menu.date_menu)
             source = 'calcul'
+            r = reglements.get(c.id)
+            reglement = r.mode if r else None
+            if r is not None:
+                montant = r.montant   # montant réellement payé
         lignes.append({
             'commande': c,
             'commande_id': c.id,
@@ -125,6 +141,7 @@ def lignes_facturation(commandes_qs):
             'montant': montant,
             'sans_tarif': montant is None,
             'source': source,
+            'reglement': reglement,
         })
     return lignes
 
@@ -144,10 +161,18 @@ def synthese_par_employe(lignes):
             'total': Decimal('0'),
             'repas_sans_tarif': 0,
             'statuts': {'en_attente': 0, 'retiree': 0},
+            # Règlement : payé par le compte repas, à la caisse ; retenue = reste
+            'nb_repas_compte': 0, 'montant_compte': Decimal('0'),
+            'nb_repas_caisse': 0, 'montant_caisse': Decimal('0'),
+            'nb_repas_retenue': 0, 'montant_retenue': Decimal('0'),
             '_sources': set(),
             'lignes': [],
         })
         e['nb_repas'] += 1
+        mode = l.get('reglement') if l.get('reglement') in ('compte', 'caisse') else 'retenue'
+        e[f'nb_repas_{mode}'] += 1
+        if l['montant'] is not None:
+            e[f'montant_{mode}'] += l['montant']
         e['statuts'][l['statut']] += 1
         e['_sources'].add(l['source'])
         if l['sans_tarif']:
@@ -405,12 +430,17 @@ def obstacles_cloture(annee, mois):
     return employes, prest
 
 
+CHAMPS_REGLEMENT = ('nb_repas_compte', 'montant_compte', 'nb_repas_caisse', 'montant_caisse',
+                    'nb_repas_retenue', 'montant_retenue')
+
+
 def cloturer_mois(annee, mois, par_user):
     """
     Fige la facturation d'un mois terminé : une ClotureMensuelle, puis
       - une FactureMensuelle par agent ayant au moins un repas facturable ;
       - une FacturePrestataire par prestataire ;
-    chacune avec le détail de chaque repas.
+    chacune avec le détail de chaque repas et son règlement (compte repas,
+    caisse ou retenue sur salaire : voir comptes_repas.regler_a_la_cloture).
     Refusé si le mois n'est pas terminé, déjà clôturé, ou si des repas
     n'ont pas de tarif employé, de prestataire ou de tarif prestataire
     (à corriger avant de clôturer).
@@ -422,21 +452,32 @@ def cloturer_mois(annee, mois, par_user):
     if mois_cloture(annee, mois):
         raise ClotureImpossible(f"Le mois {mois:02d}/{annee} est déjà clôturé.")
 
+    from .comptes_repas import regler_a_la_cloture
     commandes_mois = Commande.objects.filter(menu__date_menu__gte=debut, menu__date_menu__lte=fin)
-    lignes = lignes_facturation(commandes_mois)
-    lignes_prest = lignes_prestataires(commandes_mois)
-
-    details = _obstacles_cloture(lignes, lignes_prest)
-    if details:
-        raise ClotureImpossible(
-            "Des repas n'ont pas de tarif : complétez les catégories, tarifs et "
-            "prestataires des agences avant de clôturer.",
-            details)
-
-    employes = synthese_par_employe(lignes)
-    prestataires = synthese_par_prestataire(lignes_prest)
     try:
         with transaction.atomic():
+            # Verrou des repas du mois : un retrait, une annulation ou une
+            # régularisation à la caisse ne peuvent pas les modifier pendant la clôture
+            list(commandes_mois.select_for_update().order_by('id').values_list('id', flat=True))
+            lignes = lignes_facturation(commandes_mois)
+            lignes_prest = lignes_prestataires(commandes_mois)
+
+            details = _obstacles_cloture(lignes, lignes_prest)
+            if details:
+                raise ClotureImpossible(
+                    "Des repas n'ont pas de tarif : complétez les catégories, tarifs et "
+                    "prestataires des agences avant de clôturer.",
+                    details)
+
+            # Règlement définitif de chaque repas : compte (débit des repas non
+            # retirés si le solde le permet), caisse, sinon retenue sur salaire
+            regler_a_la_cloture(lignes, par_user)
+            employes = synthese_par_employe(lignes)
+            prestataires = synthese_par_prestataire(lignes_prest)
+
+            def somme(cle):
+                return sum((e[cle] for e in employes), Decimal('0') if cle.startswith('montant') else 0)
+
             # unique (annee, mois) : une clôture concurrente échoue ici
             cloture = ClotureMensuelle.objects.create(
                 annee=annee, mois=mois, cloturee_par=par_user,
@@ -445,6 +486,7 @@ def cloturer_mois(annee, mois, par_user):
                 montant_total=sum((e['total'] for e in employes), Decimal('0')),
                 nb_factures_prestataires=len(prestataires),
                 montant_total_prestataires=sum((p['total'] for p in prestataires), Decimal('0')),
+                **{cle: somme(cle) for cle in CHAMPS_REGLEMENT},
             )
             rang = dernier_rang_releve(annee)
             for p in prestataires:
@@ -467,12 +509,14 @@ def cloturer_mois(annee, mois, par_user):
                     cloture=cloture, user_id=e['user_id'], annee=annee, mois=mois,
                     categorie_libelle=e['categorie'] or '',
                     nb_repas=e['nb_repas'], montant_total=e['total'],
+                    **{cle: e[cle] for cle in CHAMPS_REGLEMENT},
                 )
                 LigneFacture.objects.bulk_create([
                     LigneFacture(
                         facture=facture, commande=l['commande'], date_menu=l['date_menu'],
                         plat_nom=l['plat'], agence_nom=l['agence_menu'],
                         categorie_libelle=l['categorie'] or '', montant=l['montant'],
+                        reglement=l['reglement'],
                     ) for l in e['lignes']
                 ])
     except IntegrityError:

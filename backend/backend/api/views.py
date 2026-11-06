@@ -66,6 +66,8 @@ _NOMS_LIES = {
     'Banniere': 'des bannières', 'DeviceToken': 'des appareils', 'ClotureMensuelle': 'des clôtures',
     'PlatImage': 'des photos de plats', 'UserAllergie': 'des allergies', 'BesoinService': 'des besoins',
     'LigneFacture': 'des factures', 'LigneFacturePrestataire': 'des factures',
+    'CompteRepas': 'un compte repas', 'Recu': 'des reçus de caisse', 'ClotureCaisse': 'des clôtures de caisse',
+    'MouvementCompte': 'des mouvements de compte repas', 'ReglementRepas': 'des règlements de repas',
 }
 
 
@@ -2244,7 +2246,12 @@ def annuler_retrait(retrait, par, commande=None, par_libelle='le gestionnaire', 
     source = retrait or commande
     verifier_mois_ouvert(source.menu.date_menu)
     with transaction.atomic():
+        from .comptes_repas import liberer_commandes
         commandes = Commande.objects.filter(user=source.user, menu=source.menu, statut='retiree')
+        # Compte repas : les repas débités au retrait sont recrédités (un repas
+        # payé à la caisse reste payé : il est toujours dû)
+        liberer_commandes(list(commandes.select_related('menu', 'plat')), par, garder_caisse=True,
+                          raison='Retrait annulé')
         AvisPlat.objects.filter(commande__in=commandes).delete()
         commandes.update(statut='en_attente', updated_at=timezone.now(), user_updated=par)
         user_id, menu_id = source.user_id, source.menu_id
@@ -2518,6 +2525,9 @@ def _ligne_json(l):
         'categorie':   l['categorie'],
         'montant':     float(l['montant']) if l['montant'] is not None else None,
         'source':      l['source'],   # 'facture' (mois clôturé, figé) ou 'calcul'
+        # Règlement par l'employé : 'compte' (compte repas), 'caisse', 'retenue'
+        # (mois clôturé) ou None (pas encore réglé : retenu à la clôture)
+        'reglement':   l['reglement'],
     }
 
 
@@ -2566,6 +2576,9 @@ class FacturationView(APIView):
                 **infos.get(e['user_id'], {}),
                 'total':          float(e['total']),
                 'tarif_unitaire': float(e['tarif_unitaire']) if e['tarif_unitaire'] is not None else None,
+                'montant_compte':  float(e['montant_compte']),
+                'montant_caisse':  float(e['montant_caisse']),
+                'montant_retenue': float(e['montant_retenue']),
                 'lignes':         [_ligne_json(l) for l in e['lignes']],
             }
             for e in employes
@@ -2578,6 +2591,10 @@ class FacturationView(APIView):
             'total_repas':      sum(e['nb_repas'] for e in employes),
             'total_montant':    float(sum((e['total'] for e in employes), Decimal('0'))),
             'repas_sans_tarif': sum(e['repas_sans_tarif'] for e in employes),
+            # Règlement : total_montant = compte repas + caisse + retenue sur salaire
+            'total_compte':     float(sum((e['montant_compte'] for e in employes), Decimal('0'))),
+            'total_caisse':     float(sum((e['montant_caisse'] for e in employes), Decimal('0'))),
+            'total_retenue':    float(sum((e['montant_retenue'] for e in employes), Decimal('0'))),
             'employes':         resultat,
             # Synthèses calculées sur les mêmes lignes : leurs totaux égalent total_montant
             'par_categorie': [

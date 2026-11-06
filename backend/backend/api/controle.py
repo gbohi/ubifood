@@ -261,6 +261,10 @@ class ContestationRetraitViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixi
                 Commande.objects.filter(pk=commande.pk, statut__in=('en_attente', 'retiree')).update(
                     statut='annulee', annulee_par=request.user, date_annulation=maintenant,
                     motif_annulation='contestation', updated_at=maintenant, user_updated=request.user)
+                # Repas jamais facturé : s'il avait été payé (caisse), le montant est
+                # crédité sur le compte repas (le débit du compte est déjà recrédité)
+                from .comptes_repas import liberer_reglement
+                liberer_reglement(commande, request.user, raison='Contestation acceptée (erreur au comptoir)')
             c.statut = 'acceptee'
             c.cause = cause
             c.traite_par = request.user

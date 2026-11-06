@@ -9,6 +9,7 @@ from .planning import PlanningView
 from .statistiques import DetailServiceView, RepasCategoriesView, StatistiquesView
 from .controle import ContestationRetraitViewSet, ControleRetraitsView
 from . import espace_prestataire as presta
+from . import caisse
 
 
 class ConnexionSerializer(TokenObtainPairSerializer):
@@ -135,6 +136,31 @@ urlpatterns = [
     path('api/prestataire/statistiques/', presta.StatistiquesPrestataireView.as_view(),
          name='prestataire-statistiques'),
     path('api/prestataire/equipe/', presta.EquipeView.as_view(), name='prestataire-equipe'),
+    # Caisse et compte repas prépayé (api/caisse.py)
+    path('api/caisse/contexte/', caisse.ContexteCaisseView.as_view(), name='caisse-contexte'),
+    path('api/caisse/employes/', caisse.RechercheEmployeView.as_view(), name='caisse-employes'),
+    path('api/caisse/employes/<int:pk>/', caisse.FicheEmployeView.as_view(), name='caisse-employe'),
+    path('api/caisse/recharger/', caisse.RechargerView.as_view(), name='caisse-recharger'),
+    path('api/caisse/regulariser/', caisse.RegulariserView.as_view(), name='caisse-regulariser'),
+    path('api/caisse/rembourser/', caisse.RembourserView.as_view(), name='caisse-rembourser'),
+    path('api/caisse/recus/', caisse.RecuListView.as_view(), name='caisse-recus'),
+    path('api/caisse/recus/<int:pk>/', caisse.RecuDetailView.as_view(), name='caisse-recu'),
+    path('api/caisse/recus/<int:pk>/pdf/', caisse.RecuPdfView.as_view(), name='caisse-recu-pdf'),
+    path('api/caisse/recus/<int:pk>/annuler/', caisse.RecuAnnulerView.as_view(), name='caisse-recu-annuler'),
+    path('api/caisse/clotures/', caisse.ClotureCaisseListView.as_view(), name='caisse-clotures'),
+    path('api/caisse/clotures/apercu/', caisse.ClotureCaisseApercuView.as_view(), name='caisse-cloture-apercu'),
+    path('api/caisse/clotures/<int:pk>/', caisse.ClotureCaisseDetailView.as_view(), name='caisse-cloture'),
+    path('api/caisse/clotures/<int:pk>/valider/', caisse.ClotureCaisseTraiterView.as_view(valider=True),
+         name='caisse-cloture-valider'),
+    path('api/caisse/clotures/<int:pk>/rejeter/', caisse.ClotureCaisseTraiterView.as_view(valider=False),
+         name='caisse-cloture-rejeter'),
+    path('api/caisse/journal/', caisse.JournalCaisseView.as_view(), name='caisse-journal'),
+    path('api/caisse/journal/pdf/', caisse.JournalCaisseView.as_view(pdf=True), name='caisse-journal-pdf'),
+    path('api/caisse/comptes/', caisse.ComptesRepasView.as_view(), name='caisse-comptes'),
+    path('api/compte-repas/', caisse.MonCompteView.as_view(), name='compte-repas'),
+    path('api/compte-repas/mouvements/', caisse.MesMouvementsView.as_view(), name='compte-repas-mouvements'),
+    path('api/compte-repas/recus/', caisse.MesRecusView.as_view(), name='compte-repas-recus'),
+    path('api/compte-repas/recus/<int:pk>/pdf/', caisse.MonRecuPdfView.as_view(), name='compte-repas-recu-pdf'),
     path('api/device-tokens/', DeviceTokenView.as_view(), name='device-token'),
     path('api/device-tokens/supprimer/', DeviceTokenView.as_view(), name='device-token-delete'),
     path('api/notifications/mes-notifications/', NotificationListView.as_view(), name='mes-notifications'),

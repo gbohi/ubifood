@@ -5,7 +5,7 @@ import threading
 
 from django.contrib.auth.signals import user_logged_out
 from django.db import close_old_connections, transaction
-from django.db.models.signals import post_delete, post_save, pre_save
+from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
@@ -341,6 +341,19 @@ def _notifier_prestataire(prestataire_id, titre, message, type_notif, menu_id=No
 def notifier_prestataire(prestataire_id, titre, message, type_notif, menu_id=None):
     if prestataire_id:
         _en_arriere_plan(_notifier_prestataire, prestataire_id, titre, message, type_notif, menu_id)
+
+
+# ══════════════════════════════════════════════════════════════
+# COMPTE REPAS — commande supprimée : son règlement (compte, caisse) est
+# crédité sur le compte repas avant la suppression (mois ouvert)
+# ══════════════════════════════════════════════════════════════
+
+@receiver(pre_delete, sender='api.Commande')
+def liberer_reglement_commande(sender, instance, **kwargs):
+    from .comptes_repas import liberer_reglement
+    from .models import ReglementRepas
+    if ReglementRepas.objects.filter(commande_id=instance.pk).exclude(mode='retenue').exists():
+        liberer_reglement(instance, None, raison='Commande supprimée')
 
 
 # ══════════════════════════════════════════════════════════════

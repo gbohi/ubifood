@@ -196,6 +196,8 @@ REST_FRAMEWORK = {
         'application_mobile': '60/min',
         # Contestation d'un retrait par un employé : par utilisateur
         'contestation': '10/hour',
+        # Opérations de caisse (recharge, régularisation…) : par utilisateur
+        'caisse': '120/min',
     },
 }
 
@@ -282,6 +284,15 @@ NOTIFICATIONS_SYNCHRONES = config(
     cast=bool,
 )
 
+
+# ============================================================
+# CAISSE — compte repas prépayé (api/comptes_repas.py)
+# Seules les espèces sont acceptées : le paiement Mobile Money (CinetPay)
+# viendra plus tard. Tant que ce réglage est faux, le mode « mobile_money »
+# est refusé par l'API, quel que soit l'écran.
+# ============================================================
+
+CAISSE_MOBILE_MONEY_ACTIF = config('CAISSE_MOBILE_MONEY_ACTIF', default=False, cast=bool)
 
 # ============================================================
 # SMS (AllMySMS) — réinitialisation du mot de passe

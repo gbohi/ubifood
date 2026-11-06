@@ -1066,12 +1066,15 @@ class CommandeAnnulationSerializer(serializers.ModelSerializer):
         return attrs
 
     def update(self, instance, validated_data):
+        from .comptes_repas import liberer_reglement
         instance.statut          = 'annulee'
         instance.date_annulation = timezone.now()
         instance.annulee_par     = validated_data.get('user_updated')
         if validated_data.get('user_updated'):
             instance.user_updated = validated_data['user_updated']
         instance.save()
+        # Repas annulé déjà payé (caisse) : le montant est crédité sur le compte repas
+        liberer_reglement(instance, validated_data.get('user_updated'), raison='Repas annulé')
         return instance
 
 
@@ -1140,6 +1143,11 @@ class RetraitSerializer(serializers.ModelSerializer):
                 Commande.objects.filter(
                     user=retrait.user, menu=retrait.menu, statut='en_attente'
                 ).update(statut='retiree', updated_at=timezone.now())
+                # Compte repas : chaque repas retiré est débité si le solde le couvre
+                from .comptes_repas import debiter_retrait
+                request = self.context.get('request')
+                par = validated_data.get('valide_par') or (request.user if request else None)
+                debiter_retrait(retrait.user_id, retrait.menu_id, par)
         except IntegrityError:
             # Deux validations simultanées du même agent
             raise serializers.ValidationError(
@@ -1171,7 +1179,7 @@ class LigneFactureSerializer(serializers.ModelSerializer):
     class Meta:
         model  = LigneFacture
         fields = ['id', 'commande', 'date_menu', 'plat_nom', 'agence_nom',
-                  'categorie_libelle', 'montant']
+                  'categorie_libelle', 'montant', 'reglement']
 
 
 class FactureMensuelleSerializer(serializers.ModelSerializer):
@@ -1183,7 +1191,10 @@ class FactureMensuelleSerializer(serializers.ModelSerializer):
     class Meta:
         model  = FactureMensuelle
         fields = ['id', 'user', 'username', 'nom_prenom', 'annee', 'mois',
-                  'categorie_libelle', 'nb_repas', 'montant_total', 'cloturee_le', 'lignes']
+                  'categorie_libelle', 'nb_repas', 'montant_total',
+                  # Règlement figé : montant_total = compte + caisse + retenue
+                  'nb_repas_compte', 'montant_compte', 'nb_repas_caisse', 'montant_caisse',
+                  'nb_repas_retenue', 'montant_retenue', 'cloturee_le', 'lignes']
 
     def get_nom_prenom(self, obj):
         return nom_complet(obj.user)
@@ -1196,7 +1207,9 @@ class ClotureMensuelleSerializer(serializers.ModelSerializer):
         model  = ClotureMensuelle
         fields = ['id', 'annee', 'mois', 'cloturee_le', 'cloturee_par', 'cloturee_par_nom',
                   'nb_factures', 'nb_repas', 'montant_total',
-                  'nb_factures_prestataires', 'montant_total_prestataires']
+                  'nb_factures_prestataires', 'montant_total_prestataires',
+                  'nb_repas_compte', 'montant_compte', 'nb_repas_caisse', 'montant_caisse',
+                  'nb_repas_retenue', 'montant_retenue']
 
     def get_cloturee_par_nom(self, obj):
         return nom_complet(obj.cloturee_par) if obj.cloturee_par else None

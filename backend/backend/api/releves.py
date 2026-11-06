@@ -325,26 +325,36 @@ def releve_prestataire(prestataire, debut, fin, agences_gerees_ids=None, agence=
 # Relevé des repas des agents (retenues sur salaire)
 # ══════════════════════════════════════════════════════════════
 
+CHAMPS_REGLEMENT = fact.CHAMPS_REGLEMENT
+
+
 def releve_agents(lignes_fact):
     """
     À partir de facturation.lignes_facturation : chiffres, synthèse par
     catégorie et agents regroupés par agence (agence du menu du premier repas,
-    comme l'écran), avec sous-totaux.
+    comme l'écran), avec sous-totaux. Par agent : consommé, payé par le
+    compte repas, payé à la caisse et retenue (= reste).
     """
     employes = fact.synthese_par_employe(lignes_fact)
     agences = OrderedDict()
     for e in sorted(employes, key=lambda e: ((e['lignes'][0]['agence_menu'] or '—'),
                                             (e['nom_prenom'] or '').upper())):
         nom = e['lignes'][0]['agence_menu'] or '—'
-        g = agences.setdefault(nom, {'agence': nom, 'agents': [], 'nb_repas': 0, 'montant': Decimal('0')})
+        g = agences.setdefault(nom, {'agence': nom, 'agents': [], 'nb_repas': 0, 'montant': Decimal('0'),
+                                     **{c: 0 if c.startswith('nb') else Decimal('0') for c in CHAMPS_REGLEMENT}})
         g['agents'].append(e)
         g['nb_repas'] += e['nb_repas']
         g['montant'] += e['total']
+        for c in CHAMPS_REGLEMENT:
+            g[c] += e[c]
     sources = {l['source'] for l in lignes_fact}
     return {
         'nb_agents': len(employes),
         'nb_repas': sum(e['nb_repas'] for e in employes),
         'montant': sum((e['total'] for e in employes), Decimal('0')),
+        # Règlement : consommé (montant) = compte repas + caisse + retenue sur salaire
+        **{c: sum((e[c] for e in employes), 0 if c.startswith('nb') else Decimal('0'))
+           for c in CHAMPS_REGLEMENT},
         'repas_sans_tarif': sum(e['repas_sans_tarif'] for e in employes),
         'par_categorie': fact.synthese_par_categorie(lignes_fact),
         'agences': list(agences.values()),

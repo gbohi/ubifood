@@ -12,6 +12,17 @@ Espace prestataire (compte rattaché à un Prestataire par User.prestataire) :
                      à préparer, comptoir, relevés, statistiques, équipe)
     agent_comptoir → comptoir et liste du jour seulement
 
+Caisse (compte repas prépayé, api/caisse.py) — rôles cumulables avec
+« employe » (un caissier mange aussi à la cantine), jamais avec un rôle
+prestataire :
+    caissier     → écrans de caisse seulement : recherche d'un employé
+                   (champs minimaux), recharge, régularisation, ses reçus,
+                   sa clôture de caisse ; aucune autre donnée de gestion
+    comptabilite → validation des clôtures de caisse, annulation des reçus,
+                   remboursement du solde, journaux de caisse
+Les administrateurs ont tous ces droits. Personne n'annule ses propres
+opérations ni ne valide sa propre clôture de caisse.
+
 Les comptes prestataires sont cloisonnés : ils n'accèdent qu'aux routes de
 l'espace prestataire (/prestataire/…) et à quelques routes personnelles
 (profil, mot de passe, notifications). Toutes les autres vues utilisent
@@ -28,16 +39,20 @@ ROLE_GESTIONNAIRE = 'gestionnaire'
 ROLE_EMPLOYE      = 'employe'
 ROLE_PRESTATAIRE    = 'prestataire'
 ROLE_AGENT_COMPTOIR = 'agent_comptoir'
+ROLE_CAISSIER       = 'caissier'
+ROLE_COMPTABILITE   = 'comptabilite'
 
 ADMIN_ROLES        = {ROLE_SUPER_ADMIN, ROLE_ADMIN}
 GESTIONNAIRE_ROLES = ADMIN_ROLES | {ROLE_GESTIONNAIRE}
 PRESTATAIRE_ROLES  = {ROLE_PRESTATAIRE, ROLE_AGENT_COMPTOIR}
+CAISSE_ROLES       = {ROLE_CAISSIER, ROLE_COMPTABILITE}
 
 # Libellés des rôles (écrans d'administration, messages)
 LIBELLES_ROLES = {
     ROLE_SUPER_ADMIN: 'Super administrateur', ROLE_ADMIN: 'Administrateur',
     ROLE_GESTIONNAIRE: 'Gestionnaire', ROLE_EMPLOYE: 'Employé',
     ROLE_PRESTATAIRE: 'Prestataire (responsable)', ROLE_AGENT_COMPTOIR: 'Agent de comptoir',
+    ROLE_CAISSIER: 'Caissier', ROLE_COMPTABILITE: 'Comptabilité',
 }
 
 
@@ -85,6 +100,23 @@ def is_prestataire_responsable(user):
 def is_agent_comptoir(user):
     """Agent de comptoir OU responsable : le comptoir leur est ouvert à tous deux."""
     return bool(is_compte_prestataire(user) and user.prestataire_id)
+
+
+def is_caissier(user):
+    """Caissier (encaissements) ou administrateur."""
+    return bool(user and user.is_authenticated and not is_compte_prestataire(user)
+                and (is_admin(user) or ROLE_CAISSIER in get_roles(user)))
+
+
+def is_comptabilite(user):
+    """Comptabilité (contrôle de la caisse) ou administrateur."""
+    return bool(user and user.is_authenticated and not is_compte_prestataire(user)
+                and (is_admin(user) or ROLE_COMPTABILITE in get_roles(user)))
+
+
+def is_acces_caisse(user):
+    """Écrans de caisse en lecture : caissier, comptabilité ou administrateur."""
+    return is_caissier(user) or is_comptabilite(user)
 
 
 def agences_prestataire(user, a_date=None):
@@ -172,6 +204,30 @@ class IsGestionnaireOuPrestataire(permissions.BasePermission):
 
     def has_permission(self, request, view):
         return is_gestionnaire(request.user) or is_prestataire_responsable(request.user)
+
+
+class IsCaissier(permissions.BasePermission):
+    """Opérations de caisse : caissiers et administrateurs."""
+    message = "Action réservée aux caissiers."
+
+    def has_permission(self, request, view):
+        return is_caissier(request.user)
+
+
+class IsComptabilite(permissions.BasePermission):
+    """Contrôle de la caisse : comptabilité et administrateurs."""
+    message = "Action réservée à la comptabilité."
+
+    def has_permission(self, request, view):
+        return is_comptabilite(request.user)
+
+
+class IsAccesCaisse(permissions.BasePermission):
+    """Écrans de caisse : caissiers, comptabilité et administrateurs."""
+    message = "Accès réservé à la caisse et à la comptabilité."
+
+    def has_permission(self, request, view):
+        return is_acces_caisse(request.user)
 
 
 class IsAdminRole(permissions.BasePermission):

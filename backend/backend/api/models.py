@@ -395,6 +395,7 @@ class Notification(models.Model):
         ('contestation_decidee',  'Contestation traitée'),
         ('menu_corrige',     'Menu corrigé par UbiPharm'),
         ('plat_masque',      'Plat masqué par UbiPharm'),
+        ('compte_repas',     'Compte repas'),
         ('info',             'Information'),
     ]
 
@@ -444,6 +445,14 @@ class ClotureMensuelle(models.Model):
     # Côté prestataires (montant dû aux fournisseurs pour le mois)
     nb_factures_prestataires      = models.PositiveIntegerField(default=0)
     montant_total_prestataires    = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    # Règlement des repas des employés (compte repas prépayé et caisse) :
+    # consommé (montant_total) = compte + caisse + retenue sur salaire
+    nb_repas_compte   = models.PositiveIntegerField(default=0)
+    montant_compte    = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    nb_repas_caisse   = models.PositiveIntegerField(default=0)
+    montant_caisse    = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    nb_repas_retenue  = models.PositiveIntegerField(default=0)
+    montant_retenue   = models.DecimalField(max_digits=14, decimal_places=2, default=0)
 
     class Meta:
         db_table = 'clotures_mensuelles'
@@ -465,6 +474,13 @@ class FactureMensuelle(models.Model):
     categorie_libelle = models.CharField(max_length=100, blank=True)
     nb_repas          = models.PositiveIntegerField()
     montant_total     = models.DecimalField(max_digits=12, decimal_places=2)
+    # Règlement figé à la clôture : montant_total = compte + caisse + retenue
+    nb_repas_compte   = models.PositiveIntegerField(default=0)
+    montant_compte    = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    nb_repas_caisse   = models.PositiveIntegerField(default=0)
+    montant_caisse    = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    nb_repas_retenue  = models.PositiveIntegerField(default=0)
+    montant_retenue   = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     class Meta:
         db_table = 'factures_mensuelles'
@@ -486,6 +502,14 @@ class LigneFacture(models.Model):
     agence_nom        = models.CharField(max_length=255, blank=True)
     categorie_libelle = models.CharField(max_length=100, blank=True)
     montant           = models.DecimalField(max_digits=10, decimal_places=2)
+    # Comment le repas a été payé (figé à la clôture ; avant le compte
+    # repas, tous les repas étaient retenus sur salaire)
+    REGLEMENT_CHOICES = [
+        ('compte',  'Payé par le compte repas'),
+        ('caisse',  'Payé à la caisse'),
+        ('retenue', 'Retenu sur salaire'),
+    ]
+    reglement         = models.CharField(max_length=10, choices=REGLEMENT_CHOICES, default='retenue')
 
     class Meta:
         db_table = 'lignes_facture'
@@ -747,3 +771,213 @@ class ContestationRetrait(models.Model):
 
     def __str__(self):
         return f"Contestation {self.user} — {self.menu.date_menu} [{self.statut}]"
+
+
+# ============================================================
+# COMPTE REPAS PRÉPAYÉ ET CAISSE
+# Logique : api/comptes_repas.py ; écrans : api/caisse.py ; PDF : api/pdf_caisse.py.
+#
+# Chaque employé a un compte repas (solde jamais négatif, reporté de mois
+# en mois). Le solde est un cache du grand livre MouvementCompte (somme
+# des montants signés), mis à jour sous verrou (select_for_update).
+# Un repas facturable est payé UNE seule fois (ReglementRepas, unique par
+# commande) : débit du compte, paiement à la caisse ou retenue sur salaire.
+# ============================================================
+
+MODE_PAIEMENT_CHOICES = [
+    ('especes',      'Espèces'),
+    ('mobile_money', 'Mobile Money'),
+]
+
+
+class CompteRepas(models.Model):
+    """Compte repas prépayé d'un employé (créé à la première opération)."""
+    user       = models.OneToOneField(User, on_delete=models.PROTECT, related_name='compte_repas')
+    solde      = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'compte_repas'
+        constraints = [
+            models.CheckConstraint(condition=models.Q(solde__gte=0), name='compte_repas_solde_positif'),
+        ]
+
+    def __str__(self):
+        return f"Compte repas {self.user.username} : {self.solde}"
+
+
+class CompteurRecu(models.Model):
+    """Dernier rang de reçu attribué dans l'année (numérotation REÇ-AAAA-NNNNNN)."""
+    annee   = models.PositiveSmallIntegerField(primary_key=True)
+    dernier = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'compteur_recu'
+
+
+class ClotureCaisse(models.Model):
+    """
+    Clôture de caisse (journalière) d'un caissier : espèces comptées contre
+    le théorique (reçus en espèces non annulés depuis sa dernière clôture).
+    Soumise par le caissier, validée ou rejetée par la comptabilité.
+    Rejetée : ses reçus sont libérés (le caissier soumet une nouvelle clôture).
+    """
+    STATUT_CHOICES = [
+        ('soumise', 'Soumise — en attente de validation'),
+        ('validee', 'Validée'),
+        ('rejetee', 'Rejetée'),
+    ]
+    caissier          = models.ForeignKey(User, on_delete=models.PROTECT, related_name='clotures_caisse')
+    jour              = models.DateField()
+    debut             = models.DateTimeField(null=True, blank=True)   # premier reçu de la période
+    nb_recus          = models.PositiveIntegerField(default=0)
+    montant_theorique = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    montant_compte    = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    ecart             = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    motif_ecart       = models.CharField(max_length=500, blank=True)
+    statut            = models.CharField(max_length=10, choices=STATUT_CHOICES, default='soumise')
+    soumise_le        = models.DateTimeField(auto_now_add=True)
+    traitee_par       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                          related_name='clotures_caisse_traitees')
+    traitee_le        = models.DateTimeField(null=True, blank=True)
+    commentaire       = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        db_table = 'cloture_caisse'
+        ordering = ['-soumise_le', '-id']
+
+    def __str__(self):
+        return f"Clôture de caisse {self.caissier.username} du {self.jour:%d/%m/%Y} [{self.statut}]"
+
+
+class Recu(models.Model):
+    """
+    Reçu de caisse (non fiscal), numéroté par année : REÇ-AAAA-NNNNNN.
+      - recharge       : crédit du compte repas (montant crédité) ;
+      - regularisation : paiement de repas non couverts d'un mois ouvert
+                         (montant = total des repas ; la monnaie est rendue
+                         ou créditée sur le compte) ;
+      - remboursement  : solde du compte rendu à l'employé (comptabilité).
+    encaissement : espèces entrées (+) ou sorties (−) de la caisse.
+    """
+    TYPE_CHOICES = [
+        ('recharge',       'Recharge du compte'),
+        ('regularisation', 'Régularisation du mois'),
+        ('remboursement',  'Remboursement du solde'),
+    ]
+    STATUT_CHOICES = [
+        ('valide', 'Valide'),
+        ('annule', 'Annulé'),
+    ]
+    numero           = models.CharField(max_length=30, unique=True)
+    annee            = models.PositiveSmallIntegerField()
+    type             = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    statut           = models.CharField(max_length=10, choices=STATUT_CHOICES, default='valide')
+    user             = models.ForeignKey(User, on_delete=models.PROTECT, related_name='recus_caisse')
+    caissier         = models.ForeignKey(User, on_delete=models.PROTECT, related_name='recus_emis')
+    mode             = models.CharField(max_length=20, choices=MODE_PAIEMENT_CHOICES, default='especes')
+    # Référence de la transaction (Mobile Money, plus tard) : facultative
+    reference        = models.CharField(max_length=100, blank=True)
+    montant          = models.DecimalField(max_digits=12, decimal_places=2)
+    montant_repas    = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    montant_recu     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    monnaie          = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    monnaie_creditee = models.BooleanField(default=False)
+    encaissement     = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    solde_avant      = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    solde_apres      = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    motif            = models.CharField(max_length=500, blank=True)
+    cloture_caisse   = models.ForeignKey(ClotureCaisse, on_delete=models.SET_NULL, null=True, blank=True,
+                                         related_name='recus')
+    annule_par       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                         related_name='recus_annules')
+    annule_le        = models.DateTimeField(null=True, blank=True)
+    motif_annulation = models.CharField(max_length=500, blank=True)
+    created_at       = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = 'recu_caisse'
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f"{self.numero} {self.get_type_display()} {self.montant}"
+
+
+class RecuLigne(models.Model):
+    """Repas payé par un reçu de régularisation (valeurs recopiées)."""
+    recu      = models.ForeignKey(Recu, on_delete=models.CASCADE, related_name='lignes')
+    commande  = models.ForeignKey(Commande, on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name='+')
+    date_menu = models.DateField()
+    plat_nom  = models.CharField(max_length=255)
+    montant   = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        db_table = 'recu_ligne'
+        ordering = ['date_menu', 'id']
+
+
+class MouvementCompte(models.Model):
+    """
+    Grand livre du compte repas : un mouvement signé par opération
+    (+ crédit, − débit). solde_apres : solde du compte après le mouvement.
+    """
+    TYPE_CHOICES = [
+        ('recharge',       'Recharge'),
+        ('debit_repas',    'Repas débité'),
+        ('recredit',       'Repas recrédité'),
+        ('regularisation', 'Monnaie de régularisation créditée'),
+        ('remboursement',  'Remboursement du solde'),
+        ('annulation',     "Annulation d'un reçu"),
+    ]
+    compte      = models.ForeignKey(CompteRepas, on_delete=models.PROTECT, related_name='mouvements')
+    type        = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    montant     = models.DecimalField(max_digits=12, decimal_places=2)
+    solde_apres = models.DecimalField(max_digits=12, decimal_places=2)
+    commande    = models.ForeignKey(Commande, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='mouvements_compte')
+    recu        = models.ForeignKey(Recu, on_delete=models.PROTECT, null=True, blank=True,
+                                    related_name='mouvements')
+    libelle     = models.CharField(max_length=255, blank=True)
+    created_by  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='+')
+    created_at  = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = 'mouvement_compte'
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f"{self.get_type_display()} {self.montant} ({self.compte.user.username})"
+
+
+class ReglementRepas(models.Model):
+    """
+    Règlement d'un repas facturable à l'employé : UN seul par commande
+    (contrainte d'unicité : un repas n'est jamais payé deux fois).
+      - compte  : débité du compte repas (mouvement débit) ;
+      - caisse  : payé à la caisse (reçu de régularisation) ;
+      - retenue : retenu sur salaire (créé à la clôture du mois).
+    Supprimé si le paiement est défait (retrait annulé, repas annulé, reçu
+    annulé) tant que le mois est ouvert.
+    """
+    MODE_CHOICES = [
+        ('compte',  'Débité du compte repas'),
+        ('caisse',  'Payé à la caisse'),
+        ('retenue', 'Retenu sur salaire'),
+    ]
+    commande   = models.OneToOneField(Commande, on_delete=models.CASCADE, related_name='reglement')
+    mode       = models.CharField(max_length=10, choices=MODE_CHOICES)
+    montant    = models.DecimalField(max_digits=10, decimal_places=2)
+    mouvement  = models.OneToOneField(MouvementCompte, on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name='reglement')
+    recu       = models.ForeignKey(Recu, on_delete=models.PROTECT, null=True, blank=True,
+                                   related_name='reglements')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'reglement_repas'
+
+    def __str__(self):
+        return f"Règlement {self.commande_id} : {self.mode} {self.montant}"
