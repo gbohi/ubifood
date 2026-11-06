@@ -10,6 +10,7 @@ import '../../core/services/notification_routage.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../shared/providers/app_provider.dart';
 import '../contestation/retrait_detail_screen.dart';
+import '../paiements/mes_paiements_screen.dart';
 
 // ══════════════════════════════════════════════════════════════
 // NAVIGATION DEPUIS UNE NOTIFICATION
@@ -498,6 +499,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                     commandeId: notif.commandeId!)));
                             return;
                           }
+                          // Compte repas (recharge, régularisation,
+                          // remboursement, reçu annulé) : Mes paiements
+                          if (notif.type == 'compte_repas' &&
+                              !(user?.isComptePrestataire ?? false)) {
+                            MesPaiementsScreen.ouvrir(context);
+                            return;
+                          }
                           // Retour à l'écran principal sur l'onglet utile :
                           // commandes (passée, annulée, retirée → avis) ou
                           // menus (nouveau menu, rappel)
@@ -744,6 +752,11 @@ class _NotificationTile extends StatelessWidget {
       return (Icons.edit_note_rounded, TonPastille.or);
     case 'plat_masque':
       return (Icons.visibility_off_outlined, TonPastille.rouge);
+    case 'compte_repas':
+      // Reçu annulé : orange ; recharge, régularisation, remboursement : vert
+      return titre.toLowerCase().contains('annul')
+          ? (Icons.account_balance_wallet_outlined, TonPastille.or)
+          : (Icons.account_balance_wallet_outlined, TonPastille.vert);
     default:
       return (Icons.notifications_none_rounded, TonPastille.bleu);
   }

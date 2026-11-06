@@ -194,6 +194,15 @@ class ApiClient {
   Future<Response> post(String path, {dynamic data}) =>
       _dio.post(path, data: data);
 
+  /// Fichier binaire (PDF…) : octets de la réponse
+  Future<List<int>> getBytes(String path,
+      {Map<String, dynamic>? params}) async {
+    final res = await _dio.get<List<int>>(path,
+        queryParameters: params,
+        options: Options(responseType: ResponseType.bytes));
+    return res.data ?? const [];
+  }
+
   Future<Response> patch(String path, {dynamic data}) =>
       _dio.patch(path, data: data);
 

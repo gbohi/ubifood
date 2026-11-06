@@ -11,6 +11,8 @@ import 'core/services/notification_routage.dart';
 import 'shared/theme/app_theme.dart';
 import 'shared/providers/app_provider.dart';
 import 'shared/providers/prestataire_provider.dart';
+import 'shared/providers/compte_repas_provider.dart';
+import 'features/paiements/mes_paiements_screen.dart';
 import 'features/contestation/retrait_detail_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/main_shell.dart';
@@ -72,6 +74,8 @@ class CantineApp extends StatelessWidget {
             create: (ctx) => RetraitProvider()
               ..apresRetrait = () => ctx.read<AccueilProvider>().charger()),
         ChangeNotifierProvider(create: (_) => FacturationProvider()),
+        // Compte repas : solde, paiements, mouvements, reçus de caisse
+        ChangeNotifierProvider(create: (_) => CompteRepasProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
         // Espace prestataire (comptoir, liste du jour, accueil du responsable)
         ChangeNotifierProvider(create: (_) => EspacePrestataireProvider()),
@@ -162,6 +166,13 @@ class _AuthGateState extends State<_AuthGate> {
               ouvrirFormulaire: ouvrirFormulaireContestation(donnees))));
       return;
     }
+    // Compte repas (recharge, régularisation, remboursement, reçu annulé) :
+    // Mes paiements (employé ; un compte prestataire n'a pas de compte repas)
+    if (ouvreMesPaiements(donnees) && !(user?.isComptePrestataire ?? false)) {
+      context.read<NotificationProvider>().charger();
+      nav.push(MaterialPageRoute(builder: (_) => const MesPaiementsScreen()));
+      return;
+    }
     // Déjà affiché : pas de second écran par-dessus
     if (_notifOuvertes) return;
     // La notification vient d'arriver : liste à jour sans attendre le polling
@@ -213,6 +224,7 @@ class _AuthGateState extends State<_AuthGate> {
     context.read<AccueilProvider>().reset();
     context.read<RetraitProvider>().reset();
     context.read<FacturationProvider>().reset();
+    context.read<CompteRepasProvider>().reset();
     context.read<EspacePrestataireProvider>().reset();
     context.read<ComptoirProvider>().reset();
     context.read<ListeDuJourProvider>().reset();

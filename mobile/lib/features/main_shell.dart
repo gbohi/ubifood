@@ -12,6 +12,7 @@ import 'commandes/commandes_screen.dart';
 import 'retrait/retrait_screen.dart';
 import 'profil/profil_screen.dart';
 import 'facturation/facturation_screen.dart';
+import 'paiements/mes_paiements_screen.dart';
 import 'allergies/allergies_screen.dart';
 import 'gestion/gestion_commandes_screen.dart';
 import 'notifications/notification_screen.dart';
@@ -390,6 +391,16 @@ class _AppDrawer extends StatelessWidget {
                   } else {
                     onNavigate(3);
                   }
+                }),
+            // Compte repas : solde, paiements, mouvements, reçus (push)
+            _DrawerItem(
+                icon: Icons.payments_rounded,
+                label: 'Mes paiements',
+                index: -1,
+                currentIndex: currentIndex,
+                onTap: () {
+                  Navigator.pop(context);
+                  MesPaiementsScreen.ouvrir(context);
                 }),
             if (isGestionnaire) ...[
               _DrawerItem(

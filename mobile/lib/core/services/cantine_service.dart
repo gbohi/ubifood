@@ -275,11 +275,17 @@ class LigneFacturation {
   final double? montant; // null : pas de tarif défini pour ce repas
   final bool cloturee; // true : mois clôturé, montant figé
 
+  /// Règlement par l'employé : 'compte' (débité du compte repas), 'caisse'
+  /// (payé à la caisse), 'retenue' (retenu sur salaire, mois clôturé) ;
+  /// null : pas encore réglé (retenu à la clôture si rien ne change).
+  final String? reglement;
+
   const LigneFacturation({
     required this.commandeId,
     required this.dateMenu,
     required this.montant,
     required this.cloturee,
+    this.reglement,
   });
 
   factory LigneFacturation.fromJson(Map<String, dynamic> j) => LigneFacturation(
@@ -287,6 +293,10 @@ class LigneFacturation {
         dateMenu: j['date_menu'] ?? '',
         montant: (j['montant'] as num?)?.toDouble(),
         cloturee: j['source'] == 'facture',
+        reglement: switch (j['reglement']) {
+          'compte' || 'caisse' || 'retenue' => j['reglement'] as String,
+          _ => null,
+        },
       );
 }
 

@@ -16,6 +16,9 @@ import '../../core/widgets/common_widgets.dart';
 import '../commandes/commandes_screen.dart'
     show DetailCommandeSheet, EtatCommande, etatCommande, pastilleCommande;
 import '../dashboard/accueil_widgets.dart' show formatFcfa;
+import '../paiements/mes_paiements_screen.dart' show CarteCompteRepasResume;
+import '../../shared/providers/compte_repas_provider.dart';
+import '../../shared/models/compte_repas_models.dart' show StatutPaiementRepas;
 
 /// Période chargée par FacturationProvider.charger() (12 mois passés,
 /// 3 mois à venir) : hors de cette période, les montants ne sont pas connus.
@@ -47,12 +50,22 @@ class _FacturationScreenState extends State<FacturationScreen> {
       context.read<CommandeProvider>().loadMesCommandes();
       // Montants calculés par le serveur (règle unique de facturation)
       context.read<FacturationProvider>().charger();
+      _chargerCompte();
     });
+  }
+
+  /// Solde du compte repas (carte « Mon compte repas »), mois en cours
+  Future<void> _chargerCompte() {
+    final now = DateTime.now();
+    return context
+        .read<CompteRepasProvider>()
+        .charger(mois: DateTime(now.year, now.month));
   }
 
   Future<void> _recharger() => Future.wait([
         context.read<CommandeProvider>().loadMesCommandes(),
         context.read<FacturationProvider>().charger(),
+        _chargerCompte(),
       ]);
 
   @override
@@ -91,7 +104,7 @@ class _FacturationScreenState extends State<FacturationScreen> {
         final enTete = EnTeteMarine(
           titre: 'Ma facturation',
           sousTitre: 'Repas retirés et à retirer, facturés au mois',
-          bas: _SelecteurMois(
+          bas: SelecteurMois(
             libelle: _libelleMois(mois),
             onPrecedent: idx > 0
                 ? () => setState(() => _mois = navigables[idx - 1])
@@ -142,6 +155,8 @@ class _FacturationScreenState extends State<FacturationScreen> {
                   ),
                   const SizedBox(height: 12),
                 ],
+                const CarteCompteRepasResume(),
+                const SizedBox(height: 12),
                 _CarteTotal(
                     mois: mois,
                     moisCourant: moisCourant,
@@ -168,12 +183,12 @@ class _FacturationScreenState extends State<FacturationScreen> {
   }
 }
 
-class _SelecteurMois extends StatelessWidget {
+class SelecteurMois extends StatelessWidget {
   final String libelle;
   final VoidCallback? onPrecedent;
   final VoidCallback? onSuivant;
-  const _SelecteurMois(
-      {required this.libelle, this.onPrecedent, this.onSuivant});
+  const SelecteurMois(
+      {super.key, required this.libelle, this.onPrecedent, this.onSuivant});
 
   @override
   Widget build(BuildContext context) {
@@ -353,6 +368,11 @@ class _CarteTotal extends StatelessWidget {
                   '$annulees ${annulees > 1 ? 'annulés' : 'annulé'}, non facturé${annulees > 1 ? 's' : ''}'),
           ]),
         ],
+        if (fact.loaded && nRepas > 0) ...[
+          const SizedBox(height: 14),
+          _RepartitionReglements(
+              repartition: fact.repartition(actives), cloture: cloture),
+        ],
         const SizedBox(height: 14),
         _BoutonPdf(
           onPressed: actives.isEmpty
@@ -362,6 +382,72 @@ class _CarteTotal extends StatelessWidget {
         ),
       ]),
     );
+  }
+}
+
+/// Paiement du mois : débité du compte repas, payé à la caisse, retenu sur
+/// salaire (ou à retenir à la clôture si rien ne change).
+class _RepartitionReglements extends StatelessWidget {
+  final ({
+    double compte,
+    double caisse,
+    double retenue,
+    double nonRegle
+  }) repartition;
+  final bool cloture;
+  const _RepartitionReglements(
+      {required this.repartition, required this.cloture});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final r = repartition;
+    Widget tuile(StatutPaiementRepas s, String libelle, double montant) {
+      final (_, couleur) = couleursPastille(s.ton, isDark);
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : AppColors.lightBackground,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(children: [
+            Icon(s.icone, size: 15, color: couleur),
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(formatFcfa(montant),
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyLarge
+                      ?.copyWith(fontSize: 13, fontWeight: FontWeight.w700)),
+            ),
+            Text(libelle,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: TextStyle(fontSize: 10, color: gris, height: 1.15)),
+          ]),
+        ),
+      );
+    }
+
+    // Mois clôturé : retenue définitive ; sinon tout ce qui n'est pas
+    // encore payé serait retenu (estimation détaillée : Mes paiements)
+    final aRetenir = r.retenue + (cloture ? 0 : r.nonRegle);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Paiement du mois', style: TextStyle(fontSize: 11.5, color: gris)),
+      const SizedBox(height: 6),
+      Row(children: [
+        tuile(StatutPaiementRepas.debiteCompte, 'compte repas', r.compte),
+        const SizedBox(width: 6),
+        tuile(StatutPaiementRepas.payeCaisse, 'caisse', r.caisse),
+        const SizedBox(width: 6),
+        tuile(StatutPaiementRepas.retenue,
+            cloture ? 'retenu sur salaire' : 'pas encore payé', aRetenir),
+      ]),
+    ]);
   }
 }
 
@@ -489,13 +575,34 @@ class _CarteDetail extends StatelessWidget {
                       style: TextStyle(fontSize: 11.5, color: gris)),
                 ),
                 Expanded(
-                  child: Text(triees[i].platDetail?.nom ?? '—',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyLarge
-                          ?.copyWith(fontSize: 12.5)),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(triees[i].platDetail?.nom ?? '—',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyLarge
+                                ?.copyWith(fontSize: 12.5)),
+                        if (_paiement(triees[i]) case final p?)
+                          Row(children: [
+                            Icon(p.icone,
+                                size: 11,
+                                color: couleursPastille(p.ton, isDark).$2),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(p.libelle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          couleursPastille(p.ton, isDark).$2)),
+                            ),
+                          ]),
+                      ]),
                 ),
                 const SizedBox(width: 6),
                 pastilleCommande(triees[i]),
@@ -510,6 +617,19 @@ class _CarteDetail extends StatelessWidget {
         ],
       ]),
     );
+  }
+
+  /// Paiement du repas : débité du compte, payé à la caisse, retenu ;
+  /// non couvert s'il est consommé (retiré ou jour passé) et pas réglé.
+  StatutPaiementRepas? _paiement(Commande c) {
+    if (!fact.loaded || c.statut == StatutCommande.annulee) return null;
+    final s = StatutPaiementRepas.depuisReglement(fact.reglement(c));
+    if (s != null) return s;
+    if (fact.montant(c) == null) return null;
+    final e = etatCommande(c);
+    return e == EtatCommande.retiree || e == EtatCommande.nonRetiree
+        ? StatutPaiementRepas.nonCouvert
+        : null;
   }
 
   Widget _montant(BuildContext context, Commande c, Color gris, Color hint) {
@@ -644,6 +764,7 @@ Future<void> _exporterPDF(BuildContext context, String moisKey,
   final auth = context.read<AuthProvider>();
   final user = auth.user;
   final totalMois = tarifProvider.calculerTotal(commandes);
+  final rep = tarifProvider.repartition(commandes);
 
   // Helvetica (police PDF par défaut) n'a ni « — », ni « • », ni les
   // espaces insécables qu'insère le format fr_FR des montants.
@@ -747,22 +868,24 @@ Future<void> _exporterPDF(BuildContext context, String moisKey,
           2: const pw.FlexColumnWidth(2),
           3: const pw.FlexColumnWidth(1.5),
           4: const pw.FlexColumnWidth(2),
+          5: const pw.FlexColumnWidth(2),
         },
         children: [
           pw.TableRow(
             decoration:
                 const pw.BoxDecoration(color: PdfColor.fromInt(0xFF092440)),
-            children: ['Plat', 'Agence', 'Date', 'Statut', 'Montant']
-                .map((h) => pw.Padding(
-                      padding: const pw.EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 5),
-                      child: pw.Text(h,
-                          style: pw.TextStyle(
-                              color: PdfColors.white,
-                              fontSize: 9,
-                              fontWeight: pw.FontWeight.bold)),
-                    ))
-                .toList(),
+            children:
+                ['Plat', 'Agence', 'Date', 'Statut', 'Paiement', 'Montant']
+                    .map((h) => pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 5),
+                          child: pw.Text(h,
+                              style: pw.TextStyle(
+                                  color: PdfColors.white,
+                                  fontSize: 9,
+                                  fontWeight: pw.FontWeight.bold)),
+                        ))
+                    .toList(),
           ),
           ...commandes.asMap().entries.map((e) {
             final c = e.value;
@@ -779,6 +902,9 @@ Future<void> _exporterPDF(BuildContext context, String moisKey,
                 c.menuDetail?.agenceNom ?? '-',
                 d != null ? DateFormat('dd/MM/yyyy').format(d) : '-',
                 c.statut.label,
+                StatutPaiementRepas.depuisReglement(tarifProvider.reglement(c))
+                        ?.libelle ??
+                    (cloture ? '-' : 'À payer'),
                 fmtM(montant),
               ]
                   .map((cell) => pw.Padding(
@@ -792,7 +918,37 @@ Future<void> _exporterPDF(BuildContext context, String moisKey,
           }),
         ],
       ),
-      pw.SizedBox(height: 16),
+      pw.SizedBox(height: 12),
+      // Paiement : compte repas, caisse, retenue sur salaire
+      if (rep.compte > 0 || rep.caisse > 0)
+        pw.Column(children: [
+          for (final (libelle, m) in [
+            ('Débité du compte repas', rep.compte),
+            ('Payé à la caisse', rep.caisse),
+            (
+              cloture
+                  ? 'Retenu sur salaire'
+                  : 'Reste à payer (retenu sur salaire à la clôture)',
+              rep.retenue + (cloture ? 0 : rep.nonRegle)
+            ),
+          ])
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(vertical: 2),
+              child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(pdfSafe(libelle),
+                        style: const pw.TextStyle(
+                            fontSize: 10, color: PdfColors.grey800)),
+                    pw.Text(
+                        pdfSafe(
+                            '${NumberFormat('#,##0', 'fr_FR').format(m)} FCFA'),
+                        style: const pw.TextStyle(
+                            fontSize: 10, color: PdfColors.grey800)),
+                  ]),
+            ),
+        ]),
+      pw.SizedBox(height: 8),
       // Total
       pw.Container(
         padding: const pw.EdgeInsets.all(14),
@@ -804,7 +960,7 @@ Future<void> _exporterPDF(BuildContext context, String moisKey,
         child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('TOTAL À PAYER CE MOIS',
+              pw.Text('TOTAL DES REPAS DU MOIS',
                   style: pw.TextStyle(
                       fontSize: 12,
                       fontWeight: pw.FontWeight.bold,

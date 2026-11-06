@@ -724,6 +724,44 @@ class FacturationProvider extends ChangeNotifier {
   /// Montant d'un repas (null : annulé, hors période ou sans tarif).
   double? montant(Commande c) => _lignes[c.id]?.montant;
 
+  @visibleForTesting
+  set lignesPourTest(List<LigneFacturation> lignes) {
+    _lignes = {for (final l in lignes) l.commandeId: l};
+    _loaded = true;
+  }
+
+  /// Règlement d'un repas (compte, caisse, retenue) ; null : pas réglé.
+  String? reglement(Commande c) => _lignes[c.id]?.reglement;
+
+  /// Répartition des repas facturables par règlement : débités du compte,
+  /// payés à la caisse, retenus sur salaire (mois clôturé) et pas encore
+  /// réglés (retenus à la clôture si rien ne change).
+  ({double compte, double caisse, double retenue, double nonRegle}) repartition(
+      List<Commande> commandes) {
+    var compte = 0.0, caisse = 0.0, retenue = 0.0, nonRegle = 0.0;
+    for (final c in commandes) {
+      if (c.statut == StatutCommande.annulee) continue;
+      final l = _lignes[c.id];
+      final m = l?.montant ?? 0;
+      switch (l?.reglement) {
+        case 'compte':
+          compte += m;
+        case 'caisse':
+          caisse += m;
+        case 'retenue':
+          retenue += m;
+        default:
+          nonRegle += m;
+      }
+    }
+    return (
+      compte: compte,
+      caisse: caisse,
+      retenue: retenue,
+      nonRegle: nonRegle
+    );
+  }
+
   /// Total des repas facturables (commandés et non annulés).
   double calculerTotal(List<Commande> commandes) => commandes
       .where((c) => c.statut != StatutCommande.annulee)

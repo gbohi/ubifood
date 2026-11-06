@@ -2,7 +2,7 @@
 //
 // Appui sur une notification push : écran à ouvrir d'après ses données FCM
 // (chaînes : type, commande_id, menu_id, retrait_id, contestation_id,
-// notif_id ; « action » ajoutée pour un bouton de notification locale).
+// recu_id, notif_id ; « action » ajoutée pour un bouton de notification locale).
 //
 // « Retrait validé » arrive en message « data seulement » (titre et texte
 // dans les données : titre, message) : sur Android, l'application affiche
@@ -29,6 +29,11 @@ int? commandeRetraitAOuvrir(Map<String, dynamic> data) {
   final id = int.tryParse(data['commande_id']?.toString() ?? '');
   return id != null && id > 0 ? id : null;
 }
+
+/// Compte repas (recharge, régularisation, remboursement, reçu annulé ;
+/// `recu_id` dans les données) : « Mes paiements » s'ouvre.
+bool ouvreMesPaiements(Map<String, dynamic> data) =>
+    data['type']?.toString() == 'compte_repas';
 
 /// Le bouton « Je n'ai pas retiré ce repas » a été touché : le formulaire
 /// s'ouvre directement.
