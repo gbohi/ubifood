@@ -1,5 +1,6 @@
 import { MenuItem } from "./menu.model";
-import { ADMINS, GESTIONNAIRES, PRESTATAIRES, RESPONSABLES_PRESTATAIRE } from "../../core/helpers/roles";
+import { ADMINS, CAISSIERS, COMPTABLES, GESTIONNAIRES, PRESTATAIRES, RESPONSABLES_PRESTATAIRE } from "../../core/helpers/roles";
+
 
 export const MENU: MenuItem[] = [
     {
@@ -100,6 +101,25 @@ export const MENU: MenuItem[] = [
                 parentId: 210
             },
             {
+                // Compte repas prépayé : solde, repas payés / non couverts, reçus de caisse
+                id: 2113,
+                label: 'Mon compte repas',
+                link: '/cantines/mon-compte-repas',
+                sansRoles: PRESTATAIRES,
+                isNew: true,
+                parentId: 210
+            },
+            {
+                // Soldes des comptes repas des employés de ses agences (lecture seule) ;
+                // la comptabilité et les administrateurs l'ont dans la section « Comptabilité »
+                id: 2114,
+                label: 'Comptes repas',
+                link: '/caisse/comptes',
+                roles: ['gestionnaire'],
+                sansRoles: COMPTABLES,
+                parentId: 210
+            },
+            {
                 id: 216,
                 label: 'MENUITEMS.CANTINES.LIST.GESTIONCOMMANDE',
                 link: '/cantines/gestion-commandes',
@@ -151,6 +171,18 @@ export const MENU: MenuItem[] = [
             }
         ]
     },
+    // ── Caisse (caissiers) et comptabilité (étape 2) ─────────────────
+    // Un compte limité à la caisse ne voit que ces entrées (espaceCaisse, voir SidebarComponent).
+    { id: 400, label: 'Espace caisse', isTitle: true, roles: CAISSIERS, espaceCaisse: true },
+    { id: 401, label: 'Caisse', icon: 'ri-money-dollar-circle-line', link: '/caisse', roles: CAISSIERS, espaceCaisse: true },
+    // Journal : dans la section Comptabilité pour qui la voit (tous les caissiers)
+    { id: 402, label: 'Journal de caisse', icon: 'ri-file-list-3-line', link: '/caisse/journal', roles: CAISSIERS, sansRoles: COMPTABLES, espaceCaisse: true },
+    { id: 403, label: 'Clôture de caisse', icon: 'ri-safe-2-line', link: '/caisse/cloture', roles: CAISSIERS, espaceCaisse: true },
+    { id: 410, label: 'Comptabilité', isTitle: true, roles: COMPTABLES, espaceCaisse: true },
+    { id: 411, label: 'Clôtures à valider', icon: 'ri-checkbox-multiple-line', link: '/caisse/clotures', roles: COMPTABLES, espaceCaisse: true },
+    { id: 412, label: 'Reçus', icon: 'ri-file-paper-2-line', link: '/caisse/recus', roles: COMPTABLES, espaceCaisse: true },
+    { id: 413, label: 'Comptes repas', icon: 'ri-wallet-3-line', link: '/caisse/comptes', roles: COMPTABLES, espaceCaisse: true },
+    { id: 414, label: 'Journal', icon: 'ri-file-list-3-line', link: '/caisse/journal', roles: COMPTABLES, espaceCaisse: true },
     {
         // Une seule entrée vers l'accueil des paramètres (cartes par thème,
         // filtrées selon le rôle : le gestionnaire n'y voit que la cantine)

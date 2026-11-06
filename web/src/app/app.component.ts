@@ -7,7 +7,7 @@ import { WebNotificationService } from './core/services/web-notification.service
 import { TokenStorageService } from './core/services/token-storage.service';
 import { environment } from 'src/environments/environment';
 import { POPUP_APRES_CONNEXION } from './core/helpers/popup-connexion';
-import { estPrestataire } from './core/helpers/roles';
+import { estCaisseSeule, estPrestataire } from './core/helpers/roles';
 
 
 @Component({
@@ -48,7 +48,9 @@ export class AppComponent implements OnInit {
     } catch { /* stockage indisponible : pas de fenêtre */ }
     if (!demande || !this.tokenStorage.getAccessToken()) return;
     // Espace prestataire : fenêtre destinée aux employés (route refusée, 403)
-    if (estPrestataire(this.tokenStorage.getUser())) return;
+    // Compte limité à la caisse : fenêtre destinée aux employés, sans objet
+    const user = this.tokenStorage.getUser();
+    if (estPrestataire(user) || estCaisseSeule(user)) return;
 
     this.http.get<{ image_url?: string }>(`${environment.apiUrl}/api/api/popups-connexion/active/`)
       .subscribe({

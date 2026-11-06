@@ -359,6 +359,13 @@
             }
           </div>
 
+          <!-- Caisse : rôles cumulables avec Employé, jamais avec un rôle prestataire (refus du serveur affiché) -->
+          @if (estRoleCaisse && !estRolePrestataire) {
+            <p class="text-muted small mb-4"><i class="ri-information-line me-1"></i>Caissier : encaisse les recharges et régularisations et clôture sa caisse.
+              Comptabilité : valide les clôtures de caisse, annule les reçus, rembourse les soldes. Cumulables avec « Employé » (le compte commande aussi ses repas) ;
+              impossible avec un rôle prestataire. Personne n'annule ses propres opérations ni ne valide sa propre clôture.</p>
+          }
+
           <!-- Compte de l'espace prestataire : prestataire obligatoire, aucun autre rôle -->
           @if (estRolePrestataire) {
             <div class="row g-3 mb-4">

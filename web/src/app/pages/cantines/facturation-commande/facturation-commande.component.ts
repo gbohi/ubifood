@@ -44,6 +44,10 @@ export interface LigneFacturation {
   nbCommandes:      number;
   total:            number;
   repasSansTarif:   number;
+  /** Règlement (étape 2) : payé par le compte repas, à la caisse, et reste retenu sur salaire */
+  montantCompte:    number;
+  montantCaisse:    number;
+  montantRetenue:   number;
   etat:             EtatFacture;
   statuts: {
     en_attente: number;
@@ -77,6 +81,13 @@ export interface ClotureMensuelle {
   montant_total: string;
   nb_factures_prestataires: number;
   montant_total_prestataires: string;
+  // Règlement figé à la clôture (étape 2) ; mois clôturés avant : tout en retenue
+  nb_repas_compte?: number;
+  montant_compte?: string | number;
+  nb_repas_caisse?: number;
+  montant_caisse?: string | number;
+  nb_repas_retenue?: number;
+  montant_retenue?: string | number;
 }
 
 @Component({
@@ -124,6 +135,10 @@ export class FacturationCommandeComponent implements OnInit {
   lignesFacturation: LigneFacturation[] = [];
   totalNbCommandes = 0;
   totalMontant     = 0;
+  /** total_montant = compte repas + caisse + retenue sur salaire */
+  totalCompte      = 0;
+  totalCaisse      = 0;
+  totalRetenue     = 0;
   repasSansTarif   = 0;
   parCategorie: SyntheseCategorie[] = [];
   parPlat: SynthesePlat[] = [];
@@ -215,6 +230,9 @@ export class FacturationCommandeComponent implements OnInit {
           this.regle            = data.regle;
           this.totalNbCommandes = data.total_repas;
           this.totalMontant     = data.total_montant;
+          this.totalCompte      = data.total_compte ?? 0;
+          this.totalCaisse      = data.total_caisse ?? 0;
+          this.totalRetenue     = data.total_retenue ?? data.total_montant;
           this.repasSansTarif   = data.repas_sans_tarif;
           this.parCategorie     = data.par_categorie ?? [];
           this.parPlat          = data.par_plat ?? [];
@@ -232,6 +250,9 @@ export class FacturationCommandeComponent implements OnInit {
             nbCommandes:      e.nb_repas,
             total:            e.total,
             repasSansTarif:   e.repas_sans_tarif,
+            montantCompte:    e.montant_compte ?? 0,
+            montantCaisse:    e.montant_caisse ?? 0,
+            montantRetenue:   e.montant_retenue ?? e.total,
             etat:             e.etat,
             statuts:          { en_attente: e.statuts.en_attente, retiree: e.statuts.retiree },
           }));
@@ -571,6 +592,9 @@ export class FacturationCommandeComponent implements OnInit {
       'Retirées':          l.statuts.retiree,
       'État':              this.libelleEtat(l.etat),
       'Total (FCFA)':      l.total,
+      'Compte repas (FCFA)': l.montantCompte,
+      'Caisse (FCFA)':     l.montantCaisse,
+      'À retenir (FCFA)':  l.montantRetenue,
     }));
 
     // Ligne total
@@ -590,6 +614,9 @@ export class FacturationCommandeComponent implements OnInit {
       'Retirées':          '',
       'État':              '',
       'Total (FCFA)':      this.totalMontant,
+      'Compte repas (FCFA)': this.totalCompte,
+      'Caisse (FCFA)':     this.totalCaisse,
+      'À retenir (FCFA)':  this.totalRetenue,
     });
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -597,6 +624,7 @@ export class FacturationCommandeComponent implements OnInit {
       { wch: 5  }, { wch: 18 }, { wch: 28 }, { wch: 20 }, { wch: 20 },
       { wch: 15 }, { wch: 22 }, { wch: 22 }, { wch: 24 },
       { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 },
+      { wch: 18 }, { wch: 14 }, { wch: 16 },
     ];
 
     const wb = XLSX.utils.book_new();

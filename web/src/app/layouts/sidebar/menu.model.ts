@@ -17,4 +17,6 @@ export interface MenuItem {
     actifSur?: string[];
     /** Pastille « Nouveau » à côté du libellé */
     isNew?: boolean;
+    /** Entrée de la caisse / comptabilité : seules entrées d'un compte limité à la caisse */
+    espaceCaisse?: boolean;
 }

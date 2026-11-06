@@ -1,0 +1,109 @@
+<div class="lst ep cs">
+  <app-page-entete titre="Mon compte repas" icone="ri-wallet-3-line" [fil]="[{label: 'Cantine'}]"
+                   sousTitre="Rechargez votre compte à la caisse : vos repas sont débités au retrait">
+    <div class="ep-semaine-nav cs-jour-nav">
+      <button type="button" class="btn-ubi ic" (click)="changerMois(-1)" aria-label="Mois précédent"><i class="ri-arrow-left-s-line"></i></button>
+      <b class="cs-mois">{{ libelleMois }}</b>
+      <button type="button" class="btn-ubi ic" (click)="changerMois(1)" [disabled]="estMoisCourant" aria-label="Mois suivant"><i class="ri-arrow-right-s-line"></i></button>
+    </div>
+    <a class="btn-ubi" routerLink="/cantines/mes-commandes"><i class="ri-shopping-bag-3-line"></i><span class="pe-lib">Mes commandes</span></a>
+  </app-page-entete>
+
+  @if (erreur) { <div class="ep-alerte a-ro"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+  @if (chargement && !compte) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+
+  @if (compte; as c) {
+    <div class="cs-mon-hd" [class.ep-attente]="chargement">
+      <section class="cs-solde-carte">
+        <small>Solde de mon compte repas</small>
+        <b>{{ fcfa(c.solde) }}</b>
+        <span>Reporté de mois en mois · jamais négatif</span>
+      </section>
+      <section class="ep-carte cs-chiffres-carte">
+        <div class="cs-chiffres">
+          <div><small>Repas consommés</small><b>{{ fcfa(c.totaux.consomme.montant) }}</b><span>{{ c.totaux.consomme.nb }} repas en {{ libelleMois }}</span></div>
+          <div class="ve"><small>Débités du compte</small><b>{{ fcfa(c.totaux.debite_compte.montant) }}</b><span>{{ c.totaux.debite_compte.nb }} repas</span></div>
+          <div class="bl"><small>Payés à la caisse</small><b>{{ fcfa(c.totaux.paye_caisse.montant) }}</b><span>{{ c.totaux.paye_caisse.nb }} repas</span></div>
+          @if (c.mois_cloture) {
+            <div class="gr"><small>Retenus sur salaire</small><b>{{ fcfa(c.totaux.retenue.montant) }}</b><span>{{ c.totaux.retenue.nb }} repas · mois clôturé</span></div>
+          } @else {
+            <div class="or"><small>Non couverts</small><b>{{ fcfa(c.totaux.non_couvert.montant) }}</b><span>{{ c.totaux.non_couvert.nb }} repas</span></div>
+          }
+        </div>
+        @if (c.mois_cloture) {
+          <div class="cs-reste zero"><i class="ri-lock-line"></i><div><b>Mois clôturé</b><small>Les règlements de ce mois sont figés.</small></div></div>
+        } @else {
+          <div class="cs-reste" [class.zero]="!c.reste_a_payer_prevu">
+            <i [class]="c.reste_a_payer_prevu ? 'ri-calendar-todo-line' : 'ri-checkbox-circle-line'"></i>
+            <div>
+              <b>Reste à payer prévu à la clôture : {{ fcfa(c.reste_a_payer_prevu) }}</b>
+              <small>{{ c.reste_a_payer_prevu ? c.mention_reste + ' Rechargez votre compte ou payez à la caisse pour l\'éviter.' : 'Votre solde couvre vos repas non payés et à venir : rien ne sera retenu sur salaire si rien ne change.' }}</small>
+            </div>
+          </div>
+        }
+      </section>
+    </div>
+
+    <div class="ep-grille cs-g-mon">
+      <div class="lst-carte">
+        <div class="lst-barre bord">
+          <div><b class="ep-titre-carte"><i class="ri-restaurant-2-line"></i>Mes repas de {{ libelleMois }}</b>
+            <small class="ep-muted d-block">Débité au retrait si le solde suffit (pas de débit partiel), sinon non couvert</small></div>
+        </div>
+        <div class="lst-table-wrap">
+          <table class="lst-table lst-cartes ep-table">
+            <thead><tr><th>Jour</th><th>Plat</th><th class="n">Prix</th><th>Règlement</th></tr></thead>
+            <tbody>
+              @for (r of c.repas; track r.commande_id) {
+                <tr>
+                  <td class="lst-c-principal lst-nowrap"><b>{{ jourRepas(r.date_menu) }}</b></td>
+                  <td data-label="Plat"><span>{{ r.plat }}<small class="d-block">{{ r.agence_menu }}</small></span></td>
+                  <td data-label="Prix" class="n">@if (r.sans_tarif) { <span class="ep-muted">—</span> } @else { {{ fcfa(r.montant) }} }</td>
+                  <td data-label="Règlement"><span class="lst-tag" [ngClass]="statuts[r.statut].classe" [title]="r.statut_libelle"><i [class]="statuts[r.statut].icone"></i>{{ r.statut === 'non_couvert' ? 'Non couvert' : r.statut_libelle }}</span>
+                    @if (r.statut === 'non_couvert') { <small class="d-block">à payer à la caisse ou retenu sur salaire</small> }</td>
+                </tr>
+              } @empty {
+                <tr class="lst-l-vide"><td colspan="4"><div class="lst-vide"><i class="ri-restaurant-line"></i><h5>Aucun repas ce mois-ci</h5></div></td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <section class="ep-carte ep-carte-t">
+        <div class="ep-carte-hd">
+          <div class="ep-onglets" role="tablist">
+            <button type="button" role="tab" class="ep-onglet" [class.on]="onglet === 'mouvements'" (click)="onglet = 'mouvements'"><i class="ri-exchange-funds-line"></i>Mouvements<em>{{ totalMouvements }}</em></button>
+            <button type="button" role="tab" class="ep-onglet" [class.on]="onglet === 'recus'" (click)="onglet = 'recus'"><i class="ri-file-paper-2-line"></i>Mes reçus<em>{{ totalRecus }}</em></button>
+          </div>
+        </div>
+        @if (onglet === 'mouvements') {
+          <ul class="cs-recus">
+            @for (m of mouvements; track m.id) {
+              <li>
+                <span class="cs-recu-ic" [class.debit]="m.montant < 0"><i [class]="m.montant < 0 ? 'ri-arrow-down-line' : 'ri-arrow-up-line'"></i></span>
+                <div class="cs-recu-txt"><b>{{ m.type_libelle }}</b><small>{{ jourHeure(m.date) }} · {{ m.libelle }}</small></div>
+                <div class="cs-recu-mt"><b [class.ep-c-vert]="m.montant > 0" [class.ep-c-rouge]="m.montant < 0">{{ fcfa(m.montant, true) }}</b><small>solde {{ fcfa(m.solde_apres) }}</small></div>
+              </li>
+            } @empty { <li class="ep-muted cs-recus-vide"><i class="ri-inbox-line me-1"></i>Aucun mouvement : votre compte n'a pas encore été rechargé.</li> }
+          </ul>
+          <app-liste-pied [total]="totalMouvements" [page]="pageMouvements" [nbAffiches]="mouvements.length" (pageChanged)="pageMouvements = $event.page; chargerMouvements()"></app-liste-pied>
+        } @else {
+          <ul class="cs-recus">
+            @for (r of recus; track r.id) {
+              <li [class.annule]="r.statut === 'annule'">
+                <span class="cs-recu-ic" [ngClass]="r.type"><i [class]="icones[r.type]"></i></span>
+                <div class="cs-recu-txt"><b>{{ r.type_libelle }}</b><small>{{ jourHeure(r.date) }} · {{ r.numero }}</small>
+                  @if (r.statut === 'annule') { <span class="lst-tag t-ro">Annulé</span> }</div>
+                <div class="cs-recu-mt"><b>{{ fcfa(r.montant) }}</b></div>
+                <button type="button" class="lst-ic" title="Ticket PDF" [attr.aria-label]="'Ticket ' + r.numero" [disabled]="!!telechargement" (click)="pdf(r, 'ticket')"><i class="ri-printer-line"></i></button>
+                <button type="button" class="lst-ic" title="PDF A5" [attr.aria-label]="'PDF A5 ' + r.numero" [disabled]="!!telechargement" (click)="pdf(r, 'a5')"><i class="ri-file-pdf-line"></i></button>
+              </li>
+            } @empty { <li class="ep-muted cs-recus-vide"><i class="ri-inbox-line me-1"></i>Aucun reçu de caisse.</li> }
+          </ul>
+          <app-liste-pied [total]="totalRecus" [page]="pageRecus" [nbAffiches]="recus.length" (pageChanged)="pageRecus = $event.page; chargerRecus()"></app-liste-pied>
+        }
+      </section>
+    </div>
+  }
+</div>

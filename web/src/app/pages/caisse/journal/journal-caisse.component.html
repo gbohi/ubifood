@@ -1,0 +1,130 @@
+<div class="lst ep cs">
+  <app-page-entete [titre]="tousLesCaissiers ? 'Journal de caisse' : 'Mon journal de caisse'" icone="ri-file-list-3-line"
+                   [fil]="[{label: tousLesCaissiers ? 'Comptabilité' : 'Caisse'}]"
+                   [sousTitre]="'Opérations du ' + titreJour + (journal && tousLesCaissiers ? ' · caissier : ' + journal.caissier_libelle : '')">
+    <div class="ep-semaine-nav cs-jour-nav">
+      <button type="button" class="btn-ubi ic" (click)="decaler(-1)" aria-label="Jour précédent"><i class="ri-arrow-left-s-line"></i></button>
+      <input type="date" class="form-control ep-select" [(ngModel)]="date" (change)="charger()" aria-label="Jour du journal">
+      <button type="button" class="btn-ubi ic" (click)="decaler(1)" [disabled]="estAujourdhui" aria-label="Jour suivant"><i class="ri-arrow-right-s-line"></i></button>
+    </div>
+    @if (tousLesCaissiers) {
+      <select class="form-select ep-select" [(ngModel)]="caissier" (change)="charger()" aria-label="Caissier">
+        <option value="">Tous les caissiers</option>
+        @for (c of caissiers; track c.caissier_id) { <option [ngValue]="c.caissier_id">{{ c.caissier_nom }}</option> }
+      </select>
+    }
+    <button type="button" class="btn-ubi navy" [disabled]="!journal || telechargement === 'journal'" (click)="pdfJournal()">
+      @if (telechargement === 'journal') { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-file-pdf-line"></i> }<span class="pe-lib">Journal PDF</span></button>
+  </app-page-entete>
+
+  @if (erreur) { <div class="ep-alerte a-ro"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+  @if (chargement && !journal) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+
+  @if (journal; as j) {
+    <div class="ep-kpis-ligne ep-kpis-4" [class.ep-attente]="chargement">
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-money-dollar-box-line"></i></span>
+        <div><small>Espèces nettes</small><b>{{ fcfa(j.especes_net) }}</b><span>entrées − sorties, reçus valides</span></div></div>
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-file-paper-2-line"></i></span>
+        <div><small>Reçus</small><b>{{ j.nb_recus }}</b><span>{{ j.nb_valides }} valide{{ j.nb_valides > 1 ? 's' : '' }} · {{ j.nb_annules }} annulé{{ j.nb_annules > 1 ? 's' : '' }}</span></div></div>
+      @for (t of j.par_type.slice(0, 2); track t.type) {
+        <div class="ep-carte ep-kpi"><span class="ep-kpi-ic" [ngClass]="t.type === 'recharge' ? 've' : 'or'"><i [class]="icones[t.type]"></i></span>
+          <div><small>{{ t.libelle }}</small><b>{{ fcfa(t.montant) }}</b><span>{{ t.nb }} reçu{{ t.nb > 1 ? 's' : '' }} · encaissé {{ fcfa(t.encaissement) }}</span></div></div>
+      }
+    </div>
+
+    <div class="lst-carte">
+      <div class="lst-barre bord">
+        <div>
+          <b class="ep-titre-carte"><i class="ri-file-paper-2-line"></i>Reçus du jour</b>
+          <small class="ep-muted d-block">Les totaux ne comptent que les reçus valides (annulés barrés)</small>
+        </div>
+      </div>
+      <div class="lst-table-wrap">
+        <table class="lst-table lst-cartes ep-table cs-table-recus">
+          <thead><tr><th>N°</th><th>Heure</th><th>Employé</th><th>Type</th><th class="n">Montant</th><th class="n">Encaissement</th><th>Mode</th>
+            @if (tousLesCaissiers) { <th>Caissier</th> }<th>Statut</th><th class="lst-c-act"></th></tr></thead>
+          <tbody>
+            @for (r of j.recus; track r.id) {
+              <tr [class.cs-annule]="r.statut === 'annule'">
+                <td class="lst-c-principal lst-nowrap"><b class="cs-num">{{ r.numero }}</b></td>
+                <td data-label="Heure">{{ r.heure || heure(r.date) }}</td>
+                <td data-label="Employé"><span><b>{{ r.employe.nom_prenom }}</b><small class="d-block">{{ r.employe.matricule }}</small></span></td>
+                <td data-label="Type"><span class="cs-type"><i [class]="icones[r.type]"></i>{{ r.type_libelle }}</span></td>
+                <td data-label="Montant" class="n">{{ fcfa(r.montant) }}
+                  @if (r.type === 'regularisation' && r.monnaie > 0) { <small class="d-block">monnaie {{ fcfa(r.monnaie) }} {{ r.monnaie_creditee ? 'créditée' : 'rendue' }}</small> }</td>
+                <td data-label="Encaissement" class="n"><b [class.ep-c-rouge]="r.encaissement < 0">{{ fcfa(r.encaissement, true) }}</b></td>
+                <td data-label="Mode">{{ r.mode_libelle }}</td>
+                @if (tousLesCaissiers) { <td data-label="Caissier">{{ r.caissier_nom }}</td> }
+                <td data-label="Statut">
+                  @if (r.statut === 'annule') {
+                    <span class="lst-tag t-ro" [title]="'Annulé par ' + r.annule_par_nom + ' : ' + r.motif_annulation"><i class="ri-close-circle-line"></i>Annulé</span>
+                    <small class="d-block cs-motif">{{ r.motif_annulation }}</small>
+                  } @else if (r.verrouille) { <span class="lst-tag t-gr"><i class="ri-lock-line"></i>Clôturé</span> }
+                  @else { <span class="lst-tag t-ve">Valide</span> }
+                </td>
+                <td class="lst-c-act">
+                  <div class="lst-act">
+                    <button type="button" class="lst-ic" title="Ticket 80 mm" [disabled]="!!telechargement" (click)="pdfRecu(r, 'ticket')"><i class="ri-printer-line"></i></button>
+                    <button type="button" class="lst-ic" title="PDF A5" [disabled]="!!telechargement" (click)="pdfRecu(r, 'a5')"><i class="ri-file-pdf-line"></i></button>
+                  </div>
+                </td>
+              </tr>
+            } @empty {
+              <tr class="lst-l-vide"><td [attr.colspan]="tousLesCaissiers ? 10 : 9"><div class="lst-vide"><i class="ri-inbox-line"></i><h5>Aucune opération ce jour-là</h5></div></td></tr>
+            }
+            @if (j.recus.length) {
+              <tr class="ep-tot">
+                <td colspan="4">Total des reçus valides · {{ j.nb_valides }}</td>
+                <td class="n"></td><td class="n">{{ fcfa(totalEncaisse, true) }}</td>
+                <td [attr.colspan]="tousLesCaissiers ? 4 : 3" class="ep-muted fw-normal">@if (j.nb_annules) { {{ j.nb_annules }} annulé{{ j.nb_annules > 1 ? 's' : '' }} ({{ fcfa(j.montant_annules) }}) exclus }</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="ep-grille ep-g2">
+      <section class="ep-carte">
+        <div class="ep-carte-hd"><b><i class="ri-pie-chart-2-line"></i>Par type d'opération</b></div>
+        <table class="lst-table ep-table">
+          <thead><tr><th>Type</th><th class="n">Reçus</th><th class="n">Montant</th><th class="n">Espèces</th></tr></thead>
+          <tbody>
+            @for (t of j.par_type; track t.type) {
+              <tr><td><span class="cs-type"><i [class]="icones[t.type]"></i>{{ t.libelle }}</span></td><td class="n">{{ t.nb }}</td>
+                <td class="n">{{ fcfa(t.montant) }}</td><td class="n"><b>{{ fcfa(t.encaissement, true) }}</b></td></tr>
+            }
+            <tr class="ep-tot"><td>Espèces nettes</td><td class="n">{{ j.nb_valides }}</td><td></td><td class="n">{{ fcfa(j.especes_net) }}</td></tr>
+          </tbody>
+        </table>
+        @if (tousLesCaissiers && j.par_caissier.length) {
+          <div class="ep-carte-hd mt-3"><b><i class="ri-user-star-line"></i>Par caissier</b></div>
+          <ul class="ep-equipe">
+            @for (c of j.par_caissier; track c.caissier_id) {
+              <li><div class="ep-equipe-txt"><b>{{ c.caissier_nom }}</b><small>{{ c.nb }} reçu{{ c.nb > 1 ? 's' : '' }}</small></div><b>{{ fcfa(c.encaissement, true) }}</b></li>
+            }
+          </ul>
+        }
+      </section>
+      <section class="ep-carte">
+        <div class="ep-carte-hd"><b><i class="ri-safe-2-line"></i>Clôtures de caisse du jour</b></div>
+        <ul class="ep-anomalies">
+          @for (c of j.clotures; track c.id) {
+            <li>
+              <span class="ep-anom-ic"><i [class]="statutsCloture[c.statut].icone"></i></span>
+              <div>
+                <b>{{ c.caissier_nom }} · {{ fcfa(c.montant_compte) }} compté</b>
+                <small>Soumise le {{ jourHeure(c.soumise_le) }} · théorique {{ fcfa(c.montant_theorique) }} · écart
+                  <b [class.ep-c-rouge]="c.ecart < 0" [class.ep-c-orange]="c.ecart > 0">{{ fcfa(c.ecart, true) }}</b>@if (c.motif_ecart) { (« {{ c.motif_ecart }} ») }</small>
+                <small><span class="lst-tag" [ngClass]="statutsCloture[c.statut].classe">{{ c.statut_libelle }}</span>
+                  @if (c.traitee_par_nom) { par {{ c.traitee_par_nom }}@if (c.commentaire) { : « {{ c.commentaire }} » } }</small>
+              </div>
+            </li>
+          } @empty {
+            <li class="ep-muted"><i class="ri-information-line me-1"></i>Aucune clôture soumise ce jour-là.</li>
+          }
+        </ul>
+      </section>
+    </div>
+  }
+</div>

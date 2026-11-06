@@ -1,0 +1,130 @@
+<div class="lst ep cs">
+  <app-page-entete titre="Clôture de caisse" icone="ri-safe-2-line" [fil]="[{label: 'Caisse', lien: '/caisse'}]"
+                   sousTitre="Comptez les espèces de votre caisse et soumettez la clôture à la comptabilité">
+    <a class="btn-ubi" routerLink="/caisse/journal"><i class="ri-file-list-3-line"></i><span class="pe-lib">Mon journal</span></a>
+  </app-page-entete>
+
+  @if (erreur) { <div class="ep-alerte a-ro"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+  @if (soumise; as c) {
+    <div class="ep-alerte a-ve">
+      <i class="ri-checkbox-circle-line"></i>
+      <div><b>Clôture soumise — en attente de validation par la comptabilité.</b>
+        <small>{{ c.nb_recus }} reçu{{ c.nb_recus > 1 ? 's' : '' }} · théorique {{ fcfa(c.montant_theorique) }} · compté {{ fcfa(c.montant_compte) }} · écart {{ fcfa(c.ecart, true) }}.
+          Ces reçus ne peuvent plus être annulés ; les opérations suivantes entrent dans votre prochaine clôture.</small></div>
+      <button type="button" class="btn-close" (click)="soumise = null" aria-label="Fermer"></button>
+    </div>
+  }
+  @if (chargement && !apercu) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+
+  @if (apercu; as a) {
+    <div class="cs-grille">
+      <section class="ep-carte cs-cloture" [class.ep-attente]="chargement">
+        @if (!a.nb_recus) {
+          <div class="cs-attente">
+            <i class="ri-checkbox-circle-line"></i>
+            <div><b>Aucune opération à clôturer</b><small>Votre caisse est à jour : toutes vos opérations ont été clôturées.</small></div>
+          </div>
+        } @else {
+          <div class="cs-theorique">
+            <div><small>Opérations à clôturer</small><b>{{ a.nb_recus }} reçu{{ a.nb_recus > 1 ? 's' : '' }}</b><span>depuis le {{ jourHeure(a.debut) }}</span></div>
+            <div class="cs-theo-mt"><small>Montant théorique en caisse</small><b>{{ fcfa(a.montant_theorique) }}</b><span>espèces des reçus valides</span></div>
+          </div>
+
+          <label class="ep-lab" for="cs-compte">Montant compté en caisse</label>
+          <div class="cs-montant cs-montant-xl">
+            <input id="cs-compte" type="number" min="0" step="1" inputmode="numeric" class="form-control" [(ngModel)]="montantCompte" placeholder="0">
+            <span>F CFA</span>
+          </div>
+          <button type="button" class="ep-lien mb-3" (click)="billetage = !billetage" [attr.aria-expanded]="billetage">
+            <i class="ri-calculator-line"></i>{{ billetage ? 'Masquer l\'aide au comptage' : 'Compter billet par billet' }}<i [class]="billetage ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i></button>
+
+          @if (billetage) {
+            <div class="cs-billetage">
+              @for (c of coupures; track c.cle) {
+                <label [for]="'cs-' + c.cle">
+                  <span>{{ c.libelle }}</span>
+                  <input [id]="'cs-' + c.cle" type="number" min="0" step="1" class="form-control form-control-sm" [(ngModel)]="quantites[c.cle]" placeholder="0">
+                  <em>{{ fcfa((quantites[c.cle] || 0) * c.valeur) }}</em>
+                </label>
+              }
+              <div class="cs-billetage-tot">
+                <span>Total compté : <b>{{ fcfa(totalBilletage) }}</b></span>
+                <button type="button" class="btn-ubi sm" (click)="viderBilletage()">Effacer</button>
+                <button type="button" class="btn-ubi sm navy" (click)="appliquerBilletage()"><i class="ri-arrow-up-line"></i>Reporter</button>
+              </div>
+            </div>
+          }
+
+          @if (saisi) {
+            <div class="cs-ecart" [ngClass]="ecart === 0 ? 'ok' : ecart < 0 ? 'manque' : 'surplus'" aria-live="polite">
+              <i [class]="ecart === 0 ? 'ri-checkbox-circle-line' : 'ri-error-warning-line'"></i>
+              <div>
+                <b>Écart : {{ fcfa(ecart, true) }}</b>
+                <small>{{ ecart === 0 ? 'Le montant compté correspond au théorique.' : ecart < 0 ? 'Il manque de l\'argent dans la caisse.' : 'Il y a plus d\'argent que prévu dans la caisse.' }}</small>
+              </div>
+            </div>
+          }
+          @if (motifRequis) {
+            <label class="ep-lab" for="cs-motif">Motif de l'écart <span class="text-danger">*</span></label>
+            <textarea id="cs-motif" class="form-control mb-3" rows="2" [(ngModel)]="motif" maxlength="500"
+                      placeholder="Ex. Pièce de 100 F manquante, erreur de rendu de monnaie…" [class.is-invalid]="!motif.trim()"></textarea>
+          }
+          @if (erreurEnvoi) { <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreurEnvoi }}</b></div></div> }
+          <button type="button" class="btn-ubi vert w-100 cs-go" [disabled]="!peutSoumettre" (click)="soumettre()">
+            @if (envoi) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-lock-2-line"></i> }Soumettre la clôture à la comptabilité</button>
+          <p class="ep-muted small mt-2 mb-0"><i class="ri-information-line"></i> Après soumission, ces reçus sont verrouillés : ils ne peuvent plus être annulés (sauf rejet de la clôture).</p>
+        }
+      </section>
+
+      <section class="ep-carte ep-carte-t">
+        <div class="ep-carte-hd">
+          <b><i class="ri-file-paper-2-line"></i>Reçus de cette clôture</b>
+          <small class="ms-auto">{{ a.recus.length }}</small>
+        </div>
+        <ul class="cs-recus">
+          @for (r of a.recus; track r.id) {
+            <li [class.annule]="r.statut === 'annule'">
+              <span class="cs-recu-ic" [ngClass]="r.type"><i [class]="icones[r.type]"></i></span>
+              <div class="cs-recu-txt"><b>{{ r.employe.nom_prenom }}</b><small>{{ jour(r.date) }} {{ heure(r.date) }} · {{ r.numero }}</small></div>
+              <div class="cs-recu-mt">
+                <b>{{ fcfa(r.encaissement, true) }}</b>
+                @if (r.statut === 'annule') { <span class="lst-tag t-ro">Annulé · exclu</span> }
+              </div>
+            </li>
+          } @empty {
+            <li class="ep-muted cs-recus-vide">Aucun reçu.</li>
+          }
+        </ul>
+      </section>
+    </div>
+  }
+
+  <!-- ── Historique ─────────────────────────────────────────── -->
+  <div class="lst-carte">
+    <div class="lst-barre bord"><b class="ep-titre-carte"><i class="ri-history-line"></i>Mes clôtures</b></div>
+    <div class="lst-table-wrap">
+      <table class="lst-table lst-cartes ep-table">
+        <thead><tr><th>Jour</th><th>Soumise le</th><th class="n">Reçus</th><th class="n">Théorique</th><th class="n">Compté</th><th class="n">Écart</th><th>Statut</th><th>Comptabilité</th></tr></thead>
+        <tbody>
+          @for (c of historique; track c.id) {
+            <tr>
+              <td class="lst-c-principal"><b>{{ jour(c.jour) }}</b></td>
+              <td data-label="Soumise le">{{ jourHeure(c.soumise_le) }}</td>
+              <td data-label="Reçus" class="n">{{ c.nb_recus }}</td>
+              <td data-label="Théorique" class="n">{{ fcfa(c.montant_theorique) }}</td>
+              <td data-label="Compté" class="n">{{ fcfa(c.montant_compte) }}</td>
+              <td data-label="Écart" class="n"><b [class.ep-c-rouge]="c.ecart < 0" [class.ep-c-orange]="c.ecart > 0">{{ fcfa(c.ecart, true) }}</b>
+                @if (c.motif_ecart) { <small class="d-block">{{ c.motif_ecart }}</small> }</td>
+              <td data-label="Statut"><span class="lst-tag" [ngClass]="statuts[c.statut].classe"><i [class]="statuts[c.statut].icone"></i>{{ c.statut_libelle }}</span></td>
+              <td data-label="Comptabilité">@if (c.traitee_par_nom) { {{ c.traitee_par_nom }}, {{ jourHeure(c.traitee_le) }}
+                @if (c.commentaire) { <small class="d-block">« {{ c.commentaire }} »</small> } } @else { <span class="ep-muted">—</span> }</td>
+            </tr>
+          } @empty {
+            <tr class="lst-l-vide"><td colspan="8"><div class="lst-vide"><i class="ri-safe-2-line"></i><h5>Aucune clôture pour l'instant</h5></div></td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <app-liste-pied [total]="totalHistorique" [page]="page" [nbAffiches]="historique.length" (pageChanged)="changerPage($event.page)"></app-liste-pied>
+  </div>
+</div>

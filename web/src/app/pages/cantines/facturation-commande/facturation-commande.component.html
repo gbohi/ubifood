@@ -131,7 +131,11 @@
       </div>
       <div class="ce-k">
         <span class="ce-k-ic ce-p-ve"><i class="ri-wallet-3-line"></i></span>
-        <div><small>Montant total</small><b>{{ formatMontant(totalMontant) }} F</b><small>{{ libelleEtat(etatPeriode) }}</small></div>
+        <div><small>Montant total</small><b>{{ formatMontant(totalMontant) }} F</b>
+          @if (totalCompte || totalCaisse) {
+            <small>dont compte repas {{ formatMontant(totalCompte) }} F · caisse {{ formatMontant(totalCaisse) }} F</small>
+            <small>à retenir sur salaire : <span class="fw-semibold">{{ formatMontant(totalRetenue) }} F</span></small>
+          } @else { <small>{{ libelleEtat(etatPeriode) }} · tout à retenir</small> }</div>
       </div>
       <div class="ce-k">
         <span class="ce-k-ic ce-p-bl"><i class="ri-team-line"></i></span>
@@ -260,6 +264,9 @@
                   <th class="ce-n">Repas</th>
                   <th class="ce-n">Tarif</th>
                   <th class="ce-n">Montant</th>
+                  <th class="ce-n" title="Payé par le compte repas prépayé">Compte</th>
+                  <th class="ce-n" title="Payé à la caisse">Caisse</th>
+                  <th class="ce-n" title="Reste retenu sur salaire">À retenir</th>
                   <th class="ce-c">État</th>
                 </tr>
               </thead>
@@ -294,6 +301,9 @@
                       @if (l.total > 0) { <b>{{ formatMontant(l.total) }} F</b> }
                       @else { <b class="ce-c-rouge">à compléter</b> }
                     </td>
+                    <td class="ce-n">@if (l.montantCompte) { {{ formatMontant(l.montantCompte) }} F } @else { <span class="ce-muted">—</span> }</td>
+                    <td class="ce-n">@if (l.montantCaisse) { {{ formatMontant(l.montantCaisse) }} F } @else { <span class="ce-muted">—</span> }</td>
+                    <td class="ce-n"><b>{{ formatMontant(l.montantRetenue) }} F</b></td>
                     <td class="ce-c">
                       <span class="ce-tag" [class.ce-tag-gr]="l.etat === 'cloturee'" [class.ce-tag-or]="l.etat !== 'cloturee'">
                         {{ libelleEtat(l.etat) }}
@@ -306,6 +316,9 @@
                   <td class="ce-n">{{ formatMontant(totalNbCommandes) }}</td>
                   <td></td>
                   <td class="ce-n">{{ formatMontant(totalMontant) }} F</td>
+                  <td class="ce-n">{{ formatMontant(totalCompte) }} F</td>
+                  <td class="ce-n">{{ formatMontant(totalCaisse) }} F</td>
+                  <td class="ce-n">{{ formatMontant(totalRetenue) }} F</td>
                   <td></td>
                 </tr>
               </tbody>
@@ -347,6 +360,9 @@
                   <button type="button" class="ce-frise-mois" (click)="allerAuMois(f.annee, f.mois)">{{ libelleMois(f.annee, f.mois) }}</button>
                   <small>Clôturé le {{ f.cloture.cloturee_le | date:'dd/MM' }} · {{ formatMontant(+f.cloture.montant_total) }} F</small>
                   <small>{{ f.cloture.nb_repas }} repas · prestataires {{ formatMontant(+f.cloture.montant_total_prestataires) }} F</small>
+                  @if (f.cloture.montant_retenue !== undefined && f.cloture.montant_retenue !== null) {
+                    <small>Compte {{ formatMontant(+(f.cloture.montant_compte ?? 0)) }} · caisse {{ formatMontant(+(f.cloture.montant_caisse ?? 0)) }} · retenue {{ formatMontant(+f.cloture.montant_retenue) }} F</small>
+                  }
                 </div>
               } @else if (f.enCours) {
                 <span class="ce-pt ce-p-or"><i class="ri-time-line"></i></span>

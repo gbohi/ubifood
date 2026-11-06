@@ -45,6 +45,7 @@ import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.compo
 import { StatistiquesComponent } from './statistiques/statistiques.component';
 import { StatBlocComponent } from './statistiques/stat-bloc.component';
 import { ControleRetraitsComponent } from './controle-retraits/controle-retraits.component';
+import { MonCompteRepasComponent } from './mon-compte-repas/mon-compte-repas.component';
 
 // Graphiques (page Statistiques)
 import { NgApexchartsModule } from 'ng-apexcharts';
@@ -72,7 +73,8 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     AvisPlatsComponent,
     AccueilEmployeComponent,
     StatistiquesComponent,
-    ControleRetraitsComponent
+    ControleRetraitsComponent,
+    MonCompteRepasComponent
   ],
   imports: [
     CommonModule,

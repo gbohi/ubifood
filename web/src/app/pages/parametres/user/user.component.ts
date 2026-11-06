@@ -553,6 +553,8 @@ getDerniereCategorie(user: any): any | null {
       case 'gestionnaire': return { classe: 't-ve', icone: 'ri-restaurant-line' };
       case 'prestataire':    return { classe: 't-or', icone: 'ri-store-2-line' };
       case 'agent_comptoir': return { classe: 't-or', icone: 'ri-qr-scan-2-line' };
+      case 'caissier':       return { classe: 't-bl', icone: 'ri-money-dollar-circle-line' };
+      case 'comptabilite':   return { classe: 't-bl', icone: 'ri-calculator-line' };
       default:             return { classe: 't-gr', icone: 'ri-user-line' };
     }
   }
@@ -569,6 +571,8 @@ getDerniereCategorie(user: any): any | null {
     { cle: 'super_admin',  libelle: 'Super administrateurs' },
     { cle: 'prestataire',  libelle: 'Prestataires' },
     { cle: 'agent_comptoir', libelle: 'Agents de comptoir' },
+    { cle: 'caissier',     libelle: 'Caissiers' },
+    { cle: 'comptabilite', libelle: 'Comptabilité' },
     { cle: 'desactive',    libelle: 'Désactivés' },
   ];
 
@@ -643,6 +647,12 @@ getDerniereCategorie(user: any): any | null {
 
   private get idsRolesPrestataire(): number[] {
     return this.groupes.filter(g => g.name === 'prestataire' || g.name === 'agent_comptoir').map(g => Number(g.id));
+  }
+
+  /** Le compte édité a le rôle caissier ou comptabilité (cumulable avec employé) */
+  get estRoleCaisse(): boolean {
+    const ids = this.groupes.filter(g => g.name === 'caissier' || g.name === 'comptabilite').map(g => Number(g.id));
+    return (this.userForm?.get('groups')?.value || []).map(Number).some((g: number) => ids.includes(g));
   }
 
   /** Le compte édité a le rôle prestataire ou agent de comptoir */

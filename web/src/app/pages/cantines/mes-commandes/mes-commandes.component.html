@@ -3,6 +3,7 @@
   <app-page-entete titre="Mes commandes" icone="ri-shopping-bag-3-line" [fil]="[{label: 'Cantine'}]"
                    [compte]="mesCommandes.length" unite="commande|commandes"
                    [complement]="totalEnAttente ? totalEnAttente + ' en attente' : ''">
+    <a routerLink="/cantines/mon-compte-repas" class="btn-ubi"><i class="ri-wallet-3-line"></i><span class="pe-lib">Mon compte repas</span></a>
     <a routerLink="/cantines/liste-commandes" class="btn-ubi vert"><i class="ri-add-line"></i><span class="pe-lib">Commander</span></a>
   </app-page-entete>
 

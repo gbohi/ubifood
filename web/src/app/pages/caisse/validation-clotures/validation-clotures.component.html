@@ -1,0 +1,114 @@
+<div class="lst ep cs">
+  <app-page-entete titre="Clôtures de caisse" icone="ri-checkbox-multiple-line" [fil]="[{label: 'Comptabilité'}]"
+                   [sousTitre]="nbAValider === null ? 'Contrôle des espèces comptées par les caissiers' : (nbAValider + ' clôture' + (nbAValider > 1 ? 's' : '') + ' en attente de validation')">
+    <a class="btn-ubi" routerLink="/caisse/journal"><i class="ri-file-list-3-line"></i><span class="pe-lib">Journal</span></a>
+    <a class="btn-ubi" routerLink="/caisse/recus"><i class="ri-file-paper-2-line"></i><span class="pe-lib">Reçus</span></a>
+  </app-page-entete>
+
+  @if (erreur) { <div class="ep-alerte a-ro"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+
+  <div class="lst-carte">
+    <div class="lst-barre">
+      <div class="lst-chips" role="group" aria-label="Filtrer par statut">
+        @for (f of filtres; track f.cle) {
+          <button type="button" class="lst-chip" [class.on]="statut === f.cle" [attr.aria-pressed]="statut === f.cle" (click)="choisirStatut(f.cle)">
+            {{ f.libelle }}@if (f.cle === 'soumise' && nbAValider !== null) {<em>{{ nbAValider }}</em>}</button>
+        }
+      </div>
+    </div>
+    @if (chargement && !clotures.length) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+    <div class="lst-table-wrap" [class.ep-attente]="chargement">
+      <table class="lst-table lst-cartes ep-table">
+        <thead><tr><th>Caissier</th><th>Jour</th><th>Soumise le</th><th class="n">Reçus</th><th class="n">Théorique</th><th class="n">Compté</th><th class="n">Écart</th><th>Statut</th><th class="lst-c-act"></th></tr></thead>
+        <tbody>
+          @for (c of clotures; track c.id) {
+            <tr>
+              <td class="lst-c-principal"><div class="lst-qui"><span class="lst-av">{{ c.caissier_nom.slice(0, 1) }}</span><b>{{ c.caissier_nom }}</b></div></td>
+              <td data-label="Jour" class="lst-nowrap">{{ jour(c.jour) }}</td>
+              <td data-label="Soumise le" class="lst-nowrap">{{ jourHeure(c.soumise_le) }}</td>
+              <td data-label="Reçus" class="n">{{ c.nb_recus }}</td>
+              <td data-label="Théorique" class="n">{{ fcfa(c.montant_theorique) }}</td>
+              <td data-label="Compté" class="n"><b>{{ fcfa(c.montant_compte) }}</b></td>
+              <td data-label="Écart" class="n">
+                <b [class.ep-c-rouge]="c.ecart < 0" [class.ep-c-orange]="c.ecart > 0" [class.ep-c-vert]="c.ecart === 0">{{ c.ecart === 0 ? '0 F' : fcfa(c.ecart, true) }}</b>
+                @if (c.motif_ecart) { <small class="d-block cs-motif">« {{ c.motif_ecart }} »</small> }
+              </td>
+              <td data-label="Statut">
+                <span class="lst-tag" [ngClass]="statuts[c.statut].classe"><i [class]="statuts[c.statut].icone"></i>{{ statuts[c.statut].court }}</span>
+                @if (c.traitee_par_nom) { <small class="d-block">{{ c.traitee_par_nom }}, {{ jourHeure(c.traitee_le) }}</small> }
+                @if (c.commentaire) { <small class="d-block cs-motif">« {{ c.commentaire }} »</small> }
+              </td>
+              <td class="lst-c-act bas">
+                <div class="lst-act">
+                  <button type="button" class="ep-lien" (click)="basculer(c)" [attr.aria-expanded]="ouverte?.id === c.id">Reçus<i [class]="ouverte?.id === c.id ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i></button>
+                  @if (c.statut === 'soumise') {
+                    <button type="button" class="btn-ubi sm vert" (click)="demander(c, true)"><i class="ri-check-line"></i>Valider</button>
+                    <button type="button" class="btn-ubi sm rouge" (click)="demander(c, false)"><i class="ri-close-line"></i>Rejeter</button>
+                  }
+                </div>
+              </td>
+            </tr>
+            @if (ouverte?.id === c.id) {
+              <tr class="ep-detail">
+                <td colspan="9">
+                  @if (chargementDetail && !ouverte?.recus) { <div class="lst-charge"><div class="spinner-border spinner-border-sm"></div></div> }
+                  @else {
+                    <table class="ep-sous-table">
+                      <thead><tr><th>N°</th><th>Heure</th><th>Employé</th><th>Type</th><th class="text-end">Espèces</th><th>Statut</th></tr></thead>
+                      <tbody>
+                        @for (r of ouverte?.recus ?? []; track r.id) {
+                          <tr [class.cs-annule]="r.statut === 'annule'">
+                            <td><b class="cs-num">{{ r.numero }}</b></td><td>{{ jour(r.date) }} {{ heure(r.date) }}</td><td>{{ r.employe.nom_prenom }}</td>
+                            <td><span class="cs-type"><i [class]="icones[r.type]"></i>{{ r.type_libelle }}</span></td>
+                            <td class="text-end"><b>{{ fcfa(r.encaissement, true) }}</b></td>
+                            <td>@if (r.statut === 'annule') { <span class="lst-tag t-ro">Annulé · exclu du théorique</span> } @else { <span class="lst-tag t-ve">Valide</span> }</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  }
+                </td>
+              </tr>
+            }
+          } @empty {
+            @if (!chargement) {
+              <tr class="lst-l-vide"><td colspan="9"><div class="lst-vide"><i class="ri-checkbox-circle-line"></i>
+                <h5>{{ statut === 'soumise' ? 'Aucune clôture en attente' : 'Aucune clôture' }}</h5><p>Les clôtures soumises par les caissiers apparaissent ici.</p></div></td></tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+    <app-liste-pied [total]="total" [page]="page" [nbAffiches]="clotures.length" (pageChanged)="changerPage($event.page)"></app-liste-pied>
+  </div>
+</div>
+
+<!-- ── Valider / rejeter ─────────────────────────────────────── -->
+<div bsModal #traiterModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true" aria-labelledby="cs-traiter-titre">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4">
+        @if (aTraiter; as c) {
+          <div class="text-center">
+            <i [class]="valider ? 'ri-checkbox-circle-line text-success display-5' : 'ri-close-circle-line text-danger display-5'"></i>
+            <h5 class="mt-3" id="cs-traiter-titre">{{ valider ? 'Valider la clôture' : 'Rejeter la clôture' }}</h5>
+            <p class="text-muted">{{ c.caissier_nom }} · {{ jour(c.jour) }} · {{ c.nb_recus }} reçu{{ c.nb_recus > 1 ? 's' : '' }}<br>
+              Théorique {{ fcfa(c.montant_theorique) }} · compté {{ fcfa(c.montant_compte) }} ·
+              écart <b [class.ep-c-rouge]="c.ecart < 0" [class.ep-c-orange]="c.ecart > 0">{{ fcfa(c.ecart, true) }}</b></p>
+            @if (c.motif_ecart) { <p class="cs-motif">Motif du caissier : « {{ c.motif_ecart }} »</p> }
+            @if (!valider) { <p class="small text-muted">Les reçus sont libérés : le caissier recompte et soumet une nouvelle clôture.</p> }
+          </div>
+          <label class="ep-lab" for="cs-commentaire">Commentaire @if (!valider) { <span class="text-danger">*</span> } @else { (facultatif) }</label>
+          <textarea id="cs-commentaire" class="form-control mb-3" rows="3" [(ngModel)]="commentaire" maxlength="500"
+                    [placeholder]="valider ? 'Ex. Écart justifié, accepté.' : 'Ex. Recompter : écart non justifié.'"></textarea>
+          @if (erreurTraitement) { <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreurTraitement }}</b></div></div> }
+          <div class="d-flex gap-2 justify-content-center">
+            <button type="button" class="btn-ubi" (click)="traiterModal.hide()">Retour</button>
+            <button type="button" class="btn-ubi" [ngClass]="valider ? 'vert' : 'ep-btn-rouge-plein'" [disabled]="envoi || (!valider && !commentaire.trim())" (click)="confirmer()">
+              @if (envoi) { <span class="spinner-border spinner-border-sm"></span> }{{ valider ? 'Valider la clôture' : 'Rejeter la clôture' }}</button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>

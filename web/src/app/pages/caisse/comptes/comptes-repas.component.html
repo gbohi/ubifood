@@ -1,0 +1,161 @@
+<div class="lst ep cs">
+  <app-page-entete titre="Comptes repas" icone="ri-wallet-3-line" [fil]="[{label: comptable ? 'Comptabilité' : 'Cantine'}]"
+                   [compte]="total" unite="compte|comptes" [complement]="'total des soldes ' + fcfa(totalSoldes)">
+  </app-page-entete>
+
+  @if (!comptable) {
+    <div class="ep-alerte a-bl mb-3"><i class="ri-eye-line"></i><div><b>Lecture seule</b>
+      <small>Soldes des comptes repas des employés de vos agences. Les recharges se font à la caisse ; les remboursements par la comptabilité.</small></div></div>
+  }
+  @if (erreur) { <div class="ep-alerte a-ro"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+
+  <div class="lst-carte">
+    <div class="lst-barre">
+      <div class="lst-chips" role="group" aria-label="Filtre des soldes">
+        <button type="button" class="lst-chip" [class.on]="!seulementSoldes" (click)="seulementSoldes = false; filtrer()">Tous les comptes</button>
+        <button type="button" class="lst-chip" [class.on]="seulementSoldes" (click)="seulementSoldes = true; filtrer()">Solde positif</button>
+      </div>
+      <div class="lst-filtres">
+        <label class="lst-recherche">
+          <i class="ri-search-line"></i>
+          <input type="search" [(ngModel)]="q" (ngModelChange)="rechercher()" placeholder="Nom ou matricule" aria-label="Rechercher un employé">
+        </label>
+        <select class="form-select" [(ngModel)]="agence" (change)="filtrer()" aria-label="Agence">
+          <option value="">{{ comptable ? 'Toutes les agences' : 'Toutes mes agences' }}</option>
+          @for (a of agences; track a.id) { <option [ngValue]="a.id">{{ a.nom_agence }}</option> }
+        </select>
+      </div>
+    </div>
+    @if (chargement && !comptes.length) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+    <div class="lst-table-wrap" [class.ep-attente]="chargement">
+      <table class="lst-table lst-cartes ep-table">
+        <thead><tr><th>Employé</th><th>Matricule</th><th>Agence</th><th class="n">Solde</th><th>Dernier mouvement</th><th class="lst-c-act"></th></tr></thead>
+        <tbody>
+          @for (c of comptes; track c.id) {
+            <tr>
+              <td class="lst-c-principal">
+                <div class="lst-qui"><span class="lst-av">{{ initiales(c.nom_prenom) }}</span>
+                  <div><b>@if (comptable) { <button type="button" class="ep-lien cs-lien-nom" (click)="ouvrirDetail(c)">{{ c.nom_prenom }}</button> } @else { {{ c.nom_prenom }} }</b>
+                    @if (!c.actif) { <span class="lst-tag t-gr">désactivé</span> }</div></div>
+              </td>
+              <td data-label="Matricule">{{ c.matricule }}</td>
+              <td data-label="Agence">{{ c.agence || '—' }}</td>
+              <td data-label="Solde" class="n"><b class="cs-solde-liste" [class.ep-c-vert]="c.solde > 0" [class.ep-muted]="!c.solde">{{ fcfa(c.solde) }}</b></td>
+              <td data-label="Dernier mouvement" class="lst-nowrap">{{ jourHeure(c.mis_a_jour) }}</td>
+              <td class="lst-c-act bas">
+                @if (comptable) {
+                  <div class="lst-act">
+                    <button type="button" class="btn-ubi sm" (click)="ouvrirDetail(c)"><i class="ri-eye-line"></i>Détail</button>
+                    @if (c.solde > 0) { <button type="button" class="btn-ubi sm orange" (click)="demanderRemboursement(c)"><i class="ri-hand-coin-line"></i>Rembourser</button> }
+                  </div>
+                }
+              </td>
+            </tr>
+          } @empty {
+            @if (!chargement) {
+              <tr class="lst-l-vide"><td colspan="6"><div class="lst-vide"><i class="ri-wallet-3-line"></i><h5>Aucun compte repas</h5>
+                <p>Un compte est créé à la première recharge à la caisse.</p></div></td></tr>
+            }
+          }
+          @if (comptes.length) {
+            <tr class="ep-tot"><td colspan="3">Total des soldes ({{ total }} compte{{ total > 1 ? 's' : '' }})</td><td class="n">{{ fcfa(totalSoldes) }}</td><td colspan="2"></td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <app-liste-pied [total]="total" [page]="page" [nbAffiches]="comptes.length" (pageChanged)="changerPage($event.page)"></app-liste-pied>
+  </div>
+</div>
+
+<!-- ── Détail d'un compte (comptabilité) ─────────────────────── -->
+<div bsModal #detailModal="bs-modal" class="modal fade ep-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      @if (detail; as c) {
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="ri-wallet-3-line"></i>{{ c.nom_prenom }} <small>{{ c.matricule }}@if (c.agence) { · {{ c.agence }} }</small></h5>
+          <button type="button" class="btn-close" (click)="detailModal.hide()" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          @if (chargementFiche) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+          @if (erreurFiche) { <div class="ep-alerte a-ro"><i class="ri-error-warning-line"></i><div><b>{{ erreurFiche }}</b></div></div> }
+          @if (fiche; as f) {
+            <div class="cs-chiffres cs-chiffres-5">
+              <div><small>Solde</small><b class="ep-c-vert">{{ fcfa(f.solde) }}</b><span>compte repas</span></div>
+              <div><small>Consommés</small><b>{{ fcfa(f.totaux.consomme.montant) }}</b><span>{{ f.totaux.consomme.nb }} repas</span></div>
+              <div class="ve"><small>Débités du compte</small><b>{{ fcfa(f.totaux.debite_compte.montant) }}</b><span>{{ f.totaux.debite_compte.nb }} repas</span></div>
+              <div class="bl"><small>Payés à la caisse</small><b>{{ fcfa(f.totaux.paye_caisse.montant) }}</b><span>{{ f.totaux.paye_caisse.nb }} repas</span></div>
+              <div class="or"><small>Reste prévu à la clôture</small><b>{{ fcfa(f.reste_a_payer_prevu) }}</b><span>retenue sur salaire</span></div>
+            </div>
+            <h6 class="cs-h6">Repas des mois ouverts ({{ jour(f.date_debut) }} – {{ jour(f.date_fin) }})</h6>
+            <table class="ep-sous-table">
+              <thead><tr><th>Jour</th><th>Plat</th><th class="text-end">Prix</th><th>Statut</th></tr></thead>
+              <tbody>
+                @for (r of f.repas; track r.commande_id) {
+                  <tr><td>{{ jour(r.date_menu) }}</td><td>{{ r.plat }}</td><td class="text-end">{{ fcfa(r.montant) }}</td>
+                    <td><span class="lst-tag" [ngClass]="statuts[r.statut].classe">{{ statuts[r.statut].court }}</span></td></tr>
+                } @empty { <tr><td colspan="4" class="ep-muted">Aucun repas sur les mois ouverts.</td></tr> }
+              </tbody>
+            </table>
+            <h6 class="cs-h6">Derniers reçus</h6>
+            <table class="ep-sous-table">
+              <thead><tr><th>N°</th><th>Date</th><th>Type</th><th class="text-end">Montant</th><th class="text-end">Solde après</th><th></th></tr></thead>
+              <tbody>
+                @for (r of f.derniers_recus; track r.id) {
+                  <tr [class.cs-annule]="r.statut === 'annule'"><td class="cs-num">{{ r.numero }}</td><td>{{ jourHeure(r.date) }}</td><td>{{ r.type_libelle }}</td>
+                    <td class="text-end">{{ fcfa(r.montant) }}</td><td class="text-end">{{ fcfa(r.solde_apres) }}</td>
+                    <td>@if (r.statut === 'annule') { <span class="lst-tag t-ro">Annulé</span> }</td></tr>
+                } @empty { <tr><td colspan="6" class="ep-muted">Aucun reçu.</td></tr> }
+              </tbody>
+            </table>
+            <p class="ep-muted small mt-2 mb-0"><i class="ri-information-line"></i> Le détail des débits de repas figure dans la colonne Statut (« Débité du compte »).
+              <a [routerLink]="['/caisse/recus']" [queryParams]="{ user: c.id, nom: c.nom_prenom }" (click)="detailModal.hide()">Tous les reçus de {{ c.nom_prenom }}</a></p>
+          }
+        </div>
+        <div class="modal-footer">
+          @if (c.solde > 0) { <button type="button" class="btn-ubi orange me-auto" (click)="demanderRemboursement(c)"><i class="ri-hand-coin-line"></i>Rembourser le solde</button> }
+          <button type="button" class="btn-ubi" (click)="detailModal.hide()">Fermer</button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+<!-- ── Remboursement du solde ────────────────────────────────── -->
+<div bsModal #rembourserModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4">
+        @if (recuRemboursement; as r) {
+          <div class="text-center">
+            <i class="ri-checkbox-circle-line text-success display-5"></i>
+            <h5 class="mt-3">Remboursement enregistré</h5>
+            <p class="text-muted">Reçu <b class="cs-num">{{ r.numero }}</b> · {{ fcfa(r.montant) }} remis en espèces à {{ r.employe.nom_prenom }}.<br>Solde du compte : {{ fcfa(r.solde_apres) }}.</p>
+            <div class="d-flex gap-2 justify-content-center flex-wrap">
+              <button type="button" class="btn-ubi navy" [disabled]="!!telechargement" (click)="pdf(r, 'ticket')"><i class="ri-printer-line"></i>Ticket</button>
+              <button type="button" class="btn-ubi" [disabled]="!!telechargement" (click)="pdf(r, 'a5')"><i class="ri-file-pdf-line"></i>PDF A5</button>
+              <button type="button" class="btn-ubi" (click)="rembourserModal.hide()">Fermer</button>
+            </div>
+          </div>
+        } @else if (aRembourser) {
+          @let c = aRembourser;
+          <div class="text-center">
+            <i class="ri-hand-coin-line text-warning display-5"></i>
+            <h5 class="mt-3">Rembourser le solde de {{ c.nom_prenom }} ?</h5>
+            <p class="text-muted">{{ fcfa(c.solde) }} seront remis en espèces par la comptabilité et le compte repas sera remis à zéro.
+              Cette sortie d'espèces figure au journal, hors clôtures de caisse.</p>
+          </div>
+          <label class="ep-lab" for="cs-motif-remb">Motif du remboursement <span class="text-danger">*</span></label>
+          <textarea id="cs-motif-remb" class="form-control mb-3" rows="2" [(ngModel)]="motif" maxlength="500" placeholder="Ex. Départ de l'entreprise"></textarea>
+          <p class="small ep-muted mb-3"><i class="ri-money-dollar-box-line"></i> Mode : espèces.</p>
+          @if (erreurRemboursement) { <div class="ep-alerte a-ro mb-3" role="alert"><i class="ri-error-warning-line"></i><div><b>{{ erreurRemboursement }}</b></div></div> }
+          <div class="d-flex gap-2 justify-content-center">
+            <button type="button" class="btn-ubi" (click)="rembourserModal.hide()">Retour</button>
+            <button type="button" class="btn-ubi orange" [disabled]="envoi || !motif.trim()" (click)="rembourser()">
+              @if (envoi) { <span class="spinner-border spinner-border-sm"></span> }Rembourser {{ fcfa(c.solde) }}</button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>

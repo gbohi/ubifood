@@ -1,0 +1,200 @@
+// Compte repas et caisse (étape 2) : écran de caisse, journal et clôture de caisse,
+// comptabilité (clôtures, reçus, comptes repas) et « Mon compte repas » de l'employé.
+// Préfixe « cs- » ; s'appuie sur _listes.scss (lst-*, btn-ubi, pe-*) et
+// _espace-prestataire.scss (ep-carte, ep-kpi, ep-alerte, ep-onglet…).
+
+.cs { --cs-vert: #1C7F45; --cs-orange: #C98A16; }
+.cs-num { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; letter-spacing: .02em; }
+.cs-motif { color: #A3341E; font-size: 11px; }
+.cs-h6 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ubi-gris); font-weight: 600; margin: 18px 0 6px; }
+.cs-type { display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; i { color: var(--ubi-gris); font-size: 15px; } }
+.cs-annule td, .cs-recus li.annule { color: #8A9AB2; }
+.cs-annule td b:not(.cs-num), .cs-annule .cs-num { text-decoration: line-through; }
+.cs-annule .lst-tag, .cs-annule .lst-act { text-decoration: none; }
+.cs-lien-nom { font-size: 13px; font-weight: 600; color: var(--ubi-navy); }
+.cs-solde-liste { font-size: 14px; }
+.cs-refus { color: #A3341E !important; font-size: 12.5px !important; }
+
+.cs-caisse-chip {
+  display: inline-flex; gap: 6px; align-items: center; background: #EEF3FB; color: var(--ubi-navy2); border-radius: 20px;
+  padding: 7px 12px; font-size: 12px; white-space: nowrap; i { font-size: 15px; }
+}
+.cs-jour-nav { flex-wrap: nowrap; .ep-select { min-width: 140px; } }
+.cs-mois { min-width: 140px !important; text-transform: capitalize; }
+
+// ── Mise en page de l'écran de caisse ──────────────────────────
+.cs-grille { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr); gap: 18px; align-items: start; margin-bottom: 18px; > * { min-width: 0; } }
+
+// Recherche (grande, adaptée au lecteur de badge)
+.cs-recherche-carte { position: relative; }
+.cs-recherche {
+  display: flex; align-items: center; gap: 12px; border: 2px solid var(--ubi-bord); border-radius: 14px; padding: 6px 14px; margin: 0;
+  background: #fff; transition: border-color .15s, box-shadow .15s;
+  > i { font-size: 26px; color: var(--ubi-navy2); }
+  input { flex: 1; min-width: 0; border: 0; outline: 0; font-size: 19px; font-weight: 500; padding: 10px 0; color: var(--ubi-navy); background: transparent;
+    &::placeholder { color: #8A9AB2; font-weight: 400; } }
+  &:focus-within { border-color: #3EC970; box-shadow: 0 0 0 4px rgba(62, 201, 112, .14); }
+  .spinner-border { color: var(--ubi-navy2); }
+}
+.cs-kbd { background: #F3F5F9; color: var(--ubi-gris); border: 1px solid var(--ubi-bord); border-radius: 6px; font-size: 11px; padding: 2px 7px; box-shadow: none; }
+.cs-aide { display: block; margin-top: 8px; font-size: 11.5px; i { margin-right: 4px; } }
+.cs-resultats {
+  list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; max-height: 360px; overflow: auto;
+  button {
+    width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; border: 1px solid var(--ubi-bord); border-radius: 12px;
+    background: #fff; padding: 8px 12px; color: var(--ubi-navy);
+    &.on, &:hover { border-color: #3EC970; background: #F6FFF9; }
+  }
+}
+.cs-res-txt { flex: 1; min-width: 0; b { display: block; font-weight: 600; } small { color: var(--ubi-gris); font-size: 11.5px; } }
+.cs-res-solde { text-align: right; small { display: block; color: var(--ubi-gris); font-size: 10.5px; } b { font-size: 14px; } }
+
+// Fiche employé
+.cs-fiche-hd { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; > .lst-ic { align-self: flex-start; } }
+.cs-av { width: 56px; height: 56px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 19px; flex-shrink: 0; }
+.cs-fiche-qui { flex: 1; min-width: 0; b { display: block; font-size: 17px; font-weight: 700; } small { display: block; color: var(--ubi-gris); } }
+.cs-solde {
+  text-align: right; background: #F0FCF5; border: 1px solid #BFEBD0; border-radius: 14px; padding: 8px 16px;
+  small { display: block; color: var(--ubi-gris); font-size: 11px; }
+  b { display: block; font-size: 30px; font-weight: 800; line-height: 1.15; color: var(--ubi-navy); letter-spacing: -.01em; }
+}
+.cs-chiffres {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+  > div { background: #F8FAFC; border-radius: 12px; padding: 10px 12px; border-top: 3px solid #C9D5E4; min-width: 0; }
+  > .ve { border-top-color: #3EC970; } > .bl { border-top-color: var(--ubi-navy2); } > .or { border-top-color: #F7B84B; } > .gr { border-top-color: #9AA9BE; }
+  small { display: block; color: var(--ubi-gris); font-size: 11px; }
+  b { display: block; font-size: 17px; font-weight: 700; margin: 2px 0; white-space: nowrap; }
+  span { display: block; color: var(--ubi-gris); font-size: 11px; }
+  &.cs-chiffres-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+.cs-reste {
+  display: flex; gap: 12px; align-items: flex-start; margin-top: 12px; padding: 11px 14px; border-radius: 12px; background: #FFF8EC; border: 1px solid #F6D9A8;
+  > i { font-size: 20px; color: var(--cs-orange); margin-top: 1px; }
+  b { display: block; font-size: 13.5px; } small { display: block; color: var(--ubi-gris); font-size: 11.5px; margin-top: 2px; }
+  &.zero { background: #F0FCF5; border-color: #BFEBD0; > i { color: #3EC970; } }
+}
+
+// Repas
+.cs-table-repas {
+  tr.cs-cliquable { cursor: pointer; }
+  tr.cs-coche td { background: #F6FFF9 !important; }
+  .form-check-input { width: 17px; height: 17px; accent-color: #3EC970; &:checked { background-color: #3EC970; border-color: #3EC970; } }
+}
+.cs-attente {
+  display: flex; gap: 14px; align-items: center; color: var(--ubi-gris);
+  > i { font-size: 32px; color: #B4C2D6; }
+  b { display: block; color: var(--ubi-navy); font-size: 14px; } small { display: block; }
+}
+
+// Opération (recharger / régulariser)
+.cs-operation { &.cs-off { opacity: .8; } }
+.cs-onglets { margin-bottom: 16px; .ep-onglet { flex: 1 1 0; justify-content: center; } }
+.cs-modes, .cs-monnaie { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
+.cs-mode {
+  display: flex; gap: 10px; align-items: center; text-align: left; border: 1.5px solid var(--ubi-bord); border-radius: 12px; padding: 10px 12px;
+  background: #fff; color: var(--ubi-navy); cursor: pointer; margin: 0; min-width: 0;
+  > i { font-size: 20px; color: var(--ubi-navy2); flex-shrink: 0; }
+  b { display: block; font-size: 12.5px; font-weight: 600; } small { display: block; color: var(--ubi-gris); font-size: 10.5px; }
+  input { position: absolute; opacity: 0; pointer-events: none; }
+  &.on { border-color: #3EC970; background: #F0FCF5; > i { color: #1C7F45; } }
+  &:disabled { cursor: not-allowed; background: #F8FAFC; border-style: dashed; opacity: .75; > i { color: #9AA9BE; } small { color: #C98A16; font-weight: 600; } }
+  &:focus-within, &:focus-visible { outline: 2px solid var(--ubi-navy2); outline-offset: 2px; }
+}
+.cs-montant {
+  display: flex; align-items: center; border: 1.5px solid var(--ubi-bord); border-radius: 12px; overflow: hidden; margin-bottom: 10px;
+  input { border: 0; font-size: 24px; font-weight: 700; padding: 10px 14px; color: var(--ubi-navy); box-shadow: none !important; min-width: 0;
+    &.is-invalid { color: #C4381F; } }
+  span { padding: 0 14px; color: var(--ubi-gris); font-weight: 600; white-space: nowrap; }
+  &:focus-within { border-color: #3EC970; box-shadow: 0 0 0 3px rgba(62, 201, 112, .14); }
+  &.cs-montant-xl input { font-size: 30px; }
+}
+.cs-rapides { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; .btn-ubi { flex: 1 1 0; } }
+.cs-apres { color: var(--ubi-gris); margin: -4px 0 12px; b { color: var(--cs-vert); } }
+.cs-go { padding: 13px 16px; font-size: 15px; }
+.cs-recap {
+  display: flex; justify-content: space-between; align-items: baseline; background: #F8FAFC; border-radius: 12px; padding: 10px 14px; margin-bottom: 14px;
+  span { color: var(--ubi-gris); } b { font-size: 20px; }
+}
+
+// Reçu enregistré
+.cs-succes { border-color: #BFEBD0; box-shadow: 0 0 0 3px rgba(62, 201, 112, .12); }
+.cs-succes-hd { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; b { display: block; font-size: 15px; } small { color: var(--ubi-gris); } small b { display: inline; font-size: 12px; } }
+.cs-succes-ic { font-size: 36px; color: #3EC970; line-height: 1; }
+.cs-dl {
+  margin: 0 0 14px; display: grid; gap: 4px;
+  > div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px dashed var(--ubi-bord); }
+  dt { color: var(--ubi-gris); font-weight: 400; } dd { margin: 0; font-weight: 600; text-align: right; }
+  .cs-dl-fort { dt { color: var(--ubi-navy); font-weight: 600; } dd { font-size: 16px; } }
+  &.cs-dl-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+}
+.cs-succes-act { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; .btn-ubi { flex: 1 1 0; } }
+
+// Liste compacte de reçus / mouvements
+.cs-recus {
+  list-style: none; margin: 0; padding: 0 16px 6px;
+  li { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid #EEF2F7; &:last-child { border-bottom: 0; } }
+}
+.cs-recus-vide { justify-content: center; padding: 18px 0 !important; }
+.cs-recu-ic {
+  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; font-size: 16px; flex-shrink: 0; background: #EAFBF1; color: #1C7F45;
+  &.regularisation { background: #E8F0FD; color: var(--ubi-navy2); }
+  &.remboursement, &.debit { background: #FEF4E4; color: #9A6510; }
+}
+.cs-recu-txt { flex: 1; min-width: 0; b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  small { display: block; color: var(--ubi-gris); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+.cs-recu-mt { text-align: right; white-space: nowrap; b { display: block; } small { color: var(--ubi-gris); font-size: 10.5px; } .lst-tag { margin-top: 2px; } }
+
+// ── Clôture de caisse ──────────────────────────────────────────
+.cs-theorique {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px;
+  > div { background: #F8FAFC; border-radius: 12px; padding: 12px 14px; }
+  small { display: block; color: var(--ubi-gris); font-size: 11px; } b { display: block; font-size: 20px; font-weight: 700; } span { color: var(--ubi-gris); font-size: 11px; }
+  .cs-theo-mt { background: #F1F6FE; b { font-size: 26px; color: var(--ubi-navy2); } }
+}
+.cs-billetage {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; background: #F8FAFC; border-radius: 12px; padding: 12px; margin-bottom: 14px;
+  label { display: grid; grid-template-columns: minmax(0, 1fr) 70px 86px; gap: 8px; align-items: center; margin: 0; font-size: 12px;
+    em { font-style: normal; text-align: right; color: var(--ubi-gris); white-space: nowrap; } input { text-align: right; } }
+}
+.cs-billetage-tot { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--ubi-bord); padding-top: 8px; margin-top: 4px;
+  span { flex: 1; } }
+.cs-ecart {
+  display: flex; gap: 10px; align-items: center; border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid;
+  > i { font-size: 22px; } b { display: block; font-size: 16px; } small { display: block; color: var(--ubi-gris); }
+  &.ok { background: #F0FCF5; border-color: #BFEBD0; > i { color: #3EC970; } }
+  &.manque { background: #FEF1EE; border-color: #F8C9BE; > i, b { color: #C4381F; } }
+  &.surplus { background: #FFF8EC; border-color: #F6D9A8; > i, b { color: #9A6510; } }
+}
+
+// ── Mon compte repas ───────────────────────────────────────────
+.cs-mon-hd { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 3fr); gap: 18px; margin-bottom: 18px; > * { min-width: 0; } }
+.cs-solde-carte {
+  border-radius: 14px; padding: 18px 20px; color: #fff; background: linear-gradient(135deg, #0F3A6E, #092440);
+  display: flex; flex-direction: column; justify-content: center;
+  small { color: #A9C1E2; font-size: 12px; } b { font-size: 34px; font-weight: 800; line-height: 1.2; margin: 4px 0; } span { color: #A9C1E2; font-size: 11.5px; }
+}
+.cs-g-mon { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); margin-bottom: 18px; .ep-onglet em { margin-left: 2px; } }
+
+// ── Responsive ─────────────────────────────────────────────────
+@media (max-width: 1199.98px) {
+  .cs-grille, .cs-g-mon { grid-template-columns: minmax(0, 1fr); }
+  .cs-chiffres.cs-chiffres-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 767.98px) {
+  .cs-mon-hd { grid-template-columns: minmax(0, 1fr); }
+  .cs-chiffres, .cs-chiffres.cs-chiffres-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cs-fiche-hd { flex-wrap: wrap; }
+  .cs-fiche-qui { flex: 1 1 calc(100% - 120px); }
+  .cs-solde { order: 3; flex: 1 1 100%; text-align: left; b { font-size: 26px; } }
+  .cs-recherche input { font-size: 16px; }
+  .cs-kbd { display: none; }
+  .cs-billetage { grid-template-columns: minmax(0, 1fr); }
+  .cs-dl.cs-dl-2 { grid-template-columns: minmax(0, 1fr); }
+  .cs-theorique { grid-template-columns: minmax(0, 1fr); }
+  .pe-actions .cs-caisse-chip { flex: 1 1 100%; justify-content: center; }
+  .cs-jour-nav { width: 100%; .ep-select { flex: 1; } }
+  .cs-onglets { flex-wrap: nowrap; .ep-onglet { padding: 8px 6px; font-size: 12px; min-width: 0; gap: 4px; } }
+  .cs-modes .cs-mode { padding: 8px 10px; }
+  // Cartes (téléphone) : les précisions passent sous la valeur
+  .cs .lst-cartes td[data-label] { flex-wrap: wrap; > small.d-block { flex-basis: 100%; text-align: right; } }
+}

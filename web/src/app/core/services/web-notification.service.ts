@@ -164,6 +164,9 @@ export class WebNotificationService {
         case 'plat_masque':
           this.toastr.warning(body, titre, { timeOut: 8000 });
           break;
+        case 'compte_repas':            // recharge, régularisation, remboursement, reçu annulé
+          this.toastr.success(body, titre, { timeOut: 6000 });
+          break;
         default:
           this.toastr.info(body, titre, { timeOut: 4000 });
       }

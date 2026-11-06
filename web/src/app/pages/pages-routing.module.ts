@@ -1,7 +1,7 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { RoleGuard } from '../core/guards/role.guard';
-import { ADMINS, PRESTATAIRES } from '../core/helpers/roles';
+import { ACCES_CAISSE, ADMINS, LECTURE_COMPTES, PRESTATAIRES } from '../core/helpers/roles';
 
 const routes: Routes = [
   {
@@ -23,6 +23,11 @@ const routes: Routes = [
     // Espace prestataire (responsable et agents de comptoir) ; rôle vérifié route par route
     path: 'prestataire', loadChildren: () => import('./prestataire/prestataire.module').then(m => m.PrestataireModule),
     canActivate: [RoleGuard], data: { roles: PRESTATAIRES }
+  },
+  {
+    // Caisse et comptabilité (étape 2) ; rôle vérifié route par route
+    path: 'caisse', loadChildren: () => import('./caisse/caisse.module').then(m => m.CaisseModule),
+    canActivate: [RoleGuard], data: { roles: [...new Set([...ACCES_CAISSE, ...LECTURE_COMPTES])] }
   },
 ];
 

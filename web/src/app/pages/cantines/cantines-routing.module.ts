@@ -17,6 +17,7 @@ import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
 import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.component';
 import { StatistiquesComponent } from './statistiques/statistiques.component';
 import { ControleRetraitsComponent } from './controle-retraits/controle-retraits.component';
+import { MonCompteRepasComponent } from './mon-compte-repas/mon-compte-repas.component';
 
 
 const routes: Routes = [
@@ -28,6 +29,8 @@ const routes: Routes = [
   { path: 'liste-commandes', component: ListeCommandesComponent },
   { path: 'planning-menus', component: PlanningMenuComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'mes-commandes', component: MesCommandesComponent },
+  // Compte repas prépayé de l'employé connecté (solde, repas payés, reçus de caisse)
+  { path: 'mon-compte-repas', component: MonCompteRepasComponent, title: 'Mon compte repas | UbiFood' },
   { path: 'gestion-commandes', component: GestionCommandesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'retrait-commande', component: RetraitCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   // Retraits validés par les agents des prestataires, contestations, anomalies

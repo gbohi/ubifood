@@ -4,7 +4,7 @@ import { ToastrService } from 'ngx-toastr';
 import { environment } from 'src/environments/environment';
 import { DOCUMENT } from '@angular/common';
 import { LanguageService } from 'src/app/core/services/language.service';
-import { GESTIONNAIRES, LIBELLES_ROLES, aUnRole, estPrestataire, rolesUtilisateur } from 'src/app/core/helpers/roles';
+import { CAISSIERS, COMPTABLES, GESTIONNAIRES, LIBELLES_ROLES, aUnRole, estPrestataire, rolesUtilisateur } from 'src/app/core/helpers/roles';
 
 import { ModalDirective } from 'ngx-bootstrap/modal';
 import { RootReducerState } from 'src/app/store';
@@ -27,6 +27,9 @@ const LIENS_UTILES: { libelle: string; icone: string; lien: string; roles?: stri
   // Facturation employés et prestataires : une seule page à onglets
   { libelle: 'Facturation',      icone: 'ri-wallet-3-line',       lien: '/cantines/facturation-commande',    roles: GESTIONNAIRES },
   { libelle: 'Paramètres',       icone: 'ri-settings-3-line',     lien: '/parametres/accueil',               roles: GESTIONNAIRES },
+  // Caisse et comptabilité (étape 2)
+  { libelle: 'Caisse',           icone: 'ri-money-dollar-circle-line',           lien: '/caisse',                           roles: CAISSIERS },
+  { libelle: 'Reçus',            icone: 'ri-file-paper-2-line',        lien: '/caisse/recus',                     roles: COMPTABLES },
 ];
 
 @Component({
@@ -56,7 +59,7 @@ export class TopbarComponent {
   /** Rôle le plus élevé de l'utilisateur */
   get roleAffiche(): string {
     const roles = rolesUtilisateur(this.userData);
-    const role = ['super_admin', 'admin', 'gestionnaire', 'prestataire', 'agent_comptoir', 'employe'].find(r => roles.includes(r));
+    const role = ['super_admin', 'admin', 'gestionnaire', 'prestataire', 'agent_comptoir', 'comptabilite', 'caissier', 'employe'].find(r => roles.includes(r));
     return role ? (LIBELLES_COURTS[role] ?? LIBELLES_ROLES[role]) : 'Utilisateur';
   }
 

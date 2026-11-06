@@ -1,0 +1,153 @@
+<div class="lst ep cs">
+  <app-page-entete titre="Reçus de caisse" icone="ri-file-paper-2-line" [fil]="[{label: 'Comptabilité'}]"
+                   [compte]="total" unite="reçu|reçus" [complement]="userNom ? 'de ' + userNom : ''">
+    <a class="btn-ubi" routerLink="/caisse/journal"><i class="ri-file-list-3-line"></i><span class="pe-lib">Journal</span></a>
+  </app-page-entete>
+
+  @if (erreur) { <div class="ep-alerte a-ro"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+
+  <div class="lst-carte">
+    <div class="lst-barre">
+      <div class="lst-chips" role="group" aria-label="Type de reçu">
+        @for (t of types; track t.cle) {
+          <button type="button" class="lst-chip" [class.on]="type === t.cle" [attr.aria-pressed]="type === t.cle" (click)="type = t.cle; filtrer()">{{ t.libelle }}</button>
+        }
+      </div>
+      <div class="lst-filtres">
+        <label class="lst-recherche">
+          <i class="ri-search-line"></i>
+          <input type="search" [(ngModel)]="q" (ngModelChange)="rechercher()" placeholder="N° de reçu (REÇ-2026-…)" aria-label="Numéro de reçu">
+        </label>
+        <select class="form-select" [(ngModel)]="statut" (change)="filtrer()" aria-label="Statut">
+          <option value="">Valides et annulés</option><option value="valide">Valides</option><option value="annule">Annulés</option>
+        </select>
+        <input type="date" class="form-control" [(ngModel)]="dateDebut" (change)="filtrer()" aria-label="Du" title="Du">
+        <input type="date" class="form-control" [(ngModel)]="dateFin" (change)="filtrer()" aria-label="Au" title="Au">
+      </div>
+    </div>
+    @if (userId) {
+      <div class="lst-selection"><i class="ri-user-line"></i>Reçus de <b>{{ userNom || ('l\'employé n° ' + userId) }}</b>
+        <button type="button" class="btn-ubi sm ms-auto" (click)="retirerEmploye()"><i class="ri-close-line"></i>Tous les employés</button></div>
+    }
+    @if (chargement && !recus.length) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+    <div class="lst-table-wrap" [class.ep-attente]="chargement">
+      <table class="lst-table lst-cartes ep-table cs-table-recus">
+        <thead><tr><th>N°</th><th>Date</th><th>Employé</th><th>Type</th><th class="n">Montant</th><th class="n">Espèces</th><th>Caissier</th><th>Statut</th><th class="lst-c-act"></th></tr></thead>
+        <tbody>
+          @for (r of recus; track r.id) {
+            <tr [class.cs-annule]="r.statut === 'annule'">
+              <td class="lst-c-principal lst-nowrap"><button type="button" class="ep-lien cs-num" (click)="ouvrirDetail(r)">{{ r.numero }}</button></td>
+              <td data-label="Date" class="lst-nowrap">{{ jourHeure(r.date) }}</td>
+              <td data-label="Employé"><span><b>{{ r.employe.nom_prenom }}</b><small class="d-block">{{ r.employe.matricule }}</small></span></td>
+              <td data-label="Type"><span class="cs-type"><i [class]="icones[r.type]"></i>{{ r.type_libelle }}</span></td>
+              <td data-label="Montant" class="n">{{ fcfa(r.montant) }}</td>
+              <td data-label="Espèces" class="n"><span><b [class.ep-c-rouge]="r.encaissement < 0">{{ fcfa(r.encaissement, true) }}</b><small class="d-block">{{ r.mode_libelle }}</small></span></td>
+              <td data-label="Caissier">{{ r.caissier_nom }}</td>
+              <td data-label="Statut">
+                @if (r.statut === 'annule') {
+                  <span class="lst-tag t-ro"><i class="ri-close-circle-line"></i>Annulé</span>
+                  <small class="d-block">{{ r.annule_par_nom }}, {{ jourHeure(r.annule_le) }}</small>
+                  <small class="d-block cs-motif">« {{ r.motif_annulation }} »</small>
+                } @else if (r.verrouille) { <span class="lst-tag t-gr" title="Inclus dans une clôture de caisse soumise ou validée"><i class="ri-lock-line"></i>Clôturé</span> }
+                @else { <span class="lst-tag t-ve">Valide</span> }
+              </td>
+              <td class="lst-c-act bas">
+                <div class="lst-act">
+                  <button type="button" class="lst-ic" title="Ticket 80 mm" [attr.aria-label]="'Ticket ' + r.numero" [disabled]="!!telechargement" (click)="pdf(r, 'ticket')"><i class="ri-printer-line"></i></button>
+                  <button type="button" class="lst-ic" title="PDF A5" [attr.aria-label]="'PDF A5 ' + r.numero" [disabled]="!!telechargement" (click)="pdf(r, 'a5')"><i class="ri-file-pdf-line"></i></button>
+                  @if (!nonAnnulable(r)) {
+                    <button type="button" class="btn-ubi sm rouge" (click)="demanderAnnulation(r)"><i class="ri-arrow-go-back-line"></i>Annuler</button>
+                  }
+                </div>
+              </td>
+            </tr>
+          } @empty {
+            @if (!chargement) {
+              <tr class="lst-l-vide"><td colspan="9"><div class="lst-vide"><i class="ri-file-paper-2-line"></i><h5>Aucun reçu</h5><p>Modifiez la recherche ou les filtres.</p></div></td></tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+    <app-liste-pied [total]="total" [page]="page" [nbAffiches]="recus.length" (pageChanged)="changerPage($event.page)"></app-liste-pied>
+  </div>
+</div>
+
+<!-- ── Détail d'un reçu ──────────────────────────────────────── -->
+<div bsModal #detailModal="bs-modal" class="modal fade ep-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      @if (detail; as r) {
+        <div class="modal-header">
+          <h5 class="modal-title"><i [class]="icones[r.type]"></i>{{ r.type_libelle }} · <span class="cs-num">{{ r.numero }}</span>
+            @if (r.statut === 'annule') { <span class="lst-tag t-ro">Annulé</span> }</h5>
+          <button type="button" class="btn-close" (click)="detailModal.hide()" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          <dl class="cs-dl cs-dl-2">
+            <div><dt>Employé</dt><dd>{{ r.employe.nom_prenom }} ({{ r.employe.matricule }})</dd></div>
+            <div><dt>Date</dt><dd>{{ jourHeure(r.date) }}</dd></div>
+            <div><dt>Caissier</dt><dd>{{ r.caissier_nom }}</dd></div>
+            <div><dt>Mode</dt><dd>{{ r.mode_libelle }}@if (r.reference) { · {{ r.reference }} }</dd></div>
+            <div><dt>Montant</dt><dd>{{ fcfa(r.montant) }}</dd></div>
+            <div><dt>Espèces</dt><dd>{{ fcfa(r.encaissement, true) }}</dd></div>
+            @if (r.type === 'regularisation') {
+              <div><dt>Reçu</dt><dd>{{ fcfa(r.montant_recu) }}</dd></div>
+              <div><dt>Monnaie</dt><dd>{{ fcfa(r.monnaie) }} {{ r.monnaie > 0 ? (r.monnaie_creditee ? '(créditée)' : '(rendue)') : '' }}</dd></div>
+            }
+            <div><dt>Solde</dt><dd>{{ fcfa(r.solde_avant) }} → {{ fcfa(r.solde_apres) }}</dd></div>
+            @if (r.motif) { <div><dt>Motif</dt><dd>{{ r.motif }}</dd></div> }
+            @if (r.statut === 'annule') { <div><dt>Annulation</dt><dd>{{ r.annule_par_nom }}, {{ jourHeure(r.annule_le) }} : « {{ r.motif_annulation }} »</dd></div> }
+          </dl>
+          @if (chargementDetail) { <div class="lst-charge"><div class="spinner-border spinner-border-sm"></div></div> }
+          @if (r.lignes?.length) {
+            <h6 class="cs-h6">Repas réglés</h6>
+            <table class="ep-sous-table"><thead><tr><th>Jour</th><th>Plat</th><th class="text-end">Montant</th></tr></thead>
+              <tbody>@for (l of r.lignes; track l.commande_id) { <tr><td>{{ jour(l.date_menu) }}</td><td>{{ l.plat }}</td><td class="text-end">{{ fcfa(l.montant) }}</td></tr> }</tbody></table>
+          }
+          @if (r.mouvements?.length) {
+            <h6 class="cs-h6">Mouvements du compte repas</h6>
+            <table class="ep-sous-table"><thead><tr><th>Date</th><th>Mouvement</th><th class="text-end">Montant</th><th class="text-end">Solde après</th></tr></thead>
+              <tbody>@for (m of r.mouvements; track m.id) {
+                <tr><td>{{ jourHeure(m.date) }}</td><td>{{ m.libelle || m.type_libelle }}</td>
+                  <td class="text-end" [class.ep-c-vert]="m.montant > 0" [class.ep-c-rouge]="m.montant < 0">{{ fcfa(m.montant, true) }}</td><td class="text-end">{{ fcfa(m.solde_apres) }}</td></tr>
+              }</tbody></table>
+          }
+        </div>
+        <div class="modal-footer">
+          @if (!nonAnnulable(r)) { <button type="button" class="btn-ubi rouge me-auto" (click)="demanderAnnulation(r)"><i class="ri-arrow-go-back-line"></i>Annuler ce reçu</button> }
+          @else if (r.statut !== 'annule') { <small class="ep-muted me-auto"><i class="ri-lock-line"></i> {{ nonAnnulable(r) }}</small> }
+          <button type="button" class="btn-ubi" [disabled]="!!telechargement" (click)="pdf(r, 'ticket')"><i class="ri-printer-line"></i>Ticket</button>
+          <button type="button" class="btn-ubi navy" [disabled]="!!telechargement" (click)="pdf(r, 'a5')"><i class="ri-file-pdf-line"></i>PDF A5</button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+<!-- ── Annuler un reçu ───────────────────────────────────────── -->
+<div bsModal #annulerModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4">
+        @if (aAnnuler; as r) {
+          <div class="text-center">
+            <i class="ri-arrow-go-back-line text-danger display-5"></i>
+            <h5 class="mt-3">Annuler le reçu {{ r.numero }} ?</h5>
+            <p class="text-muted">{{ r.type_libelle }} de {{ fcfa(r.montant) }} — {{ r.employe.nom_prenom }}, {{ jourHeure(r.date) }}.<br>{{ effetAnnulation(r) }}</p>
+          </div>
+          <label class="ep-lab" for="cs-motif-annul">Motif de l'annulation <span class="text-danger">*</span></label>
+          <textarea id="cs-motif-annul" class="form-control mb-3" rows="2" [(ngModel)]="motif" maxlength="500" placeholder="Ex. Doublon de saisie"></textarea>
+          @if (erreurAnnulation) {
+            <div class="ep-alerte a-ro mb-3" role="alert"><i class="ri-error-warning-line"></i><div><b>Annulation refusée</b><small class="cs-refus">{{ erreurAnnulation }}</small></div></div>
+          }
+          <div class="d-flex gap-2 justify-content-center">
+            <button type="button" class="btn-ubi" (click)="annulerModal.hide()">Retour</button>
+            <button type="button" class="btn-ubi ep-btn-rouge-plein" [disabled]="envoi || !motif.trim()" (click)="annuler()">
+              @if (envoi) { <span class="spinner-border spinner-border-sm"></span> }Oui, annuler le reçu</button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>

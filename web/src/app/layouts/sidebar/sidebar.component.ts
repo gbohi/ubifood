@@ -2,7 +2,7 @@ import { Component, ElementRef, EventEmitter, HostListener, Output, ViewChild } 
 
 import { MenuItem } from './menu.model';
 import { MENU } from './menu';
-import { estAgentComptoir, estPrestataire, filtrerMenu } from '../../core/helpers/roles';
+import { estAgentComptoir, estCaisseSeule, estPrestataire, filtrerMenu } from '../../core/helpers/roles';
 import { TokenStorageService } from '../../core/services/token-storage.service';
 import { Router, NavigationEnd } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
@@ -29,7 +29,8 @@ export class SidebarComponent {
   ngOnInit(): void {
     // Menu Items
     const user = this.tokenStorage.getUser();
-    this.menuItems = filtrerMenu(MENU, user);
+    // Compte limité à la caisse : seulement la caisse et la comptabilité
+    this.menuItems = filtrerMenu(estCaisseSeule(user) ? MENU.filter(i => i.espaceCaisse) : MENU, user);
     if (estPrestataire(user)) {
       this.espacePrestataire = {
         libelle: user?.prestataire_libelle || 'Prestataire',
