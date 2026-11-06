@@ -366,8 +366,11 @@ class UserSerializer(serializers.ModelSerializer):
             'dernier_service', 'derniere_agence',
             'dernier_poste', 'derniere_categoriesalarie',
             'photo_url',
+            # Mode de paiement proposé par défaut à la commande (modifiable par
+            # l'employé : PATCH /users/me/ {"mode_paiement_prefere": …})
+            'mode_paiement_prefere',
         ]
-        read_only_fields = ['last_login', 'last_logout', 'is_superuser']
+        read_only_fields = ['last_login', 'last_logout', 'is_superuser', 'mode_paiement_prefere']
 
     # Photo de profil : envoyée par POST /users/me/photo/ (pas par ce formulaire)
     photo_url = serializers.SerializerMethodField()
@@ -979,8 +982,60 @@ class CommandeSerializer(serializers.ModelSerializer):
             'user_id', 'user_username',
             'menu_id', 'plat_id', 'avis',
             'annulee_par_nom', 'annulee_par_gestionnaire', 'motif_annulation',
+            # Paiement : mode choisi à la commande (« compte » | « retenue » ; à la
+            # création, absent = préférence de l'employé), changement possible ou
+            # non, règlement effectif (compte débité, caisse, retenue)
+            'mode_paiement', 'mode_paiement_libelle', 'mode_paiement_modifiable',
+            'mode_paiement_limite', 'paiement',
         ]
         read_only_fields = ['date_commande', 'date_annulation', 'statut', 'motif_annulation']
+
+    mode_paiement = serializers.ChoiceField(choices=Commande.MODE_PAIEMENT_CHOICES, required=False,
+                                            allow_blank=True)
+    mode_paiement_libelle    = serializers.SerializerMethodField()
+    mode_paiement_modifiable = serializers.SerializerMethodField()
+    mode_paiement_limite     = serializers.SerializerMethodField()
+    paiement                 = serializers.SerializerMethodField()
+
+    def get_mode_paiement_libelle(self, obj):
+        return obj.get_mode_paiement_display()
+
+    def _parametres(self):
+        if '_parametres' not in self.context:
+            self.context['_parametres'] = ParametresSociete.charger()
+            self.context['_mois_clotures'] = set(ClotureMensuelle.objects.values_list('annee', 'mois'))
+        return self.context['_parametres'], self.context['_mois_clotures']
+
+    def get_mode_paiement_limite(self, obj):
+        parametres, _ = self._parametres()
+        return date_limite_commande(obj.menu.date_menu, parametres).isoformat()
+
+    def get_mode_paiement_modifiable(self, obj):
+        """Changement compte ↔ retenue : commande en attente, avant la date limite de commande."""
+        if obj.statut != 'en_attente':
+            return False
+        parametres, clotures = self._parametres()
+        d = obj.menu.date_menu
+        if (d.year, d.month) in clotures:
+            return False
+        if timezone.now() > date_limite_commande(d, parametres):
+            return False
+        r = self._reglement(obj)
+        return r is None or r.mode == 'compte'
+
+    @staticmethod
+    def _reglement(obj):
+        try:
+            return obj.reglement
+        except ReglementRepas.DoesNotExist:
+            return None
+
+    def get_paiement(self, obj):
+        """Règlement effectif : null tant que le repas n'est pas réglé (retenue à la clôture)."""
+        r = self._reglement(obj)
+        if r is None:
+            return None
+        return {'mode': r.mode, 'libelle': r.get_mode_display(), 'montant': float(r.montant)}
 
     # Annulation faite par un gestionnaire / administrateur (et non par l'agent)
     annulee_par_nom          = serializers.SerializerMethodField()
@@ -1040,6 +1095,12 @@ class CommandeSerializer(serializers.ModelSerializer):
         if menu and self.instance is not None and menu != self.instance.menu:
             verifier_mois_ouvert(menu.date_menu)
 
+        if self.instance is not None:
+            # Le mode se change par POST /commandes/<id>/mode-paiement/ (débit / recrédit)
+            attrs.pop('mode_paiement', None)
+        elif not attrs.get('mode_paiement'):
+            attrs.pop('mode_paiement', None)
+
         return attrs
 
 
@@ -1073,7 +1134,8 @@ class CommandeAnnulationSerializer(serializers.ModelSerializer):
         if validated_data.get('user_updated'):
             instance.user_updated = validated_data['user_updated']
         instance.save()
-        # Repas annulé déjà payé (caisse) : le montant est crédité sur le compte repas
+        # Annulation par l'employé (dans le délai) ou par un gestionnaire / administrateur :
+        # repas payé par le compte (ou, historique, à la caisse) → crédité sur le compte repas
         liberer_reglement(instance, validated_data.get('user_updated'), raison='Repas annulé')
         return instance
 
@@ -1143,11 +1205,8 @@ class RetraitSerializer(serializers.ModelSerializer):
                 Commande.objects.filter(
                     user=retrait.user, menu=retrait.menu, statut='en_attente'
                 ).update(statut='retiree', updated_at=timezone.now())
-                # Compte repas : chaque repas retiré est débité si le solde le couvre
-                from .comptes_repas import debiter_retrait
-                request = self.context.get('request')
-                par = validated_data.get('valide_par') or (request.user if request else None)
-                debiter_retrait(retrait.user_id, retrait.menu_id, par)
+                # Compte repas : rien au retrait (le repas « compte » est débité
+                # à la commande ; « retenue » est retenu à la clôture)
         except IntegrityError:
             # Deux validations simultanées du même agent
             raise serializers.ValidationError(

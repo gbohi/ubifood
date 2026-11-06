@@ -122,10 +122,12 @@ class AppButton extends StatelessWidget {
       );
     }
     if (icon != null) {
+      // Libellé souple : sur un écran étroit (320 px) il passe à la ligne
+      // au lieu de déborder
       return Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 18),
         const SizedBox(width: 8),
-        Text(label),
+        Flexible(child: Text(label, textAlign: TextAlign.center)),
       ]);
     }
     return Text(label);

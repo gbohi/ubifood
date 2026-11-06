@@ -31,7 +31,9 @@ export class RecusComponent implements OnInit {
   readonly icones = ICONES_RECU;
   readonly types: { cle: TypeRecu | ''; libelle: string }[] = [
     { cle: '', libelle: 'Tous' }, { cle: 'recharge', libelle: 'Recharges' },
-    { cle: 'regularisation', libelle: 'Régularisations' }, { cle: 'remboursement', libelle: 'Remboursements' },
+    { cle: 'remboursement', libelle: 'Remboursements' },
+    // Historique : la régularisation n'est plus proposée à la caisse (anciens reçus)
+    { cle: 'regularisation', libelle: 'Régularisations (historique)' },
   ];
 
   q = '';
@@ -135,7 +137,7 @@ export class RecusComponent implements OnInit {
   effetAnnulation(r: Recu): string {
     switch (r.type) {
       case 'recharge': return `Le solde de ${r.employe.nom_prenom} diminuera de ${fcfa(r.montant)}.`;
-      case 'regularisation': return `Les ${r.lignes?.length ?? ''} repas réglés redeviendront non couverts`
+      case 'regularisation': return `Les ${r.lignes?.length ?? ''} repas réglés passeront en retenue sur salaire à la clôture`
         + (r.monnaie_creditee && r.monnaie > 0 ? ` et la monnaie créditée (${fcfa(r.monnaie)}) sera reprise du compte.` : '.');
       default: return `Le solde remboursé (${fcfa(r.montant)}) sera rétabli sur le compte.`;
     }

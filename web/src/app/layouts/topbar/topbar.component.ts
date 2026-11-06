@@ -77,6 +77,41 @@ export class TopbarComponent {
 
   // ── Photo de profil ─────────────────────────────────────────
   @ViewChild('photoModal', { static: false }) photoModal?: ModalDirective;
+  @ViewChild('paiementModal', { static: false }) paiementModal?: ModalDirective;
+  /** Mode de paiement proposé par défaut à la commande (PATCH /users/me/) */
+  modePrefere: 'compte' | 'retenue' = 'compte';
+  paiementEnCours = false;
+  erreurPaiement: string | null = null;
+
+  get estComptePrestataire(): boolean {
+    return estPrestataire(this.userData);
+  }
+
+  ouvrirPaiement(): void {
+    this.modePrefere = this.userData?.mode_paiement_prefere === 'retenue' ? 'retenue' : 'compte';
+    this.erreurPaiement = null;
+    this.paiementModal?.show();
+  }
+
+  enregistrerPaiement(): void {
+    if (this.paiementEnCours) return;
+    this.paiementEnCours = true;
+    this.erreurPaiement = null;
+    this.http.patch<any>(`${environment.apiUrl}/api/api/users/me/`, { mode_paiement_prefere: this.modePrefere }).subscribe({
+      next: profil => {
+        this.userData = { ...this.userData, mode_paiement_prefere: profil?.mode_paiement_prefere ?? this.modePrefere };
+        this.TokenStorageService.saveUser(this.userData);
+        this.paiementEnCours = false;
+        this.paiementModal?.hide();
+        this.toastr.success(this.modePrefere === 'compte'
+          ? 'Par défaut : compte repas (si votre solde suffit).' : 'Par défaut : retenue sur salaire.', 'Paiement de mes repas');
+      },
+      error: (err: any) => {
+        this.paiementEnCours = false;
+        this.erreurPaiement = typeof err === 'string' ? err : "La préférence n'a pas pu être enregistrée.";
+      },
+    });
+  }
   @ViewChild('photoInput', { static: false }) photoInput?: ElementRef<HTMLInputElement>;
   private http = inject(HttpClient);
   private toastr = inject(ToastrService);

@@ -155,6 +155,9 @@ def compteurs(aujourdhui):
         'non_retires': Count('id', filter=Q(statut='en_attente', menu__date_menu__lt=aujourdhui)),
         'annulees':    Count('id', filter=Q(statut='annulee')),
         'annulees_contestation': Count('id', filter=Q(statut='annulee', motif_annulation='contestation')),
+        # Mode de paiement choisi à la commande (repas commandés non annulés)
+        'paiement_compte':  Count('id', filter=Q(statut__in=ACTIVES, mode_paiement='compte')),
+        'paiement_retenue': Count('id', filter=Q(statut__in=ACTIVES, mode_paiement='retenue')),
     }
 
 
@@ -170,7 +173,7 @@ def _note(v):
 def _ligne(row):
     """Compteurs d'une ligne d'agrégat + taux de retrait."""
     d = {k: int(row.get(k) or 0) for k in ('commandes', 'servis', 'a_servir', 'non_retires', 'annulees',
-                                           'annulees_contestation')}
+                                           'annulees_contestation', 'paiement_compte', 'paiement_retenue')}
     d['taux_retrait'] = taux_retrait(d['servis'], d['non_retires'])
     if 'note' in row:
         d['note'] = _note(row['note'])

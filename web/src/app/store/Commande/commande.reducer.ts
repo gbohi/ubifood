@@ -131,6 +131,22 @@ export const commandeReducer = createReducer(
     ...state, isSubmitting: false, error
   })),
 
+  // ── Mode de paiement ───────────────────────────────────────
+  on(CommandeActions.changerModePaiement, state => ({
+    ...state, isSubmitting: true, error: null, successMessage: null
+  })),
+  on(CommandeActions.changerModePaiementSuccess, (state, { commande }) => ({
+    ...state,
+    isSubmitting:   false,
+    successMessage: commande.mode_paiement === 'compte'
+      ? 'Mode de paiement : compte repas (repas débité de votre compte).'
+      : 'Mode de paiement : retenue sur salaire (montant recrédité sur votre compte repas s\'il avait été débité).',
+    mesCommandes:   state.mesCommandes.map(c => c.id === commande.id ? commande : c),
+  })),
+  on(CommandeActions.changerModePaiementFailure, (state, { error }) => ({
+    ...state, isSubmitting: false, error
+  })),
+
   // ── Annuler ────────────────────────────────────────────────
   on(CommandeActions.annulerCommande, state => ({
     ...state, isSubmitting: true, error: null, successMessage: null
@@ -138,7 +154,7 @@ export const commandeReducer = createReducer(
   on(CommandeActions.annulerCommandeSuccess, (state, { commande }) => ({
     ...state,
     isSubmitting:   false,
-    successMessage: 'Commande annulée.',
+    successMessage: messageAnnulation(state.mesCommandes.find(c => c.id === commande.id)),
     mesCommandes:   state.mesCommandes.map(c =>
       c.id === commande.id ? commande : c
     ),
@@ -191,3 +207,12 @@ export const commandeReducer = createReducer(
     ...state, commandesParAgencePeriode: [], error: null, successMessage: null
   })),
 );
+
+/** Annulation d'un repas payé par le compte : le montant est recrédité */
+function messageAnnulation(avant?: { paiement?: { mode: string; montant: number } | null }): string {
+  const p = avant?.paiement;
+  if (p && p.mode !== 'retenue') {
+    return `Commande annulée. ${Math.round(p.montant).toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} F recrédités sur votre compte repas.`;
+  }
+  return 'Commande annulée.';
+}

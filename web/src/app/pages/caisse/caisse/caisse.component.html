@@ -1,6 +1,6 @@
 <div class="lst ep cs">
   <app-page-entete titre="Caisse" icone="ri-money-dollar-circle-line" [fil]="[{label: 'Caisse'}]"
-                   sousTitre="Recharge du compte repas et règlement des repas non couverts — espèces uniquement">
+                   sousTitre="Recharge du compte repas — espèces uniquement">
     @if (contexte; as c) {
       <span class="cs-caisse-chip" title="Opérations pas encore clôturées">
         <i class="ri-safe-2-line"></i>Ma caisse : <b>{{ c.caisse_en_cours.nb_recus }} reçu{{ c.caisse_en_cours.nb_recus > 1 ? 's' : '' }}</b> · {{ fcfa(c.caisse_en_cours.montant_theorique) }}
@@ -67,16 +67,17 @@
           </div>
           <div class="cs-chiffres">
             <div><small>Repas consommés</small><b>{{ fcfa(f.totaux.consomme.montant) }}</b><span>{{ f.totaux.consomme.nb }} repas · {{ periode }}</span></div>
-            <div class="ve"><small>Couverts par le compte</small><b>{{ fcfa(f.totaux.debite_compte.montant) }}</b><span>{{ f.totaux.debite_compte.nb }} repas débités</span></div>
-            <div class="bl"><small>Payés à la caisse</small><b>{{ fcfa(f.totaux.paye_caisse.montant) }}</b><span>{{ f.totaux.paye_caisse.nb }} repas</span></div>
-            <div class="or"><small>Non couverts</small><b>{{ fcfa(f.totaux.non_couvert.montant) }}</b><span>{{ f.totaux.non_couvert.nb }} repas</span></div>
+            <div class="ve"><small>Payés par le compte</small><b>{{ fcfa(f.totaux.debite_compte.montant) }}</b><span>{{ f.totaux.debite_compte.nb }} repas débités à la commande</span></div>
+            <div class="or"><small>Retenue sur salaire</small><b>{{ fcfa(f.totaux.retenue_prevue.montant) }}</b><span>{{ f.totaux.retenue_prevue.nb }} repas · à la clôture</span></div>
+            @if (f.totaux.paye_caisse.nb) {
+              <div class="bl"><small>Payés à la caisse</small><b>{{ fcfa(f.totaux.paye_caisse.montant) }}</b><span>{{ f.totaux.paye_caisse.nb }} repas · anciens reçus</span></div>
+            }
           </div>
           <div class="cs-reste" [class.zero]="!f.reste_a_payer_prevu">
             <i [class]="f.reste_a_payer_prevu ? 'ri-calendar-todo-line' : 'ri-checkbox-circle-line'"></i>
             <div>
               <b>Reste à payer prévu à la clôture : {{ fcfa(f.reste_a_payer_prevu) }}</b>
-              <small>{{ f.reste_a_payer_prevu ? f.mention_reste : 'Le solde couvre les repas non payés et à venir : rien ne sera retenu sur salaire si rien ne change.' }}
-                @if (f.totaux.a_venir.nb) { · {{ f.totaux.a_venir.nb }} repas à venir ({{ fcfa(f.totaux.a_venir.montant) }}) }</small>
+              <small>{{ f.reste_a_payer_prevu ? f.mention_reste + ' L\'employé choisit son mode de paiement en commandant.' : 'Aucun repas en retenue sur salaire sur les mois ouverts.' }}</small>
             </div>
           </div>
         </section>
@@ -86,25 +87,15 @@
           <div class="lst-barre bord">
             <div>
               <b class="ep-titre-carte"><i class="ri-restaurant-2-line"></i>Repas des mois ouverts</b>
-              <small class="ep-muted d-block">{{ periode }} · cochez les repas non couverts à régulariser</small>
+              <small class="ep-muted d-block">{{ periode }} · mode de paiement choisi par l'employé à la commande</small>
             </div>
-            @if (repasRegularisables.length) {
-              <button type="button" class="btn-ubi sm" (click)="toutCocher()">
-                <i [class]="toutCoche ? 'ri-checkbox-indeterminate-line' : 'ri-checkbox-multiple-line'"></i>{{ toutCoche ? 'Tout décocher' : 'Tout cocher' }}</button>
-            }
           </div>
           <div class="lst-table-wrap">
             <table class="lst-table lst-cartes cs-table-repas">
-              <thead><tr><th class="lst-c-sel"></th><th>Jour</th><th>Plat</th><th class="text-end">Prix</th><th>Statut</th></tr></thead>
+              <thead><tr><th>Jour</th><th>Plat</th><th class="text-end">Prix</th><th>Paiement</th></tr></thead>
               <tbody>
                 @for (r of f.repas; track r.commande_id) {
-                  <tr [class.cs-coche]="selection.has(r.commande_id)" (click)="basculer(r)" [class.cs-cliquable]="r.regularisable && !r.sans_tarif">
-                    <td class="lst-c-sel">
-                      @if (r.regularisable && !r.sans_tarif) {
-                        <input type="checkbox" class="form-check-input" [checked]="selection.has(r.commande_id)" (click)="$event.stopPropagation()"
-                               (change)="basculer(r)" [attr.aria-label]="'Régulariser le repas du ' + jour(r.date_menu)">
-                      }
-                    </td>
+                  <tr>
                     <td class="lst-c-principal lst-nowrap"><b>{{ jourRepas(r.date_menu) }}</b></td>
                     <td data-label="Plat"><span>{{ r.plat }}<small class="d-block">{{ r.agence_menu }}</small></span></td>
                     <td data-label="Prix" class="text-end lst-nowrap">
@@ -113,17 +104,11 @@
                     <td data-label="Statut"><span class="lst-tag" [ngClass]="statuts[r.statut].classe" [title]="r.statut_libelle"><i [class]="statuts[r.statut].icone"></i>{{ statuts[r.statut].court }}</span></td>
                   </tr>
                 } @empty {
-                  <tr class="lst-l-vide"><td colspan="5"><div class="lst-vide"><i class="ri-restaurant-line"></i><h5>Aucun repas sur les mois ouverts</h5><p>La recharge reste possible.</p></div></td></tr>
+                  <tr class="lst-l-vide"><td colspan="4"><div class="lst-vide"><i class="ri-restaurant-line"></i><h5>Aucun repas sur les mois ouverts</h5><p>La recharge reste possible.</p></div></td></tr>
                 }
               </tbody>
             </table>
           </div>
-          @if (repasRegularisables.length) {
-            <div class="lst-selection">
-              <span><b>{{ selection.size }}</b> repas sélectionné{{ selection.size > 1 ? 's' : '' }} · <b>{{ fcfa(totalSelection) }}</b></span>
-              <span class="ms-auto">Non couvert = sera retenu sur salaire à la clôture du mois s'il n'est pas payé.</span>
-            </div>
-          }
         </section>
       } @else if (!chargementFiche) {
         <section class="ep-carte cs-attente">
@@ -140,20 +125,12 @@
           <div class="cs-succes-hd">
             <span class="cs-succes-ic"><i class="ri-checkbox-circle-fill"></i></span>
             <div>
-              <b>{{ r.type === 'recharge' ? 'Recharge enregistrée' : 'Régularisation enregistrée' }}</b>
+              <b>Recharge enregistrée</b>
               <small>Reçu <b class="cs-num">{{ r.numero }}</b> · {{ heure(r.date) }}</small>
             </div>
           </div>
           <dl class="cs-dl">
-            @if (r.type === 'regularisation') {
-              <div><dt>Repas payés</dt><dd>{{ r.lignes?.length }} · {{ fcfa(r.montant_repas) }}</dd></div>
-              <div><dt>Espèces reçues</dt><dd>{{ fcfa(r.montant_recu) }}</dd></div>
-              @if (r.monnaie > 0) {
-                <div class="cs-dl-fort"><dt>{{ r.monnaie_creditee ? 'Monnaie créditée sur le compte' : 'Monnaie à rendre' }}</dt><dd>{{ fcfa(r.monnaie) }}</dd></div>
-              }
-            } @else {
-              <div><dt>Montant crédité</dt><dd>{{ fcfa(r.montant) }}</dd></div>
-            }
+            <div><dt>Montant crédité</dt><dd>{{ fcfa(r.montant) }}</dd></div>
             <div><dt>Encaissé</dt><dd>{{ fcfa(r.encaissement) }} · {{ r.mode_libelle }}</dd></div>
             <div class="cs-dl-fort"><dt>Nouveau solde</dt><dd class="ep-c-vert">{{ fcfa(r.solde_apres) }}</dd></div>
           </dl>
@@ -170,12 +147,8 @@
         </section>
       } @else {
         <section class="ep-carte cs-operation" [class.cs-off]="!fiche">
-          <div class="ep-onglets cs-onglets" role="tablist">
-            <button type="button" role="tab" class="ep-onglet" [class.on]="action === 'recharger'" [attr.aria-selected]="action === 'recharger'"
-                    (click)="action = 'recharger'; erreurOperation = null"><i class="ri-add-circle-line"></i>Recharger le compte</button>
-            <button type="button" role="tab" class="ep-onglet" [class.on]="action === 'regulariser'" [attr.aria-selected]="action === 'regulariser'"
-                    (click)="action = 'regulariser'; erreurOperation = null"><i class="ri-restaurant-2-line"></i>Régulariser
-              @if (repasRegularisables.length) { <span class="ep-pastille">{{ repasRegularisables.length }}</span> }</button>
+          <div class="ep-carte-hd cs-op-hd">
+            <b><i class="ri-add-circle-line"></i>Recharger le compte</b>
           </div>
 
           @if (!fiche) {
@@ -193,71 +166,29 @@
               }
             </div>
 
-            @if (action === 'recharger') {
-              <label class="ep-lab" for="cs-montant">Montant de la recharge</label>
-              <div class="cs-montant">
-                <input id="cs-montant" type="number" min="1" step="1" inputmode="numeric" class="form-control" [(ngModel)]="montantRecharge"
-                       placeholder="0" (keydown.enter)="recharger()">
-                <span>F CFA</span>
-              </div>
-              <div class="cs-rapides">
-                @for (m of montantsRapides; track m) {
-                  <button type="button" class="btn-ubi sm" [class.actif]="montantRecharge === m" (click)="montantRecharge = m">{{ fcfa(m) }}</button>
-                }
-              </div>
-              @if (mode === 'mobile_money') {
-                <label class="ep-lab" for="cs-ref">Référence de la transaction</label>
-                <input id="cs-ref" class="form-control mb-3" maxlength="100" [(ngModel)]="reference">
+            <label class="ep-lab" for="cs-montant">Montant de la recharge</label>
+            <div class="cs-montant">
+              <input id="cs-montant" type="number" min="1" step="1" inputmode="numeric" class="form-control" [(ngModel)]="montantRecharge"
+                     placeholder="0" (keydown.enter)="recharger()">
+              <span>F CFA</span>
+            </div>
+            <div class="cs-rapides">
+              @for (m of montantsRapides; track m) {
+                <button type="button" class="btn-ubi sm" [class.actif]="montantRecharge === m" (click)="montantRecharge = m">{{ fcfa(m) }}</button>
               }
-              @if (montantRecharge && montantRecharge > 0) {
-                <p class="cs-apres">Nouveau solde : <b>{{ fcfa(fiche.solde + (montantRecharge || 0)) }}</b></p>
-              }
-              @if (erreurOperation) { <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreurOperation }}</b></div></div> }
-              <button type="button" class="btn-ubi vert w-100 cs-go" [disabled]="!peutRecharger" (click)="recharger()">
-                @if (envoi) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-check-line"></i> }
-                Encaisser {{ montantRecharge ? fcfa(montantRecharge) : '' }}</button>
-            } @else {
-              @if (!repasRegularisables.length) {
-                <div class="ep-alerte a-ve"><i class="ri-checkbox-circle-line"></i><div><b>Aucun repas non couvert à régulariser.</b>
-                  <small>Les repas consommés sont déjà payés (compte ou caisse).</small></div></div>
-              } @else {
-                <div class="cs-recap">
-                  <span>{{ selection.size }} repas sélectionné{{ selection.size > 1 ? 's' : '' }}</span>
-                  <b>{{ fcfa(totalSelection) }}</b>
-                </div>
-                <label class="ep-lab" for="cs-recu">Espèces reçues</label>
-                <div class="cs-montant">
-                  <input id="cs-recu" type="number" min="0" step="1" inputmode="numeric" class="form-control" [(ngModel)]="montantRecu"
-                         [class.is-invalid]="recuInsuffisant" (keydown.enter)="regulariser()">
-                  <span>F CFA</span>
-                </div>
-                <div class="cs-rapides">
-                  @for (m of montantsRemis; track m; let i = $index) {
-                    <button type="button" class="btn-ubi sm" [class.actif]="montantRecu === m" (click)="montantRecu = m">{{ i === 0 ? 'Exact' : fcfa(m) }}</button>
-                  }
-                </div>
-                @if (recuInsuffisant) {
-                  <p class="ep-c-rouge small">Montant insuffisant : il manque {{ fcfa(totalSelection - (montantRecu || 0)) }}. Paiement partiel : décochez des repas.</p>
-                }
-                @if (monnaieARendre > 0) {
-                  <span class="ep-lab">Monnaie : {{ fcfa(monnaieARendre) }}</span>
-                  <div class="cs-monnaie" role="radiogroup" aria-label="Que faire de la monnaie ?">
-                    <label class="cs-mode" [class.on]="monnaie === 'rendre'">
-                      <input type="radio" name="monnaie" value="rendre" [(ngModel)]="monnaie">
-                      <i class="ri-hand-coin-line"></i><span><b>Rendre {{ fcfa(monnaieARendre) }}</b><small>en espèces</small></span>
-                    </label>
-                    <label class="cs-mode" [class.on]="monnaie === 'crediter'">
-                      <input type="radio" name="monnaie" value="crediter" [(ngModel)]="monnaie">
-                      <i class="ri-wallet-3-line"></i><span><b>Créditer {{ fcfa(monnaieARendre) }}</b><small>sur le compte repas</small></span>
-                    </label>
-                  </div>
-                }
-                @if (erreurOperation) { <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreurOperation }}</b></div></div> }
-                <button type="button" class="btn-ubi vert w-100 cs-go" [disabled]="!peutRegulariser" (click)="regulariser()">
-                  @if (envoi) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-check-line"></i> }
-                  Encaisser {{ fcfa(totalSelection) }}@if (monnaieARendre > 0 && monnaie === 'crediter') { + {{ fcfa(monnaieARendre) }} crédités }</button>
-              }
+            </div>
+            @if (mode === 'mobile_money') {
+              <label class="ep-lab" for="cs-ref">Référence de la transaction</label>
+              <input id="cs-ref" class="form-control mb-3" maxlength="100" [(ngModel)]="reference">
             }
+            @if (montantRecharge && montantRecharge > 0) {
+              <p class="cs-apres">Nouveau solde : <b>{{ fcfa(fiche.solde + (montantRecharge || 0)) }}</b></p>
+            }
+            @if (erreurOperation) { <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreurOperation }}</b></div></div> }
+            <button type="button" class="btn-ubi vert w-100 cs-go" [disabled]="!peutRecharger" (click)="recharger()">
+              @if (envoi) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-check-line"></i> }
+              Encaisser {{ montantRecharge ? fcfa(montantRecharge) : '' }}</button>
+            <p class="ep-muted small mt-2 mb-0"><i class="ri-information-line me-1"></i>L'employé paie ensuite ses repas par son compte en choisissant « Compte repas » à la commande.</p>
           }
         </section>
       }

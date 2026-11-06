@@ -10,7 +10,8 @@ import { Observable } from 'rxjs';
 import { saveAs } from 'file-saver';
 import { environment } from 'src/environments/environment';
 
-export type StatutRepas = 'debite_compte' | 'paye_caisse' | 'retenue' | 'non_couvert' | 'a_venir';
+export type StatutRepas = 'debite_compte' | 'paye_caisse' | 'retenue' | 'retenue_prevue';
+/** regularisation : historique seulement (plus émis : le mode de paiement se choisit à la commande) */
 export type TypeRecu = 'recharge' | 'regularisation' | 'remboursement';
 export type ModePaiement = 'especes' | 'mobile_money';
 export type PapierRecu = 'ticket' | 'a5';
@@ -38,14 +39,16 @@ export interface ContexteCaisse {
 
 export interface RepasCompte {
   commande_id: number; date_menu: string; plat: string; agence_menu: string; statut_commande: string;
-  montant: number | null; sans_tarif: boolean; statut: StatutRepas; statut_libelle: string; regularisable: boolean;
+  montant: number | null; sans_tarif: boolean; statut: StatutRepas; statut_libelle: string;
+  /** Mode choisi à la commande ; modifiable jusqu'à la date limite de commande */
+  mode_paiement: 'compte' | 'retenue'; mode_paiement_libelle: string; mode_modifiable: boolean;
 }
 
 export interface TotalStatut { nb: number; montant: number; libelle?: string }
 
 export interface TotauxCompte {
   consomme: TotalStatut; debite_compte: TotalStatut; paye_caisse: TotalStatut;
-  retenue: TotalStatut; non_couvert: TotalStatut; a_venir: TotalStatut;
+  retenue: TotalStatut; retenue_prevue: TotalStatut;
 }
 
 export interface LigneRecu { commande_id: number; date_menu: string; plat: string; montant: number }
@@ -82,6 +85,7 @@ export interface FicheCaisse {
 
 export interface MonCompte extends Omit<FicheCaisse, 'employe' | 'derniers_recus'> {
   annee: number; mois: number; mois_cloture: boolean;
+  mode_paiement_prefere: 'compte' | 'retenue';
   derniers_mouvements: Mouvement[];
 }
 
@@ -108,11 +112,10 @@ export interface CompteSolde extends EmployeCaisse { solde: number; mis_a_jour: 
 
 /** Libellés et couleurs (classes lst-tag) des statuts de repas — contrat d'API §1 */
 export const STATUTS_REPAS: Record<StatutRepas, { court: string; classe: string; icone: string }> = {
-  debite_compte: { court: 'Débité du compte',  classe: 't-ve', icone: 'ri-wallet-3-line' },
-  paye_caisse:   { court: 'Payé à la caisse',  classe: 't-bl', icone: 'ri-money-dollar-circle-line' },
-  retenue:       { court: 'Retenu sur salaire', classe: 't-gr', icone: 'ri-lock-line' },
-  non_couvert:   { court: 'Non couvert',        classe: 't-or', icone: 'ri-error-warning-line' },
-  a_venir:       { court: 'À venir',            classe: 't-gr', icone: 'ri-time-line' },
+  debite_compte:  { court: 'Compte repas',        classe: 't-ve', icone: 'ri-wallet-3-line' },
+  retenue_prevue: { court: 'Retenue sur salaire', classe: 't-or', icone: 'ri-file-list-3-line' },
+  retenue:        { court: 'Retenu sur salaire',  classe: 't-gr', icone: 'ri-lock-line' },
+  paye_caisse:    { court: 'Payé à la caisse',    classe: 't-bl', icone: 'ri-money-dollar-circle-line' },
 };
 
 export const STATUTS_CLOTURE: Record<StatutCloture, { court: string; classe: string; icone: string }> = {
@@ -198,10 +201,6 @@ export class CaisseService {
 
   recharger(d: { user_id: number; montant: number; mode: ModePaiement; reference?: string }): Observable<Recu> {
     return this.http.post<Recu>(`${this.api}/caisse/recharger/`, d);
-  }
-
-  regulariser(d: { user_id: number; commande_ids: number[]; montant_recu: number; monnaie: 'rendre' | 'crediter'; mode: ModePaiement }): Observable<Recu> {
-    return this.http.post<Recu>(`${this.api}/caisse/regulariser/`, d);
   }
 
   rembourser(d: { user_id: number; motif: string; mode: ModePaiement }): Observable<Recu> {

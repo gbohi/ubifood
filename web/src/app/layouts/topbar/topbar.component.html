@@ -96,6 +96,9 @@
                         <!-- item-->
                         <h6 class="dropdown-header">Bienvenue {{ nomAffiche }} !</h6>
                         <a class="dropdown-item" href="javascript: void(0);" (click)="ouvrirPhoto()"><i class="mdi mdi-account-circle text-muted fs-lg align-middle me-1"></i> <span class="align-middle">Ma photo de profil</span></a>
+                        @if (!estComptePrestataire) {
+                            <a class="dropdown-item" href="javascript: void(0);" id="menu-paiement-prefere" (click)="ouvrirPaiement()"><i class="mdi mdi-wallet-outline text-muted fs-lg align-middle me-1"></i> <span class="align-middle">Paiement de mes repas</span></a>
+                        }
                         <div class="dropdown-divider"></div>
                         <a class="dropdown-item" href="javascript: void(0);" (click)="logout()"><i class="mdi mdi-logout text-muted fs-lg align-middle me-1"></i> <span class="align-middle" data-key="t-logout"> Déconnexion</span></a>
                     </div>
@@ -104,6 +107,39 @@
         </div>
     </div>
 </header>
+
+<!-- Mode de paiement proposé par défaut à la commande -->
+<div bsModal #paiementModal="bs-modal" class="modal fade" tabindex="-1" aria-labelledby="paiementModalTitre" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="paiementModalTitre">Paiement de mes repas</h5>
+                <button type="button" class="btn-close" aria-label="Fermer" (click)="paiementModal.hide()"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">Mode proposé par défaut quand vous commandez (vous pouvez toujours choisir l'autre à chaque commande).</p>
+                <div class="d-grid gap-2" role="radiogroup" aria-label="Mode de paiement préféré">
+                    <label class="border rounded-3 p-3 d-flex gap-2 align-items-start mb-0" [class.border-success]="modePrefere === 'compte'">
+                        <input type="radio" class="form-check-input mt-1" name="mode_prefere" value="compte" [checked]="modePrefere === 'compte'" (change)="modePrefere = 'compte'">
+                        <span><b>Compte repas</b><small class="d-block text-muted">Débité à la commande si votre solde suffit, sinon retenue sur salaire.</small></span>
+                    </label>
+                    <label class="border rounded-3 p-3 d-flex gap-2 align-items-start mb-0" [class.border-success]="modePrefere === 'retenue'">
+                        <input type="radio" class="form-check-input mt-1" name="mode_prefere" value="retenue" [checked]="modePrefere === 'retenue'" (change)="modePrefere = 'retenue'">
+                        <span><b>Retenue sur salaire</b><small class="d-block text-muted">Retenu à la clôture du mois.</small></span>
+                    </label>
+                </div>
+                @if (erreurPaiement) { <div class="alert alert-danger small mt-3 mb-0">{{ erreurPaiement }}</div> }
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light btn-sm" (click)="paiementModal.hide()">Annuler</button>
+                <button type="button" class="btn btn-primary btn-sm" id="enregistrer-paiement-prefere" [disabled]="paiementEnCours" (click)="enregistrerPaiement()">
+                    @if (paiementEnCours) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Enregistrer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Photo de profil -->
 <div bsModal #photoModal="bs-modal" class="modal fade" tabindex="-1" aria-labelledby="photoModalTitre" aria-hidden="true">

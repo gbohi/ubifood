@@ -512,3 +512,34 @@ app-liste-commandes {
     .ce-suivant { flex-wrap: wrap; .ce-btn { margin-left: 0; width: 100%; justify-content: center; } }
   }
 }
+
+// ══ Commander : mode de paiement (compte repas / retenue sur salaire) ══
+app-liste-commandes {
+  .ce-pc-paie {
+    display: flex; gap: 6px; align-items: flex-start; font-size: 12px; font-weight: 600; color: #7a5a12;
+    background: #FFF4E5; border-radius: 8px; padding: 6px 8px; margin-top: 4px;
+    i { font-size: 14px; line-height: 1.2; } span { min-width: 0; overflow-wrap: anywhere; }
+    &.ce-pc-paie-compte { color: var(--ce-vert-f); background: #EAFBF1; }
+  }
+  .ce-lien-paie {
+    border: 0; background: none; padding: 2px 0; color: var(--ce-navy2); font-size: 12px; font-weight: 600;
+    display: inline-flex; gap: 4px; align-items: center; text-decoration: underline; justify-self: start;
+    &:disabled { color: var(--ce-gris); }
+  }
+  .ce-paie {
+    color: var(--ce-navy); font-size: 13px;
+    .modal-body { display: grid; gap: 12px; }
+    .ce-paie-plat { display: grid; gap: 2px; b { font-size: 15px; } }
+    .ce-paie-options { display: grid; gap: 10px; }
+    .ce-paie-opt {
+      display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--ce-bord); border-radius: 12px; padding: 12px;
+      cursor: pointer; margin: 0;
+      input { margin-top: 4px; accent-color: var(--ce-vert2); }
+      &.ce-on { border: 2px solid var(--ce-vert2); background: #F4FCF7; padding: 11px; }
+      &.ce-off { cursor: not-allowed; background: #F7F9FC; .ce-paie-ic { background: #EEF1F6; color: var(--ce-gris); } }
+    }
+    .ce-paie-ic { flex: 0 0 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: #EAFBF1; color: var(--ce-vert-f); font-size: 18px; }
+    .ce-paie-txt { display: grid; gap: 2px; min-width: 0; small { color: var(--ce-gris); font-size: 12px; } }
+    .ce-paie-lien { font-size: 12px; font-weight: 600; }
+  }
+}

@@ -2,7 +2,8 @@
 Tests du compte repas prépayé et de la caisse (api/comptes_repas.py, api/caisse.py).
 
 Tous les montants sont vérifiés au franc près : un repas est payé une seule
-fois (compte, caisse ou retenue) et consommé = compte + caisse + retenue.
+fois (compte à la commande, retenue à la clôture ; caisse : historique) et
+consommé = compte + retenue (+ caisse des anciennes régularisations).
 
 Lancer : python manage.py test api
 """
@@ -22,7 +23,7 @@ from . import facturation as fact
 from .models import (
     Agence, AgencePrestataire, Categoriesalarie, ClotureCaisse, Commande, CompteRepas, FactureMensuelle,
     LigneFacture, Menu, MenuPlat, MouvementCompte, Plat, PlatCategoriesalarie, PlatPrestataire, Prestataire,
-    Recu, ReglementRepas, Retrait, Statut, TypeEquipe, TypePlat, User, UserAgence, UserCategoriesalarie,
+    Recu, RecuLigne, ReglementRepas, Retrait, Statut, TypeEquipe, TypePlat, User, UserAgence, UserCategoriesalarie,
 )
 from .tests import API, _EspacePrestataireBase
 
@@ -83,11 +84,49 @@ class _CaisseBase(_EspacePrestataireBase):
         self.assertEqual(r.status_code, 201, r.data)
         return r.data
 
-    def regulariser(self, user, ids=None, attendu=201, par=None, **extra):
-        donnees = {'user_id': user.id, **extra}
-        if ids is not None:
-            donnees['commande_ids'] = ids
-        r = self.client_pour(par or self.caissier).post(f'{API}/caisse/regulariser/', donnees, format='json')
+    def ancienne_regularisation(self, user, commandes, montant_recu=None, crediter=False):
+        """Reçu de régularisation tel que l'ancienne caisse l'émettait (historique)."""
+        total = D('1000') * len(commandes)
+        recu_especes = D(montant_recu) if montant_recu is not None else total
+        rendu = recu_especes - total
+        with transaction.atomic():
+            compte = cr.compte_verrouille(user.id)
+            avant = compte.solde
+            recu = cr._creer_recu(type='regularisation', user=user, caissier=self.caissier, mode='especes',
+                                  montant=total, montant_repas=total, montant_recu=recu_especes, monnaie=rendu,
+                                  monnaie_creditee=crediter and rendu > 0,
+                                  encaissement=total + (rendu if crediter else D('0')),
+                                  solde_avant=avant, solde_apres=avant + (rendu if crediter else D('0')))
+            for c in commandes:
+                RecuLigne.objects.create(recu=recu, commande=c, date_menu=c.menu.date_menu,
+                                         plat_nom=c.plat.nom, montant=D('1000'))
+                ReglementRepas.objects.create(commande=c, mode='caisse', montant=D('1000'), recu=recu)
+            if crediter and rendu > 0:
+                cr._mouvement(compte, 'regularisation', rendu, self.caissier, recu=recu, libelle='Monnaie')
+        return recu
+
+    def menu_futur(self, jours=5, plats=None):
+        return self.menu_du_jour(plats=plats, jours=jours)
+
+    def commander_api(self, user, menu, mode=None, attendu=201, plat=None):
+        """Commande comme le web / le mobile : POST /commandes/ (mode_paiement facultatif)."""
+        donnees = {'menu_id': menu.id, 'plat_id': (plat or self.plat_a).id}
+        if mode is not None:
+            donnees['mode_paiement'] = mode
+        r = self.client_pour(user).post(f'{API}/commandes/', donnees, format='json')
+        self.assertEqual(r.status_code, attendu, r.data)
+        return r.data
+
+    def payer_compte(self, commande):
+        """Repas payé par le compte à la commande (commandes créées directement en base)."""
+        cr.debiter_commande(Commande.objects.select_related('menu', 'plat').get(pk=commande.pk), commande.user)
+        Commande.objects.filter(pk=commande.pk).update(mode_paiement='compte')
+        commande.refresh_from_db()
+        return commande
+
+    def changer_mode(self, user, commande_id, mode, attendu=200):
+        r = self.client_pour(user).post(f'{API}/commandes/{commande_id}/mode-paiement/',
+                                        {'mode_paiement': mode}, format='json')
         self.assertEqual(r.status_code, attendu, r.data)
         return r.data
 
@@ -181,149 +220,302 @@ class RechargeEtRecusTests(_CaisseBase):
             self.assertTrue(contenu.startswith(b'%PDF'))
         self.assertEqual(self.client_pour(self.caissier).get(
             f"{API}/caisse/recus/{r['id']}/pdf/", {'papier': 'a4'}).status_code, 400)
-        # Régularisation (avec détail des repas) et reçu annulé : PDF aussi
+        # Ancienne régularisation (historique, avec détail des repas) et reçu annulé : PDF aussi
         c = self.commander(self.employe2, self.jour_prec(3))
-        reg = self.regulariser(self.employe2, [c.id], montant_recu=2000)
-        cr.annuler_recu(Recu.objects.get(pk=reg['id']), self.compta, 'Erreur de saisie')
-        rep = self.client_pour(self.compta).get(f"{API}/caisse/recus/{reg['id']}/pdf/")
+        reg = self.ancienne_regularisation(self.employe2, [c], montant_recu='2000')
+        rep = self.client_pour(self.compta).get(f"{API}/caisse/recus/{reg.id}/pdf/")
         self.assertTrue(b''.join(rep.streaming_content).startswith(b'%PDF'))
+        cr.annuler_recu(reg, self.compta, 'Erreur de saisie')
+        rep = self.client_pour(self.compta).get(f"{API}/caisse/recus/{reg.id}/pdf/")
+        self.assertTrue(b''.join(rep.streaming_content).startswith(b'%PDF'))
+        self.assertEqual(self.client_pour(self.caissier).get(f"{API}/caisse/recus/{reg.id}/").data['type_libelle'],
+                         'Régularisation du mois')
+
+    def test_regularisation_supprimee(self):
+        c = self.commander(self.employe, self.jour_prec(3))
+        client = self.client_pour(self.caissier)
+        r = client.post(f'{API}/caisse/regulariser/', {'user_id': self.employe.id, 'commande_ids': [c.id]},
+                        format='json')
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(hasattr(cr, 'regulariser'))
+        self.assertFalse(Recu.objects.exists())
+        self.recharger(self.employe, 500)
+        self.assertNotIn('regularisation', [t['type'] for t in self.client_pour(self.compta).get(
+            f'{API}/caisse/journal/').data['par_type']])
 
 
-class DebitAuRetraitTests(_CaisseBase):
+class PaiementCommandeTests(_CaisseBase):
+    """Mode de paiement choisi à la commande : compte repas (débit immédiat) ou retenue sur salaire."""
 
-    def test_debit_si_solde_suffisant(self):
+    def test_info_paiement_pour_l_ecran_de_commande(self):
+        menu = self.menu_futur()
+        url = f'{API}/compte-repas/paiement/'
+        r = self.client_pour(self.employe).get(url, {'menu': menu.id})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual((r.data['solde'], r.data['prix'], r.data['compte_possible'], r.data['mode_par_defaut'],
+                          r.data['mode_paiement_prefere']), (0.0, 1000.0, False, 'retenue', 'compte'))
+        self.assertEqual(r.data['raison_compte_impossible'],
+                         'Solde insuffisant : 0 F disponibles, 1 000 F nécessaires — rechargez à la caisse')
         self.recharger(self.employe, 1500)
-        c = self.commander(self.employe, self.aujourdhui)
-        self.retirer(c)
-        self.assertEqual(c.statut, 'retiree')
-        self.assertEqual(self.mode(c), 'compte')
+        r = self.client_pour(self.employe).get(url, {'date': menu.date_menu.isoformat()})
+        self.assertEqual((r.data['compte_possible'], r.data['mode_par_defaut'], r.data['raison_compte_impossible']),
+                         (True, 'compte', None))
+        self.assertEqual([m['code'] for m in r.data['modes']], ['compte', 'retenue'])
+        # Sans tarif (pas de catégorie) : compte impossible, expliqué
+        emp3 = self.creer_user('emp3', 'employe')
+        self.recharger(emp3, 5000)
+        r = self.client_pour(emp3).get(url, {'menu': menu.id})
+        self.assertEqual((r.data['sans_tarif'], r.data['compte_possible'], r.data['mode_par_defaut']),
+                         (True, False, 'retenue'))
+        self.assertIn('aucun tarif', r.data['raison_compte_impossible'])
+        self.assertEqual(self.client_pour(self.employe).get(url, {'menu': 'x'}).status_code, 400)
+        self.assertEqual(self.client_pour(self.agent_a).get(url, {'menu': menu.id}).status_code, 403)
+
+    def test_commande_compte_debitee_a_la_commande(self):
+        self.recharger(self.employe, 1500)
+        menu = self.menu_futur()
+        data = self.commander_api(self.employe, menu, 'compte')
+        self.assertEqual((data['mode_paiement'], data['mode_paiement_libelle'], data['mode_paiement_modifiable']),
+                         ('compte', 'Compte repas', True))
+        self.assertEqual(data['paiement'], {'mode': 'compte', 'libelle': 'Débité du compte repas', 'montant': 1000.0})
+        self.assertTrue(data['mode_paiement_limite'])
+        c = Commande.objects.get(pk=data['id'])
+        self.assertEqual((c.mode_paiement, self.mode(c)), ('compte', 'compte'))
         self.assertEqual(self.solde(self.employe), D('500'))
         m = MouvementCompte.objects.get(type='debit_repas')
         self.assertEqual((m.montant, m.solde_apres, m.commande_id), (D('-1000'), D('500'), c.id))
         ligne = fact.lignes_facturation(Commande.objects.filter(pk=c.pk))[0]
-        self.assertEqual((ligne['reglement'], ligne['montant']), ('compte', D('1000')))
+        self.assertEqual((ligne['reglement'], ligne['mode_paiement'], ligne['montant']), ('compte', 'compte', D('1000')))
+        # Mes commandes : mode exposé
+        mes = self.client_pour(self.employe).get(f'{API}/commandes/mes-commandes/').data
+        self.assertEqual((mes[0]['mode_paiement'], mes[0]['paiement']['montant']), ('compte', 1000.0))
         self.verifier_grand_livre()
 
-    def test_non_couvert_si_solde_insuffisant_sans_debit_partiel(self):
+    def test_solde_insuffisant_refuse(self):
         self.recharger(self.employe, 900)
-        c = self.commander(self.employe, self.aujourdhui)
-        self.retirer(c)
-        self.assertIsNone(self.mode(c))
+        menu = self.menu_futur()
+        r = self.commander_api(self.employe, menu, 'compte', attendu=400)
+        self.assertEqual(str(r['detail']),
+                         'Solde insuffisant : 900 F disponibles, 1 000 F nécessaires — rechargez à la caisse')
+        self.assertEqual(str(r['code']), 'solde_insuffisant')
+        self.assertFalse(Commande.objects.exists())          # commande non créée
         self.assertEqual(self.solde(self.employe), D('900'))
-        self.assertFalse(MouvementCompte.objects.filter(type='debit_repas').exists())
-        # Sans compte du tout : non couvert, aucun compte créé
-        c2 = self.commander(self.employe2, self.aujourdhui)
-        self.retirer(c2)
-        self.assertIsNone(self.mode(c2))
+        # Sans compte du tout
+        r = self.commander_api(self.employe2, menu, 'compte', attendu=400)
+        self.assertIn('0 F disponibles', str(r['detail']))
         self.assertFalse(CompteRepas.objects.filter(user=self.employe2).exists())
-
-    def test_sans_tarif_non_debite(self):
+        # Sans tarif
         emp3 = self.creer_user('emp3', 'employe')
         self.recharger(emp3, 5000)
-        c = self.commander(emp3, self.aujourdhui)
-        self.retirer(c)
-        self.assertIsNone(self.mode(c))
-        self.assertEqual(self.solde(emp3), D('5000'))
+        r = self.commander_api(emp3, menu, 'compte', attendu=400)
+        self.assertIn('aucun tarif', str(r['detail']))
+        # Mode invalide
+        self.commander_api(self.employe, menu, 'caisse', attendu=400)
+        self.assertFalse(Commande.objects.exists())
+        # Retenue : acceptée
+        self.assertEqual(self.commander_api(self.employe, menu, 'retenue')['mode_paiement'], 'retenue')
 
-    def test_debit_au_comptoir_prestataire_et_recredit_agent_2_minutes(self):
-        self.recharger(self.employe, 3000)
-        menu = self.menu_du_jour()
-        c = Commande.objects.create(user=self.employe, menu=menu, plat=self.plat_a)
-        agent = self.client_pour(self.agent_a)
-        r = agent.post(f'{API}/prestataire/comptoir/valider/',
-                       {'menu_id': menu.id, 'user_id': self.employe.id, 'mode': 'scan'})
-        self.assertEqual(r.status_code, 201, r.data)
-        self.assertEqual(self.mode(c), 'compte')
-        self.assertEqual(self.solde(self.employe), D('2000'))
-        r = agent.post(f"{API}/prestataire/comptoir/retraits/{r.data['id']}/annuler/")
-        self.assertEqual(r.status_code, 200, r.data)
-        self.assertIsNone(self.mode(c))
-        self.assertEqual(self.solde(self.employe), D('3000'))
-        self.assertEqual(MouvementCompte.objects.filter(type='recredit').get().montant, D('1000'))
-        # Nouveau retrait : débité de nouveau, une seule fois
-        r = agent.post(f'{API}/prestataire/comptoir/valider/',
-                       {'menu_id': menu.id, 'user_id': self.employe.id, 'mode': 'saisie'})
-        self.assertEqual(r.status_code, 201, r.data)
-        self.assertEqual(self.solde(self.employe), D('2000'))
-        self.assertEqual(ReglementRepas.objects.filter(commande=c).count(), 1)
-        self.verifier_grand_livre()
+    def test_commande_retenue_sans_debit(self):
+        self.recharger(self.employe, 5000)
+        data = self.commander_api(self.employe, self.menu_futur(), 'retenue')
+        self.assertEqual((data['mode_paiement'], data['paiement'], data['mode_paiement_modifiable']),
+                         ('retenue', None, True))
+        self.assertEqual(self.solde(self.employe), D('5000'))
+        self.assertFalse(ReglementRepas.objects.exists())
 
-    def test_recredit_annulation_par_le_gestionnaire(self):
-        self.recharger(self.employe, 1000)
-        c = self.commander(self.employe, self.aujourdhui)
-        self.retirer(c)
-        self.assertEqual(self.solde(self.employe), D('0'))
-        r = self.client_pour(self.gestionnaire).post(f'{API}/commandes/{c.id}/annuler-retrait/')
-        self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(self.solde(self.employe), D('1000'))
-        self.assertIsNone(self.mode(c))
-        # Par DELETE /retraits/<id>/ aussi
-        self.retirer(c)
-        self.assertEqual(self.solde(self.employe), D('0'))
-        retrait = Retrait.objects.get(user=self.employe, menu=c.menu)
-        self.assertEqual(self.client_pour(self.gestionnaire).delete(f'{API}/retraits/{retrait.id}/').status_code, 204)
-        self.assertEqual(self.solde(self.employe), D('1000'))
-        self.verifier_grand_livre()
-
-    def test_retrait_annule_repas_paye_caisse_reste_paye(self):
-        c = self.commander(self.employe, self.aujourdhui)
-        self.retirer(c)
-        self.regulariser(self.employe, [c.id])
-        self.client_pour(self.gestionnaire).post(f'{API}/commandes/{c.id}/annuler-retrait/')
-        # Le repas reste commandé (dû) et payé à la caisse : pas de crédit
-        self.assertEqual(self.mode(c), 'caisse')
-        self.assertEqual(self.solde(self.employe), D('0'))
-
-    def test_contestation_erreur_comptoir_recredit_et_jamais_facture(self):
+    def test_mode_par_defaut_selon_preference(self):
+        moi = self.client_pour(self.employe).get(f'{API}/users/me/').data
+        self.assertEqual(moi['mode_paiement_prefere'], 'compte')
+        # Préférence « compte » et solde suffisant → compte ; solde insuffisant → retenue (pas d'erreur)
         self.recharger(self.employe, 1500)
-        c = self.commander(self.employe, self.aujourdhui)
-        self.retirer(c)
+        self.assertEqual(self.commander_api(self.employe, self.menu_futur(5))['mode_paiement'], 'compte')
+        self.assertEqual(self.commander_api(self.employe, self.menu_futur(6))['mode_paiement'], 'retenue')
         self.assertEqual(self.solde(self.employe), D('500'))
-        r = self.client_pour(self.employe).post(f'{API}/contestations-retrait/',
-                                                {'commande_id': c.id, 'motif': 'absent'})
-        self.assertEqual(r.status_code, 201, r.data)
-        r = self.client_pour(self.gestionnaire).post(f"{API}/contestations-retrait/{r.data['id']}/accepter/",
-                                                     {'cause': 'erreur_comptoir'})
+        # Préférence « retenue » : retenue même avec un solde suffisant
+        r = self.client_pour(self.employe2).patch(f'{API}/users/me/', {'mode_paiement_prefere': 'retenue'},
+                                                  format='json')
+        self.assertEqual((r.status_code, r.data['mode_paiement_prefere']), (200, 'retenue'))
+        self.recharger(self.employe2, 3000)
+        self.assertEqual(self.commander_api(self.employe2, self.menu_futur(5))['mode_paiement'], 'retenue')
+        self.assertEqual(self.solde(self.employe2), D('3000'))
+        # Valeur invalide, autre champ : refusés ; un admin ne la change pas par /users/<id>/
+        client = self.client_pour(self.employe2)
+        self.assertEqual(client.patch(f'{API}/users/me/', {'mode_paiement_prefere': 'caisse'},
+                                      format='json').status_code, 400)
+        self.assertEqual(client.patch(f'{API}/users/me/', {'nom': 'X'}, format='json').status_code, 400)
+        self.client_pour(self.admin).patch(f'{API}/users/{self.employe2.id}/', {'mode_paiement_prefere': 'compte'},
+                                           format='json')
+        self.employe2.refresh_from_db()
+        self.assertEqual((self.employe2.mode_paiement_prefere, self.employe2.nom), ('retenue', 'EMP2'))
+
+    def test_annulation_dans_le_delai_recredite(self):
+        self.recharger(self.employe, 1500)
+        menu = self.menu_futur()
+        data = self.commander_api(self.employe, menu, 'compte')
+        r = self.client_pour(self.employe).patch(f"{API}/commandes/{data['id']}/annuler/")
         self.assertEqual(r.status_code, 200, r.data)
-        c.refresh_from_db()
-        self.assertEqual((c.statut, c.motif_annulation), ('annulee', 'contestation'))
         self.assertEqual(self.solde(self.employe), D('1500'))
-        self.assertIsNone(self.mode(c))
-        self.assertEqual(fact.lignes_facturation(Commande.objects.filter(pk=c.pk)), [])
+        self.assertFalse(ReglementRepas.objects.exists())
+        self.assertEqual(MouvementCompte.objects.get(type='recredit').montant, D('1000'))
+        # Commande reprise (même plat) : débitée de nouveau, une seule fois
+        data = self.commander_api(self.employe, menu, 'compte', attendu=200)
+        self.assertEqual((data['mode_paiement'], data['paiement']['montant']), ('compte', 1000.0))
+        self.assertEqual(self.solde(self.employe), D('500'))
+        self.assertEqual(ReglementRepas.objects.count(), 1)
         self.verifier_grand_livre()
 
-    def test_contestation_erreur_comptoir_repas_paye_caisse_credite(self):
-        c = self.commander(self.employe, self.aujourdhui)
-        self.retirer(c)
-        self.regulariser(self.employe, [c.id], montant_recu=1000)
-        r = self.client_pour(self.employe).post(f'{API}/contestations-retrait/',
-                                                {'commande_id': c.id, 'motif': 'absent'})
-        self.client_pour(self.gestionnaire).post(f"{API}/contestations-retrait/{r.data['id']}/accepter/",
-                                                 {'cause': 'erreur_comptoir'})
-        # Repas jamais facturé : les 1 000 F payés sont crédités sur le compte
-        self.assertIsNone(self.mode(c))
-        self.assertEqual(self.solde(self.employe), D('1000'))
-        self.verifier_grand_livre()
-
-    def test_contestation_badge_tiers_reste_debite(self):
+    def test_annulation_hors_delai_refusee_repas_reste_paye(self):
         self.recharger(self.employe, 1000)
-        c = self.commander(self.employe, self.aujourdhui)
-        self.retirer(c)
-        r = self.client_pour(self.employe).post(f'{API}/contestations-retrait/',
-                                                {'commande_id': c.id, 'motif': 'badge_utilise'})
-        self.client_pour(self.gestionnaire).post(f"{API}/contestations-retrait/{r.data['id']}/accepter/",
-                                                 {'cause': 'badge_tiers'})
-        self.assertEqual(self.mode(c), 'compte')
-        self.assertEqual(self.solde(self.employe), D('0'))
+        c = self.payer_compte(self.commander(self.employe, self.aujourdhui + timedelta(days=1)))
+        r = self.client_pour(self.employe).patch(f'{API}/commandes/{c.id}/annuler/')
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual((self.mode(c), self.solde(self.employe)), ('compte', D('0')))
 
-    def test_commande_annulee_payee_caisse_creditee(self):
-        c = self.commander(self.employe, self.jour_prec(2))      # non retirée, jour passé
-        self.regulariser(self.employe, [c.id])
+    def test_annulation_par_le_gestionnaire_recredite(self):
+        self.recharger(self.employe, 1000)
+        c = self.payer_compte(self.commander(self.employe, self.aujourdhui))
+        self.assertEqual(self.solde(self.employe), D('0'))
         r = self.client_pour(self.gestionnaire).patch(f'{API}/commandes/{c.id}/annuler/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIsNone(self.mode(c))
         self.assertEqual(self.solde(self.employe), D('1000'))
         self.verifier_grand_livre()
+
+    def test_retrait_ne_debite_pas_et_son_annulation_ne_recredite_pas(self):
+        self.recharger(self.employe, 3000)
+        menu = self.menu_du_jour()
+        c = self.payer_compte(Commande.objects.create(user=self.employe, menu=menu, plat=self.plat_a))
+        self.assertEqual(self.solde(self.employe), D('2000'))
+        agent = self.client_pour(self.agent_a)
+        r = agent.post(f'{API}/prestataire/comptoir/valider/',
+                       {'menu_id': menu.id, 'user_id': self.employe.id, 'mode': 'scan'})
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(self.solde(self.employe), D('2000'))           # pas de second débit au retrait
+        # Agent du comptoir, dans les 2 minutes : retrait annulé, repas toujours dû et payé
+        r = agent.post(f"{API}/prestataire/comptoir/retraits/{r.data['id']}/annuler/")
+        self.assertEqual(r.status_code, 200, r.data)
+        c.refresh_from_db()
+        self.assertEqual((c.statut, self.mode(c), self.solde(self.employe)), ('en_attente', 'compte', D('2000')))
+        # Gestionnaire : annuler-retrait, puis DELETE /retraits/<id>/
+        self.retirer(c)
+        r = self.client_pour(self.gestionnaire).post(f'{API}/commandes/{c.id}/annuler-retrait/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual((r.data['statut'], r.data['mode_paiement'], self.mode(c)), ('en_attente', 'compte', 'compte'))
+        self.retirer(c)
+        retrait = Retrait.objects.get(user=self.employe, menu=c.menu)
+        self.assertEqual(self.client_pour(self.gestionnaire).delete(f'{API}/retraits/{retrait.id}/').status_code, 204)
+        self.assertEqual((self.mode(c), self.solde(self.employe)), ('compte', D('2000')))
+        self.assertFalse(MouvementCompte.objects.filter(type='recredit').exists())
+        # Repas en retenue retiré : rien sur le compte
+        c2 = self.commander(self.employe2, self.aujourdhui)
+        self.recharger(self.employe2, 5000)
+        self.retirer(c2)
+        self.assertEqual((self.mode(c2), self.solde(self.employe2)), (None, D('5000')))
+        self.verifier_grand_livre()
+
+    def test_ancien_repas_paye_caisse_retrait_annule_reste_paye(self):
+        c = self.commander(self.employe, self.aujourdhui)
+        self.retirer(c)
+        self.ancienne_regularisation(self.employe, [c])
+        self.client_pour(self.gestionnaire).post(f'{API}/commandes/{c.id}/annuler-retrait/')
+        self.assertEqual((self.mode(c), self.solde(self.employe)), ('caisse', D('0')))
+
+    def _contester(self, c, cause):
+        r = self.client_pour(self.employe).post(f'{API}/contestations-retrait/',
+                                                {'commande_id': c.id, 'motif': 'absent'})
+        self.assertEqual(r.status_code, 201, r.data)
+        r = self.client_pour(self.gestionnaire).post(f"{API}/contestations-retrait/{r.data['id']}/accepter/",
+                                                     {'cause': cause})
+        self.assertEqual(r.status_code, 200, r.data)
+
+    def test_contestation_erreur_comptoir_recredite_et_jamais_facture(self):
+        self.recharger(self.employe, 1500)
+        c = self.payer_compte(self.commander(self.employe, self.aujourdhui))
+        self.retirer(c)
+        self.assertEqual(self.solde(self.employe), D('500'))
+        self._contester(c, 'erreur_comptoir')
+        c.refresh_from_db()
+        self.assertEqual((c.statut, c.motif_annulation), ('annulee', 'contestation'))
+        self.assertEqual(self.solde(self.employe), D('1500'))
+        self.assertIsNone(self.mode(c))
+        self.assertEqual(MouvementCompte.objects.filter(type='recredit').count(), 1)   # une seule fois
+        self.assertEqual(fact.lignes_facturation(Commande.objects.filter(pk=c.pk)), [])
+        self.verifier_grand_livre()
+
+    def test_contestation_erreur_comptoir_ancien_repas_paye_caisse_credite(self):
+        c = self.commander(self.employe, self.aujourdhui)
+        self.retirer(c)
+        self.ancienne_regularisation(self.employe, [c])
+        self._contester(c, 'erreur_comptoir')
+        self.assertIsNone(self.mode(c))
+        self.assertEqual(self.solde(self.employe), D('1000'))
+        self.verifier_grand_livre()
+
+    def test_contestation_badge_tiers_reste_paye(self):
+        self.recharger(self.employe, 1000)
+        c = self.payer_compte(self.commander(self.employe, self.aujourdhui))
+        self.retirer(c)
+        self._contester(c, 'badge_tiers')
+        self.assertEqual((self.mode(c), self.solde(self.employe)), ('compte', D('0')))
+
+    def test_ancien_repas_paye_caisse_annule_credite(self):
+        c = self.commander(self.employe, self.jour_prec(2))      # non retirée, jour passé
+        self.ancienne_regularisation(self.employe, [c])
+        r = self.client_pour(self.gestionnaire).patch(f'{API}/commandes/{c.id}/annuler/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(self.mode(c))
+        self.assertEqual(self.solde(self.employe), D('1000'))
+        self.verifier_grand_livre()
+
+    def test_changer_de_mode_avant_la_date_limite(self):
+        self.recharger(self.employe, 1500)
+        data = self.commander_api(self.employe, self.menu_futur(), 'retenue')
+        cid = data['id']
+        # retenue → compte : débité
+        d = self.changer_mode(self.employe, cid, 'compte')
+        self.assertEqual((d['mode_paiement'], d['paiement']['montant'], d['mode_paiement_modifiable']),
+                         ('compte', 1000.0, True))
+        self.assertEqual(self.solde(self.employe), D('500'))
+        self.assertIn('passage au compte repas', MouvementCompte.objects.get(type='debit_repas').libelle)
+        # même mode : sans effet
+        self.changer_mode(self.employe, cid, 'compte')
+        self.assertEqual((self.solde(self.employe), ReglementRepas.objects.count()), (D('500'), 1))
+        # compte → retenue : recrédité
+        d = self.changer_mode(self.employe, cid, 'retenue')
+        self.assertEqual((d['mode_paiement'], d['paiement']), ('retenue', None))
+        self.assertEqual(self.solde(self.employe), D('1500'))
+        self.assertIn('Passage en retenue', MouvementCompte.objects.get(type='recredit').libelle)
+        # retenue → compte avec un solde insuffisant : refusé
+        cr.rembourser(self.employe, self.compta, 'Test')
+        r = self.changer_mode(self.employe, cid, 'compte', attendu=400)
+        self.assertIn('Solde insuffisant : 0 F disponibles', str(r['detail']))
+        self.assertEqual(Commande.objects.get(pk=cid).mode_paiement, 'retenue')
+        # Mode invalide ; commande d'un autre employé ; gestionnaire : refusés
+        self.changer_mode(self.employe, cid, 'caisse', attendu=400)
+        self.changer_mode(self.employe, cid, '', attendu=400)
+        self.changer_mode(self.employe2, cid, 'retenue', attendu=404)
+        self.changer_mode(self.gestionnaire, cid, 'retenue', attendu=403)
+        self.verifier_grand_livre()
+
+    def test_mode_verrouille_apres_la_date_limite(self):
+        self.recharger(self.employe, 3000)
+        c = self.commander(self.employe, self.aujourdhui + timedelta(days=1))   # limite (48 h) dépassée
+        r = self.changer_mode(self.employe, c.id, 'compte', attendu=400)
+        self.assertIn('ne peut plus être changé', str(r['detail']))
+        self.assertEqual(str(r['code']), 'mode_verrouille')
+        d = self.client_pour(self.employe).get(f'{API}/commandes/{c.id}/').data
+        self.assertFalse(d['mode_paiement_modifiable'])
+        # Juste avant la date limite : modifiable
+        from .serializers import date_limite_commande
+        avant = date_limite_commande(c.menu.date_menu) - timedelta(minutes=1)
+        with patch('api.comptes_repas.timezone.now', return_value=avant):
+            self.changer_mode(self.employe, c.id, 'compte')
+        self.assertEqual(self.solde(self.employe), D('2000'))
+        # Repas retiré : figé
+        c2 = self.commander(self.employe2, self.aujourdhui)
+        self.retirer(c2)
+        self.changer_mode(self.employe2, c2.id, 'compte', attendu=400)
+        self.assertEqual(self.solde(self.employe), D('2000'))
 
     def test_contrainte_solde_jamais_negatif_en_base(self):
         compte = CompteRepas.objects.create(user=self.employe)
@@ -336,122 +528,37 @@ class DebitAuRetraitTests(_CaisseBase):
             ReglementRepas.objects.create(commande=c, mode='caisse', montant=D('1000'))
 
 
-class RegularisationTests(_CaisseBase):
-
-    def setUp(self):
-        super().setUp()
-        self.c1 = self.commander(self.employe, self.jour_prec(2))                # non retiré, passé
-        self.c2 = self.commander(self.employe, self.aujourdhui)
-        self.retirer(self.c2)                                                   # retiré, non couvert
-        self.c3 = self.commander(self.employe, self.aujourdhui + timedelta(days=3))   # à venir
-
-    def test_fiche_caisse(self):
-        r = self.client_pour(self.caissier).get(f'{API}/caisse/employes/{self.employe.id}/')
-        self.assertEqual(r.status_code, 200, r.data)
-        statuts = {x['commande_id']: x['statut'] for x in r.data['repas']}
-        self.assertEqual(statuts, {self.c1.id: 'non_couvert', self.c2.id: 'non_couvert', self.c3.id: 'a_venir'})
-        self.assertEqual(r.data['totaux']['non_couvert']['montant'], 2000.0)
-        self.assertEqual(r.data['totaux']['consomme']['montant'], 3000.0)
-        self.assertTrue(all(x['regularisable'] for x in r.data['repas'] if x['statut'] == 'non_couvert'))
-        self.assertEqual(r.data['reste_a_payer_prevu'], 3000.0)
-        self.assertEqual(set(r.data['employe']), {'id', 'nom', 'prenoms', 'nom_prenom', 'matricule', 'agence',
-                                                  'actif'})
-
-    def test_partielle_monnaie_rendue_puis_creditee(self):
-        reg = self.regulariser(self.employe, [self.c1.id], montant_recu=5000, monnaie='rendre')
-        self.assertEqual((reg['montant'], reg['montant_recu'], reg['monnaie'], reg['monnaie_creditee'],
-                          reg['encaissement'], reg['solde_apres']), (1000.0, 5000.0, 4000.0, False, 1000.0, 0.0))
-        self.assertEqual([l['commande_id'] for l in reg['lignes']], [self.c1.id])
-        self.assertEqual(self.mode(self.c1), 'caisse')
-        self.assertIsNone(self.mode(self.c2))
-        self.assertFalse(CompteRepas.objects.filter(user=self.employe, solde__gt=0).exists())
-        # Le reste (c2 seulement : c3 est à venir) avec monnaie créditée
-        reg = self.regulariser(self.employe, montant_recu='5000', monnaie='crediter')
-        self.assertEqual([l['commande_id'] for l in reg['lignes']], [self.c2.id])
-        self.assertEqual((reg['montant'], reg['monnaie'], reg['monnaie_creditee'], reg['encaissement'],
-                          reg['solde_apres']), (1000.0, 4000.0, True, 5000.0, 4000.0))
-        self.assertEqual(self.solde(self.employe), D('4000'))
-        self.assertEqual(MouvementCompte.objects.get(type='regularisation').montant, D('4000'))
-        # Plus rien à régulariser
-        r = self.regulariser(self.employe, attendu=400)
-        self.assertIn('Aucun repas', str(r))
-        self.verifier_grand_livre()
-
-    def test_montant_exact_par_defaut(self):
-        reg = self.regulariser(self.employe, [self.c2.id, self.c1.id])
-        self.assertEqual((reg['montant'], reg['montant_recu'], reg['monnaie'], reg['encaissement']),
-                         (2000.0, 2000.0, 0.0, 2000.0))
-        self.assertEqual([l['commande_id'] for l in reg['lignes']], [self.c1.id, self.c2.id])   # chronologique
-
-    def test_refus(self):
-        # Montant insuffisant (pas de paiement partiel d'un repas)
-        r = self.regulariser(self.employe, [self.c1.id, self.c2.id], montant_recu=1500, attendu=400)
-        self.assertIn('insuffisant', str(r['montant_recu']))
-        # Repas à venir, d'un autre employé, en double, annulé
-        self.assertIn('pas encore consommé', str(self.regulariser(self.employe, [self.c3.id], attendu=400)))
-        autre = self.commander(self.employe2, self.aujourdhui)
-        self.assertIn("pas une commande", str(self.regulariser(self.employe, [autre.id], attendu=400)))
-        self.regulariser(self.employe, [self.c1.id, self.c1.id], attendu=400)
-        annulee = self.commander(self.employe, self.jour_prec(5), statut='annulee')
-        self.assertIn('annulé', str(self.regulariser(self.employe, [annulee.id], attendu=400)))
-        # Déjà payé
-        self.regulariser(self.employe, [self.c1.id])
-        self.assertIn('déjà réglé', str(self.regulariser(self.employe, [self.c1.id], attendu=400)))
-        self.regulariser(self.employe, [self.c2.id], monnaie='garder', attendu=400)
-        self.regulariser(self.employe, [self.c2.id], mode='mobile_money', attendu=400)
-        self.assertEqual(Recu.objects.count(), 1)
-
-    def test_rien_sur_un_mois_cloture(self):
-        self.cloturer_prec()
-        # c1 (mois précédent, clôturé) : retenu sur salaire, plus régularisable
-        self.assertEqual(self.mode(self.c1), 'retenue')
-        r = self.regulariser(self.employe, [self.c1.id], attendu=400)
-        self.assertIn('clôturé', str(r))
-        statuts = {x['commande_id']: x['statut'] for x in self.client_pour(self.caissier).get(
-            f'{API}/caisse/employes/{self.employe.id}/').data['repas']}
-        self.assertNotIn(self.c1.id, statuts)          # fiche : mois ouverts seulement
-        self.regulariser(self.employe)                  # c2 (mois en cours) reste payable
-        self.assertEqual(self.mode(self.c2), 'caisse')
-
-
 class ClotureMensuelleCompteTests(_CaisseBase):
     """
-    Clôture : le solde restant paie d'abord tous les repas impayés du mois (retirés non
-    couverts et non retirés), par date, repas entiers ; le reste est retenu ; montants figés.
+    Clôture : les repas « compte » sont déjà payés (commandé = dû, retirés ou non) ; tous les
+    autres sont retenus sur salaire ; le solde n'est jamais utilisé automatiquement.
     """
 
-    def test_cloture_compte_caisse_retenue(self):
+    def test_cloture_compte_retenue_et_historique(self):
         j = self.jour_prec
-        # emp1 : A retiré débité ; B retiré non couvert puis payé à la caisse ;
-        # C retiré non couvert et D non retiré : débités à la clôture (recharge
-        # de 2 500 F entre-temps) ; E non retiré, solde restant 500 F (→ retenue)
-        self.recharger(self.employe, 1000)
-        a = self.commander(self.employe, j(1)); self.retirer(a)
-        b = self.commander(self.employe, j(2)); self.retirer(b)
-        c = self.commander(self.employe, j(3)); self.retirer(c)
-        d = self.commander(self.employe, j(4))
-        e = self.commander(self.employe, j(5))
-        self.assertEqual([self.mode(x) for x in (a, b, c)], ['compte', None, None])
-        self.regulariser(self.employe, [b.id])
-        self.recharger(self.employe, 2500)
-        # emp2 : deux repas non retirés, pas de compte → retenue
+        self.recharger(self.employe, 2000)
+        a = self.payer_compte(self.commander(self.employe, j(1))); self.retirer(a)   # compte, retiré
+        b = self.payer_compte(self.commander(self.employe, j(2)))                    # compte, non retiré : dû
+        c = self.commander(self.employe, j(3)); self.retirer(c)                      # retenue, retiré
+        d = self.commander(self.employe, j(4))                                       # retenue, non retiré
+        e = self.commander(self.employe, j(5)); self.retirer(e)
+        self.ancienne_regularisation(self.employe, [e])                              # historique : caisse
+        self.recharger(self.employe, 10000)                                          # solde non utilisé
         f1 = self.commander(self.employe2, j(1))
         f2 = self.commander(self.employe2, j(6), statut='retiree')
-        # Repas annulés : jamais facturés
-        self.commander(self.employe, j(7), statut='annulee')
+        self.commander(self.employe, j(7), statut='annulee')                         # jamais facturé
 
         data = self.cloturer_prec()
-        self.assertEqual([self.mode(x) for x in (a, b, c, d, e)], ['compte', 'caisse', 'compte', 'compte', 'retenue'])
+        self.assertEqual([self.mode(x) for x in (a, b, c, d, e)], ['compte', 'compte', 'retenue', 'retenue', 'caisse'])
         self.assertEqual([self.mode(x) for x in (f1, f2)], ['retenue', 'retenue'])
-        self.assertEqual(self.solde(self.employe), D('500'))
-        self.assertIn('(non retiré) — débité à la clôture', MouvementCompte.objects.filter(commande=d).get().libelle)
-        self.assertIn('(retiré) — débité à la clôture', MouvementCompte.objects.filter(commande=c).get().libelle)
+        self.assertEqual(self.solde(self.employe), D('10000'))
+        self.assertEqual(MouvementCompte.objects.filter(type='debit_repas').count(), 2)
 
         f = FactureMensuelle.objects.get(user=self.employe)
         self.assertEqual((f.nb_repas, f.montant_total), (5, D('5000')))
-        self.assertEqual((f.nb_repas_compte, f.montant_compte), (3, D('3000')))
+        self.assertEqual((f.nb_repas_compte, f.montant_compte), (2, D('2000')))
         self.assertEqual((f.nb_repas_caisse, f.montant_caisse), (1, D('1000')))
-        self.assertEqual((f.nb_repas_retenue, f.montant_retenue), (1, D('1000')))
+        self.assertEqual((f.nb_repas_retenue, f.montant_retenue), (2, D('2000')))
         f_2 = FactureMensuelle.objects.get(user=self.employe2)
         self.assertEqual((f_2.montant_total, f_2.montant_compte, f_2.montant_caisse, f_2.montant_retenue),
                          (D('2000'), D('0'), D('0'), D('2000')))
@@ -461,94 +568,123 @@ class ClotureMensuelleCompteTests(_CaisseBase):
             self.assertEqual(fm.montant_total, sum(l.montant for l in fm.lignes.all()))
         self.assertEqual(
             {l.commande_id: l.reglement for l in LigneFacture.objects.filter(facture=f)},
-            {a.id: 'compte', b.id: 'caisse', c.id: 'compte', d.id: 'compte', e.id: 'retenue'})
-        # Totaux de la clôture
+            {a.id: 'compte', b.id: 'compte', c.id: 'retenue', d.id: 'retenue', e.id: 'caisse'})
         self.assertEqual((float(data['montant_total']), float(data['montant_compte']), float(data['montant_caisse']),
-                          float(data['montant_retenue'])), (7000.0, 3000.0, 1000.0, 3000.0))
+                          float(data['montant_retenue'])), (7000.0, 2000.0, 1000.0, 4000.0))
         self.assertEqual((data['nb_repas'], data['nb_repas_compte'], data['nb_repas_caisse'],
-                          data['nb_repas_retenue']), (7, 3, 1, 3))
-        # Prestataire payé pour tous les repas, quel que soit le règlement de l'employé
+                          data['nb_repas_retenue']), (7, 2, 1, 4))
         self.assertEqual(float(data['montant_total_prestataires']), 7 * 900.0)
         self.verifier_grand_livre()
 
-        # Écran de facturation : mêmes montants, figés
+        # Écran de facturation : mêmes montants, figés ; mode de paiement de chaque repas
         debut, fin = fact.bornes_mois(self.prec.year, self.prec.month)
         params = {'date_debut': debut.isoformat(), 'date_fin': fin.isoformat()}
         v = self.client_pour(self.admin).get(f'{API}/facturation/', params).data
         self.assertEqual((v['total_montant'], v['total_compte'], v['total_caisse'], v['total_retenue']),
-                         (7000.0, 3000.0, 1000.0, 3000.0))
+                         (7000.0, 2000.0, 1000.0, 4000.0))
         emp = [x for x in v['employes'] if x['username'] == 'emp1'][0]
         self.assertEqual((emp['montant_compte'], emp['montant_caisse'], emp['montant_retenue']),
-                         (3000.0, 1000.0, 1000.0))
+                         (2000.0, 1000.0, 2000.0))
+        self.assertEqual({l['commande_id']: (l['mode_paiement'], l['reglement']) for l in emp['lignes']}[b.id],
+                         ('compte', 'compte'))
 
         # Figé : tarif modifié, recharge, tentatives de modification
         PlatCategoriesalarie.objects.update(montant=D('9999'))
-        self.recharger(self.employe, 10000)
         self.assertEqual(self.client_pour(self.gestionnaire).post(
             f'{API}/commandes/{c.id}/annuler-retrait/').status_code, 400)
-        self.regulariser(self.employe, [e.id], attendu=400)
-        recu_b = Recu.objects.get(type='regularisation')
-        r = self.client_pour(self.compta).post(f'{API}/caisse/recus/{recu_b.id}/annuler/', {'motif': 'Test'})
+        r = self.client_pour(self.compta).post(f"{API}/caisse/recus/{Recu.objects.get(type='regularisation').id}"
+                                               "/annuler/", {'motif': 'Test'})
         self.assertEqual(r.status_code, 400)
         self.assertIn('clôturé', str(r.data))
         v2 = self.client_pour(self.admin).get(f'{API}/facturation/', params).data
         self.assertEqual((v2['total_montant'], v2['total_compte'], v2['total_caisse'], v2['total_retenue']),
-                         (7000.0, 3000.0, 1000.0, 3000.0))
-        self.assertEqual(self.mode(e), 'retenue')
-        lignes = fact.lignes_facturation(Commande.objects.filter(user=self.employe, menu__date_menu__lte=fin))
-        self.assertEqual(sum(l['montant'] for l in lignes), D('5000'))
+                         (7000.0, 2000.0, 1000.0, 4000.0))
 
-        # Relevé des agents (PDF) : généré avec les colonnes compte / caisse / retenue
+        # Relevé des agents (PDF) : colonnes compte / caisse / retenue
         from . import releves
         rel = releves.releve_agents(fact.lignes_facturation(releves.commandes_visibles(debut, fin)))
         self.assertEqual((rel['montant'], rel['montant_compte'], rel['montant_caisse'], rel['montant_retenue']),
-                         (D('7000'), D('3000'), D('1000'), D('3000')))
-        self.assertEqual(rel['agences'][0]['montant_retenue'], D('3000'))
+                         (D('7000'), D('2000'), D('1000'), D('4000')))
         r = self.client_pour(self.gestionnaire).get(f'{API}/facturation/agents-pdf/', params)
         self.assertEqual(r.status_code, 200)
         self.assertTrue(b''.join(r.streaming_content).startswith(b'%PDF'))
 
-    def test_solde_utilise_avant_la_retenue(self):
-        """Solde de 4 000 F et un repas retiré non couvert de 1 000 F : retenue 0 à la clôture."""
+    def test_pas_de_debit_automatique_du_solde(self):
+        """Solde de 4 000 F et un repas en retenue : retenu (1 000 F), le solde reste à 4 000 F."""
         c = self.commander(self.employe, self.jour_prec(3))
         self.retirer(c)
-        self.assertIsNone(self.mode(c))                 # non couvert au retrait (pas de compte)
         self.recharger(self.employe, 4000)
         fiche = self.client_pour(self.caissier).get(f'{API}/caisse/employes/{self.employe.id}/').data
-        self.assertEqual((fiche['totaux']['non_couvert']['montant'], fiche['reste_a_payer_prevu']), (1000.0, 0.0))
+        self.assertEqual((fiche['totaux']['retenue_prevue']['montant'], fiche['reste_a_payer_prevu']),
+                         (1000.0, 1000.0))
         data = self.cloturer_prec()
-        self.assertEqual(self.mode(c), 'compte')
-        self.assertEqual(self.solde(self.employe), D('3000'))
-        f = FactureMensuelle.objects.get(user=self.employe)
-        self.assertEqual((f.montant_total, f.montant_compte, f.montant_caisse, f.montant_retenue),
-                         (D('1000'), D('1000'), D('0'), D('0')))
-        self.assertEqual((float(data['montant_retenue']), data['nb_repas_retenue']), (0.0, 0))
+        self.assertEqual((self.mode(c), self.solde(self.employe)), ('retenue', D('4000')))
+        self.assertEqual((float(data['montant_retenue']), data['nb_repas_retenue'], float(data['montant_compte'])),
+                         (1000.0, 1, 0.0))
         self.verifier_grand_livre()
 
-    def test_repas_entiers_seulement_par_date(self):
-        """Solde 1 500 F, trois repas impayés de 1 000 F : le premier débité, les deux autres retenus."""
-        c1 = self.commander(self.employe, self.jour_prec(1)); self.retirer(c1)
-        c2 = self.commander(self.employe, self.jour_prec(2))
-        c3 = self.commander(self.employe, self.jour_prec(3)); self.retirer(c3)
+    def test_situation_et_reste_a_payer(self):
         self.recharger(self.employe, 1500)
+        a = self.payer_compte(self.commander(self.employe, self.jour_prec(1)))
+        b = self.commander(self.employe, self.jour_prec(2)); self.retirer(b)
+        c = self.commander(self.employe, self.jour_prec(3))
         r = self.client_pour(self.employe).get(f'{API}/compte-repas/',
                                                {'annee': self.prec.year, 'mois': self.prec.month}).data
+        repas = {x['commande_id']: x for x in r['repas']}
+        self.assertEqual((repas[a.id]['statut'], repas[a.id]['mode_paiement']), ('debite_compte', 'compte'))
+        self.assertEqual((repas[b.id]['statut'], repas[b.id]['mode_paiement'], repas[b.id]['statut_libelle']),
+                         ('retenue_prevue', 'retenue', 'Retenue sur salaire — à la clôture du mois'))
+        self.assertFalse(any(x['mode_modifiable'] for x in r['repas']))      # jours passés
         self.assertEqual(r['reste_a_payer_prevu'], 2000.0)
+        t = r['totaux']
+        self.assertEqual(t['consomme']['montant'], t['debite_compte']['montant'] + t['retenue_prevue']['montant'])
+        self.assertEqual((t['consomme']['montant'], t['debite_compte']['montant']), (3000.0, 1000.0))
+        self.assertNotIn('non_couvert', t)
+        self.assertNotIn('regularisable', r['repas'][0])
+        self.assertEqual(r['mode_paiement_prefere'], 'compte')
         self.cloturer_prec()
-        self.assertEqual([self.mode(x) for x in (c1, c2, c3)], ['compte', 'retenue', 'retenue'])
-        self.assertEqual(self.solde(self.employe), D('500'))
-        f = FactureMensuelle.objects.get(user=self.employe)
-        self.assertEqual((f.montant_compte, f.montant_retenue), (D('1000'), D('2000')))
+        r = self.client_pour(self.employe).get(f'{API}/compte-repas/',
+                                               {'annee': self.prec.year, 'mois': self.prec.month}).data
+        self.assertEqual((r['reste_a_payer_prevu'], r['totaux']['retenue']['montant'], r['mois_cloture']),
+                         (0.0, 2000.0, True))
+        self.assertEqual(self.mode(c), 'retenue')
 
     def test_mois_ouvert_totaux_provisoires(self):
         self.recharger(self.employe, 1000)
-        a = self.commander(self.employe, self.jour_prec(1)); self.retirer(a)
+        self.payer_compte(self.commander(self.employe, self.jour_prec(1)))
         b = self.commander(self.employe, self.jour_prec(2)); self.retirer(b)
-        self.regulariser(self.employe, [b.id])
+        self.ancienne_regularisation(self.employe, [b])
         self.commander(self.employe, self.jour_prec(3))
         emp = fact.synthese_par_employe(fact.lignes_facturation(Commande.objects.filter(user=self.employe)))[0]
         self.assertEqual((emp['total'], emp['montant_compte'], emp['montant_caisse'], emp['montant_retenue']),
                          (D('3000'), D('1000'), D('1000'), D('1000')))
+
+
+class MigrationModePaiementTests(_CaisseBase):
+    """Migration 0039 : commandes antérieures au choix du mode."""
+
+    def test_reprise_des_commandes_existantes(self):
+        import importlib
+        from django.apps import apps
+        migration = importlib.import_module('api.migrations.0039_mode_paiement_commande')
+        self.recharger(self.employe, 1000)
+        debitee = self.commander(self.employe, self.jour_prec(1))
+        cr.debiter_commande(Commande.objects.get(pk=debitee.pk), None)       # ancien débit au retrait
+        non_couverte = self.commander(self.employe, self.jour_prec(2), statut='retiree')
+        payee_caisse = self.commander(self.employe, self.jour_prec(3), statut='retiree')
+        self.ancienne_regularisation(self.employe, [payee_caisse])
+        a_venir = self.commander(self.employe2, self.aujourdhui + timedelta(days=5))
+        Commande.objects.update(mode_paiement='compte')                      # état quelconque avant reprise
+        solde_avant = self.solde(self.employe)
+        migration.renseigner_mode_paiement(apps, None)
+        modes = dict(Commande.objects.values_list('id', 'mode_paiement'))
+        self.assertEqual([modes[x.id] for x in (debitee, non_couverte, payee_caisse, a_venir)],
+                         ['compte', 'retenue', 'retenue', 'retenue'])
+        self.assertEqual(self.solde(self.employe), solde_avant)             # aucun mouvement
+        # Clôture cohérente : débitée → compte, payée caisse → caisse, non couverte → retenue
+        self.cloturer_prec()
+        self.assertEqual([self.mode(x) for x in (debitee, non_couverte, payee_caisse)], ['compte', 'retenue', 'caisse'])
+        self.assertEqual(self.solde(self.employe), solde_avant)
 
 
 class ClotureCaisseTests(_CaisseBase):
@@ -556,8 +692,7 @@ class ClotureCaisseTests(_CaisseBase):
     def test_theorique_ecart_motif_validation(self):
         r1 = self.recharger(self.employe, 1000)
         self.recharger(self.employe2, 2000)
-        c = self.commander(self.employe, self.jour_prec(2))
-        self.regulariser(self.employe, [c.id], montant_recu=5000, monnaie='rendre')   # 1 000 encaissés
+        self.recharger(self.employe2, 1000)
         annule = self.recharger(self.employe2, 700)
         cr.annuler_recu(Recu.objects.get(pk=annule['id']), self.compta, 'Erreur')
         # Opérations d'un autre caissier : hors de cette caisse
@@ -655,8 +790,7 @@ class AnnulationEtRemboursementTests(_CaisseBase):
 
     def test_annulation_refusee_si_credit_utilise(self):
         r = self.recharger(self.employe, 1500)
-        c = self.commander(self.employe, self.aujourdhui)
-        self.retirer(c)                                          # 1 000 dépensés
+        self.commander_api(self.employe, self.menu_futur(), 'compte')     # 1 000 dépensés
         rep = self.client_pour(self.compta).post(f"{API}/caisse/recus/{r['id']}/annuler/", {'motif': 'Erreur'})
         self.assertEqual(rep.status_code, 400)
         self.assertIn("n'a plus que 500 F", str(rep.data))
@@ -673,26 +807,25 @@ class AnnulationEtRemboursementTests(_CaisseBase):
     def test_annulation_regularisation(self):
         c1 = self.commander(self.employe, self.jour_prec(2))
         c2 = self.commander(self.employe, self.jour_prec(3))
-        reg = self.regulariser(self.employe, [c1.id, c2.id], montant_recu=3000, monnaie='crediter')
+        reg = self.ancienne_regularisation(self.employe, [c1, c2], montant_recu='3000', crediter=True)
         self.assertEqual(self.solde(self.employe), D('1000'))
         # Repas c2 annulé depuis : ses 1 000 F sont passés sur le compte
         self.client_pour(self.gestionnaire).patch(f'{API}/commandes/{c2.id}/annuler/')
         self.assertEqual(self.solde(self.employe), D('2000'))
-        rep = self.client_pour(self.compta).post(f"{API}/caisse/recus/{reg['id']}/annuler/", {'motif': 'Erreur'})
+        rep = self.client_pour(self.compta).post(f"{API}/caisse/recus/{reg.id}/annuler/", {'motif': 'Erreur'})
         self.assertEqual(rep.status_code, 200, rep.data)
-        # Monnaie créditée et repas annulé retirés du compte ; c1 redevient non couvert
+        # Monnaie créditée et repas annulé retirés du compte ; c1 redevient en retenue (à la clôture)
         self.assertEqual(self.solde(self.employe), D('0'))
         self.assertIsNone(self.mode(c1))
         self.assertEqual(self.client_pour(self.caissier).get(
-            f'{API}/caisse/employes/{self.employe.id}/').data['totaux']['non_couvert']['nb'], 1)
+            f'{API}/caisse/employes/{self.employe.id}/').data['totaux']['retenue_prevue']['nb'], 1)
         self.verifier_grand_livre()
 
     def test_annulation_regularisation_refusee_si_monnaie_utilisee(self):
         c1 = self.commander(self.employe, self.jour_prec(2))
-        reg = self.regulariser(self.employe, [c1.id], montant_recu=2000, monnaie='crediter')
-        c2 = self.commander(self.employe, self.aujourdhui)
-        self.retirer(c2)                                     # monnaie dépensée
-        rep = self.client_pour(self.compta).post(f"{API}/caisse/recus/{reg['id']}/annuler/", {'motif': 'x'})
+        reg = self.ancienne_regularisation(self.employe, [c1], montant_recu='2000', crediter=True)
+        self.commander_api(self.employe, self.menu_futur(), 'compte')    # monnaie dépensée
+        rep = self.client_pour(self.compta).post(f"{API}/caisse/recus/{reg.id}/annuler/", {'motif': 'x'})
         self.assertEqual(rep.status_code, 400)
         self.assertEqual(self.mode(c1), 'caisse')
 
@@ -803,16 +936,18 @@ class MonCompteTests(_CaisseBase):
 
     def test_mon_compte_et_mes_recus(self):
         self.recharger(self.employe, 1500)
-        a = self.commander(self.employe, self.aujourdhui)
-        self.retirer(a)                                                          # débité
-        b = self.commander(self.employe, self.aujourdhui + timedelta(days=2))    # à venir : 500 < 1000
-        r = self.client_pour(self.employe).get(f'{API}/compte-repas/')
+        menu_a, menu_b = self.menu_futur(5), self.menu_futur(6)
+        a = self.commander_api(self.employe, menu_a, 'compte')                   # débité à la commande
+        b = self.commander_api(self.employe, menu_b)                             # 500 < 1000 : retenue
+        self.assertEqual(b['mode_paiement'], 'retenue')
+        d = menu_a.date_menu
+        r = self.client_pour(self.employe).get(f'{API}/compte-repas/', {'annee': d.year, 'mois': d.month})
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['solde'], 500.0)
-        statuts = {x['commande_id']: (x['statut'], x['statut_libelle']) for x in r.data['repas']}
-        self.assertEqual(statuts[a.id], ('debite_compte', 'Débité du compte repas'))
-        if b.menu.date_menu.month == self.aujourdhui.month:
-            self.assertEqual(statuts[b.id][0], 'a_venir')
+        statuts = {x['commande_id']: (x['statut'], x['statut_libelle'], x['mode_modifiable']) for x in r.data['repas']}
+        self.assertEqual(statuts[a['id']], ('debite_compte', 'Payé par le compte repas', True))
+        if menu_b.date_menu.month == d.month:
+            self.assertEqual(statuts[b['id']][0], 'retenue_prevue')
             self.assertEqual(r.data['reste_a_payer_prevu'], 1000.0)
         self.assertEqual([m['type'] for m in r.data['derniers_mouvements']], ['debit_repas', 'recharge'])
         recus = self.client_pour(self.employe).get(f'{API}/compte-repas/recus/').data
@@ -828,9 +963,14 @@ class MonCompteTests(_CaisseBase):
 
 
 class ConcurrenceDebitTests(TransactionTestCase):
-    """Deux débits simultanés sur un solde qui n'en couvre qu'un : un seul passe (select_for_update)."""
+    """
+    Deux paiements par le compte simultanés (passage au compte de deux commandes) sur un
+    solde qui n'en couvre qu'un : un seul passe (select_for_update), le solde ne devient
+    jamais négatif.
+    """
 
     def test_debits_simultanes(self):
+        from rest_framework.exceptions import ValidationError as ErreurApi
         statut = Statut.objects.create(libelle_statut='Actif')
         user = User.objects.create_user(username='conc', password='x', nom='C', prenom='C', statut=statut)
         agence = Agence.objects.create(nom_agence='Siège')
@@ -840,28 +980,29 @@ class ConcurrenceDebitTests(TransactionTestCase):
         cat = Categoriesalarie.objects.create(libelle='Agent')
         PlatCategoriesalarie.objects.create(categoriesalarie=cat, montant=D('1000'), statut=statut, date_debut=debut)
         UserCategoriesalarie.objects.create(user=user, categoriesalarie=cat, statut=statut, date_debut=debut)
-        p = Prestataire.objects.create(libelle='P', statut=statut, date_debut=debut)
-        AgencePrestataire.objects.create(prestataire=p, agence=agence, statut=statut, date_debut=debut)
-        PlatPrestataire.objects.create(prestataire=p, montant=D('900'), statut=statut, date_debut=debut)
         commandes = []
         for i in range(2):
-            menu = Menu.objects.create(date_menu=timezone.localdate(), agence=agence, typeequipe=equipe)
-            commandes.append(Commande.objects.create(user=user, menu=menu, plat=plat, statut='retiree'))
+            menu = Menu.objects.create(date_menu=timezone.localdate() + timedelta(days=5 + i), agence=agence,
+                                       typeequipe=equipe)
+            commandes.append(Commande.objects.create(user=user, menu=menu, plat=plat))
         CompteRepas.objects.create(user=user, solde=D('1500'))
 
         barriere = threading.Barrier(2)
         resultats = []
 
-        def debiter(commande):
+        def payer(commande):
             try:
-                c = Commande.objects.select_related('menu', 'plat').get(pk=commande.pk)
                 barriere.wait()
-                with transaction.atomic():
-                    resultats.append(cr.debiter_si_possible(c, None) is not None)
+                try:
+                    cr.changer_mode(commande, 'compte', user)
+                    resultats.append(True)
+                except ErreurApi as e:
+                    self.assertIn('Solde insuffisant : 500 F disponibles', str(e.detail))
+                    resultats.append(False)
             finally:
                 connection.close()
 
-        fils = [threading.Thread(target=debiter, args=(c,)) for c in commandes]
+        fils = [threading.Thread(target=payer, args=(c,)) for c in commandes]
         for f in fils:
             f.start()
         for f in fils:
@@ -870,4 +1011,5 @@ class ConcurrenceDebitTests(TransactionTestCase):
         compte = CompteRepas.objects.get(user=user)
         self.assertEqual(compte.solde, D('500'))
         self.assertEqual(ReglementRepas.objects.count(), 1)
+        self.assertEqual(sorted(Commande.objects.values_list('mode_paiement', flat=True)), ['compte', 'retenue'])
         self.assertEqual(cr.total_mouvements(compte), D('-1000'))   # solde initial posé hors grand livre

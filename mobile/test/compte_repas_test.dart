@@ -38,13 +38,15 @@ Map<String, dynamic> _repas(int id, String date, String statut,
       'sans_tarif': montant == null,
       'statut': statut,
       'statut_libelle': {
-        'debite_compte': 'Débité du compte repas',
+        'debite_compte': 'Payé par le compte repas',
         'paye_caisse': 'Payé à la caisse',
         'retenue': 'Retenu sur salaire',
-        'non_couvert': 'Non couvert — sera retenu sur salaire à la clôture',
-        'a_venir': 'À venir',
+        'retenue_prevue': 'Retenue sur salaire — à la clôture du mois',
       }[statut],
-      'regularisable': statut == 'non_couvert',
+      'mode_paiement': statut == 'debite_compte' ? 'compte' : 'retenue',
+      'mode_paiement_libelle':
+          statut == 'debite_compte' ? 'Compte repas' : 'Retenue sur salaire',
+      'mode_modifiable': statutCommande == 'en_attente',
     };
 
 Map<String, dynamic> _mouvement(
@@ -118,19 +120,13 @@ Map<String, dynamic> _compte(
         _repas(1, '2026-11-03', 'debite_compte'),
         _repas(2, '2026-11-04', 'paye_caisse',
             plat: 'Riz sauce graine aux crabes de Grand-Bassam'),
-        _repas(3, '2026-11-05', 'non_couvert'),
-        _repas(4, '2026-11-06', 'non_couvert', statutCommande: 'en_attente'),
-        _repas(5, '2026-11-12', 'a_venir',
+        _repas(3, '2026-11-05', 'retenue_prevue'),
+        _repas(4, '2026-11-06', 'retenue_prevue', statutCommande: 'en_attente'),
+        _repas(5, '2026-11-12', 'retenue_prevue',
             statutCommande: 'en_attente', montant: 1500),
       ];
   final totaux = <String, Map<String, dynamic>>{};
-  for (final s in [
-    'debite_compte',
-    'paye_caisse',
-    'retenue',
-    'non_couvert',
-    'a_venir'
-  ]) {
+  for (final s in ['debite_compte', 'paye_caisse', 'retenue', 'retenue_prevue']) {
     final l = r.where((x) => x['statut'] == s);
     totaux[s] = _total(
         l.length, l.fold(0.0, (a, x) => a + ((x['montant'] as num?) ?? 0)));
@@ -150,7 +146,8 @@ Map<String, dynamic> _compte(
     },
     'reste_a_payer_prevu': reste,
     'mention_reste':
-        'Reste à payer — sera retenu sur salaire à la clôture du mois.',
+        'Reste à payer : repas en retenue sur salaire, retenus à la clôture du mois.',
+    'mode_paiement_prefere': 'compte',
     'derniers_mouvements': [],
   };
 }
@@ -217,33 +214,42 @@ void main() {
       expect(c.solde, 500);
       expect(c.repas, hasLength(5));
       expect(c.repas.first.statut, StatutPaiementRepas.debiteCompte);
+      expect(c.repas.first.modePaiement, ModePaiementCommande.compte);
       expect(c.repas[2].statutLibelle,
-          'Non couvert — sera retenu sur salaire à la clôture');
-      expect(c.repas[2].regularisable, isTrue);
+          'Retenue sur salaire — à la clôture du mois');
+      expect(c.repas[2].modePaiement, ModePaiementCommande.retenue);
+      expect(c.repas[2].modeModifiable, isFalse);
+      expect(c.repas[3].modeModifiable, isTrue);
       expect(c.repas[3].retire, isFalse);
       expect(c.consomme.nb, 5);
       expect(c.consomme.montant, 5500);
       expect(c.debiteCompte.montant, 1000);
       expect(c.payeCaisse.nb, 1);
-      expect(c.nonCouvert.montant, 2000);
-      expect(c.aVenir.montant, 1500);
+      expect(c.retenuePrevue.montant, 3500);
       expect(c.retenue.nb, 0);
-      expect(c.restantARegler, 3500);
+      // consommé = compte + caisse (historique) + retenue prévue
+      expect(c.debiteCompte.montant + c.payeCaisse.montant + c.retenuePrevue.montant,
+          c.consomme.montant);
+      expect(c.modePaiementPrefere, ModePaiementCommande.compte);
       expect(c.restePrevu, 1500);
       expect(c.moisCloture, isFalse);
     });
 
     test('statuts : codes, libellés courts, tons', () {
-      expect(StatutPaiementRepas.depuis('debite_compte').libelle,
-          'Débité du compte');
+      expect(
+          StatutPaiementRepas.depuis('debite_compte').libelle, 'Compte repas');
       expect(StatutPaiementRepas.depuis('paye_caisse').libelle,
           'Payé à la caisse');
       expect(
           StatutPaiementRepas.depuis('retenue').libelle, 'Retenu sur salaire');
-      expect(StatutPaiementRepas.depuis('non_couvert').ton, TonPastille.or);
-      expect(StatutPaiementRepas.depuis('a_venir').libelle, 'À venir');
-      // Code inconnu (version future du serveur) : pas d'erreur
-      expect(StatutPaiementRepas.depuis('xyz'), StatutPaiementRepas.aVenir);
+      expect(StatutPaiementRepas.depuis('retenue_prevue').ton, TonPastille.or);
+      expect(StatutPaiementRepas.depuis('retenue_prevue').libelle,
+          'Retenue sur salaire');
+      // Code inconnu (ancien « non_couvert », version future) : pas d'erreur
+      expect(StatutPaiementRepas.depuis('xyz'),
+          StatutPaiementRepas.retenuePrevue);
+      expect(StatutPaiementRepas.depuis('non_couvert'),
+          StatutPaiementRepas.retenuePrevue);
       expect(StatutPaiementRepas.depuisReglement('compte'),
           StatutPaiementRepas.debiteCompte);
       expect(StatutPaiementRepas.depuisReglement('caisse'),
@@ -255,7 +261,7 @@ void main() {
 
     test('repas sans tarif et réponse incomplète', () {
       final r = RepasCompte.fromJson(
-          _repas(9, '2026-11-02', 'non_couvert', montant: null));
+          _repas(9, '2026-11-02', 'retenue_prevue', montant: null));
       expect(r.montant, isNull);
       expect(r.sansTarif, isTrue);
       final vide = CompteRepas.fromJson(const {});
@@ -418,16 +424,18 @@ void main() {
       expect(r.ton, TonPastille.or);
     });
 
-    test('solde suffisant : 0 F, débités du compte à la clôture', () {
-      // Ex. du contrat : solde 4 000 F, repas non couvert de 1 000 F
+    test('repas en retenue : le solde n\'est pas utilisé automatiquement', () {
+      // Solde 4 000 F et un repas en retenue de 1 000 F : 1 000 F retenus
       final r = resteAPayer(
-          CompteRepas.fromJson(_compte(solde: 4000, reste: 0, repas: [
-            _repas(2, '2026-11-06', 'non_couvert'),
+          CompteRepas.fromJson(_compte(solde: 4000, reste: 1000, repas: [
+            _repas(2, '2026-11-06', 'retenue_prevue'),
           ])),
           fmt);
-      expect(r.texte, _n('Reste à payer prévu à la clôture : 0 F'));
-      expect(r.detail, contains('débités de votre compte'));
-      expect(r.ton, TonPastille.vert);
+      expect(r.texte,
+          _n('Reste à payer prévu à la clôture : 1 000 F (retenue sur salaire)'));
+      expect(r.detail, contains('changez le mode de paiement'));
+      expect(r.detail, isNot(contains('non couvert')));
+      expect(r.ton, TonPastille.or);
     });
 
     test('tout est payé', () {
@@ -437,7 +445,9 @@ void main() {
             _repas(2, '2026-11-04', 'paye_caisse'),
           ])),
           fmt);
-      expect(r.detail, 'Tous vos repas du mois sont payés.');
+      expect(r.texte, _n('Reste à payer prévu à la clôture : 0 F'));
+      expect(r.detail, 'Aucun repas en retenue sur salaire ce mois-ci.');
+      expect(r.ton, TonPastille.vert);
     });
 
     test('mois clôturé : retenue définitive', () {
@@ -531,14 +541,18 @@ void main() {
                 'Reste à payer prévu à la clôture : 2 500 F (retenue sur salaire)')),
             findsOneWidget);
         for (final s in [
-          'Débité du compte',
+          'Payé par le compte repas',
+          'Retenue sur salaire (à la clôture)',
           'Payé à la caisse',
-          'Non couvert',
-          'À venir'
+          'Compte repas',
+          'Retenue sur salaire',
         ]) {
           // Ligne du mois et pastille d'un repas
-          expect(find.text(s), findsWidgets);
+          expect(find.textContaining(s, findRichText: true), findsWidgets);
         }
+        // Plus de « non couvert » ni de régularisation à faire
+        expect(find.textContaining('Non couvert'), findsNothing);
+        expect(find.textContaining('à payer à la caisse'), findsNothing);
         // Mouvements groupés par jour
         expect(find.text("AUJOURD'HUI"), findsOneWidget);
         expect(find.text('Repas débité'), findsOneWidget);
@@ -623,10 +637,11 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(find.text('Mon compte repas · Mes paiements'), findsOneWidget);
         expect(find.text('Paiement du mois'), findsOneWidget);
-        expect(find.text('Débité du compte'), findsOneWidget);
+        expect(find.text('Compte repas'), findsOneWidget);
         expect(find.text('Payé à la caisse'), findsOneWidget);
-        expect(find.text('Non couvert'), findsOneWidget);
-        expect(find.text('pas encore payé'), findsOneWidget);
+        expect(find.text('Retenue sur salaire'), findsOneWidget);
+        expect(find.text('retenue à la clôture'), findsOneWidget);
+        expect(find.text('Non couvert'), findsNothing);
         // Ouvre Mes paiements
         await tester.tap(find.text('Mon compte repas · Mes paiements'));
         await tester.pump();

@@ -1,6 +1,6 @@
 <div class="lst ep cs">
   <app-page-entete titre="Mon compte repas" icone="ri-wallet-3-line" [fil]="[{label: 'Cantine'}]"
-                   sousTitre="Rechargez votre compte à la caisse : vos repas sont débités au retrait">
+                   sousTitre="Rechargez votre compte à la caisse, puis choisissez « Compte repas » en commandant">
     <div class="ep-semaine-nav cs-jour-nav">
       <button type="button" class="btn-ubi ic" (click)="changerMois(-1)" aria-label="Mois précédent"><i class="ri-arrow-left-s-line"></i></button>
       <b class="cs-mois">{{ libelleMois }}</b>
@@ -22,12 +22,14 @@
       <section class="ep-carte cs-chiffres-carte">
         <div class="cs-chiffres">
           <div><small>Repas consommés</small><b>{{ fcfa(c.totaux.consomme.montant) }}</b><span>{{ c.totaux.consomme.nb }} repas en {{ libelleMois }}</span></div>
-          <div class="ve"><small>Débités du compte</small><b>{{ fcfa(c.totaux.debite_compte.montant) }}</b><span>{{ c.totaux.debite_compte.nb }} repas</span></div>
-          <div class="bl"><small>Payés à la caisse</small><b>{{ fcfa(c.totaux.paye_caisse.montant) }}</b><span>{{ c.totaux.paye_caisse.nb }} repas</span></div>
+          <div class="ve"><small>Payés par le compte</small><b>{{ fcfa(c.totaux.debite_compte.montant) }}</b><span>{{ c.totaux.debite_compte.nb }} repas</span></div>
           @if (c.mois_cloture) {
             <div class="gr"><small>Retenus sur salaire</small><b>{{ fcfa(c.totaux.retenue.montant) }}</b><span>{{ c.totaux.retenue.nb }} repas · mois clôturé</span></div>
           } @else {
-            <div class="or"><small>Non couverts</small><b>{{ fcfa(c.totaux.non_couvert.montant) }}</b><span>{{ c.totaux.non_couvert.nb }} repas</span></div>
+            <div class="or"><small>Retenue sur salaire</small><b>{{ fcfa(c.totaux.retenue_prevue.montant) }}</b><span>{{ c.totaux.retenue_prevue.nb }} repas · à la clôture</span></div>
+          }
+          @if (c.totaux.paye_caisse.nb) {
+            <div class="bl"><small>Payés à la caisse</small><b>{{ fcfa(c.totaux.paye_caisse.montant) }}</b><span>{{ c.totaux.paye_caisse.nb }} repas · anciens reçus</span></div>
           }
         </div>
         @if (c.mois_cloture) {
@@ -37,7 +39,7 @@
             <i [class]="c.reste_a_payer_prevu ? 'ri-calendar-todo-line' : 'ri-checkbox-circle-line'"></i>
             <div>
               <b>Reste à payer prévu à la clôture : {{ fcfa(c.reste_a_payer_prevu) }}</b>
-              <small>{{ c.reste_a_payer_prevu ? c.mention_reste + ' Rechargez votre compte ou payez à la caisse pour l\'éviter.' : 'Votre solde couvre vos repas non payés et à venir : rien ne sera retenu sur salaire si rien ne change.' }}</small>
+              <small>{{ c.reste_a_payer_prevu ? c.mention_reste + ' Pour payer un repas par votre compte, rechargez-le à la caisse puis changez le mode de paiement avant la date limite de commande.' : 'Aucun repas en retenue sur salaire : rien ne sera retenu à la clôture si rien ne change.' }}</small>
             </div>
           </div>
         }
@@ -48,19 +50,20 @@
       <div class="lst-carte">
         <div class="lst-barre bord">
           <div><b class="ep-titre-carte"><i class="ri-restaurant-2-line"></i>Mes repas de {{ libelleMois }}</b>
-            <small class="ep-muted d-block">Débité au retrait si le solde suffit (pas de débit partiel), sinon non couvert</small></div>
+            <small class="ep-muted d-block">Mode de paiement choisi à la commande : compte repas (débité à la commande) ou retenue sur salaire</small></div>
         </div>
         <div class="lst-table-wrap">
           <table class="lst-table lst-cartes ep-table">
-            <thead><tr><th>Jour</th><th>Plat</th><th class="n">Prix</th><th>Règlement</th></tr></thead>
+            <thead><tr><th>Jour</th><th>Plat</th><th class="n">Prix</th><th>Paiement</th></tr></thead>
             <tbody>
               @for (r of c.repas; track r.commande_id) {
                 <tr>
                   <td class="lst-c-principal lst-nowrap"><b>{{ jourRepas(r.date_menu) }}</b></td>
                   <td data-label="Plat"><span>{{ r.plat }}<small class="d-block">{{ r.agence_menu }}</small></span></td>
                   <td data-label="Prix" class="n">@if (r.sans_tarif) { <span class="ep-muted">—</span> } @else { {{ fcfa(r.montant) }} }</td>
-                  <td data-label="Règlement"><span class="lst-tag" [ngClass]="statuts[r.statut].classe" [title]="r.statut_libelle"><i [class]="statuts[r.statut].icone"></i>{{ r.statut === 'non_couvert' ? 'Non couvert' : r.statut_libelle }}</span>
-                    @if (r.statut === 'non_couvert') { <small class="d-block">à payer à la caisse ou retenu sur salaire</small> }</td>
+                  <td data-label="Paiement"><span class="lst-tag" [ngClass]="statuts[r.statut].classe" [title]="r.statut_libelle"><i [class]="statuts[r.statut].icone"></i>{{ statuts[r.statut].court }}</span>
+                    @if (r.statut === 'retenue_prevue') { <small class="d-block">retenu à la clôture du mois</small> }
+                    @if (r.mode_modifiable) { <small class="d-block"><a routerLink="/cantines/liste-commandes">Changer le mode de paiement</a></small> }</td>
                 </tr>
               } @empty {
                 <tr class="lst-l-vide"><td colspan="4"><div class="lst-vide"><i class="ri-restaurant-line"></i><h5>Aucun repas ce mois-ci</h5></div></td></tr>

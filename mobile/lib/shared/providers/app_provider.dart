@@ -148,6 +148,21 @@ class AuthProvider extends ChangeNotifier {
 
   Future<String?> retirerPhoto() => _majPhoto(authService.retirerPhoto);
 
+  /// Préférence de paiement à la commande. null si enregistrée, sinon le message.
+  Future<String?> changerModePaiementPrefere(String mode) async {
+    final demandeur = _user?.id;
+    try {
+      final profil = await authService.modifierModePaiementPrefere(mode);
+      if (_user?.id == demandeur) {
+        _user = profil;
+        notifyListeners();
+      }
+      return null;
+    } catch (e) {
+      return messageErreurApi(e) ?? "La préférence n'a pas pu être enregistrée.";
+    }
+  }
+
   Future<String?> _majPhoto(Future<AuthUser> Function() appel) async {
     if (_photoEnCours) return null;
     final demandeur = _user?.id;
@@ -359,12 +374,14 @@ class CommandeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> commander({required int menuId, required int platId}) async {
+  Future<bool> commander(
+      {required int menuId, required int platId, String? modePaiement}) async {
     _state = CommandeState.loading;
     _error = null;
     notifyListeners();
     try {
-      final c = await commandeService.commander(menuId: menuId, platId: platId);
+      final c = await commandeService.commander(
+          menuId: menuId, platId: platId, modePaiement: modePaiement);
       // Le serveur peut renvoyer une commande existante (re-commande après
       // annulation) : on remplace l'élément au lieu de créer un doublon
       final idx = _mesCommandes.indexWhere((e) => e.id == c.id);
@@ -381,6 +398,34 @@ class CommandeProvider extends ChangeNotifier {
     } catch (e) {
       _error = _parseCommandeError(e);
       _state = CommandeState.error;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Change le mode de paiement d'une commande en attente (jusqu'à la date
+  /// limite de commande). true si le serveur l'a accepté.
+  Future<bool> changerModePaiement(int commandeId, String mode) async {
+    _state = CommandeState.loading;
+    _commandeEnCours = commandeId;
+    _error = null;
+    notifyListeners();
+    try {
+      final updated = await commandeService.changerModePaiement(commandeId, mode);
+      final idx = _mesCommandes.indexWhere((c) => c.id == commandeId);
+      if (idx != -1) _mesCommandes[idx] = updated;
+      _successMessage = mode == 'compte'
+          ? 'Repas payé par votre compte repas'
+          : 'Repas en retenue sur salaire';
+      _state = CommandeState.success;
+      _commandeEnCours = null;
+      notifyListeners();
+      apresModification?.call();
+      return true;
+    } catch (e) {
+      _error = messageErreurApi(e) ?? 'Le mode de paiement n\'a pas pu être changé';
+      _state = CommandeState.error;
+      _commandeEnCours = null;
       notifyListeners();
       return false;
     }

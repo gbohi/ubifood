@@ -419,8 +419,22 @@ class UserViewSet(BaseViewSet):
             status=status.HTTP_201_CREATED
         )
 
-    @action(detail=False, methods=['get'], permission_classes=[IsConnecte])
+    @action(detail=False, methods=['get', 'patch'], permission_classes=[IsConnecte])
     def me(self, request):
+        """
+        GET   /users/me/   mon profil
+        PATCH /users/me/   { mode_paiement_prefere: "compte" | "retenue" } — seule
+              préférence modifiable par l'employé lui-même
+        """
+        if request.method == 'PATCH':
+            autres = set(request.data.keys()) - {'mode_paiement_prefere'}
+            if autres:
+                raise ValidationError(f"Champ(s) non modifiable(s) ici : {', '.join(sorted(autres))}.")
+            mode = request.data.get('mode_paiement_prefere')
+            if mode not in dict(User.MODE_PAIEMENT_PREFERE_CHOICES):
+                raise ValidationError({'mode_paiement_prefere': "Mode de paiement préféré : « compte » "
+                                                                "(compte repas) ou « retenue » (retenue sur salaire)."})
+            User.objects.filter(pk=request.user.pk).update(mode_paiement_prefere=mode)
         user = self._prefetch(User.objects.filter(pk=request.user.pk)).get()
         serializer = self.get_serializer(user)
         return Response(serializer.data)
@@ -1649,7 +1663,7 @@ class CommandeViewSet(BaseViewSet):
         return (
             Commande.objects
             .select_related('user', 'menu__agence', 'menu__typeequipe', 'plat__type_plat',
-                            'plat__agence', 'avis')
+                            'plat__agence', 'avis', 'reglement')
             .prefetch_related('plat__images', 'user__useragence_set__agence')
             .order_by('-date_commande')
         )
@@ -1670,11 +1684,20 @@ class CommandeViewSet(BaseViewSet):
         return qs.filter(user=user)
 
     def create(self, request, *args, **kwargs):
+        """
+        POST /commandes/ { menu_id, plat_id, mode_paiement: "compte" | "retenue" }
+        mode_paiement absent : préférence de l'employé (« compte » si le solde
+        couvre le repas, sinon retenue). « compte » demandé et solde
+        insuffisant (ou sans tarif) : 400, la commande n'est pas créée.
+        Mode « compte » : le repas est débité du compte repas à la commande.
+        """
+        from . import comptes_repas as cr
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         menu = serializer.validated_data['menu']
         plat = serializer.validated_data['plat']
+        mode_demande = cr.lire_mode_commande(serializer.validated_data.pop('mode_paiement', None))
 
         with transaction.atomic():
             # Verrou sur la ligne user : deux requêtes simultanées du même
@@ -1702,11 +1725,33 @@ class CommandeViewSet(BaseViewSet):
                 commande_existante.date_commande   = timezone.now()
                 commande_existante.user_updated    = user
                 commande_existante.save()
+                commande_existante.user = user
+                cr.payer_a_la_commande(commande_existante, mode_demande, user)
+                commande_existante = self._base_queryset().get(pk=commande_existante.pk)
                 output = CommandeSerializer(commande_existante, context={'request': request})
                 return Response(output.data, status=status.HTTP_200_OK)
 
-            serializer.save(user=user, user_created=user, user_updated=user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+            commande = serializer.save(user=user, user_created=user, user_updated=user, mode_paiement='retenue')
+            cr.payer_a_la_commande(commande, mode_demande, user)
+        commande = self._base_queryset().get(pk=commande.pk)
+        return Response(CommandeSerializer(commande, context={'request': request}).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='mode-paiement')
+    def mode_paiement(self, request, pk=None):
+        """
+        POST /commandes/{id}/mode-paiement/ { mode_paiement: "compte" | "retenue" }
+        L'employé change le mode de paiement de SA commande en attente, jusqu'à
+        la date limite de commande : compte → retenue (recrédité), retenue →
+        compte (débité ; solde suffisant exigé). Après la date limite : figé.
+        """
+        from . import comptes_repas as cr
+        commande = self.get_object()
+        if commande.user_id != request.user.id:
+            raise PermissionDenied("Seul l'employé peut changer le mode de paiement de sa commande.")
+        cr.changer_mode(commande, request.data.get('mode_paiement'), request.user)
+        commande = self._base_queryset().get(pk=commande.pk)
+        return Response(CommandeSerializer(commande, context={'request': request}).data)
 
     @action(detail=True, methods=['patch'], url_path='annuler')
     def annuler(self, request, pk=None):
@@ -2246,12 +2291,9 @@ def annuler_retrait(retrait, par, commande=None, par_libelle='le gestionnaire', 
     source = retrait or commande
     verifier_mois_ouvert(source.menu.date_menu)
     with transaction.atomic():
-        from .comptes_repas import liberer_commandes
         commandes = Commande.objects.filter(user=source.user, menu=source.menu, statut='retiree')
-        # Compte repas : les repas débités au retrait sont recrédités (un repas
-        # payé à la caisse reste payé : il est toujours dû)
-        liberer_commandes(list(commandes.select_related('menu', 'plat')), par, garder_caisse=True,
-                          raison='Retrait annulé')
+        # Compte repas : rien n'est recrédité (« commandé = dû ») : la commande
+        # redevient non retirée et reste payée par le compte (ou en retenue)
         AvisPlat.objects.filter(commande__in=commandes).delete()
         commandes.update(statut='en_attente', updated_at=timezone.now(), user_updated=par)
         user_id, menu_id = source.user_id, source.menu_id
@@ -2525,9 +2567,12 @@ def _ligne_json(l):
         'categorie':   l['categorie'],
         'montant':     float(l['montant']) if l['montant'] is not None else None,
         'source':      l['source'],   # 'facture' (mois clôturé, figé) ou 'calcul'
-        # Règlement par l'employé : 'compte' (compte repas), 'caisse', 'retenue'
-        # (mois clôturé) ou None (pas encore réglé : retenu à la clôture)
+        # Règlement par l'employé : 'compte' (compte repas, débité à la commande),
+        # 'caisse' (historique), 'retenue' (mois clôturé) ou None (pas encore
+        # réglé : retenu sur salaire à la clôture)
         'reglement':   l['reglement'],
+        # Mode choisi à la commande : 'compte' ou 'retenue'
+        'mode_paiement': l['mode_paiement'],
     }
 
 

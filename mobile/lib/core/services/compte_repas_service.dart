@@ -1,8 +1,8 @@
 // lib/core/services/compte_repas_service.dart
 //
 // Compte repas de l'employé connecté (routes /compte-repas/…) : situation du
-// mois, mouvements, reçus de caisse et PDF d'un reçu. Lecture seule : les
-// recharges et paiements se font à la caisse UbiPharm.
+// mois, mouvements, reçus de caisse, PDF d'un reçu et choix du mode de
+// paiement à la commande. Les recharges se font à la caisse UbiPharm.
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -22,6 +22,15 @@ class CompteRepasService {
     });
     final data = res.data;
     return CompteRepas.fromJson(
+        data is Map ? Map<String, dynamic>.from(data) : const {});
+  }
+
+  /// Solde, prix du repas et mode proposé pour un menu (écran de commande)
+  Future<InfoPaiement> infoPaiement(int menuId) async {
+    final res =
+        await apiClient.get('/compte-repas/paiement/', params: {'menu': menuId});
+    final data = res.data;
+    return InfoPaiement.fromJson(
         data is Map ? Map<String, dynamic>.from(data) : const {});
   }
 

@@ -50,6 +50,10 @@ class AuthUser {
   final int? prestataireId;
   final String? prestataireLibelle;
 
+  /// Mode de paiement proposé par défaut à la commande : « compte » (compte
+  /// repas, si le solde suffit) ou « retenue » (retenue sur salaire)
+  final String modePaiementPrefere;
+
   const AuthUser({
     required this.id,
     required this.username,
@@ -68,6 +72,7 @@ class AuthUser {
     this.photoUrl,
     this.prestataireId,
     this.prestataireLibelle,
+    this.modePaiementPrefere = 'compte',
   });
 
   String get fullName => '$nom $prenom'.trim();
@@ -132,6 +137,8 @@ class AuthUser {
             ? (json['prestataire'] as num).toInt()
             : null,
         prestataireLibelle: json['prestataire_libelle'] as String?,
+        modePaiementPrefere:
+            json['mode_paiement_prefere'] == 'retenue' ? 'retenue' : 'compte',
       );
 }
 
@@ -325,6 +332,19 @@ class Commande {
   /// (repas non facturé) ; vide sinon
   final String motifAnnulation;
 
+  /// Mode de paiement choisi à la commande : « compte » ou « retenue »
+  /// (null : serveur antérieur)
+  final String? modePaiement;
+
+  /// Changement de mode encore possible (en attente, avant la date limite)
+  final bool modePaiementModifiable;
+  final DateTime? modePaiementLimite;
+
+  /// Règlement effectif : « compte » (montant débité), « caisse »,
+  /// « retenue » ; null : retenue sur salaire à la clôture
+  final String? paiementMode;
+  final double? paiementMontant;
+
   const Commande({
     required this.id,
     required this.statut,
@@ -337,7 +357,15 @@ class Commande {
     this.annuleeParNom,
     this.annuleeParGestionnaire = false,
     this.motifAnnulation = '',
+    this.modePaiement,
+    this.modePaiementModifiable = false,
+    this.modePaiementLimite,
+    this.paiementMode,
+    this.paiementMontant,
   });
+
+  /// Payé par le compte repas (débité à la commande)
+  bool get payeParCompte => modePaiement == 'compte';
 
   /// Annulée suite à une contestation acceptée (erreur au comptoir)
   bool get annuleeParContestation =>
@@ -391,6 +419,11 @@ class Commande {
         annuleeParNom: annuleeParNom,
         annuleeParGestionnaire: annuleeParGestionnaire,
         motifAnnulation: motifAnnulation,
+        modePaiement: modePaiement,
+        modePaiementModifiable: modePaiementModifiable,
+        modePaiementLimite: modePaiementLimite,
+        paiementMode: paiementMode,
+        paiementMontant: paiementMontant,
       );
 
   factory Commande.fromJson(Map<String, dynamic> j) => Commande(
@@ -409,6 +442,16 @@ class Commande {
         annuleeParNom: j['annulee_par_nom'] as String?,
         annuleeParGestionnaire: j['annulee_par_gestionnaire'] == true,
         motifAnnulation: (j['motif_annulation'] ?? '').toString(),
+        modePaiement: j['mode_paiement'] is String && j['mode_paiement'] != ''
+            ? j['mode_paiement'] as String
+            : null,
+        modePaiementModifiable: j['mode_paiement_modifiable'] == true,
+        modePaiementLimite:
+            DateTime.tryParse('${j['mode_paiement_limite'] ?? ''}')?.toLocal(),
+        paiementMode: j['paiement'] is Map ? '${j['paiement']['mode']}' : null,
+        paiementMontant: j['paiement'] is Map && j['paiement']['montant'] is num
+            ? (j['paiement']['montant'] as num).toDouble()
+            : null,
       );
 }
 

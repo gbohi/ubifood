@@ -43,7 +43,7 @@ export const ACCUEIL_COMPTOIR = '/prestataire/comptoir';
 // Rôles cumulables avec « employe », jamais avec un rôle prestataire (refus du serveur).
 // Les administrateurs ont tous les droits de la caisse et de la comptabilité.
 
-/** Encaissements (recharge, régularisation, clôture de sa caisse) */
+/** Encaissements (recharge du compte repas, clôture de sa caisse) */
 export const CAISSIERS: Role[] = ['super_admin', 'admin', 'caissier'];
 /** Contrôle de la caisse (validation des clôtures, annulation des reçus, remboursement, journaux) */
 export const COMPTABLES: Role[] = ['super_admin', 'admin', 'comptabilite'];

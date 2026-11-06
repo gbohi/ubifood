@@ -1,9 +1,10 @@
 // lib/features/paiements/mes_paiements_screen.dart
 //
 // Mes paiements : solde du compte repas (rechargé à la caisse UbiPharm),
-// paiement des repas du mois (débité du compte, payé à la caisse, retenu sur
-// salaire, non couvert, à venir), reste à payer prévu à la clôture,
-// mouvements du compte et reçus de caisse (PDF).
+// paiement des repas du mois selon le mode choisi à la commande (compte
+// repas, retenue sur salaire ; payé à la caisse pour les anciens reçus),
+// reste à payer prévu à la clôture (= repas en retenue), mouvements du
+// compte et reçus de caisse (PDF).
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -272,8 +273,8 @@ class CarteSolde extends StatelessWidget {
   }
 }
 
-/// Le mois : consommé, débité du compte, payé à la caisse, retenu, non
-/// couvert, à venir, reste à payer prévu à la clôture
+/// Le mois : consommé, payé par le compte, retenue sur salaire (prévue ou
+/// faite), payé à la caisse (anciens reçus), reste à payer prévu à la clôture
 class CarteMoisPaiements extends StatelessWidget {
   final CompteRepas compte;
   const CarteMoisPaiements({super.key, required this.compte});
@@ -348,18 +349,17 @@ class CarteMoisPaiements extends StatelessWidget {
         const SizedBox(height: 6),
         ligne('Consommé', c.consomme, fort: true),
         Divider(height: 12, color: filet),
-        ligne('Débité du compte', c.debiteCompte,
+        ligne('Payé par le compte repas', c.debiteCompte,
             statut: StatutPaiementRepas.debiteCompte),
-        ligne('Payé à la caisse', c.payeCaisse,
-            statut: StatutPaiementRepas.payeCaisse),
+        if (!c.moisCloture || c.retenuePrevue.nb > 0)
+          ligne('Retenue sur salaire (à la clôture)', c.retenuePrevue,
+              statut: StatutPaiementRepas.retenuePrevue),
         if (c.moisCloture || c.retenue.nb > 0)
           ligne('Retenu sur salaire', c.retenue,
               statut: StatutPaiementRepas.retenue),
-        if (!c.moisCloture || c.nonCouvert.nb > 0)
-          ligne('Non couvert', c.nonCouvert,
-              statut: StatutPaiementRepas.nonCouvert),
-        if (c.aVenir.nb > 0)
-          ligne('À venir', c.aVenir, statut: StatutPaiementRepas.aVenir),
+        if (c.payeCaisse.nb > 0)
+          ligne('Payé à la caisse', c.payeCaisse,
+              statut: StatutPaiementRepas.payeCaisse),
         const SizedBox(height: 10),
         Container(
           width: double.infinity,
@@ -405,19 +405,17 @@ class ListeRepasPaiement extends StatelessWidget {
     final tries = List.of(repas)
       ..sort((a, b) =>
           (b.dateMenu ?? DateTime(0)).compareTo(a.dateMenu ?? DateTime(0)));
-    final nonCouverts =
-        repas.any((r) => r.statut == StatutPaiementRepas.nonCouvert);
+    final modifiables = repas.any((r) => r.modeModifiable);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       CarteListe(lignes: [for (final r in tries) LigneRepasPaiement(repas: r)]),
-      if (nonCouverts)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-          child: Text(
-              'Non couvert : solde insuffisant au retrait. À payer à la '
-              'caisse ; sinon débité de votre compte à la clôture si le solde '
-              'suffit, ou retenu sur salaire.',
-              style: TextStyle(fontSize: 11, color: gris)),
-        ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+        child: Text(
+            'Mode de paiement choisi à la commande : compte repas (débité à '
+            'la commande) ou retenue sur salaire (à la clôture du mois).'
+            '${modifiables ? ' Modifiable dans « Mes commandes » jusqu\'à la date limite de commande.' : ''}',
+            style: TextStyle(fontSize: 11, color: gris)),
+      ),
     ]);
   }
 }
@@ -436,9 +434,10 @@ class LigneRepasPaiement extends StatelessWidget {
       if (r.agenceMenu.isNotEmpty) r.agenceMenu,
       r.retire
           ? 'retiré'
-          : (r.statut == StatutPaiementRepas.aVenir
-              ? 'commandé'
-              : 'non retiré'),
+          : ((r.dateMenu ?? DateTime(0)).isBefore(DateTime(
+                  DateTime.now().year, DateTime.now().month, DateTime.now().day))
+              ? 'non retiré'
+              : 'commandé'),
     ].join(' · ');
     return Tooltip(
       message: r.statutLibelle,
@@ -624,8 +623,7 @@ class _SectionRecus extends StatelessWidget {
     if (p.recus.isEmpty) {
       return const _Vide(
           icone: Icons.receipt_long_outlined,
-          texte: 'Aucun reçu : vos recharges et paiements à la caisse '
-              'apparaîtront ici.');
+          texte: 'Aucun reçu : vos recharges à la caisse apparaîtront ici.');
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       CarteListe(lignes: [

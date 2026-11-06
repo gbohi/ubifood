@@ -8,7 +8,6 @@ Caisse (rôles caissier / comptabilite, administrateurs) :
   GET  /caisse/employes/?q=                  recherche d'un employé (champs minimaux)
   GET  /caisse/employes/<id>/                fiche : solde, repas des mois ouverts, reçus
   POST /caisse/recharger/                    recharge du compte (caissier)
-  POST /caisse/regulariser/                  paiement des repas non couverts (caissier)
   POST /caisse/rembourser/                   remboursement du solde (comptabilité)
   GET  /caisse/recus/  /caisse/recus/<id>/   reçus (caissier : les siens)
   GET  /caisse/recus/<id>/pdf/?papier=ticket|a5
@@ -21,6 +20,11 @@ Caisse (rôles caissier / comptabilite, administrateurs) :
 Employé (ses données) :
   GET  /compte-repas/   /compte-repas/mouvements/   /compte-repas/recus/
   GET  /compte-repas/recus/<id>/pdf/
+  GET  /compte-repas/paiement/?menu=ID | ?date=AAAA-MM-JJ   choix du mode à la commande
+
+La « régularisation » (paiement à la caisse des repas non couverts) n'existe
+plus : l'employé choisit compte repas ou retenue sur salaire en commandant.
+Les anciens reçus de régularisation restent consultables (historique).
 """
 
 from collections import OrderedDict
@@ -277,23 +281,6 @@ class RechargerView(_Ecriture, APIView):
         return Response(recu_json(_recus_qs().get(pk=recu.pk), detail=True), status=status.HTTP_201_CREATED)
 
 
-class RegulariserView(_Ecriture, APIView):
-    """
-    POST /caisse/regulariser/ { user_id, commande_ids: [..] (absent : tous),
-    montant_recu, monnaie: "rendre"|"crediter", mode, reference } → reçu.
-    """
-    permission_classes = [IsCaissier]
-
-    def post(self, request):
-        employe = _lire_employe(request)
-        ids = request.data.get('commande_ids')
-        recu = cr.regulariser(employe, request.user, commande_ids=ids,
-                              montant_recu=request.data.get('montant_recu'),
-                              monnaie=request.data.get('monnaie') or 'rendre',
-                              mode=request.data.get('mode'), reference=request.data.get('reference'))
-        return Response(recu_json(_recus_qs().get(pk=recu.pk), detail=True), status=status.HTTP_201_CREATED)
-
-
 class RembourserView(_Ecriture, APIView):
     """POST /caisse/rembourser/ { user_id, motif, mode } : solde rendu, compte à zéro (comptabilité)."""
     permission_classes = [IsComptabilite]
@@ -449,6 +436,9 @@ def journal_caisse(jour, caissier=None):
     valides = [r for r in recus if r.statut == 'valide']
     par_type = OrderedDict((t, {'type': t, 'libelle': l, 'nb': 0, 'montant': ZERO, 'encaissement': ZERO})
                            for t, l in Recu.TYPE_CHOICES)
+    # Régularisation : historique seulement (affichée si un ancien reçu est dans le journal)
+    if not any(r.type == 'regularisation' for r in valides):
+        par_type.pop('regularisation')
     par_caissier = OrderedDict()
     for r in valides:
         t = par_type[r.type]
@@ -556,11 +546,30 @@ class ComptesRepasView(APIView):
 # Employé : son compte repas
 # ══════════════════════════════════════════════════════════════
 
+class InfoPaiementView(APIView):
+    """
+    GET /compte-repas/paiement/?menu=ID  (ou ?date=AAAA-MM-JJ)
+    Pour l'écran de commande : solde, prix du repas pour moi à cette date,
+    compte repas possible (sinon pourquoi), préférence et mode par défaut.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .models import Menu
+        menu_id = _entier(request.query_params.get('menu'), 'menu')
+        if menu_id is not None:
+            jour = get_object_or_404(Menu, pk=menu_id).date_menu
+        else:
+            jour = _date(request.query_params.get('date'), timezone.localdate())
+        return Response({'date_menu': jour.isoformat(), **cr.info_paiement(request.user, jour)})
+
+
 class MonCompteView(APIView):
     """
-    GET /compte-repas/?annee=&mois=   solde, repas du mois (statut : débité du
-    compte, payé à la caisse, retenu, non couvert, à venir), totaux, reste à
-    payer prévu à la clôture et 10 derniers mouvements.
+    GET /compte-repas/?annee=&mois=   solde, repas du mois (mode de paiement et
+    statut : payé par le compte, retenue prévue à la clôture, retenu, payé à
+    la caisse — historique), totaux, reste à payer prévu à la clôture (repas
+    en retenue) et 10 derniers mouvements.
     """
     permission_classes = [IsAuthenticated]
 
@@ -579,6 +588,7 @@ class MonCompteView(APIView):
         return Response({
             'annee': annee, 'mois': mois,
             'mois_cloture': fact.mois_cloture(annee, mois),
+            'mode_paiement_prefere': request.user.mode_paiement_prefere,
             **s,
             'derniers_mouvements': [mouvement_json(m) for m in mouvements],
         })

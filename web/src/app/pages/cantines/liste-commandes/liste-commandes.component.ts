@@ -19,6 +19,7 @@ import {
   fetchMesCommandes,
   createCommande,
   annulerCommande,
+  changerModePaiement,
   resetCommandeError,
 } from 'src/app/store/Commande/commande.action';
 import {
@@ -32,7 +33,9 @@ import { CommandeService } from 'src/app/core/services/commande/commande.service
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 import { estGestionnaire } from 'src/app/core/helpers/roles';
 import { MenulistModel } from 'src/app/store/Menu/menu.model';
-import { CommandeModel } from 'src/app/store/Commande/commande.model';
+import {
+  CommandeModel, InfoPaiement, ModePaiement, MODES_PAIEMENT_LIBELLES,
+} from 'src/app/store/Commande/commande.model';
 import { DatePipe, DecimalPipe } from '@angular/common';
 
 export type EtatJour = 'commande' | 'retire' | 'a_reserver' | 'ferme' | 'pas_de_menu';
@@ -88,6 +91,17 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
 
   annulationEnCours: { menuId: number; platId: number; platNom: string; limite?: string } | null = null;
   @ViewChild('annulationModal', { static: false }) annulationModal?: ModalDirective;
+
+  /**
+   * Choix du mode de paiement : à la réservation (commande absente) ou pour
+   * changer le mode d'une commande en attente (jusqu'à la date limite).
+   */
+  paiement: {
+    menu: MenulistModel; plat: any; commande?: CommandeModel;
+    info?: InfoPaiement; chargement: boolean; erreur?: string; mode: ModePaiement;
+  } | null = null;
+  @ViewChild('paiementModal', { static: false }) paiementModal?: ModalDirective;
+  readonly libellesModes = MODES_PAIEMENT_LIBELLES;
 
   /** Heure courante (compte à rebours), rafraîchie toutes les 30 s */
   maintenant = Date.now();
@@ -379,16 +393,102 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
 
   // ── Commander / annuler ──────────────────────────────────────
 
+  /** « Choisir ce plat » : ouvre le choix du mode de paiement (compte repas / retenue) */
   commander(menu: MenulistModel, plat: any): void {
-    this.enCours = { date: menu.date_menu, platNom: plat.nom };
+    this.ouvrirPaiement(menu, plat);
+  }
+
+  /** Changer le mode de paiement d'une commande en attente (jusqu'à la date limite) */
+  changerMode(menu: MenulistModel, plat: any): void {
+    const commande = this.getCommande(menu.id!, plat.id);
+    if (commande) this.ouvrirPaiement(menu, plat, commande);
+  }
+
+  private ouvrirPaiement(menu: MenulistModel, plat: any, commande?: CommandeModel): void {
+    this.paiement = { menu, plat, commande, chargement: true, mode: commande?.mode_paiement ?? 'retenue' };
+    this.paiementModal?.show();
+    this.commandeService.infoPaiement(menu.id!).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: info => {
+        if (!this.paiement) return;
+        this.paiement.info = info;
+        this.paiement.chargement = false;
+        if (!commande) this.paiement.mode = info.mode_par_defaut;
+      },
+      error: err => {
+        if (!this.paiement) return;
+        this.paiement.chargement = false;
+        this.paiement.erreur = typeof err === 'string' ? err : 'Votre solde n\'a pas pu être chargé.';
+      },
+    });
+  }
+
+  /** Compte repas possible : solde suffisant (ou repas déjà payé par le compte) */
+  get comptePossible(): boolean {
+    const p = this.paiement;
+    if (!p?.info) return false;
+    return p.commande?.mode_paiement === 'compte' || p.info.compte_possible;
+  }
+
+  get raisonCompteImpossible(): string {
+    return this.paiement?.info?.raison_compte_impossible ?? '';
+  }
+
+  get paiementValidable(): boolean {
+    const p = this.paiement;
+    if (!p || p.chargement || this.isSubmitting) return false;
+    if (p.mode === 'compte' && !this.comptePossible) return false;
+    return !p.commande || p.commande.mode_paiement !== p.mode;
+  }
+
+  choisirMode(mode: ModePaiement): void {
+    if (!this.paiement || (mode === 'compte' && !this.comptePossible)) return;
+    this.paiement.mode = mode;
+  }
+
+  confirmerPaiement(): void {
+    const p = this.paiement;
+    if (!p || !this.paiementValidable) return;
+    this.paiementModal?.hide();
+    this.paiement = null;
     this.derniereCommande = null;
     this.store.dispatch(resetCommandeError());
-    this.store.dispatch(createCommande({ payload: { menu_id: menu.id!, plat_id: plat.id } }));
+    if (p.commande) {
+      this.store.dispatch(changerModePaiement({ id: p.commande.id, mode: p.mode }));
+    } else {
+      this.enCours = { date: p.menu.date_menu, platNom: p.plat.nom };
+      this.store.dispatch(createCommande({ payload: { menu_id: p.menu.id!, plat_id: p.plat.id, mode_paiement: p.mode } }));
+    }
+  }
+
+  fermerPaiement(): void {
+    this.paiementModal?.hide();
+    this.paiement = null;
+  }
+
+  /** Mention sous le plat choisi : mode de paiement et montant débité */
+  texteMode(c?: CommandeModel): string {
+    if (!c?.mode_paiement) return '';
+    if (c.paiement?.mode === 'compte') return `Payé par le compte repas · ${this.montant(c.paiement.montant)}`;
+    if (c.paiement?.mode === 'caisse') return `Payé à la caisse · ${this.montant(c.paiement.montant)}`;
+    return 'Retenue sur salaire (à la clôture du mois)';
+  }
+
+  montant(v?: number | null): string {
+    if (v == null) return '—';
+    // Espaces insécables : « 1 000 F » ne se coupe pas en fin de ligne
+    return `${Math.round(v).toLocaleString('fr-FR').replace(/\u202f|\u00a0| /g, '\u00a0')}\u00a0F`;
   }
 
   demanderAnnulation(menuId: number, platId: number, platNom?: string, limite?: string): void {
     this.annulationEnCours = { menuId, platId, platNom: platNom ?? '', limite };
     this.annulationModal?.show();
+  }
+
+  /** Montant qui sera recrédité si la commande en cours d'annulation a été payée par le compte */
+  get recreditAnnulation(): number | null {
+    const a = this.annulationEnCours;
+    const c = a ? this.getCommande(a.menuId, a.platId) : undefined;
+    return c?.paiement && c.paiement.mode !== 'retenue' ? c.paiement.montant : null;
   }
 
   confirmerAnnulation(): void {

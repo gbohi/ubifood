@@ -101,7 +101,7 @@ export const MENU: MenuItem[] = [
                 parentId: 210
             },
             {
-                // Compte repas prépayé : solde, repas payés / non couverts, reçus de caisse
+                // Compte repas prépayé : solde, repas payés par le compte / en retenue, reçus de caisse
                 id: 2113,
                 label: 'Mon compte repas',
                 link: '/cantines/mon-compte-repas',

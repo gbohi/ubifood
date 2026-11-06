@@ -10,7 +10,9 @@ import '../../core/widgets/common_widgets.dart';
 import '../../core/widgets/tic_echeance.dart';
 import '../../core/services/cantine_service.dart';
 import '../avis/avis_widgets.dart';
-import '../dashboard/accueil_widgets.dart' show fermeDans, jourCourt;
+import '../paiements/choix_paiement_sheet.dart';
+import '../../shared/models/compte_repas_models.dart' show ModePaiementCommande;
+import '../dashboard/accueil_widgets.dart' show fermeDans, formatFcfa, jourCourt;
 
 /// Menu à afficher à l'ouverture de l'onglet (depuis l'accueil : un jour
 /// de « Ma semaine », « Réserver » du prochain repas).
@@ -828,6 +830,50 @@ class _CarteVotreRepas extends StatelessWidget {
                         style: TextStyle(
                             color: Colors.white.withOpacity(0.85),
                             fontSize: 11.5)),
+                    if (libelleModeCommande(commande) case final mode?) ...[
+                      const SizedBox(height: 4),
+                      Row(children: [
+                        Icon(
+                            commande.payeParCompte
+                                ? Icons.account_balance_wallet_outlined
+                                : Icons.receipt_long_outlined,
+                            size: 13,
+                            color: Colors.white),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(mode,
+                              key: const Key('mode-votre-repas'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ]),
+                    ],
+                    if (commande.modePaiementModifiable &&
+                        commande.statut == StatutCommande.enAttente)
+                      TextButton.icon(
+                        key: const Key('changer-mode-votre-repas'),
+                        style: TextButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 30),
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                        onPressed: () =>
+                            changerModePaiementCommande(context, commande),
+                        icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                        label: const Text('Changer le mode de paiement',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.underline,
+                                decorationColor: Colors.white)),
+                      ),
                   ]),
             ),
             const SizedBox(width: 8),
@@ -988,12 +1034,20 @@ class _CartePlatState extends State<_CartePlat> {
   }
 }
 
-/// Réserve [plat] (carte compacte et fiche détaillée : mêmes messages)
+/// Réserve [plat] (carte compacte et fiche détaillée : mêmes messages),
+/// après le choix du mode de paiement (compte repas / retenue sur salaire)
 Future<void> _reserverPlat(BuildContext context, CommandeProvider cmdProv,
     Menu menu, Plat plat) async {
   if (cmdProv.isLoading) return;
   final facturation = context.read<FacturationProvider>();
-  final ok = await cmdProv.commander(menuId: menu.id, platId: plat.id);
+  final mode = await ChoixPaiementSheet.show(context,
+      menuId: menu.id,
+      platNom: plat.nom,
+      jour: DateTime.tryParse(menu.dateMenu),
+      limite: menu.dateLimiteCommande);
+  if (mode == null || !context.mounted) return;
+  final ok = await cmdProv.commander(
+      menuId: menu.id, platId: plat.id, modePaiement: mode.code);
   // « Ma facturation » doit refléter la nouvelle commande
   if (ok) facturation.charger();
   if (ok && context.mounted) {
@@ -1001,7 +1055,9 @@ Future<void> _reserverPlat(BuildContext context, CommandeProvider cmdProv,
       content: Row(children: [
         const Icon(Icons.check_circle_rounded, color: Colors.white),
         const SizedBox(width: 8),
-        Expanded(child: Text('${plat.nom} — commande confirmée !')),
+        Expanded(
+            child: Text('${plat.nom} — commande confirmée !'
+                '${mode == ModePaiementCommande.compte ? ' Payée par votre compte repas.' : ' Retenue sur salaire.'}')),
       ]),
       backgroundColor: AppColors.success,
       behavior: SnackBarBehavior.floating,
@@ -1023,6 +1079,17 @@ Future<void> _reserverPlat(BuildContext context, CommandeProvider cmdProv,
   if (!ok) cmdProv.loadMesCommandes();
 }
 
+/// Commande payée par le compte repas : le montant sera recrédité si annulée
+String _mentionRecredit(CommandeProvider cmdProv, int commandeId) {
+  final c = cmdProv.mesCommandes.where((c) => c.id == commandeId).firstOrNull;
+  final m = c != null && c.paiementMode != null && c.paiementMode != 'retenue'
+      ? c.paiementMontant
+      : null;
+  return m == null
+      ? ''
+      : '\n\n${formatFcfa(m)} seront recrédités sur votre compte repas.';
+}
+
 /// Confirmation puis annulation de sa commande (carte « Votre repas »,
 /// fiche détaillée)
 void _confirmerAnnulationCommande(
@@ -1039,6 +1106,7 @@ void _confirmerAnnulationCommande(
             ]),
             content: Text(
               'Voulez-vous annuler cette commande ?'
+              '${_mentionRecredit(cmdProv, commandeId)}'
               '${menu.dateLimiteAnnulation != null ? '\n\nAnnulation possible jusqu\'au ${libelleDateLimite(menu.dateLimiteAnnulation!)}.' : ''}',
             ),
             actions: [

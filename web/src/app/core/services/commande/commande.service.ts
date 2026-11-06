@@ -8,6 +8,8 @@ import {
   CommandeModel,
   CommandeListModel,
   CommandeCreatePayload,
+  InfoPaiement,
+  ModePaiement,
   CommandeParUserModel,
   RechercheParBadgeResult,
   RetraitModel,
@@ -86,6 +88,18 @@ export class CommandeService {
   // ── Créer une commande ─────────────────────────────────────
   createCommande(payload: CommandeCreatePayload): Observable<CommandeModel> {
     return this.http.post<CommandeModel>(`${this.apiUrl}/commandes/`, payload);
+  }
+
+  // ── Mode de paiement (compte repas / retenue sur salaire) ───
+  /** Solde, prix du repas et mode proposé pour le menu (écran de commande) */
+  infoPaiement(menuId: number): Observable<InfoPaiement> {
+    return this.http.get<InfoPaiement>(`${this.apiUrl}/compte-repas/paiement/`,
+      { params: new HttpParams().set('menu', String(menuId)) });
+  }
+
+  /** Changer le mode jusqu'à la date limite de commande (débit / recrédit du compte repas) */
+  changerModePaiement(id: number, mode: ModePaiement): Observable<CommandeModel> {
+    return this.http.post<CommandeModel>(`${this.apiUrl}/commandes/${id}/mode-paiement/`, { mode_paiement: mode });
   }
 
   // ── Annuler une commande ───────────────────────────────────

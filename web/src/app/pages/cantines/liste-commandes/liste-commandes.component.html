@@ -131,10 +131,31 @@
                 @if (plat.description && plat.description.trim().toLowerCase() !== plat.nom?.trim()?.toLowerCase()) { <p>{{ plat.description }}</p> }
 
                 @if (isPlatRetire(menu.id!, plat.id!)) {
+                  @if (getCommande(menu.id!, plat.id!); as cmd) {
+                    @if (cmd.mode_paiement) {
+                      <div class="ce-pc-paie" [class.ce-pc-paie-compte]="cmd.mode_paiement === 'compte'">
+                        <i [class]="cmd.mode_paiement === 'compte' ? 'ri-wallet-3-line' : 'ri-file-list-3-line'"></i>
+                        <span>{{ texteMode(cmd) }}</span>
+                      </div>
+                    }
+                  }
                   <button type="button" class="ce-cta ce-cta-info" disabled>
                     <i class="ri-checkbox-circle-line"></i>Repas retiré
                   </button>
                 } @else if (isPlatCommande(menu.id!, plat.id!)) {
+                  @if (getCommande(menu.id!, plat.id!); as cmd) {
+                    @if (cmd.mode_paiement) {
+                      <div class="ce-pc-paie" [class.ce-pc-paie-compte]="cmd.mode_paiement === 'compte'">
+                        <i [class]="cmd.mode_paiement === 'compte' ? 'ri-wallet-3-line' : 'ri-file-list-3-line'"></i>
+                        <span>{{ texteMode(cmd) }}</span>
+                      </div>
+                      @if (cmd.mode_paiement_modifiable) {
+                        <button type="button" class="ce-lien-paie" [disabled]="isSubmitting" (click)="changerMode(menu, plat)">
+                          <i class="ri-exchange-line"></i>Changer le mode de paiement
+                        </button>
+                      }
+                    }
+                  }
                   @if (annulationOuverte(menu)) {
                     <button type="button" class="ce-cta ce-cta-choisi" [disabled]="isSubmitting"
                             (click)="demanderAnnulation(menu.id!, plat.id!, plat.nom, menu.date_limite_annulation)">
@@ -193,6 +214,9 @@
         <i class="ri-error-warning-line text-warning display-5"></i>
         <h5 class="mt-3">Annuler ?</h5>
         <p class="text-muted mb-1">Votre commande « {{ annulationEnCours?.platNom }} » sera annulée.</p>
+        @if (recreditAnnulation; as r) {
+          <p class="text-success small mb-1"><i class="ri-wallet-3-line"></i> {{ montant(r) }} seront recrédités sur votre compte repas.</p>
+        }
         @if (annulationEnCours?.limite) {
           <p class="text-muted small mb-4">Annulation possible jusqu'au {{ libelleLimite(annulationEnCours?.limite) }}.</p>
         } @else {
@@ -202,6 +226,72 @@
           <button type="button" class="btn btn-light" (click)="annulationModal.hide()">Non, garder</button>
           <button type="button" class="btn btn-danger" id="confirmer-annulation" (click)="confirmerAnnulation()">Oui, annuler</button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Mode de paiement (réservation / changement) ───────────── -->
+<div bsModal #paiementModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true"
+     [config]="{ backdrop: 'static' }" aria-labelledby="titre-paiement">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content ce-paie">
+      <div class="modal-header">
+        <h5 class="modal-title" id="titre-paiement">
+          {{ paiement?.commande ? 'Changer le mode de paiement' : 'Comment payer ce repas ?' }}
+        </h5>
+        <button type="button" class="btn-close" aria-label="Fermer" (click)="fermerPaiement()"></button>
+      </div>
+      <div class="modal-body">
+        @if (paiement; as p) {
+          <div class="ce-paie-plat">
+            <b>{{ p.plat?.nom }}</b>
+            <span class="ce-muted">{{ jourLong(p.menu.date_menu) }}@if (p.info?.prix != null) { · {{ montant(p.info?.prix) }} }</span>
+          </div>
+          @if (p.chargement) {
+            <div class="ce-chargement"><span class="spinner-border spinner-border-sm" role="status"></span><span>Chargement de votre solde…</span></div>
+          } @else if (p.erreur) {
+            <div class="ce-alerte ce-alerte-ro"><i class="ri-error-warning-line"></i><div>{{ p.erreur }}</div></div>
+          } @else {
+            <div class="ce-paie-options" role="radiogroup" aria-label="Mode de paiement">
+              <label class="ce-paie-opt" [class.ce-on]="p.mode === 'compte'" [class.ce-off]="!comptePossible">
+                <input type="radio" name="mode_paiement" value="compte" [checked]="p.mode === 'compte'"
+                       [disabled]="!comptePossible" (change)="choisirMode('compte')" id="mode-compte">
+                <span class="ce-paie-ic"><i class="ri-wallet-3-line"></i></span>
+                <span class="ce-paie-txt">
+                  <b>Compte repas <span class="ce-muted">(solde {{ montant(p.info?.solde) }})</span></b>
+                  @if (comptePossible) {
+                    <small>{{ p.commande?.mode_paiement === 'compte' ? 'Repas déjà débité de votre compte.' : 'Le repas est débité de votre compte maintenant.' }}</small>
+                  } @else {
+                    <small class="ce-c-orange">{{ raisonCompteImpossible }}</small>
+                    @if (!p.info?.sans_tarif) {
+                      <a routerLink="/cantines/mon-compte-repas" class="ce-paie-lien" (click)="fermerPaiement()">Rechargez à la caisse · voir mon compte repas</a>
+                    }
+                  }
+                </span>
+              </label>
+              <label class="ce-paie-opt" [class.ce-on]="p.mode === 'retenue'">
+                <input type="radio" name="mode_paiement" value="retenue" [checked]="p.mode === 'retenue'"
+                       (change)="choisirMode('retenue')" id="mode-retenue">
+                <span class="ce-paie-ic"><i class="ri-file-list-3-line"></i></span>
+                <span class="ce-paie-txt">
+                  <b>Retenue sur salaire</b>
+                  <small>{{ p.commande?.mode_paiement === 'compte' ? 'Le montant débité est recrédité sur votre compte repas.' : 'Retenu sur votre salaire à la clôture du mois.' }}</small>
+                </span>
+              </label>
+            </div>
+            <p class="ce-muted ce-petit mb-0">
+              Mode modifiable jusqu'au {{ libelleLimite(p.commande?.mode_paiement_limite ?? p.menu.date_limite_commande) }}.
+              Un repas commandé est dû, même s'il n'est pas retiré.
+            </p>
+          }
+        }
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" (click)="fermerPaiement()">Annuler</button>
+        <button type="button" class="btn btn-success" id="confirmer-paiement" [disabled]="!paiementValidable" (click)="confirmerPaiement()">
+          {{ paiement?.commande ? 'Changer' : (paiement?.mode === 'compte' ? 'Commander et payer par le compte' : 'Commander') }}
+        </button>
       </div>
     </div>
   </div>

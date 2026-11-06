@@ -100,6 +100,20 @@ export const createCommandeFailure = createAction(
   props<{ error: string }>()
 );
 
+// ── Changer le mode de paiement ──────────────────────────────
+export const changerModePaiement = createAction(
+  '[Commande] Changer Mode Paiement',
+  props<{ id: number; mode: 'compte' | 'retenue' }>()
+);
+export const changerModePaiementSuccess = createAction(
+  '[Commande] Changer Mode Paiement Success',
+  props<{ commande: CommandeModel }>()
+);
+export const changerModePaiementFailure = createAction(
+  '[Commande] Changer Mode Paiement Failure',
+  props<{ error: string }>()
+);
+
 // ── Annuler une commande ─────────────────────────────────────
 export const annulerCommande = createAction(
   '[Commande] Annuler',

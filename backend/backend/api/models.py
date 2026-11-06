@@ -40,6 +40,15 @@ class User(AbstractUser):
     # le prestataire auquel le compte appartient (vide pour les comptes UbiPharm).
     prestataire = models.ForeignKey('Prestataire', on_delete=models.PROTECT, null=True, blank=True,
                                     related_name='comptes')
+    # Mode de paiement proposé par défaut à la commande (modifiable par l'employé,
+    # web et mobile) : « compte » (compte repas, si le solde couvre le repas,
+    # sinon retenue) ou « retenue » (retenue sur salaire)
+    MODE_PAIEMENT_PREFERE_CHOICES = [
+        ('compte',  'Compte repas'),
+        ('retenue', 'Retenue sur salaire'),
+    ]
+    mode_paiement_prefere = models.CharField(max_length=10, choices=MODE_PAIEMENT_PREFERE_CHOICES,
+                                             default='compte')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -241,6 +250,16 @@ class Commande(BaseModel):
         ('contestation', 'Contestation acceptée — erreur au comptoir'),
     ]
     motif_annulation = models.CharField(max_length=20, choices=MOTIF_ANNULATION_CHOICES, blank=True)
+    # Mode de paiement choisi par l'employé à la commande (comptes_repas.py) :
+    #   - compte  : débité du compte repas À LA COMMANDE (ReglementRepas « compte ») ;
+    #   - retenue : retenu sur salaire à la clôture du mois.
+    # Modifiable jusqu'à la date limite de commande. Commandes antérieures à
+    # ce choix : renseigné par la migration 0039 (compte si déjà débitées).
+    MODE_PAIEMENT_CHOICES = [
+        ('compte',  'Compte repas'),
+        ('retenue', 'Retenue sur salaire'),
+    ]
+    mode_paiement = models.CharField(max_length=10, choices=MODE_PAIEMENT_CHOICES, default='retenue')
 
     class Meta:
         # Un agent ne peut commander le même plat qu'une seule fois par menu
@@ -506,7 +525,7 @@ class LigneFacture(models.Model):
     # repas, tous les repas étaient retenus sur salaire)
     REGLEMENT_CHOICES = [
         ('compte',  'Payé par le compte repas'),
-        ('caisse',  'Payé à la caisse'),
+        ('caisse',  'Payé à la caisse'),   # historique (régularisation)
         ('retenue', 'Retenu sur salaire'),
     ]
     reglement         = models.CharField(max_length=10, choices=REGLEMENT_CHOICES, default='retenue')
@@ -855,10 +874,10 @@ class Recu(models.Model):
     """
     Reçu de caisse (non fiscal), numéroté par année : REÇ-AAAA-NNNNNN.
       - recharge       : crédit du compte repas (montant crédité) ;
-      - regularisation : paiement de repas non couverts d'un mois ouvert
-                         (montant = total des repas ; la monnaie est rendue
-                         ou créditée sur le compte) ;
-      - remboursement  : solde du compte rendu à l'employé (comptabilité).
+      - remboursement  : solde du compte rendu à l'employé (comptabilité) ;
+      - regularisation : HISTORIQUE seulement (plus émis depuis que l'employé
+                         choisit son mode de paiement à la commande) :
+                         paiement à la caisse de repas non couverts.
     encaissement : espèces entrées (+) ou sorties (−) de la caisse.
     """
     TYPE_CHOICES = [
@@ -956,15 +975,17 @@ class ReglementRepas(models.Model):
     """
     Règlement d'un repas facturable à l'employé : UN seul par commande
     (contrainte d'unicité : un repas n'est jamais payé deux fois).
-      - compte  : débité du compte repas (mouvement débit) ;
-      - caisse  : payé à la caisse (reçu de régularisation) ;
+      - compte  : débité du compte repas à la commande (mode « compte »
+                  choisi par l'employé ; avant ce choix : débit au retrait) ;
+      - caisse  : historique — payé à la caisse (reçu de régularisation) ;
       - retenue : retenu sur salaire (créé à la clôture du mois).
-    Supprimé si le paiement est défait (retrait annulé, repas annulé, reçu
-    annulé) tant que le mois est ouvert.
+    Supprimé si le paiement est défait (commande annulée, contestation
+    « erreur au comptoir », passage en retenue, reçu annulé) tant que le
+    mois est ouvert. Un retrait annulé ne le défait pas (commandé = dû).
     """
     MODE_CHOICES = [
         ('compte',  'Débité du compte repas'),
-        ('caisse',  'Payé à la caisse'),
+        ('caisse',  'Payé à la caisse'),   # historique (régularisation)
         ('retenue', 'Retenu sur salaire'),
     ]
     commande   = models.OneToOneField(Commande, on_delete=models.CASCADE, related_name='reglement')

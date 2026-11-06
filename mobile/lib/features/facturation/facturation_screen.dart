@@ -385,8 +385,8 @@ class _CarteTotal extends StatelessWidget {
   }
 }
 
-/// Paiement du mois : débité du compte repas, payé à la caisse, retenu sur
-/// salaire (ou à retenir à la clôture si rien ne change).
+/// Paiement du mois : payé par le compte repas (à la commande), payé à la
+/// caisse (anciens reçus), retenu sur salaire (ou à retenir à la clôture).
 class _RepartitionReglements extends StatelessWidget {
   final ({
     double compte,
@@ -441,11 +441,18 @@ class _RepartitionReglements extends StatelessWidget {
       const SizedBox(height: 6),
       Row(children: [
         tuile(StatutPaiementRepas.debiteCompte, 'compte repas', r.compte),
+        // Caisse : anciennes régularisations seulement
+        if (r.caisse > 0) ...[
+          const SizedBox(width: 6),
+          tuile(StatutPaiementRepas.payeCaisse, 'caisse', r.caisse),
+        ],
         const SizedBox(width: 6),
-        tuile(StatutPaiementRepas.payeCaisse, 'caisse', r.caisse),
-        const SizedBox(width: 6),
-        tuile(StatutPaiementRepas.retenue,
-            cloture ? 'retenu sur salaire' : 'pas encore payé', aRetenir),
+        tuile(
+            cloture
+                ? StatutPaiementRepas.retenue
+                : StatutPaiementRepas.retenuePrevue,
+            cloture ? 'retenu sur salaire' : 'retenue à la clôture',
+            aRetenir),
       ]),
     ]);
   }
@@ -619,17 +626,15 @@ class _CarteDetail extends StatelessWidget {
     );
   }
 
-  /// Paiement du repas : débité du compte, payé à la caisse, retenu ;
-  /// non couvert s'il est consommé (retiré ou jour passé) et pas réglé.
+  /// Paiement du repas : payé par le compte (à la commande), payé à la
+  /// caisse (anciens reçus), retenu ; pas encore réglé : retenue sur salaire
+  /// à la clôture (mode « retenue » choisi à la commande).
   StatutPaiementRepas? _paiement(Commande c) {
     if (!fact.loaded || c.statut == StatutCommande.annulee) return null;
     final s = StatutPaiementRepas.depuisReglement(fact.reglement(c));
     if (s != null) return s;
     if (fact.montant(c) == null) return null;
-    final e = etatCommande(c);
-    return e == EtatCommande.retiree || e == EtatCommande.nonRetiree
-        ? StatutPaiementRepas.nonCouvert
-        : null;
+    return StatutPaiementRepas.retenuePrevue;
   }
 
   Widget _montant(BuildContext context, Commande c, Color gris, Color hint) {
@@ -923,7 +928,7 @@ Future<void> _exporterPDF(BuildContext context, String moisKey,
       if (rep.compte > 0 || rep.caisse > 0)
         pw.Column(children: [
           for (final (libelle, m) in [
-            ('Débité du compte repas', rep.compte),
+            ('Payé par le compte repas', rep.compte),
             ('Payé à la caisse', rep.caisse),
             (
               cloture

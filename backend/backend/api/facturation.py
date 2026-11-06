@@ -21,10 +21,12 @@ Mois clôturés : les montants viennent des factures figées
 LigneFacturePrestataire) et ne bougent plus, même si un tarif, une
 catégorie ou un rattachement d'agence est modifié ensuite.
 
-Règlement des repas par l'employé (comptes_repas.py) : compte repas
-prépayé, caisse ou retenue sur salaire (ReglementRepas, un par repas). Le
-montant d'un repas déjà payé est celui payé ; le prestataire, lui, est payé
-pour chaque repas servi, quel que soit le mode de règlement de l'employé.
+Règlement des repas par l'employé (comptes_repas.py) : mode choisi à la
+commande (Commande.mode_paiement) — compte repas prépayé (débité à la
+commande) ou retenue sur salaire (à la clôture) ; « caisse » pour les
+anciennes régularisations (ReglementRepas, un par repas). Le montant d'un
+repas déjà payé est celui payé ; le prestataire, lui, est payé pour chaque
+repas servi, quel que soit le mode de règlement de l'employé.
 
 Utilisé par :
   - GET  /facturation/                    (web « Facturation commandes », mobile « Ma facturation »)
@@ -142,6 +144,8 @@ def lignes_facturation(commandes_qs):
             'sans_tarif': montant is None,
             'source': source,
             'reglement': reglement,
+            # Mode choisi à la commande : 'compte' ou 'retenue'
+            'mode_paiement': c.mode_paiement,
         })
     return lignes
 
@@ -440,7 +444,8 @@ def cloturer_mois(annee, mois, par_user):
       - une FactureMensuelle par agent ayant au moins un repas facturable ;
       - une FacturePrestataire par prestataire ;
     chacune avec le détail de chaque repas et son règlement (compte repas,
-    caisse ou retenue sur salaire : voir comptes_repas.regler_a_la_cloture).
+    caisse — historique — ou retenue sur salaire : voir
+    comptes_repas.regler_a_la_cloture ; aucun débit automatique du solde).
     Refusé si le mois n'est pas terminé, déjà clôturé, ou si des repas
     n'ont pas de tarif employé, de prestataire ou de tarif prestataire
     (à corriger avant de clôturer).
@@ -456,8 +461,8 @@ def cloturer_mois(annee, mois, par_user):
     commandes_mois = Commande.objects.filter(menu__date_menu__gte=debut, menu__date_menu__lte=fin)
     try:
         with transaction.atomic():
-            # Verrou des repas du mois : un retrait, une annulation ou une
-            # régularisation à la caisse ne peuvent pas les modifier pendant la clôture
+            # Verrou des repas du mois : un retrait, une annulation ou un
+            # changement de mode de paiement ne peuvent pas les modifier pendant la clôture
             list(commandes_mois.select_for_update().order_by('id').values_list('id', flat=True))
             lignes = lignes_facturation(commandes_mois)
             lignes_prest = lignes_prestataires(commandes_mois)
@@ -469,8 +474,8 @@ def cloturer_mois(annee, mois, par_user):
                     "prestataires des agences avant de clôturer.",
                     details)
 
-            # Règlement définitif de chaque repas : compte (débit des repas non
-            # retirés si le solde le permet), caisse, sinon retenue sur salaire
+            # Règlement définitif de chaque repas : déjà payé (compte à la
+            # commande, caisse historique), sinon retenue sur salaire
             regler_a_la_cloture(lignes, par_user)
             employes = synthese_par_employe(lignes)
             prestataires = synthese_par_prestataire(lignes_prest)

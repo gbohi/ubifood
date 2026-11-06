@@ -8,24 +8,30 @@ Règles :
     grand livre MouvementCompte, toujours modifié sous verrou
     (select_for_update) : deux opérations simultanées ne peuvent pas
     dépenser deux fois le même argent ;
-  - un repas facturable (facturation.py : commandé et non annulé) est payé
-    UNE seule fois (ReglementRepas, unique par commande) :
-      · compte  : au retrait (tous canaux : comptoir du prestataire,
-                  gestionnaire, mobile), si le solde couvre le prix du repas
-                  (tarif de la catégorie salarié à la date du menu, comme la
-                  facturation) ; sinon le repas reste « non couvert » (pas de
-                  débit partiel). À la clôture du mois, le solde restant est
-                  d'abord utilisé pour TOUS les repas impayés du mois (retirés
-                  non couverts et commandés non retirés), par date, repas
-                  entiers seulement ;
-      · caisse  : « Régulariser le mois » à la caisse (reçu) ;
-      · retenue : à la clôture, si le solde n'a pas suffi, le reste est
-                  retenu sur salaire ;
-  - retrait annulé (gestionnaire, agent du comptoir dans les 2 minutes,
-    contestation « erreur au comptoir ») : le repas débité est recrédité ;
-  - repas annulé (commande annulée, contestation « erreur au comptoir ») :
-    jamais facturé ; s'il avait été payé (compte ou caisse), le montant est
-    crédité sur le compte repas ;
+  - l'employé CHOISIT le mode de paiement de chaque repas EN COMMANDANT
+    (Commande.mode_paiement ; défaut : sa préférence User.mode_paiement_prefere,
+    « compte » seulement si le solde couvre le repas) :
+      · compte  : débité du compte À LA COMMANDE (ReglementRepas « compte »),
+                  repas entier, au tarif de la catégorie salarié à la date du
+                  menu (comme la facturation). Refusé (400 « Solde insuffisant »)
+                  si le solde ne couvre pas le repas, ou sans tarif ;
+      · retenue : retenu sur salaire à la clôture du mois ;
+    modifiable jusqu'à la date limite de commande (compte → retenue :
+    recrédité ; retenue → compte : débité si le solde suffit), figé ensuite ;
+  - « commandé = dû » : un repas payé par le compte reste payé même s'il
+    n'est pas retiré. Il n'est recrédité QUE si la commande est annulée
+    (par l'employé dans le délai d'annulation, ou par un gestionnaire /
+    administrateur) ou si une contestation est acceptée pour « erreur au
+    comptoir ». Un retrait annulé (agent du comptoir dans les 2 minutes,
+    gestionnaire) ne recrédite rien : la commande redevient « non retirée »,
+    toujours due. Contestation « badge utilisé par un tiers » : reste payé ;
+  - clôture du mois : les repas « compte » sont déjà réglés ; tous les autres
+    (« retenue », et repas non couverts antérieurs au choix du mode) sont
+    retenus sur salaire. Le solde n'est PAS utilisé automatiquement ;
+  - caisse : recharge du compte (caissier) et remboursement du solde
+    (comptabilité). La « régularisation » (paiement à la caisse des repas non
+    couverts) n'existe plus : ses anciens reçus restent consultables et
+    annulables (historique) ;
   - rien ne se paie ni ne se défait sur un mois clôturé.
 
 Reçus (Recu) numérotés par année : REÇ-AAAA-NNNNNN (CompteurRecu, sous verrou).
@@ -45,7 +51,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from . import facturation as fact
 from .models import (
     ClotureCaisse, ClotureMensuelle, Commande, CompteRepas, CompteurRecu, MouvementCompte, Recu,
-    RecuLigne, ReglementRepas,
+    ReglementRepas,
 )
 
 ZERO = Decimal('0')
@@ -56,13 +62,18 @@ MODES_PAIEMENT = {'especes': 'Espèces', 'mobile_money': 'Mobile Money'}
 
 # Statut d'un repas vu du compte repas (écrans employé et caisse)
 STATUTS_REPAS = {
-    'debite_compte': 'Débité du compte repas',
-    'paye_caisse':   'Payé à la caisse',
-    'retenue':       'Retenu sur salaire',
-    'non_couvert':   'Non couvert — sera retenu sur salaire à la clôture',
-    'a_venir':       'À venir',
+    'debite_compte':  'Payé par le compte repas',
+    'paye_caisse':    'Payé à la caisse',
+    'retenue':        'Retenu sur salaire',
+    'retenue_prevue': 'Retenue sur salaire — à la clôture du mois',
 }
 STATUT_PAR_MODE = {'compte': 'debite_compte', 'caisse': 'paye_caisse', 'retenue': 'retenue'}
+
+# Mode de paiement choisi à la commande
+MODES_COMMANDE = dict(Commande.MODE_PAIEMENT_CHOICES)
+MESSAGE_SANS_TARIF = ("Paiement par le compte repas impossible : aucun tarif n'est défini pour votre "
+                      "catégorie à cette date (catégorie salarié ou tarif manquant). Choisissez la retenue "
+                      "sur salaire ou contactez votre gestionnaire.")
 
 
 def _f(montant):
@@ -158,61 +169,162 @@ def prix_repas(commande, tarif=None):
     return tarif.prix(commande.user_id, commande.menu.date_menu)[1]
 
 
-def debiter_si_possible(commande, par, montant=None, libelle=None, verifier_mois=True, tarif=None):
+def _libelle_repas(commande):
+    return f"Repas du {commande.menu.date_menu:%d/%m/%Y} — {commande.plat.nom}"
+
+
+def message_solde_insuffisant(disponible, necessaire):
+    return (f"Solde insuffisant : {_fcfa(disponible)} disponibles, {_fcfa(necessaire)} nécessaires — "
+            "rechargez à la caisse")
+
+
+def info_paiement(user, date_menu):
     """
-    Débite le compte repas du prix du repas si le solde le couvre (jamais de
-    débit partiel). Renvoie le ReglementRepas créé, sinon None (repas non
-    couvert, déjà payé, sans tarif, sans compte ou mois clôturé).
+    Ce que l'écran de commande doit proposer pour un repas du date_menu :
+    solde, prix du repas pour l'employé, compte possible ou non (et pourquoi),
+    préférence et mode proposé par défaut.
     """
-    if commande.statut not in fact.STATUTS_FACTURES:
+    prix = fact.Tarificateur({user.id}).prix(user.id, date_menu)[1]
+    disponible = solde(user)
+    if prix is None:
+        possible, raison = False, MESSAGE_SANS_TARIF
+    elif disponible < prix:
+        possible, raison = False, message_solde_insuffisant(disponible, prix)
+    else:
+        possible, raison = True, None
+    prefere = user.mode_paiement_prefere
+    return {
+        'solde': _f(disponible),
+        'prix': _f(prix),
+        'sans_tarif': prix is None,
+        'compte_possible': possible,
+        'raison_compte_impossible': raison,
+        'mode_paiement_prefere': prefere,
+        'mode_par_defaut': 'compte' if prefere == 'compte' and possible else 'retenue',
+        'modes': [{'code': c, 'libelle': l} for c, l in MODES_COMMANDE.items()],
+    }
+
+
+def lire_mode_commande(valeur):
+    """Mode demandé par le client : None (non précisé), « compte » ou « retenue »."""
+    if valeur in (None, ''):
         return None
-    if ReglementRepas.objects.filter(commande_id=commande.pk).exists():
-        return None
-    if verifier_mois and not mois_ouvert(commande.menu.date_menu):
-        return None
+    if valeur not in MODES_COMMANDE:
+        raise ValidationError({'mode_paiement': "Mode de paiement invalide : « compte » (compte repas) ou "
+                                                "« retenue » (retenue sur salaire)."})
+    return valeur
+
+
+def debiter_commande(commande, par, montant=None, libelle=None):
+    """
+    Débite le compte repas du prix du repas (repas entier, compte verrouillé).
+    Lève une erreur 400 si le repas n'a pas de tarif ou si le solde ne le
+    couvre pas. Renvoie le ReglementRepas « compte ».
+    """
     if montant is None:
-        montant = prix_repas(commande, tarif)
+        montant = prix_repas(commande)
     if montant is None:
-        return None
+        raise ValidationError({'detail': MESSAGE_SANS_TARIF, 'code': 'sans_tarif'})
     with transaction.atomic():
         compte = compte_verrouille(commande.user_id, creer=False)
-        if compte is None or compte.solde < montant:
-            return None
+        disponible = compte.solde if compte else ZERO
+        if compte is None or disponible < montant:
+            raise ValidationError({'detail': message_solde_insuffisant(disponible, montant),
+                                   'code': 'solde_insuffisant'})
         if ReglementRepas.objects.filter(commande_id=commande.pk).exists():
-            return None
+            raise ValidationError("Ce repas est déjà réglé.")
         mvt = _mouvement(compte, 'debit_repas', -montant, par, commande=commande,
-                         libelle=libelle or f"Repas du {commande.menu.date_menu:%d/%m/%Y} — {commande.plat.nom}")
+                         libelle=libelle or f"{_libelle_repas(commande)} (commande)")
         return ReglementRepas.objects.create(commande=commande, mode='compte', montant=montant, mouvement=mvt)
 
 
-def debiter_retrait(user_id, menu_id, par):
-    """Au retrait : débite chaque repas retiré du menu si le solde le couvre."""
-    commandes = list(Commande.objects.filter(user_id=user_id, menu_id=menu_id, statut='retiree')
-                     .select_related('menu', 'plat').order_by('id'))
-    if not commandes:
-        return []
-    tarif = fact.Tarificateur({user_id})
-    return [r for r in (debiter_si_possible(c, par, tarif=tarif) for c in commandes) if r]
-
-
-def liberer_reglement(commande, par, garder_caisse=False, raison=''):
+def payer_a_la_commande(commande, mode_demande, par):
     """
-    Défait le règlement d'un repas (mois ouvert) :
+    À la commande (création ou commande annulée reprise), dans la transaction
+    de la commande : applique le mode demandé, ou, à défaut, la préférence de
+    l'employé (« compte » si le solde couvre le repas, sinon retenue).
+    Mode « compte » demandé explicitement et impossible : erreur 400 (la
+    commande n'est pas créée). Renvoie le mode retenu.
+    """
+    user = commande.user
+    if mode_demande is None:
+        mode = 'retenue'
+        if user.mode_paiement_prefere == 'compte':
+            prix = prix_repas(commande)
+            if prix is not None and solde(user) >= prix:
+                mode = 'compte'
+    else:
+        mode = mode_demande
+    if mode == 'compte':
+        debiter_commande(commande, par)
+    if commande.mode_paiement != mode:
+        commande.mode_paiement = mode
+        commande.save(update_fields=['mode_paiement'])
+    return mode
+
+
+def mode_modifiable(commande, maintenant=None, limite=None):
+    """(modifiable, motif) : changement du mode jusqu'à la date limite de commande."""
+    from .serializers import date_limite_commande, libelle_date_limite
+    if commande.statut != 'en_attente':
+        return False, "Seule une commande en attente peut changer de mode de paiement."
+    if not mois_ouvert(commande.menu.date_menu):
+        d = commande.menu.date_menu
+        return False, f"Le mois {d.month:02d}/{d.year} est clôturé : sa facturation est figée."
+    limite = limite or date_limite_commande(commande.menu.date_menu)
+    if (maintenant or timezone.now()) > limite:
+        return False, ("Le mode de paiement ne peut plus être changé : les commandes pour ce menu étaient "
+                       f"ouvertes jusqu'au {libelle_date_limite(limite)}.")
+    return True, None
+
+
+def changer_mode(commande, mode, par):
+    """
+    Change le mode de paiement d'une commande en attente, jusqu'à la date
+    limite de commande : retenue → compte (débit, solde suffisant exigé),
+    compte → retenue (recrédit). Renvoie la commande à jour.
+    """
+    mode = lire_mode_commande(mode)
+    if mode is None:
+        raise ValidationError({'mode_paiement': "Choisissez le mode de paiement : « compte » ou « retenue »."})
+    with transaction.atomic():
+        commande = (Commande.objects.select_for_update().select_related('user', 'menu', 'plat')
+                    .get(pk=commande.pk))
+        ok, motif = mode_modifiable(commande)
+        if not ok:
+            raise ValidationError({'detail': motif, 'code': 'mode_verrouille'})
+        reglement = ReglementRepas.objects.filter(commande_id=commande.pk).first()
+        if reglement is not None and reglement.mode != 'compte':
+            raise ValidationError(f"Ce repas est déjà réglé ({reglement.get_mode_display().lower()}).")
+        if mode == commande.mode_paiement and (mode == 'retenue' or reglement is not None):
+            return commande
+        if mode == 'compte':
+            debiter_commande(commande, par, libelle=f"{_libelle_repas(commande)} (passage au compte repas)")
+        else:
+            liberer_reglement(commande, par, raison='Passage en retenue sur salaire')
+        commande.mode_paiement = mode
+        commande.user_updated = par
+        commande.save(update_fields=['mode_paiement', 'user_updated', 'updated_at'])
+    return commande
+
+
+def liberer_reglement(commande, par, raison=''):
+    """
+    Défait le règlement d'un repas (mois ouvert) — commande annulée,
+    contestation « erreur au comptoir », passage en retenue :
       - débité du compte → recrédité ;
-      - payé à la caisse → conservé si garder_caisse (retrait annulé : le
-        repas reste dû et payé), sinon crédité sur le compte (repas annulé) ;
+      - payé à la caisse (historique) → crédité sur le compte ;
       - retenue (mois clôturé) → inchangé.
+    N'est PAS appelé à l'annulation d'un retrait (le repas reste dû).
     """
     with transaction.atomic():
         reglement = (ReglementRepas.objects.select_for_update(of=('self',)).select_related('recu')
                      .filter(commande_id=commande.pk).first())
         if reglement is None or reglement.mode == 'retenue':
             return None
-        if reglement.mode == 'caisse' and garder_caisse:
-            return None
         jour = f"{commande.menu.date_menu:%d/%m/%Y}"
         if reglement.mode == 'compte':
-            libelle = f"{raison or 'Retrait annulé'} — repas du {jour} recrédité"
+            libelle = f"{raison or 'Repas annulé'} — repas du {jour} recrédité"
         else:
             libelle = (f"{raison or 'Repas annulé'} — repas du {jour} payé à la caisse "
                        f"({reglement.recu.numero}), crédité sur le compte")
@@ -221,11 +333,6 @@ def liberer_reglement(commande, par, garder_caisse=False, raison=''):
         compte = compte_verrouille(commande.user_id)
         return _mouvement(compte, 'recredit', montant, par, commande=commande,
                           recu=reglement.recu if reglement.mode == 'caisse' else None, libelle=libelle)
-
-
-def liberer_commandes(commandes, par, garder_caisse=False, raison=''):
-    for c in commandes:
-        liberer_reglement(c, par, garder_caisse=garder_caisse, raison=raison)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -285,112 +392,6 @@ def recharger(employe, montant, par, mode='especes', reference=''):
                      f"Votre compte repas a été crédité de {_fcfa(montant)} (reçu {recu.numero}). "
                      f"Nouveau solde : {_fcfa(recu.solde_apres)}.", {'recu_id': recu.id})
     return recu
-
-
-def repas_regularisables(user, jusqu_au=None):
-    """
-    Repas non couverts que la caisse peut encaisser : facturables, sans
-    règlement, d'un mois non clôturé, déjà consommés (retirés, ou commandés
-    pour un jour passé). Liste de (commande, montant ou None si sans tarif).
-    """
-    aujourdhui = jusqu_au or timezone.localdate()
-    clotures = set(ClotureMensuelle.objects.values_list('annee', 'mois'))
-    commandes = [
-        c for c in Commande.objects.filter(user=user, statut__in=fact.STATUTS_FACTURES,
-                                           reglement__isnull=True, menu__date_menu__lte=aujourdhui)
-        .select_related('menu__agence', 'plat').order_by('menu__date_menu', 'id')
-        if (c.menu.date_menu.year, c.menu.date_menu.month) not in clotures
-        and (c.statut == 'retiree' or c.menu.date_menu < aujourdhui)
-    ]
-    tarif = fact.Tarificateur({user.id})
-    return [(c, tarif.prix(c.user_id, c.menu.date_menu)[1]) for c in commandes]
-
-
-def regulariser(employe, par, commande_ids=None, montant_recu=None, monnaie='rendre',
-                mode='especes', reference=''):
-    """
-    « Régulariser le mois » : paie à la caisse tout ou partie des repas non
-    couverts des mois ouverts. commande_ids None : tous. La monnaie (montant
-    reçu − total) est rendue ou créditée sur le compte (monnaie « crediter »).
-    """
-    verifier_employe(employe)
-    mode, reference = verifier_mode(mode, reference)
-    if monnaie not in ('rendre', 'crediter'):
-        raise ValidationError({'monnaie': "Monnaie : « rendre » (rendue en espèces) ou « crediter » "
-                                          "(créditée sur le compte repas)."})
-    if commande_ids is not None:
-        if not isinstance(commande_ids, (list, tuple)) or not commande_ids \
-                or not all(isinstance(i, int) and not isinstance(i, bool) for i in commande_ids):
-            raise ValidationError({'commande_ids': "Choisissez les repas à régulariser (liste d'identifiants)."})
-        if len(set(commande_ids)) != len(commande_ids):
-            raise ValidationError({'commande_ids': "Un repas est sélectionné deux fois."})
-
-    with transaction.atomic():
-        # Verrou des repas (ordre des id) : une clôture du mois, un retrait ou
-        # une autre caisse ne peuvent pas les régler en même temps
-        qs = Commande.objects.select_for_update().filter(user=employe)
-        if commande_ids is not None:
-            qs = qs.filter(pk__in=commande_ids)
-        list(qs.order_by('id').values_list('id', flat=True))
-        candidats = {c.id: (c, m) for c, m in repas_regularisables(employe)}
-        if commande_ids is None:
-            choisis = list(candidats.values())
-        else:
-            inconnus = [i for i in commande_ids if i not in candidats]
-            if inconnus:
-                raise ValidationError({'commande_ids': _motif_non_regularisable(employe, inconnus[0])})
-            choisis = [candidats[i] for i in commande_ids]
-        if not choisis:
-            raise ValidationError("Aucun repas non couvert à régulariser pour cet employé.")
-        sans_tarif = [c for c, m in choisis if m is None]
-        if sans_tarif:
-            c = sans_tarif[0]
-            raise ValidationError(f"Le repas du {c.menu.date_menu:%d/%m/%Y} n'a pas de tarif (catégorie "
-                                  "salarié ou tarif manquant) : à compléter avant de l'encaisser.")
-        choisis.sort(key=lambda x: (x[0].menu.date_menu, x[0].id))
-        total = sum((m for _, m in choisis), ZERO)
-        recu_especes = total if montant_recu in (None, '') else lire_montant(montant_recu, 'montant_recu')
-        if recu_especes < total:
-            raise ValidationError({'montant_recu': f"Montant reçu insuffisant : {_fcfa(recu_especes)} pour "
-                                                   f"{_fcfa(total)} de repas (paiement partiel : choisissez "
-                                                   "moins de repas)."})
-        rendu = recu_especes - total
-        crediter = monnaie == 'crediter' and rendu > 0
-
-        compte = compte_verrouille(employe.id, creer=crediter)
-        avant = compte.solde if compte else ZERO
-        recu = _creer_recu(type='regularisation', user=employe, caissier=par, mode=mode, reference=reference,
-                           montant=total, montant_repas=total, montant_recu=recu_especes, monnaie=rendu,
-                           monnaie_creditee=crediter, encaissement=total + (rendu if crediter else ZERO),
-                           solde_avant=avant, solde_apres=avant + (rendu if crediter else ZERO))
-        for c, m in choisis:
-            RecuLigne.objects.create(recu=recu, commande=c, date_menu=c.menu.date_menu, plat_nom=c.plat.nom,
-                                     montant=m)
-            ReglementRepas.objects.create(commande=c, mode='caisse', montant=m, recu=recu)
-        if crediter:
-            _mouvement(compte, 'regularisation', rendu, par, recu=recu,
-                       libelle=f"Monnaie de la régularisation {recu.numero} créditée")
-    message = (f"{len(choisis)} repas réglé{'s' if len(choisis) > 1 else ''} à la caisse pour "
-               f"{_fcfa(total)} (reçu {recu.numero}) : ils ne seront pas retenus sur salaire.")
-    if crediter:
-        message += f" Monnaie créditée sur votre compte repas : {_fcfa(rendu)}."
-    notifier_employe(employe.id, '🧾 Repas régularisés', message, {'recu_id': recu.id})
-    return recu
-
-
-def _motif_non_regularisable(employe, commande_id):
-    c = Commande.objects.filter(pk=commande_id).select_related('menu').first()
-    if c is None or c.user_id != employe.id:
-        return "Ce repas n'est pas une commande de cet employé."
-    if c.statut not in fact.STATUTS_FACTURES:
-        return f"Le repas du {c.menu.date_menu:%d/%m/%Y} est annulé : il n'est pas facturé."
-    if not mois_ouvert(c.menu.date_menu):
-        d = c.menu.date_menu
-        return f"Le mois {d.month:02d}/{d.year} est clôturé : sa facturation est figée."
-    r = ReglementRepas.objects.filter(commande=c).first()
-    if r is not None:
-        return f"Le repas du {c.menu.date_menu:%d/%m/%Y} est déjà réglé ({r.get_mode_display().lower()})."
-    return f"Le repas du {c.menu.date_menu:%d/%m/%Y} n'est pas encore consommé : il ne peut pas être régularisé."
 
 
 def rembourser(employe, par, motif, mode='especes', reference=''):
@@ -555,20 +556,16 @@ def regler_a_la_cloture(lignes, par):
     """
     Appelé par facturation.cloturer_mois (transaction, repas du mois
     verrouillés) : chaque repas facturable reçoit son règlement définitif.
-    Repas déjà payés (compte, caisse) : inchangés. Tous les autres (retirés
-    non couverts et commandés non retirés), par date : débités du compte si
-    le solde couvre le repas entier ; sinon retenue sur salaire.
+    Repas déjà payés (compte à la commande, caisse — historique) : inchangés.
+    Tous les autres (mode « retenue », et repas non couverts antérieurs au
+    choix du mode) : retenue sur salaire. Le solde du compte n'est pas
+    utilisé automatiquement (choix de l'employé respecté).
     l['reglement'] est renseigné.
     """
     existants = {r.commande_id: r for r in ReglementRepas.objects.filter(
         commande_id__in=[l['commande_id'] for l in lignes])}
     for l in sorted(lignes, key=lambda l: (l['date_menu'], l['commande_id'])):
         r = existants.get(l['commande_id'])
-        if r is None:
-            etat = 'retiré' if l['statut'] == 'retiree' else 'non retiré'
-            r = debiter_si_possible(
-                l['commande'], par, montant=l['montant'], verifier_mois=False,
-                libelle=f"Repas du {l['date_menu']:%d/%m/%Y} ({etat}) — débité à la clôture du mois")
         if r is None:
             r = ReglementRepas.objects.create(commande=l['commande'], mode='retenue', montant=l['montant'])
         l['reglement'] = r.mode
@@ -579,23 +576,23 @@ def regler_a_la_cloture(lignes, par):
 # Situation d'un employé (écran employé, fiche caisse)
 # ══════════════════════════════════════════════════════════════
 
-def statut_repas(ligne, aujourdhui):
+def statut_repas(ligne):
+    """Réglé (compte, caisse, retenue figée) ou retenue prévue à la clôture."""
     if ligne.get('reglement'):
         return STATUT_PAR_MODE[ligne['reglement']]
-    if ligne['statut'] == 'retiree' or ligne['date_menu'] < aujourdhui:
-        return 'non_couvert'
-    return 'a_venir'
+    return 'retenue_prevue'
 
 
 def situation(user, debut=None, fin=None, seulement_ouverts=False):
     """
     Compte repas et repas de la période (par défaut : mois en cours) :
-    statut de chaque repas, totaux (consommé = compte + caisse + retenue +
-    non couvert + à venir) et reste à payer prévu à la clôture (estimation :
-    le solde actuel est appliqué d'abord aux repas non couverts, puis aux
-    repas à venir, par date et par repas entier ; le reste serait retenu).
+    mode de paiement et statut de chaque repas, totaux (consommé = compte +
+    caisse + retenue + retenue prévue) et reste à payer prévu à la clôture
+    (= repas en retenue sur salaire non encore réglés, y compris les repas
+    non couverts antérieurs au choix du mode).
     seulement_ouverts : repas des mois non clôturés seulement (fiche caisse).
     """
+    from .serializers import date_limite_commande
     aujourdhui = timezone.localdate()
     if debut is None:
         debut, fin = fact.bornes_mois(aujourdhui.year, aujourdhui.month)
@@ -609,10 +606,16 @@ def situation(user, debut=None, fin=None, seulement_ouverts=False):
 
     totaux = {k: {'nb': 0, 'montant': ZERO} for k in STATUTS_REPAS}
     repas = []
+    maintenant = timezone.now()
+    from .models import ParametresSociete
+    parametres = ParametresSociete.charger()
     for l in lignes:
-        st = statut_repas(l, aujourdhui)
+        st = statut_repas(l)
         totaux[st]['nb'] += 1
         totaux[st]['montant'] += l['montant'] or ZERO
+        c = l['commande']
+        modifiable = (l['source'] == 'calcul' and l['reglement'] in (None, 'compte')
+                      and mode_modifiable(c, maintenant, date_limite_commande(c.menu.date_menu, parametres))[0])
         repas.append({
             'commande_id': l['commande_id'],
             'date_menu': l['date_menu'].isoformat(),
@@ -621,22 +624,14 @@ def situation(user, debut=None, fin=None, seulement_ouverts=False):
             'statut_commande': l['statut'],
             'montant': _f(l['montant']),
             'sans_tarif': l['sans_tarif'],
+            'mode_paiement': l['mode_paiement'],
+            'mode_paiement_libelle': MODES_COMMANDE.get(l['mode_paiement'], ''),
+            'mode_modifiable': modifiable,
             'statut': st,
             'statut_libelle': STATUTS_REPAS[st],
-            'regularisable': st == 'non_couvert' and not l['sans_tarif'] and l['source'] == 'calcul',
         })
 
-    # Estimation de la retenue à la clôture
-    reste = ZERO
-    disponible = solde_actuel
-    impayes = [l for l in lignes if not l['reglement'] and l['montant'] is not None]
-    impayes.sort(key=lambda l: (statut_repas(l, aujourdhui) != 'non_couvert', l['date_menu'], l['commande_id']))
-    for l in impayes:
-        if disponible >= l['montant']:
-            disponible -= l['montant']
-        else:
-            reste += l['montant']
-
+    reste = totaux['retenue_prevue']['montant']
     consomme = sum((l['montant'] or ZERO for l in lignes), ZERO)
     return {
         'solde': _f(solde_actuel),
@@ -649,7 +644,7 @@ def situation(user, debut=None, fin=None, seulement_ouverts=False):
                for k, v in totaux.items()},
         },
         'reste_a_payer_prevu': _f(reste),
-        'mention_reste': "Reste à payer — sera retenu sur salaire à la clôture du mois.",
+        'mention_reste': "Reste à payer : repas en retenue sur salaire, retenus à la clôture du mois.",
     }
 
 

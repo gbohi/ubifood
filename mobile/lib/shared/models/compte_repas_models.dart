@@ -34,11 +34,10 @@ DateTime? _date(dynamic v) {
 // ══════════════════════════════════════════════════════════════
 
 enum StatutPaiementRepas {
-  debiteCompte('debite_compte', 'Débité du compte'),
-  payeCaisse('paye_caisse', 'Payé à la caisse'),
+  debiteCompte('debite_compte', 'Compte repas'),
+  retenuePrevue('retenue_prevue', 'Retenue sur salaire'),
   retenue('retenue', 'Retenu sur salaire'),
-  nonCouvert('non_couvert', 'Non couvert'),
-  aVenir('a_venir', 'À venir');
+  payeCaisse('paye_caisse', 'Payé à la caisse');
 
   final String code;
 
@@ -48,10 +47,10 @@ enum StatutPaiementRepas {
 
   static StatutPaiementRepas depuis(String code) =>
       values.firstWhere((s) => s.code == code,
-          orElse: () => StatutPaiementRepas.aVenir);
+          orElse: () => StatutPaiementRepas.retenuePrevue);
 
   /// Mode de règlement d'une ligne de facturation (`reglement`) : compte,
-  /// caisse, retenue ; null : pas encore réglé.
+  /// caisse, retenue ; null : pas encore réglé (retenue à la clôture).
   static StatutPaiementRepas? depuisReglement(String? reglement) =>
       switch (reglement) {
         'compte' => StatutPaiementRepas.debiteCompte,
@@ -62,20 +61,82 @@ enum StatutPaiementRepas {
 
   TonPastille get ton => switch (this) {
         StatutPaiementRepas.debiteCompte => TonPastille.vert,
-        StatutPaiementRepas.payeCaisse => TonPastille.bleu,
+        StatutPaiementRepas.retenuePrevue => TonPastille.or,
         StatutPaiementRepas.retenue => TonPastille.gris,
-        StatutPaiementRepas.nonCouvert => TonPastille.or,
-        StatutPaiementRepas.aVenir => TonPastille.gris,
+        StatutPaiementRepas.payeCaisse => TonPastille.bleu,
       };
 
   IconData get icone => switch (this) {
         StatutPaiementRepas.debiteCompte =>
           Icons.account_balance_wallet_outlined,
-        StatutPaiementRepas.payeCaisse => Icons.point_of_sale_rounded,
+        StatutPaiementRepas.retenuePrevue => Icons.receipt_long_outlined,
         StatutPaiementRepas.retenue => Icons.badge_outlined,
-        StatutPaiementRepas.nonCouvert => Icons.error_outline_rounded,
-        StatutPaiementRepas.aVenir => Icons.schedule_rounded,
+        StatutPaiementRepas.payeCaisse => Icons.point_of_sale_rounded,
       };
+}
+
+// ══════════════════════════════════════════════════════════════
+// MODE DE PAIEMENT CHOISI À LA COMMANDE
+// ══════════════════════════════════════════════════════════════
+
+/// « compte » : débité du compte repas à la commande ; « retenue » : retenu
+/// sur salaire à la clôture du mois.
+enum ModePaiementCommande {
+  compte('compte', 'Compte repas'),
+  retenue('retenue', 'Retenue sur salaire');
+
+  final String code;
+  final String libelle;
+  const ModePaiementCommande(this.code, this.libelle);
+
+  static ModePaiementCommande? depuis(String? code) => switch (code) {
+        'compte' => ModePaiementCommande.compte,
+        'retenue' => ModePaiementCommande.retenue,
+        _ => null,
+      };
+
+  IconData get icone => this == ModePaiementCommande.compte
+      ? Icons.account_balance_wallet_outlined
+      : Icons.receipt_long_outlined;
+
+  TonPastille get ton =>
+      this == ModePaiementCommande.compte ? TonPastille.vert : TonPastille.or;
+}
+
+/// GET compte-repas/paiement/?menu=ID : ce que l'écran de commande propose
+class InfoPaiement {
+  final double solde;
+  final double? prix; // null : pas de tarif
+  final bool sansTarif;
+  final bool comptePossible;
+  final String? raisonCompteImpossible;
+  final ModePaiementCommande modePrefere;
+  final ModePaiementCommande modeParDefaut;
+
+  const InfoPaiement({
+    required this.solde,
+    required this.prix,
+    this.sansTarif = false,
+    required this.comptePossible,
+    this.raisonCompteImpossible,
+    this.modePrefere = ModePaiementCommande.compte,
+    this.modeParDefaut = ModePaiementCommande.retenue,
+  });
+
+  factory InfoPaiement.fromJson(Map<String, dynamic> j) {
+    final raison = _texte(j['raison_compte_impossible']);
+    return InfoPaiement(
+      solde: _montant(j['solde']),
+      prix: _montantOuNull(j['prix']),
+      sansTarif: j['sans_tarif'] == true,
+      comptePossible: j['compte_possible'] == true,
+      raisonCompteImpossible: raison.isEmpty || raison == 'null' ? null : raison,
+      modePrefere: ModePaiementCommande.depuis(_texte(j['mode_paiement_prefere'])) ??
+          ModePaiementCommande.compte,
+      modeParDefaut: ModePaiementCommande.depuis(_texte(j['mode_par_defaut'])) ??
+          ModePaiementCommande.retenue,
+    );
+  }
 }
 
 /// Repas du mois et son paiement
@@ -89,7 +150,12 @@ class RepasCompte {
   final bool sansTarif;
   final StatutPaiementRepas statut;
   final String statutLibelle;
-  final bool regularisable;
+
+  /// Mode choisi à la commande (null : serveur antérieur)
+  final ModePaiementCommande? modePaiement;
+
+  /// Changement de mode encore possible (avant la date limite de commande)
+  final bool modeModifiable;
 
   const RepasCompte({
     required this.commandeId,
@@ -101,7 +167,8 @@ class RepasCompte {
     required this.sansTarif,
     required this.statut,
     required this.statutLibelle,
-    required this.regularisable,
+    this.modePaiement,
+    this.modeModifiable = false,
   });
 
   factory RepasCompte.fromJson(Map<String, dynamic> j) {
@@ -117,7 +184,8 @@ class RepasCompte {
       sansTarif: j['sans_tarif'] == true,
       statut: statut,
       statutLibelle: libelle.isEmpty ? statut.libelle : libelle,
-      regularisable: j['regularisable'] == true,
+      modePaiement: ModePaiementCommande.depuis(_texte(j['mode_paiement'])),
+      modeModifiable: j['mode_modifiable'] == true,
     );
   }
 
@@ -152,6 +220,9 @@ class CompteRepas {
   final String mentionReste;
   final List<MouvementCompte> derniersMouvements;
 
+  /// Mode proposé par défaut à la commande (profil)
+  final ModePaiementCommande modePaiementPrefere;
+
   const CompteRepas({
     required this.annee,
     required this.mois,
@@ -162,6 +233,7 @@ class CompteRepas {
     required this.restePrevu,
     required this.mentionReste,
     required this.derniersMouvements,
+    this.modePaiementPrefere = ModePaiementCommande.compte,
   });
 
   factory CompteRepas.fromJson(Map<String, dynamic> j) {
@@ -182,6 +254,9 @@ class CompteRepas {
         for (final m in _liste(j['derniers_mouvements']))
           MouvementCompte.fromJson(m)
       ],
+      modePaiementPrefere:
+          ModePaiementCommande.depuis(_texte(j['mode_paiement_prefere'])) ??
+              ModePaiementCommande.compte,
     );
   }
 
@@ -190,11 +265,9 @@ class CompteRepas {
   TotalPaiement get debiteCompte => total('debite_compte');
   TotalPaiement get payeCaisse => total('paye_caisse');
   TotalPaiement get retenue => total('retenue');
-  TotalPaiement get nonCouvert => total('non_couvert');
-  TotalPaiement get aVenir => total('a_venir');
 
-  /// Repas encore à régler (non couverts et à venir)
-  double get restantARegler => nonCouvert.montant + aVenir.montant;
+  /// Repas en retenue sur salaire, retenus à la clôture du mois
+  TotalPaiement get retenuePrevue => total('retenue_prevue');
 }
 
 /// Ligne « reste à payer » du mois : (texte, détail, ton)
@@ -218,22 +291,15 @@ class CompteRepas {
     return (
       texte:
           'Reste à payer prévu à la clôture : ${fmt(c.restePrevu)} (retenue sur salaire)',
-      detail: 'Rechargez votre compte ou payez à la caisse pour éviter la '
-          'retenue. Estimation avec votre solde actuel.',
+      detail: 'Repas en retenue sur salaire. Pour payer un repas par votre '
+          'compte, rechargez-le à la caisse puis changez le mode de paiement '
+          'avant la date limite de commande.',
       ton: TonPastille.or
-    );
-  }
-  if (c.restantARegler > 0) {
-    return (
-      texte: 'Reste à payer prévu à la clôture : ${fmt(0)}',
-      detail: 'Votre solde couvre les repas restants : ils seront débités '
-          'de votre compte.',
-      ton: TonPastille.vert
     );
   }
   return (
     texte: 'Reste à payer prévu à la clôture : ${fmt(0)}',
-    detail: 'Tous vos repas du mois sont payés.',
+    detail: 'Aucun repas en retenue sur salaire ce mois-ci.',
     ton: TonPastille.vert
   );
 }

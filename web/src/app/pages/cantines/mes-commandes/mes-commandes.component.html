@@ -80,6 +80,7 @@
                 <th>Agence</th>
                 <th>Commandé le</th>
                 <th>Statut</th>
+                <th>Paiement</th>
                 <th class="lst-c-act"><span class="visually-hidden">Action</span></th>
               </tr>
             </thead>
@@ -112,6 +113,18 @@
                         <small class="d-block mt-1"><i class="ri-user-settings-line me-1"></i>{{ par }}</small>
                       }
                     </div>
+                  </td>
+                  <td data-label="Paiement">
+                    @if (c.statut !== 'annulee' && c.mode_paiement) {
+                      <div>
+                        <span class="lst-tag" [ngClass]="c.mode_paiement === 'compte' ? 't-ve' : 't-or'">
+                          <i [class]="c.mode_paiement === 'compte' ? 'ri-wallet-3-line' : 'ri-file-list-3-line'"></i>{{ texteMode(c) }}
+                        </span>
+                        @if (c.mode_paiement_modifiable) {
+                          <small class="d-block mt-1"><a routerLink="/cantines/liste-commandes">Changer le mode</a> jusqu'au {{ commandeService.libelleLimite(c.mode_paiement_limite) }}</small>
+                        }
+                      </div>
+                    } @else { <span class="muted">—</span> }
                   </td>
                   <td class="lst-c-act bas">
                     <div class="lst-act">
@@ -173,6 +186,12 @@
                     <i class="ri-time-line text-muted"></i>
                     <small class="text-muted">Commandé le {{ formatDate(c.date_commande) }}</small>
                   </div>
+                  @if (c.statut !== 'annulee' && c.mode_paiement) {
+                    <div class="d-flex align-items-center gap-1 mb-2">
+                      <i [class]="c.mode_paiement === 'compte' ? 'ri-wallet-3-line text-success' : 'ri-file-list-3-line text-warning'"></i>
+                      <small class="fw-medium">{{ texteMode(c) }}</small>
+                    </div>
+                  }
 
                   @if (c.statut === 'annulee' && c.date_annulation) {
                     <div class="d-flex align-items-center gap-1 mb-2">

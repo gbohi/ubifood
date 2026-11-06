@@ -1,6 +1,7 @@
 // Mon compte repas (tout employé) : solde du compte prépayé, repas du mois et leur
-// règlement (débité du compte, payé à la caisse, retenu sur salaire, non couvert,
-// à venir), reste à payer prévu à la clôture, mouvements du compte et reçus de caisse (PDF).
+// mode de paiement choisi à la commande (compte repas, retenue sur salaire ; payé à la
+// caisse pour les anciens reçus), reste à payer prévu à la clôture (= repas en retenue),
+// mouvements du compte et reçus de caisse (PDF).
 // API : GET compte-repas/?annee=&mois=, compte-repas/mouvements/, compte-repas/recus/,
 // compte-repas/recus/<id>/pdf/?papier=ticket|a5.
 import { Component, DestroyRef, OnInit, inject } from '@angular/core';

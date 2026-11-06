@@ -6,13 +6,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../paiements/choix_paiement_sheet.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../shared/models/models.dart';
 import '../../core/widgets/common_widgets.dart';
 import '../../core/widgets/tic_echeance.dart';
 import '../avis/avis_widgets.dart';
-import '../dashboard/accueil_widgets.dart' show jourCourt;
+import '../dashboard/accueil_widgets.dart' show formatFcfa, jourCourt;
 import '../../shared/models/prestataire_models.dart';
 import '../../shared/providers/prestataire_provider.dart';
 import '../contestation/retrait_detail_screen.dart';
@@ -376,9 +377,11 @@ class LigneCommande extends StatelessWidget {
     final annulee = c.statut == StatutCommande.annulee;
     final sousTitre = annulee
         ? (c.libelleAnnulationGestionnaire ?? 'Annulée par vous')
-        : [c.menuDetail?.agenceNom, c.menuDetail?.typeEquipeLibelle]
-            .where((e) => e != null && e.isNotEmpty)
-            .join(' · ');
+        : [
+            c.menuDetail?.agenceNom,
+            c.menuDetail?.typeEquipeLibelle,
+            libelleModeCommande(c),
+          ].where((e) => e != null && e.isNotEmpty).join(' · ');
 
     return InkWell(
       onTap: () => DetailCommandeSheet.show(context, c),
@@ -531,7 +534,8 @@ void confirmerAnnulation(BuildContext context, Commande commande) {
             ]),
             content: Column(mainAxisSize: MainAxisSize.min, children: [
               Text('Voulez-vous annuler votre commande'
-                  '${commande.platDetail != null ? ' « ${commande.platDetail!.nom} »' : ''} ?'),
+                  '${commande.platDetail != null ? ' « ${commande.platDetail!.nom} »' : ''} ?'
+                  '${commande.paiementMode == 'compte' && commande.paiementMontant != null ? '\n${formatFcfa(commande.paiementMontant!)} seront recrédités sur votre compte repas.' : ''}'),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(10),
@@ -764,6 +768,13 @@ class DetailCommandeSheet extends StatelessWidget {
                   const SizedBox(height: 16),
                   _Chronologie(etapes: etapes),
 
+                  // ── Paiement : mode choisi à la commande ──
+                  if (etat != EtatCommande.annulee &&
+                      libelleModeCommande(c) != null) ...[
+                    const SizedBox(height: 14),
+                    _BlocPaiement(commande: c),
+                  ],
+
                   // ── Retrait : détail, contestation ────────
                   if (etat == EtatCommande.retiree || contestation != null) ...[
                     const SizedBox(height: 14),
@@ -817,6 +828,101 @@ class DetailCommandeSheet extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Mode de paiement de la commande et « Changer le mode de paiement »
+/// (jusqu'à la date limite de commande)
+class _BlocPaiement extends StatelessWidget {
+  final Commande commande;
+  const _BlocPaiement({required this.commande});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gris =
+        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final c = commande;
+    final compte = c.payeParCompte;
+    final cmdProv = context.watch<CommandeProvider>();
+    final limite = c.modePaiementLimite;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightBackground,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(
+              compte
+                  ? Icons.account_balance_wallet_outlined
+                  : Icons.receipt_long_outlined,
+              size: 18,
+              color: compte ? AppColors.accentDark : AppColors.warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Paiement', style: TextStyle(fontSize: 11, color: gris)),
+                  Text(libelleModeCommande(c) ?? '',
+                      key: const Key('mode-detail-commande'),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontSize: 14, fontWeight: FontWeight.w700)),
+                ]),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+            compte
+                ? 'Débité de votre compte repas à la commande. Recrédité si '
+                    'la commande est annulée.'
+                : 'Retenu sur votre salaire à la clôture du mois.',
+            style: TextStyle(fontSize: 11.5, color: gris)),
+        if (c.modePaiementModifiable &&
+            c.statut == StatutCommande.enAttente) ...[
+          const SizedBox(height: 6),
+          InkWell(
+            key: const Key('changer-mode-detail'),
+            borderRadius: BorderRadius.circular(8),
+            onTap: cmdProv.isLoading
+                ? null
+                : () => changerModePaiementCommande(context, c),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(children: [
+                Icon(Icons.swap_horiz_rounded,
+                    size: 18,
+                    color: isDark ? AppColors.accent : AppColors.primaryLight),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(
+                          text: 'Changer le mode de paiement',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? AppColors.accent
+                                  : AppColors.primaryLight)),
+                      if (limite != null)
+                        TextSpan(
+                            text:
+                                '  jusqu\'au ${DateFormat('dd/MM à HH:mm', 'fr_FR').format(limite)}',
+                            style: TextStyle(fontSize: 11, color: gris)),
+                    ]),
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ],
+      ]),
     );
   }
 }

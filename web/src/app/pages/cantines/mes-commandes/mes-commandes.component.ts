@@ -130,6 +130,15 @@ export class MesCommandesComponent implements OnInit {
   }
 
   // ── Date limite d'annulation (paramétrée par l'administrateur) ──
+  /** Mode de paiement choisi à la commande (et montant débité du compte repas) */
+  texteMode(c: CommandeModel): string {
+    if (c.paiement?.mode === 'compte') {
+      return `Compte repas · ${Math.round(c.paiement.montant).toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} F`;
+    }
+    if (c.paiement?.mode === 'caisse') return 'Payé à la caisse';
+    return 'Retenue sur salaire';
+  }
+
   annulationOuverte(c: CommandeModel): boolean {
     return this.commandeService.annulationOuverte(c.menu_detail);
   }

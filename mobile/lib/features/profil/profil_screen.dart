@@ -12,6 +12,8 @@ import '../allergies/allergies_screen.dart';
 import '../commandes/commandes_screen.dart' show EtatCommande, etatCommande;
 import 'change_password_screen.dart';
 import 'qr_code_screen.dart';
+import '../paiements/choix_paiement_sheet.dart';
+import '../../shared/models/compte_repas_models.dart' show ModePaiementCommande;
 
 class ProfilScreen extends StatefulWidget {
   const ProfilScreen({super.key});
@@ -214,6 +216,14 @@ class _ProfilScreenState extends State<ProfilScreen> {
                             context,
                             MaterialPageRoute(
                                 builder: (_) => const QrCodeScreen())),
+                      ),
+                      _Ligne(
+                        key: const Key('ligne-paiement-prefere'),
+                        icone: Icons.account_balance_wallet_outlined,
+                        titre: 'Paiement de mes repas',
+                        sousTitre:
+                            'Par défaut : ${user?.modePaiementPrefere == 'retenue' ? 'retenue sur salaire' : 'compte repas (si le solde suffit)'}',
+                        onTap: () => _choisirPreferencePaiement(context),
                       ),
                       Consumer<AllergieProvider>(
                           builder: (_, allergieProv, __) {
@@ -474,6 +484,26 @@ class _Chiffres extends StatelessWidget {
 }
 
 /// Ligne de réglage : icône, titre (+ sous-titre), valeur ou chevron
+/// Mode de paiement proposé par défaut à la commande (PATCH /users/me/)
+Future<void> _choisirPreferencePaiement(BuildContext context) async {
+  final auth = context.read<AuthProvider>();
+  final messenger = ScaffoldMessenger.of(context);
+  final actuel = auth.user?.modePaiementPrefere == 'retenue'
+      ? ModePaiementCommande.retenue
+      : ModePaiementCommande.compte;
+  final mode = await PreferencePaiementSheet.show(context, actuel);
+  if (mode == null || mode == actuel) return;
+  final erreur = await auth.changerModePaiementPrefere(mode.code);
+  messenger.showSnackBar(SnackBar(
+    content: Text(erreur ??
+        (mode == ModePaiementCommande.compte
+            ? 'Par défaut : compte repas (si votre solde suffit)'
+            : 'Par défaut : retenue sur salaire')),
+    backgroundColor: erreur == null ? AppColors.success : AppColors.error,
+    behavior: SnackBarBehavior.floating,
+  ));
+}
+
 class _Ligne extends StatelessWidget {
   final IconData icone;
   final String titre;
@@ -485,6 +515,7 @@ class _Ligne extends StatelessWidget {
   final VoidCallback? onTap;
 
   const _Ligne({
+    super.key,
     required this.icone,
     required this.titre,
     this.sousTitre,

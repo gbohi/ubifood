@@ -46,6 +46,13 @@ class AuthService {
     return AuthUser.fromJson(res.data);
   }
 
+  /// Mode de paiement proposé par défaut à la commande (« compte » | « retenue »)
+  Future<AuthUser> modifierModePaiementPrefere(String mode) async {
+    final res =
+        await apiClient.patch('/users/me/', data: {'mode_paiement_prefere': mode});
+    return AuthUser.fromJson(res.data);
+  }
+
   Future<AuthUser> retirerPhoto() async {
     final res = await apiClient.delete('/users/me/photo/');
     return AuthUser.fromJson(res.data);
@@ -166,11 +173,23 @@ class CommandeService {
     return list.map((e) => Commande.fromJson(e)).toList();
   }
 
-  Future<Commande> commander({required int menuId, required int platId}) async {
+  /// [modePaiement] : « compte » (débité du compte repas à la commande) ou
+  /// « retenue » ; null : préférence de l'employé (compte si le solde suffit).
+  Future<Commande> commander(
+      {required int menuId, required int platId, String? modePaiement}) async {
     final res = await apiClient.post('/commandes/', data: {
       'menu_id': menuId,
       'plat_id': platId,
+      if (modePaiement != null) 'mode_paiement': modePaiement,
     });
+    return Commande.fromJson(res.data);
+  }
+
+  /// Change le mode de paiement jusqu'à la date limite de commande
+  /// (compte → retenue : recrédité ; retenue → compte : débité).
+  Future<Commande> changerModePaiement(int commandeId, String mode) async {
+    final res = await apiClient.post('/commandes/$commandeId/mode-paiement/',
+        data: {'mode_paiement': mode});
     return Commande.fromJson(res.data);
   }
 

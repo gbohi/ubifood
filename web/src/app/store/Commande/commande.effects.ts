@@ -128,6 +128,21 @@ export class CommandeEffects {
     )
   );
 
+  // ── Mode de paiement ───────────────────────────────────────
+  changerModePaiement$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(CommandeActions.changerModePaiement),
+      mergeMap(({ id, mode }) =>
+        this.commandeService.changerModePaiement(id, mode).pipe(
+          map(commande => CommandeActions.changerModePaiementSuccess({ commande })),
+          catchError(err => of(CommandeActions.changerModePaiementFailure({
+            error: (typeof err === 'string' ? err : err?.error?.detail) || 'Le mode de paiement n\'a pas pu être changé.',
+          })))
+        )
+      )
+    )
+  );
+
   // ── Annuler ────────────────────────────────────────────────
   annulerCommande$ = createEffect(() =>
     this.actions$.pipe(
