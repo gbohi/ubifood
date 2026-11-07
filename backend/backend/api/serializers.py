@@ -58,6 +58,9 @@ class _PeriodeMixin:
                 {'date_fin': "La date de fin doit être postérieure ou égale à la date de début."})
         if self.periode_exclusive and proprio and debut:
             autres = self.Meta.model.objects.filter(**{cle: proprio})
+            for autre_cle in getattr(self, 'cles_periode_supplementaires', ()):
+                valeur = attrs.get(autre_cle, getattr(inst, autre_cle, None))
+                autres = autres.filter(**{autre_cle: valeur})
             if inst is not None:
                 autres = autres.exclude(pk=inst.pk)
             # Chevauchement : [debut, fin] ∩ [a.debut, a.fin] ≠ ∅ (fin vide = en cours)
@@ -189,11 +192,14 @@ class PlatPrestataireSerializer(_TarifMixin, serializers.ModelSerializer):
 
 
 class AgencePrestataireSerializer(_PeriodeMixin, serializers.ModelSerializer):
-    # Une agence n'est servie que par un prestataire à la fois (facturation)
+    # Plusieurs prestataires peuvent desservir la même agence (chaque menu
+    # porte son prestataire) ; un même couple agence / prestataire n'a qu'une
+    # période de rattachement à la fois.
     periode_exclusive = True
     cle_periode = 'agence'
-    libelle_periode = 'période de rattachement à un prestataire'
-    proprietaire = "de l'agence"
+    cles_periode_supplementaires = ('prestataire',)
+    libelle_periode = 'période de rattachement'
+    proprietaire = "de ce prestataire à l'agence"
     statut_libelle = serializers.ReadOnlyField(source='statut.libelle_statut')
     agence_libelle = serializers.ReadOnlyField(source='agence.nom_agence')
 
@@ -202,8 +208,116 @@ class AgencePrestataireSerializer(_PeriodeMixin, serializers.ModelSerializer):
         fields = '__all__'
 
 
-class PrestataireSerializer(serializers.ModelSerializer):
+IMAGE_PROFIL_TAILLE_MAX = 5 * 1024 * 1024
+
+
+class _ProfilPrestataireMixin:
+    """
+    Profil public du prestataire (parcours de commande des employés) :
+    logo, photo de couverture (paysage, ~1200 × 600 recommandé), nom affiché,
+    description courte (120 caractères), cuisine, tags. Images : jpg, jpeg,
+    png ou webp, 5 Mo au plus ; supprimer_logo / supprimer_photo_couverture = true
+    pour les retirer.
+    """
+
+    def get_logo_url(self, obj):
+        return obj.logo.url if obj.logo else None
+
+    def get_photo_couverture_url(self, obj):
+        return obj.photo_couverture.url if obj.photo_couverture else None
+
+    def get_nom_public(self, obj):
+        return obj.nom_public
+
+    @staticmethod
+    def _image(image, libelle):
+        if image and image.size > IMAGE_PROFIL_TAILLE_MAX:
+            raise serializers.ValidationError(f"{libelle} trop volumineuse (5 Mo maximum).")
+        return image
+
+    def validate_logo(self, logo):
+        return self._image(logo, "Image du logo")
+
+    def validate_photo_couverture(self, photo):
+        return self._image(photo, "Photo de couverture")
+
+    def validate_tags(self, tags):
+        if tags in (None, ''):
+            return []
+        if isinstance(tags, str):
+            # multipart : liste JSON (« ["Ivoirien", "Grillades"] ») ou mots séparés par des virgules
+            import json
+            try:
+                tags = json.loads(tags) if tags.strip().startswith('[') else tags.split(',')
+            except ValueError:
+                raise serializers.ValidationError("tags : liste de mots-clés attendue.")
+        if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+            raise serializers.ValidationError("tags : liste de mots-clés attendue.")
+        tags = [t.strip()[:30] for t in tags if t and t.strip()]
+        if len(tags) > 8:
+            raise serializers.ValidationError("8 mots-clés au plus.")
+        return tags
+
+    def validate_description_courte(self, texte):
+        texte = (texte or '').strip()
+        if len(texte) > 120:
+            raise serializers.ValidationError("120 caractères au plus.")
+        return texte
+
+    def validate_nom_affiche(self, nom):
+        return (nom or '').strip()
+
+    def _supprimer_images(self, instance, validated_data):
+        for champ in ('logo', 'photo_couverture'):
+            supprimer = validated_data.pop(f'supprimer_{champ}', False)
+            nouveau = validated_data.get(champ)
+            ancien = getattr(instance, champ) if instance is not None else None
+            if (supprimer or nouveau) and ancien:
+                ancien.delete(save=False)
+                if supprimer and not nouveau:
+                    setattr(instance, champ, None)
+
+    def update(self, instance, validated_data):
+        self._supprimer_images(instance, validated_data)
+        return super().update(instance, validated_data)
+
+    def create(self, validated_data):
+        validated_data.pop('supprimer_logo', None)
+        validated_data.pop('supprimer_photo_couverture', None)
+        return super().create(validated_data)
+
+
+CHAMPS_PROFIL_PRESTATAIRE = ['nom_affiche', 'nom_public', 'description_courte', 'cuisine', 'tags',
+                             'logo', 'logo_url', 'supprimer_logo',
+                             'photo_couverture', 'photo_couverture_url', 'supprimer_photo_couverture']
+
+
+class PrestataireProfilSerializer(_ProfilPrestataireMixin, serializers.ModelSerializer):
+    """GET / PATCH /prestataire/profil/ (responsable du prestataire)."""
+    logo_url = serializers.SerializerMethodField()
+    photo_couverture_url = serializers.SerializerMethodField()
+    nom_public = serializers.SerializerMethodField()
+    tags = serializers.JSONField(required=False)
+    supprimer_logo = serializers.BooleanField(write_only=True, required=False, default=False)
+    supprimer_photo_couverture = serializers.BooleanField(write_only=True, required=False, default=False)
+
+    class Meta:
+        model = Prestataire
+        fields = ['id', 'libelle'] + CHAMPS_PROFIL_PRESTATAIRE
+        read_only_fields = ['id', 'libelle']
+        extra_kwargs = {'logo': {'write_only': True, 'required': False},
+                        'photo_couverture': {'write_only': True, 'required': False}}
+
+
+class PrestataireSerializer(_ProfilPrestataireMixin, serializers.ModelSerializer):
     statut_libelle      = serializers.ReadOnlyField(source='statut.libelle_statut')
+    # Profil public (parcours de commande), modifiable aussi par le responsable
+    logo_url = serializers.SerializerMethodField()
+    photo_couverture_url = serializers.SerializerMethodField()
+    nom_public = serializers.SerializerMethodField()
+    tags = serializers.JSONField(required=False)
+    supprimer_logo = serializers.BooleanField(write_only=True, required=False, default=False)
+    supprimer_photo_couverture = serializers.BooleanField(write_only=True, required=False, default=False)
     plat_prestataires   = PlatPrestataireSerializer(
         source='platprestataire_set', many=True, read_only=True
     )
@@ -214,6 +328,7 @@ class PrestataireSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prestataire
         fields = '__all__'
+        extra_kwargs = {'logo': {'required': False}, 'photo_couverture': {'required': False}}
 
 
 class PlatCategoriesalarieSerializer(_TarifMixin, serializers.ModelSerializer):
@@ -806,6 +921,8 @@ class MenuSerializer(serializers.ModelSerializer):
     agence_nom         = serializers.ReadOnlyField(source='agence.nom_agence')
     typeequipe_id      = serializers.ReadOnlyField(source='typeequipe.id')
     typeequipe_libelle = serializers.ReadOnlyField(source='typeequipe.libelle')
+    # Prestataire qui sert le menu (nom affiché ; « Cantine UbiPharm » si vide)
+    prestataire_nom    = serializers.SerializerMethodField()
     menu_plats         = MenuPlatSerializer(many=True, read_only=True)
     # Plats du menu, enregistrés avec lui en une seule opération
     plat_ids = serializers.PrimaryKeyRelatedField(
@@ -831,6 +948,9 @@ class MenuSerializer(serializers.ModelSerializer):
 
     def get_date_limite_commande(self, obj):
         return date_limite_commande(obj.date_menu, self._parametres()).isoformat()
+
+    def get_prestataire_nom(self, obj):
+        return obj.prestataire.nom_public if obj.prestataire_id else 'Cantine UbiPharm'
 
     def get_date_limite_annulation(self, obj):
         return date_limite_annulation(obj.date_menu, self._parametres()).isoformat()
@@ -862,11 +982,12 @@ class MenuSerializer(serializers.ModelSerializer):
         if inst is not None:
             verifier_mois_ouvert(inst.date_menu)
             change_cle = (date_menu != inst.date_menu or agence != inst.agence
-                          or typeequipe != inst.typeequipe)
+                          or typeequipe != inst.typeequipe
+                          or ('prestataire' in attrs and attrs['prestataire'] != inst.prestataire))
             if change_cle and commandes_actives(inst).exists():
                 raise serializers.ValidationError(
-                    "Des agents ont déjà commandé sur ce menu : sa date, son agence et son "
-                    "équipe ne peuvent plus être modifiées.")
+                    "Des agents ont déjà commandé sur ce menu : sa date, son agence, son "
+                    "équipe et son prestataire ne peuvent plus être modifiés.")
             if plat_ids is not None:
                 retires = set(inst.menu_plats.values_list('plat_id', flat=True)) - {p.id for p in plat_ids}
                 commandes = commandes_actives(inst).filter(plat_id__in=retires)
@@ -875,18 +996,44 @@ class MenuSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(
                         {'plat_ids': f"Impossible de retirer un plat déjà commandé : {noms}."})
 
-        doublon = Menu.objects.filter(date_menu=date_menu, agence=agence, typeequipe=typeequipe)
+        # Prestataire du menu : indiqué, sinon déduit des plats (ceux d'un seul
+        # prestataire), sinon celui du menu existant ; vide = menu UbiPharm
+        if 'prestataire' in attrs:
+            prestataire = attrs['prestataire']
+        elif inst is not None and inst.prestataire_id:
+            prestataire = inst.prestataire
+        else:
+            auteurs = {p.prestataire for p in (plat_ids or []) if p.prestataire_id}
+            prestataire = next(iter(auteurs)) if len(auteurs) == 1 else None
+            if prestataire is not None:
+                attrs['prestataire'] = prestataire
+        if plat_ids and prestataire is not None:
+            autres = sorted(p.nom for p in plat_ids if p.prestataire_id not in (None, prestataire.id))
+            if autres:
+                raise serializers.ValidationError(
+                    {'plat_ids': f"Plats d'un autre prestataire que {prestataire.libelle} : {', '.join(autres)}."})
+
+        doublon = Menu.objects.filter(date_menu=date_menu, agence=agence, typeequipe=typeequipe,
+                                      prestataire=prestataire)
         if inst is not None:
             doublon = doublon.exclude(pk=inst.pk)
         if doublon.exists():
             raise serializers.ValidationError(
                 f"Un menu existe déjà le {date_menu:%d/%m/%Y} pour {agence.nom_agence} "
-                f"({typeequipe.libelle}).")
+                f"({typeequipe.libelle}"
+                + (f", {prestataire.libelle}" if prestataire is not None else '') + ").")
 
         # Sans prestataire ni tarif à cette date, les repas ne pourraient pas
         # être facturés (la clôture du mois serait bloquée).
-        rattachement = ligne_active(AgencePrestataire.objects.filter(agence=agence), date_menu)
+        rattachements = AgencePrestataire.objects.filter(agence=agence)
+        if prestataire is not None:
+            rattachements = rattachements.filter(prestataire=prestataire)
+        rattachement = ligne_active(rattachements, date_menu)
         if rattachement is None:
+            if prestataire is not None:
+                raise serializers.ValidationError(
+                    f"Le prestataire {prestataire.libelle} ne dessert pas l'agence {agence.nom_agence} "
+                    f"le {date_menu:%d/%m/%Y} (Paramètres → Prestataires).")
             raise serializers.ValidationError(
                 f"Aucun prestataire n'est rattaché à l'agence {agence.nom_agence} "
                 f"le {date_menu:%d/%m/%Y} (Paramètres → Prestataires).")
@@ -1089,8 +1236,12 @@ class CommandeSerializer(serializers.ModelSerializer):
                     "Impossible de commander : les commandes pour ce menu étaient "
                     f"ouvertes jusqu'au {libelle_date_limite(limite)}."
                 )
-            # Pas de contrôle d'agence : un agent peut commander dans l'agence
-            # où il se trouve ce jour-là (déplacement, mission).
+            # Agence : la sienne, ou une agence qui accepte les employés des
+            # autres agences (déplacement, mission) ; sinon 403
+            request = self.context.get('request')
+            if request is not None:
+                from .parcours_commande import verifier_commande_autorisee
+                verifier_commande_autorisee(request.user, menu)
 
         if menu and self.instance is not None and menu != self.instance.menu:
             verifier_mois_ouvert(menu.date_menu)
@@ -1304,7 +1455,7 @@ class ParametresSocieteSerializer(serializers.ModelSerializer):
                   'identifiant_fiscal', 'registre_commerce', 'pied_de_page',
                   'logo', 'logo_url', 'supprimer_logo',
                   'delai_commande_heures', 'delai_annulation_heures',
-                  'heure_debut_service', 'heure_fin_service', 'updated_at']
+                  'heure_debut_service', 'heure_fin_service', 'seuil_avis_note', 'updated_at']
         read_only_fields = ['updated_at']
         extra_kwargs = {'logo': {'write_only': True, 'required': False}}
 
@@ -1502,10 +1653,15 @@ class AvisPlatSerializer(serializers.ModelSerializer):
 
 
 class ParametresCantineSerializer(serializers.ModelSerializer):
-    """Délais de la cantine, lisibles par tout utilisateur connecté."""
+    """
+    Délais de la cantine et seuil d'avis, lisibles par tout utilisateur connecté.
+    Seul seuil_avis_note est modifiable ici (gestionnaires et administrateurs) ;
+    les délais se modifient par /parametres-societe/ (administrateurs).
+    """
     class Meta:
         model  = ParametresSociete
-        fields = ['delai_commande_heures', 'delai_annulation_heures']
+        fields = ['delai_commande_heures', 'delai_annulation_heures', 'seuil_avis_note']
+        read_only_fields = ['delai_commande_heures', 'delai_annulation_heures']
 
 
 class PopupConnexionSerializer(serializers.ModelSerializer):

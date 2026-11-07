@@ -19,18 +19,33 @@ def prestataire_de_l_agence(agence_id, d):
     return ap.prestataire if ap else None
 
 
-def filtre_menus_prestataire(prestataire_id, prefixe=''):
+def prestataire_du_menu(menu):
     """
-    Condition (Exists) : le menu est servi par le prestataire, c.-à-d. son
-    agence lui est rattachée à la date du menu (même règle que la facturation).
+    Prestataire qui sert le menu : Menu.prestataire, sinon (menu historique
+    d'UbiPharm) le prestataire rattaché à l'agence à la date du menu.
+    """
+    if menu.prestataire_id:
+        return menu.prestataire
+    return prestataire_de_l_agence(menu.agence_id, menu.date_menu)
+
+
+def filtre_menus_prestataire(prestataire_id, prefixe='', champ_prestataire=None):
+    """
+    Condition : le menu est servi par le prestataire, c.-à-d.
+      - son prestataire (Menu.prestataire) est celui-ci ;
+      - ou, menu sans prestataire (historique UbiPharm), son agence lui est
+        rattachée à la date du menu (même règle que la facturation).
     `prefixe` : chemin vers le menu depuis le modèle filtré (ex. 'menu__').
+    `champ_prestataire` : chemin du prestataire du menu (défaut : prefixe + 'prestataire_id' ;
+    ex. 'menu__prestataire_id' pour l'historique, qui porte agence et date).
     """
+    champ = champ_prestataire or f'{prefixe}prestataire_id'
     rattachements = AgencePrestataire.objects.filter(
         prestataire_id=prestataire_id,
         agence_id=OuterRef(f'{prefixe}agence_id'),
         date_debut__date__lte=OuterRef(f'{prefixe}date_menu'),
     ).filter(Q(date_fin__isnull=True) | Q(date_fin__date__gte=OuterRef(f'{prefixe}date_menu')))
-    return Exists(rattachements)
+    return Q(**{champ: prestataire_id}) | (Q(**{f'{champ[:-3]}__isnull': True}) & Exists(rattachements))
 
 
 def menus_du_prestataire(prestataire_id):

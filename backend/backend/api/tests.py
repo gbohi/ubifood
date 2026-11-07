@@ -237,7 +237,7 @@ class CommandeTests(BaseAPITestCase):
         self.assertIn('date_limite_commande', r.data)
         self.assertIn('date_limite_annulation', r.data)
         self.assertEqual(client.get(f'{API}/parametres-cantine/').data,
-                         {'delai_commande_heures': 1, 'delai_annulation_heures': 240})
+                         {'delai_commande_heures': 1, 'delai_annulation_heures': 240, 'seuil_avis_note': 5})
 
     def test_delai_modifiable_uniquement_par_admin(self):
         r = self.client_pour(self.employe).patch(
@@ -358,8 +358,12 @@ class CantineReglesTests(BaseAPITestCase):
         return menu
 
     def test_commande_dans_une_autre_agence_autorisee(self):
-        # Un agent en déplacement commande dans l'agence où il se trouve
+        # Un agent en déplacement commande dans une autre agence si elle
+        # accepte les employés des autres agences (sinon 403)
         menu = self.menu_yopougon()
+        r = self.client_pour(self.employe).post(f'{API}/commandes/', {'menu_id': menu.id, 'plat_id': self.plat1.id})
+        self.assertEqual(r.status_code, 403, r.data)
+        Agence.objects.filter(pk=menu.agence_id).update(accepter_autres_agences=True)
         r = self.client_pour(self.employe).post(f'{API}/commandes/', {'menu_id': menu.id, 'plat_id': self.plat1.id})
         self.assertEqual(r.status_code, 201, r.data)
 
@@ -2189,7 +2193,8 @@ class APreparerTests(_EspacePrestataireBase):
         ligne = r.data['lignes'][0]
         self.assertEqual(set(ligne), {'commande_id', 'menu_id', 'nom', 'prenoms', 'nom_complet', 'matricule',
                                       'agence', 'user_id', 'agence_id', 'plat_id', 'plat', 'statut',
-                                      'heure_retrait', 'valide_par_nom'})
+                                      'heure_retrait', 'valide_par_nom',
+                                      'externe', 'agence_origine_id', 'agence_origine'})
         # Agence d'un autre prestataire
         r = self.client_pour(self.agent_a).get(f'{API}/prestataire/liste-du-jour/?agence={self.yop.id}')
         self.assertEqual(r.status_code, 403)

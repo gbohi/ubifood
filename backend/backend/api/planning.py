@@ -1,13 +1,16 @@
 """
 Planning des menus (web, gestionnaires et administrateurs).
 
-GET /api/api/planning/?debut=AAAA-MM-JJ[&agence=ID&typeequipe=ID]
+GET /api/api/planning/?debut=AAAA-MM-JJ[&agence=ID&typeequipe=ID&origine=toutes|mon_agence|autres]
   Semaine (lundi → vendredi) contenant `debut` (par défaut : la semaine en cours).
   Pour chaque agence gérée (gestionnaire : ses agences ; administrateur : toutes)
   et chaque jour : les menus, leurs plats avec le nombre de commandes reçues
   (non annulées), l'état des commandes (ouvert / fermé / en service / terminé)
   selon les délais paramétrés, et les retraits du jour.
+  « externes » : commandes d'employés d'une autre agence que celle du menu ;
+  `origine` restreint les comptes à ces commandes (autres) ou aux autres (mon_agence).
 """
+from collections import defaultdict
 from datetime import date as date_type, timedelta
 
 from django.db.models import Count, Q
@@ -73,17 +76,22 @@ class PlanningView(APIView):
         menus = list(menus.select_related('typeequipe').order_by('date_menu', 'typeequipe__libelle'))
         agences = list(agences)
 
-        # Commandes reçues par menu et par plat (une seule requête)
-        par_plat = {
-            (r['menu_id'], r['plat_id']): r['n'] for r in
-            Commande.objects.filter(menu__in=menus, statut__in=ACTIVES)
-            .values('menu_id', 'plat_id').annotate(n=Count('id'))
-        }
-        retirees = {
-            r['menu_id']: r['n'] for r in
-            Commande.objects.filter(menu__in=menus, statut='retiree')
-            .values('menu_id').annotate(n=Count('id'))
-        }
+        # Commandes reçues par menu et par plat, origine des employés (externes)
+        from .parcours_commande import agences_origine, est_externe, garder_origine, lire_origine
+        origine = lire_origine(request)
+        agence_menu = {m.id: m.agence_id for m in menus}
+        rangs = list(Commande.objects.filter(menu__in=menus, statut__in=ACTIVES)
+                     .values_list('menu_id', 'plat_id', 'user_id', 'statut'))
+        origines = agences_origine({r[2] for r in rangs})
+        par_plat, externes_plat, retirees = defaultdict(int), defaultdict(int), defaultdict(int)
+        for menu_id, plat_id, user_id, statut in rangs:
+            externe = est_externe(origines.get(user_id), agence_menu[menu_id])
+            if not garder_origine(origine, externe):
+                continue
+            par_plat[(menu_id, plat_id)] += 1
+            externes_plat[(menu_id, plat_id)] += externe
+            if statut == 'retiree':
+                retirees[menu_id] += 1
         plats = {}
         for mp in MenuPlat.objects.filter(menu__in=menus).select_related('plat__type_plat').order_by('id'):
             plats.setdefault(mp.menu_id, []).append(mp.plat)
@@ -101,6 +109,7 @@ class PlanningView(APIView):
                 'id': p.id, 'nom': p.nom,
                 'type_plat': p.type_plat.libelle if p.type_plat_id else None,
                 'commandes': par_plat.get((m.id, p.id), 0),
+                'externes': externes_plat.get((m.id, p.id), 0),
             } for p in plats.get(m.id, [])]
             limite = date_limite_commande(m.date_menu, parametres)
             return {
@@ -113,6 +122,7 @@ class PlanningView(APIView):
                 'date_limite_commande': limite,
                 'date_limite_libelle': libelle_date_limite(limite),
                 'commandes': sum(l['commandes'] for l in lignes),
+                'externes': sum(l['externes'] for l in lignes),
                 'retirees': retirees.get(m.id, 0),
                 'plats': lignes,
             }
@@ -123,6 +133,7 @@ class PlanningView(APIView):
 
         return Response({
             'aujourdhui': aujourdhui,
+            'origine': origine,
             'debut': jours[0],
             'fin': jours[-1],
             'jours': [{

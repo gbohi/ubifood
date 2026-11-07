@@ -74,6 +74,11 @@ class Agence(BaseModel):
     # défaut de Paramètres → Société). Servent au contrôle des retraits.
     heure_debut_service = models.TimeField(null=True, blank=True)
     heure_fin_service   = models.TimeField(null=True, blank=True)
+    # Parcours de commande : les employés des AUTRES agences peuvent-ils voir
+    # et commander les menus de cette agence ? (modifiable par le gestionnaire
+    # de l'agence et les administrateurs). Fermée : agence masquée aux
+    # employés des autres agences ; leurs commandes déjà passées sont maintenues.
+    accepter_autres_agences = models.BooleanField(default=False)
 
 class Etat(BaseModel):
     libelle_etat = models.CharField(max_length=255)
@@ -190,6 +195,12 @@ class Menu(BaseModel):
     date_publication = models.DateTimeField(null=True, blank=True)
     masque = models.BooleanField(default=False)
     motif_masquage = models.CharField(max_length=255, blank=True)
+    # Prestataire qui sert (et facture) ce menu : plusieurs prestataires
+    # peuvent desservir la même agence. Vide : menu historique d'UbiPharm
+    # (regroupé sous « Cantine UbiPharm » dans le parcours de commande ;
+    # facturé au prestataire rattaché à l'agence, comme avant).
+    prestataire = models.ForeignKey('Prestataire', on_delete=models.PROTECT, null=True, blank=True,
+                                    related_name='menus')
 
 
 class MenuHistorique(models.Model):
@@ -314,6 +325,21 @@ class Prestataire(BaseModel):
     identifiant_fiscal = models.CharField('N° compte contribuable / identifiant fiscal',
                                           max_length=100, blank=True)
     registre_commerce  = models.CharField('RCCM', max_length=100, blank=True)
+    # Profil affiché aux employés (parcours de commande) : modifiable par le
+    # responsable du prestataire (espace prestataire) et par les administrateurs.
+    nom_affiche        = models.CharField("Nom affiché aux employés", max_length=100, blank=True)
+    description_courte = models.CharField(max_length=120, blank=True)
+    cuisine            = models.CharField('Type de cuisine', max_length=100, blank=True)
+    tags               = models.JSONField(default=list, blank=True)
+    logo               = models.ImageField(upload_to='prestataires/logos/', null=True, blank=True,
+                                           validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'webp'])])
+    # Paysage, environ 1200 × 600 recommandé (5 Mo au plus)
+    photo_couverture   = models.ImageField(upload_to='prestataires/couvertures/', null=True, blank=True,
+                                           validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'webp'])])
+
+    @property
+    def nom_public(self):
+        return self.nom_affiche or self.libelle
 
 class Categoriesalarie(BaseModel):
     libelle = models.CharField(max_length=100)
@@ -415,6 +441,7 @@ class Notification(models.Model):
         ('menu_corrige',     'Menu corrigé par UbiPharm'),
         ('plat_masque',      'Plat masqué par UbiPharm'),
         ('compte_repas',     'Compte repas'),
+        ('agence_fermee',    "Agence fermée aux autres agences"),
         ('info',             'Information'),
     ]
 
@@ -627,6 +654,10 @@ class ParametresSociete(models.Model):
     # Horaires du service par défaut (une agence peut avoir les siens)
     heure_debut_service = models.TimeField('Début du service', default=time(11, 30))
     heure_fin_service   = models.TimeField('Fin du service', default=time(14, 30))
+    # Note d'un prestataire affichée aux employés à partir de ce nombre d'avis
+    # (en dessous : « Nouveau », sans note)
+    seuil_avis_note     = models.PositiveIntegerField("Avis nécessaires pour afficher une note", default=5,
+                                                      validators=[MaxValueValidator(1000)])
     updated_at         = models.DateTimeField(auto_now=True)
     user_updated       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                            related_name='+')

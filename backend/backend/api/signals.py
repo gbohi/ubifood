@@ -244,6 +244,49 @@ def notifier_menu_disponible(sender, instance, created, **kwargs):
 
 
 # ══════════════════════════════════════════════════════════════
+# AGENCE FERMÉE AUX AUTRES AGENCES
+# Commandes déjà passées maintenues ; les employés des autres agences qui y
+# ont une commande à venir (non annulée, non retirée) sont prévenus.
+# ══════════════════════════════════════════════════════════════
+
+@receiver(pre_save, sender='api.Agence')
+def memoriser_ouverture_agence(sender, instance, **kwargs):
+    instance._etait_ouverte = bool(instance.pk) and sender.objects.filter(
+        pk=instance.pk, accepter_autres_agences=True).exists()
+
+
+def message_agence_fermee(agence):
+    return (f"L'agence {agence.nom_agence} n'accepte plus les commandes des autres agences. "
+            "Vos commandes déjà passées sont maintenues.")
+
+
+def _notifier_agence_fermee(agence_id):
+    from .fcm_service import envoyer_notification_user
+    from .models import Agence, Commande, User
+    from .parcours_commande import agences_origine
+    agence = Agence.objects.filter(pk=agence_id).first()
+    if agence is None:
+        return
+    user_ids = set(Commande.objects.filter(menu__agence_id=agence_id, statut='en_attente',
+                                           menu__date_menu__gte=timezone.localdate())
+                   .values_list('user_id', flat=True))
+    origines = agences_origine(user_ids)
+    concernes = [uid for uid in user_ids if getattr(origines.get(uid), 'id', None) != agence_id]
+    for user in User.objects.filter(id__in=concernes, is_active=True):
+        envoyer_notification_user(
+            user=user, titre=f"🏢 {agence.nom_agence} : commandes des autres agences fermées",
+            message=message_agence_fermee(agence), type_notif='agence_fermee',
+            donnees={'agence_id': agence.id},
+        )
+
+
+@receiver(post_save, sender='api.Agence')
+def notifier_agence_fermee(sender, instance, created, **kwargs):
+    if not created and getattr(instance, '_etait_ouverte', False) and not instance.accepter_autres_agences:
+        _en_arriere_plan(_notifier_agence_fermee, instance.pk)
+
+
+# ══════════════════════════════════════════════════════════════
 # ESPACE PRESTATAIRE — contestations, corrections d'UbiPharm
 # ══════════════════════════════════════════════════════════════
 

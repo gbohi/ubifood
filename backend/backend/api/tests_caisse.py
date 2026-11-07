@@ -300,6 +300,8 @@ class PaiementCommandeTests(_CaisseBase):
         self.assertEqual(str(r['code']), 'solde_insuffisant')
         self.assertFalse(Commande.objects.exists())          # commande non créée
         self.assertEqual(self.solde(self.employe), D('900'))
+        # employe2 et emp3 n'ont pas d'agence : agence du menu ouverte aux autres agences
+        Agence.objects.filter(pk=menu.agence_id).update(accepter_autres_agences=True)
         # Sans compte du tout
         r = self.commander_api(self.employe2, menu, 'compte', attendu=400)
         self.assertIn('0 F disponibles', str(r['detail']))

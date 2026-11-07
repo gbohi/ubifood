@@ -489,7 +489,11 @@ class DetailServiceView(APIView):
                 return 'servi'
             return 'a_servir' if cmd.menu.date_menu >= auj else 'non_retire'
 
+        from .parcours_commande import agences_origine, origine_json
+        page_lignes = list(lignes[debut:debut + taille])
+        origines = agences_origine({cmd.user_id for cmd in page_lignes})
         resultats = [{
+            **origine_json(origines.get(cmd.user_id), cmd.menu.agence_id),
             'commande_id': cmd.id,
             'user_id': cmd.user_id,
             'matricule': cmd.user.username,
@@ -503,7 +507,7 @@ class DetailServiceView(APIView):
             'plat': cmd.plat.nom,
             'statut': statut(cmd),
             'heure_retrait': timezone.localtime(cmd.heure_retrait) if cmd.heure_retrait else None,
-        } for cmd in lignes[debut:debut + taille]]
+        } for cmd in page_lignes]
 
         return Response({
             'liste': liste,

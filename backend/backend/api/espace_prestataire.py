@@ -9,8 +9,11 @@ Périmètre (jamais au-delà) :
   - agences : celles où le prestataire est rattaché (AgencePrestataire) —
     aujourd'hui pour composer, à la date du menu pour consulter ;
   - plats   : les siens (Plat.prestataire) ;
-  - menus, commandes, retraits : ceux des menus qu'il sert (agence
-    rattachée à la date du menu, même règle que la facturation) ;
+  - menus, commandes, retraits : ceux des menus qu'il sert (Menu.prestataire ;
+    menus historiques sans prestataire : agence rattachée à la date du menu,
+    même règle que la facturation). Plusieurs prestataires peuvent desservir
+    la même agence ;
+  - profil public (logo, couverture, nom affiché…) : /prestataire/profil/ ;
   - employés : nom, prénoms, matricule et agence seulement (jamais la
     catégorie, le poste, le salaire, le contact).
 """
@@ -493,11 +496,8 @@ class MenuEspaceSerializer(MenuSerializer):
         if agence.id not in agences_prestataire(user, date_menu):
             raise serializers.ValidationError(
                 f"Votre prestataire ne dessert pas l'agence {agence.nom_agence} le {date_menu:%d/%m/%Y}.")
-        from .prestataires import prestataire_de_l_agence
-        rattache = prestataire_de_l_agence(agence.id, date_menu)
-        if rattache is not None and rattache.id != user.prestataire_id:
-            raise serializers.ValidationError(
-                f"Le {date_menu:%d/%m/%Y}, l'agence {agence.nom_agence} est servie par un autre prestataire.")
+        # Plusieurs prestataires peuvent desservir l'agence : le menu est le sien
+        attrs['prestataire'] = user.prestataire
 
         plats = attrs.get('plat_ids')
         if plats:
@@ -685,7 +685,8 @@ class MenuEspaceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def historique(self, request):
         """GET /prestataire/menus/historique/?agence=&date_debut=&date_fin=&menu= : dernières modifications."""
-        qs = (MenuHistorique.objects.filter(filtre_menus_prestataire(request.user.prestataire_id))
+        qs = (MenuHistorique.objects.filter(filtre_menus_prestataire(
+            request.user.prestataire_id, champ_prestataire='menu__prestataire_id'))
               .select_related('user'))
         p = request.query_params
         agence = _agence_demandee(request)
@@ -719,19 +720,33 @@ def _etat_jour(d, aujourdhui, maintenant, parametres):
     return etat, limite
 
 
-def quantites(prestataire_id, debut, fin, agence=None):
+def quantites(prestataire_id, debut, fin, agence=None, origine='toutes'):
     """
     Quantités à préparer par jour × plat × agence (commandes non annulées des
     menus servis par le prestataire). Avant la date limite : provisoire.
+    `externes` : commandes d'employés d'une autre agence que celle du menu ;
+    `origine` (toutes | mon_agence | autres) : filtre sur cette origine.
     """
+    from .parcours_commande import agences_origine, est_externe, garder_origine
     aujourdhui, maintenant = timezone.localdate(), timezone.now()
     parametres = ParametresSociete.charger()
     qs = commandes_du_prestataire(prestataire_id).filter(
         statut__in=ACTIVES, menu__date_menu__gte=debut, menu__date_menu__lte=fin)
     if agence is not None:
         qs = qs.filter(menu__agence_id=agence)
-    lignes = list(qs.values('menu__date_menu', 'plat_id', 'plat__nom', 'menu__agence_id')
-                  .annotate(n=Count('id'), servis=Count('id', filter=Q(statut='retiree'))))
+    rangs = list(qs.values_list('menu__date_menu', 'plat_id', 'plat__nom', 'menu__agence_id', 'statut', 'user_id'))
+    origines = agences_origine({r[5] for r in rangs})
+    lignes = {}
+    for d, plat_id, plat_nom, agence_id, statut, user_id in rangs:
+        externe = est_externe(origines.get(user_id), agence_id)
+        if not garder_origine(origine, externe):
+            continue
+        l = lignes.setdefault((d, plat_id, agence_id), {'menu__date_menu': d, 'plat_id': plat_id,
+                                                        'plat__nom': plat_nom, 'menu__agence_id': agence_id,
+                                                        'n': 0, 'servis': 0, 'externes': 0})
+        l['n'] += 1
+        l['servis'] += statut == 'retiree'
+        l['externes'] += externe
     jours = OrderedDict()
     d = debut
     while d <= fin:
@@ -739,31 +754,38 @@ def quantites(prestataire_id, debut, fin, agence=None):
         jours[d] = {'date': d.isoformat(), 'libelle': _jour_libelle(d), 'etat': etat,
                     'provisoire': maintenant < limite, 'date_limite_commande': limite.isoformat(),
                     'libelle_limite': libelle_date_limite(limite),
-                    '_plats': OrderedDict(), 'totaux_par_agence': defaultdict(int), 'total': 0, 'servis': 0}
+                    '_plats': OrderedDict(), 'totaux_par_agence': defaultdict(int), 'total': 0, 'servis': 0,
+                    'externes': 0, 'externes_par_agence': defaultdict(int)}
         d += timedelta(days=1)
-    for l in sorted(lignes, key=lambda x: x['plat__nom']):
+    for l in sorted(lignes.values(), key=lambda x: x['plat__nom']):
         j = jours[l['menu__date_menu']]
         p = j['_plats'].setdefault(l['plat_id'], {'plat_id': l['plat_id'], 'plat': l['plat__nom'],
-                                                  'par_agence': defaultdict(int), 'total': 0, 'servis': 0})
+                                                  'par_agence': defaultdict(int), 'total': 0, 'servis': 0,
+                                                  'externes': 0})
         p['par_agence'][l['menu__agence_id']] += l['n']
         p['total'] += l['n']
         p['servis'] += l['servis']
+        p['externes'] += l['externes']
         j['totaux_par_agence'][l['menu__agence_id']] += l['n']
         j['total'] += l['n']
         j['servis'] += l['servis']
+        j['externes'] += l['externes']
+        j['externes_par_agence'][l['menu__agence_id']] += l['externes']
     resultat = []
     for j in jours.values():
         plats = sorted(j.pop('_plats').values(), key=lambda p: (-p['total'], p['plat']))
         j['plats'] = [{**p, 'par_agence': {str(k): v for k, v in p['par_agence'].items()}} for p in plats]
         j['totaux_par_agence'] = {str(k): v for k, v in j['totaux_par_agence'].items()}
+        j['externes_par_agence'] = {str(k): v for k, v in j['externes_par_agence'].items() if v}
         resultat.append(j)
     return resultat
 
 
 class APreparerView(APIView):
     """
-    GET /prestataire/a-preparer/?date_debut=&date_fin=&agence=
+    GET /prestataire/a-preparer/?date_debut=&date_fin=&agence=&origine=toutes|mon_agence|autres
     Défaut : aujourd'hui et les deux jours suivants. 31 jours au plus.
+    externes : repas commandés par des employés d'une autre agence que celle du menu.
     """
     permission_classes = [IsPrestataireResponsable]
 
@@ -776,8 +798,10 @@ class APreparerView(APIView):
         if (fin - debut).days > 30:
             raise ValidationError("Période trop longue (31 jours au plus).")
         agence = _agence_demandee(request)
+        from .parcours_commande import lire_origine
+        origine = lire_origine(request)
         pid = request.user.prestataire_id
-        jours = quantites(pid, debut, fin, agence)
+        jours = quantites(pid, debut, fin, agence, origine)
         agences = sorted({int(a) for j in jours for a in j['totaux_par_agence']}
                          | (agences_prestataire(request.user) if agence is None else {agence}))
 
@@ -791,7 +815,7 @@ class APreparerView(APIView):
         nb = sem.count()
         tarif = rel.tarif_en_vigueur(request.user.prestataire, aujourdhui)
         return Response({
-            'date_debut': debut.isoformat(), 'date_fin': fin.isoformat(),
+            'date_debut': debut.isoformat(), 'date_fin': fin.isoformat(), 'origine': origine,
             'agences': _agences_json(agences),
             'jours': jours,
             'semaine': {'debut': lundi.isoformat(), 'fin': dimanche.isoformat(), 'nb_repas': nb,
@@ -803,6 +827,7 @@ class APreparerView(APIView):
 class ListeDuJourView(APIView):
     """
     GET /prestataire/liste-du-jour/?date=&agence=&statut=a_servir|retire|non_retire&search=
+                                   &origine=toutes|mon_agence|autres
     Liste nominative (nom, prénoms, matricule, plat, statut). Agent de comptoir :
     aujourd'hui seulement ; responsable : toute date.
     """
@@ -824,7 +849,11 @@ class ListeDuJourView(APIView):
               .select_related('user', 'plat', 'menu__agence'))
         if agence is not None:
             qs = qs.filter(menu__agence_id=agence)
+        from .parcours_commande import agences_origine, filtrer_commandes_origine, lire_origine, origine_json
+        origine = lire_origine(request)
         commandes = list(qs)
+        origines = agences_origine({c.user_id for c in commandes})
+        commandes, _ = filtrer_commandes_origine(commandes, origine, origines)
         retraits = {(r.menu_id, r.user_id): r for r in Retrait.objects.filter(
             menu_id__in={c.menu_id for c in commandes}).select_related('valide_par')}
 
@@ -843,8 +872,10 @@ class ListeDuJourView(APIView):
                 'plat_id': c.plat_id, 'plat': c.plat.nom, 'statut': statut(c),
                 'heure_retrait': _heure(r.date_retrait) if r and c.statut == 'retiree' else None,
                 'valide_par_nom': nom_complet(r.valide_par) if r and r.valide_par_id else None,
+                **origine_json(origines.get(c.user_id), c.menu.agence_id),
             })
         total, retires = len(lignes), sum(l['statut'] == 'retire' for l in lignes)
+        externes = sum(l['externe'] for l in lignes)
         filtre = request.query_params.get('statut')
         if filtre:
             lignes = [l for l in lignes if l['statut'] == filtre]
@@ -852,8 +883,9 @@ class ListeDuJourView(APIView):
         if terme:
             lignes = [l for l in lignes if terme in f"{l['nom_complet']} {l['matricule']} {l['plat']}".lower()]
         lignes.sort(key=lambda l: (l['nom_complet'].upper(), l['matricule']))
-        return Response({'date': d.isoformat(), 'agence': agence, 'total': total, 'retires': retires,
-                         'a_servir': total - retires, 'lignes': lignes})
+        return Response({'date': d.isoformat(), 'agence': agence, 'origine': origine, 'total': total,
+                         'retires': retires, 'a_servir': total - retires, 'externes': externes,
+                         'lignes': lignes})
 
 
 # ══════════════════════════════════════════════════════════════
@@ -906,6 +938,13 @@ class ComptoirServiceView(APIView):
         derniers = list(Retrait.objects.filter(menu_id__in=ids)
                         .select_related('user', 'valide_par__prestataire').order_by('-date_retrait')[:limite])
         retires = _plats_retires(ids, [r.user_id for r in derniers])
+        from .parcours_commande import agences_origine, est_externe, origine_json
+        origines = agences_origine(set(actives.values_list('user_id', flat=True)) | {r.user_id for r in derniers})
+        externes = defaultdict(int)
+        for plat_id, user_id in actives.values_list('plat_id', 'user_id'):
+            externes[plat_id] += est_externe(origines.get(user_id), agence)
+        for p in plats:
+            p['externes'] = externes.get(p['plat_id'], 0)
         ag = Agence.objects.get(pk=agence)
         debut, fin = horaires_service(ag)
         return Response({
@@ -915,10 +954,12 @@ class ComptoirServiceView(APIView):
             'menus': [{'id': m.id, 'typeequipe_libelle': m.typeequipe.libelle} for m in menus],
             'commandees': commandees, 'servies': servies, 'a_servir': commandees - servies,
             'pct_servis': round(servies / commandees * 100) if commandees else 0,
+            'externes': sum(externes.values()),
             'plats': plats,
             'mes_retraits_aujourdhui': Retrait.objects.filter(
                 valide_par=request.user, date_retrait__date=timezone.localdate()).count(),
-            'derniers': [_retrait_json(r, request.user, retires.get((r.menu_id, r.user_id), []))
+            'derniers': [{**_retrait_json(r, request.user, retires.get((r.menu_id, r.user_id), [])),
+                          **origine_json(origines.get(r.user_id), agence)}
                          for r in derniers],
         })
 
@@ -956,8 +997,11 @@ class ComptoirRechercheView(APIView):
             message = "Aucune commande pour aujourd'hui dans cette agence."
         else:
             message = "Commande du jour trouvée."
+        from .parcours_commande import origine_json
+        origine = origine_json(ag, agence)
         return Response({
-            'employe': _employe_json(employe, ag.nom_agence if ag else None),
+            'employe': {**_employe_json(employe, ag.nom_agence if ag else None), **origine},
+            **origine,
             'commandes': [{'commande_id': c.id, 'menu_id': c.menu_id, 'plat_id': c.plat_id, 'plat': c.plat.nom,
                            'plat_image_url': images.get(c.plat_id), 'statut': c.statut,
                            'date_commande': c.date_commande.isoformat()} for c in commandes],
@@ -1255,3 +1299,45 @@ class EquipeView(APIView):
                 'retraits_mois': rs.filter(date_retrait__date__gte=debut_mois).count(),
             })
         return Response(resultat)
+
+
+# ══════════════════════════════════════════════════════════════
+# PROFIL PUBLIC (parcours de commande des employés)
+# ══════════════════════════════════════════════════════════════
+
+class ProfilPrestataireView(APIView):
+    """
+    GET   /prestataire/profil/   profil affiché aux employés (+ note et photos de secours)
+    PATCH /prestataire/profil/   multipart ou JSON : nom_affiche, description_courte (120 car.),
+                                 cuisine, tags, logo, photo_couverture (jpg/png/webp, 5 Mo),
+                                 supprimer_logo, supprimer_photo_couverture
+    Responsable du prestataire, pour SON prestataire seulement.
+    """
+    permission_classes = [IsPrestataireResponsable]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def _reponse(self, prestataire):
+        from .parcours_commande import images_plats, note_json, notes_prestataires
+        from .serializers import PrestataireProfilSerializer
+        parametres = ParametresSociete.charger()
+        moyenne, nb = notes_prestataires().get(prestataire.id, (None, 0))
+        plats = list(Plat.objects.filter(prestataire=prestataire, masque=False).order_by('nom')
+                     .values_list('id', flat=True))
+        images = images_plats(plats)
+        photos = [images[p][0] for p in plats if images.get(p)][:3]
+        return Response({**PrestataireProfilSerializer(prestataire).data,
+                         **note_json(moyenne, nb, parametres.seuil_avis_note),
+                         'seuil_avis_note': parametres.seuil_avis_note,
+                         'photos_plats': photos})
+
+    def get(self, request):
+        return self._reponse(request.user.prestataire)
+
+    def patch(self, request):
+        from .serializers import PrestataireProfilSerializer
+        prestataire = request.user.prestataire
+        serializer = PrestataireProfilSerializer(prestataire, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user_updated=request.user)
+        prestataire.refresh_from_db()
+        return self._reponse(prestataire)

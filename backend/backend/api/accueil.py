@@ -175,12 +175,18 @@ class AccueilView(APIView):
                 commandees=Count('id', filter=Q(statut__in=ACTIVES)),
                 servies=Count('id', filter=Q(statut='retiree')),
             )
+            # Employés d'une autre agence que celle du menu (commandes « externes »)
+            from .parcours_commande import agences_origine, est_externe
+            users = list(commandes.filter(menu__in=menus_jour, statut__in=ACTIVES).values_list('user_id', flat=True))
+            origines = agences_origine(users)
+            externes = sum(est_externe(origines.get(u), ag.id) for u in users)
             service.append({
                 'agence_id': ag.id, 'agence': ag.nom_agence,
                 'equipes': sorted({m.typeequipe.libelle for m in menus_jour if m.typeequipe_id}),
                 'nb_plats': MenuPlat.objects.filter(menu__in=menus_jour).values('plat').distinct().count(),
                 'commandees': c['commandees'], 'servies': c['servies'],
                 'a_servir': c['commandees'] - c['servies'],
+                'externes': externes,
             })
 
         # Semaine : commandes par jour et état

@@ -860,6 +860,29 @@ class AgenceViewSet(BaseViewSet):
     search_fields = ['nom_agence']
     ordering_fields = ['id', 'nom_agence', 'created_at']
 
+    @action(detail=True, methods=['get', 'patch'], url_path='ouverture',
+            permission_classes=[IsGestionnaireRole])
+    def ouverture(self, request, pk=None):
+        """
+        GET / PATCH /agences/{id}/ouverture/ { accepter_autres_agences: true|false }
+        Ouverture de l'agence aux employés des autres agences : gestionnaire de
+        l'agence ou administrateur. Fermeture : les commandes déjà passées sont
+        maintenues, les employés des autres agences concernés sont prévenus.
+        """
+        agence = self.get_object()
+        geres = agences_gerees(request.user)
+        if geres is not None and agence.id not in geres:
+            raise PermissionDenied("Ce n'est pas votre agence.")
+        if request.method == 'PATCH':
+            valeur = request.data.get('accepter_autres_agences')
+            if valeur not in (True, False, 'true', 'false', '1', '0', 1, 0):
+                raise ValidationError({'accepter_autres_agences': "Indiquez true ou false."})
+            agence.accepter_autres_agences = valeur in (True, 'true', '1', 1)
+            agence.user_updated = request.user
+            agence.save()
+        return Response({'id': agence.id, 'nom_agence': agence.nom_agence,
+                         'accepter_autres_agences': agence.accepter_autres_agences})
+
 
 class AllAgenceNopginListAPIView(ListAPIView):
     queryset = Agence.objects.all()
@@ -968,6 +991,8 @@ class PrestataireViewSet(BaseViewSet):
     permission_classes = [ReadGestionnaireWriteAdmin]
     queryset = Prestataire.objects.all().order_by('id')
     serializer_class = PrestataireSerializer
+    # Profil public : logo et photo de couverture en multipart
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     filterset_fields = ['libelle']
     search_fields = ['libelle']
     ordering_fields = ['id', 'libelle', 'created_at']
@@ -1463,7 +1488,7 @@ class MenuViewSet(BaseViewSet):
     permission_classes = [ReadAuthenticatedWriteGestionnaire]
     queryset = (
         Menu.objects
-        .select_related('agence', 'typeequipe')
+        .select_related('agence', 'typeequipe', 'prestataire')
         .prefetch_related(
             'menu_plats__plat__images',
             'menu_plats__plat__type_plat',
@@ -1484,15 +1509,17 @@ class MenuViewSet(BaseViewSet):
     def get_queryset(self):
         qs = filtrer_agences_gerees(self.request, super().get_queryset(), 'agence_id')
         if not is_gestionnaire(self.request.user):
-            # Employés : menus publiés et non masqués seulement
-            qs = qs.filter(publie=True, masque=False)
+            # Employés : menus publiés et non masqués seulement, de leur agence
+            # et des agences ouvertes aux autres agences (les autres sont masquées)
+            from .parcours_commande import filtrer_menus_accessibles
+            qs = filtrer_menus_accessibles(self.request.user, qs.filter(publie=True, masque=False))
         return qs
 
     def _prevenir_prestataire(self, menu, titre, message):
         """Correction d'UbiPharm sur un menu : le prestataire de l'agence est prévenu."""
-        from .prestataires import prestataire_de_l_agence
+        from .prestataires import prestataire_du_menu
         from .signals import notifier_prestataire
-        p = prestataire_de_l_agence(menu.agence_id, menu.date_menu)
+        p = prestataire_du_menu(menu)
         if p is not None:
             notifier_prestataire(p.id, titre, message, 'menu_corrige', menu_id=menu.id)
 
@@ -2242,6 +2269,12 @@ class RetraitViewSet(BaseViewSet):
         ]
         commandees = sum(p['commandees'] for p in plats)
         servies = sum(p['servies'] for p in plats)
+        # Employés d'une autre agence que celle du menu (commandes « externes »)
+        from .parcours_commande import agences_origine, est_externe, origine_json
+        rangs = list(actives.values_list('plat_id', 'user_id'))
+        origines = agences_origine({u for _, u in rangs})
+        for p in plats:
+            p['externes'] = sum(est_externe(origines.get(u), menu.agence_id) for pl, u in rangs if pl == p['plat_id'])
 
         d = menu.date_menu
         annulable = not ClotureMensuelle.objects.filter(annee=d.year, mois=d.month).exists()
@@ -2256,6 +2289,7 @@ class RetraitViewSet(BaseViewSet):
                                           user_id__in=[r.user_id for r in derniers])
                   .select_related('plat')):
             plats_retires.setdefault(c.user_id, []).append({'commande_id': c.id, 'plat': c.plat.nom})
+        origines.update(agences_origine({r.user_id for r in derniers} - set(origines)))
 
         return Response({
             'menu': {
@@ -2266,6 +2300,7 @@ class RetraitViewSet(BaseViewSet):
             'commandees': commandees,
             'servies': servies,
             'a_servir': commandees - servies,
+            'externes': sum(p['externes'] for p in plats),
             'plats': plats,
             'annulable': annulable,
             'derniers': [{
@@ -2277,6 +2312,7 @@ class RetraitViewSet(BaseViewSet):
                 'plats': plats_retires.get(r.user_id, []),
                 'valide_par_nom': nom_complet(r.valide_par) if r.valide_par_id else None,
                 'mode': r.mode,
+                **origine_json(origines.get(r.user_id), menu.agence_id),
             } for r in derniers],
         })
 
@@ -3140,9 +3176,22 @@ class ParametresCantineView(APIView):
     GET /api/api/parametres-cantine/   délais de commande et d'annulation
                                         (tout utilisateur connecté : web et mobile).
     La modification se fait par PATCH /parametres-societe/ (administrateurs).
+    PATCH /api/api/parametres-cantine/ { seuil_avis_note } : nombre d'avis à
+    partir duquel la note d'un prestataire est affichée (gestionnaires et
+    administrateurs).
     """
+    def get_permissions(self):
+        return [IsGestionnaireRole()] if self.request.method not in ('GET', 'HEAD', 'OPTIONS') \
+            else [IsAuthenticated()]
+
     def get(self, request):
         return Response(ParametresCantineSerializer(ParametresSociete.charger()).data)
+
+    def patch(self, request):
+        serializer = ParametresCantineSerializer(ParametresSociete.charger(), data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user_updated=request.user)
+        return Response(serializer.data)
 
 
 class BanniereViewSet(BaseViewSet):

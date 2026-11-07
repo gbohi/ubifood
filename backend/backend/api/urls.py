@@ -10,6 +10,7 @@ from .statistiques import DetailServiceView, RepasCategoriesView, StatistiquesVi
 from .controle import ContestationRetraitViewSet, ControleRetraitsView
 from . import espace_prestataire as presta
 from . import caisse
+from . import parcours_commande as parcours
 
 
 class ConnexionSerializer(TokenObtainPairSerializer):
@@ -136,6 +137,14 @@ urlpatterns = [
     path('api/prestataire/statistiques/', presta.StatistiquesPrestataireView.as_view(),
          name='prestataire-statistiques'),
     path('api/prestataire/equipe/', presta.EquipeView.as_view(), name='prestataire-equipe'),
+    path('api/prestataire/profil/', presta.ProfilPrestataireView.as_view(), name='prestataire-profil'),
+    # Parcours de commande des employés : agence → prestataire → équipe → jour
+    path('api/commander/agences/', parcours.CommanderAgencesView.as_view(), name='commander-agences'),
+    path('api/commander/prestataires/', parcours.CommanderPrestatairesView.as_view(),
+         name='commander-prestataires'),
+    path('api/commander/prestataires/<int:pk>/equipes/', parcours.CommanderEquipesView.as_view(),
+         name='commander-equipes'),
+    path('api/commander/jours/', parcours.CommanderJoursView.as_view(), name='commander-jours'),
     # Caisse et compte repas prépayé (api/caisse.py)
     path('api/caisse/contexte/', caisse.ContexteCaisseView.as_view(), name='caisse-contexte'),
     path('api/caisse/employes/', caisse.RechercheEmployeView.as_view(), name='caisse-employes'),

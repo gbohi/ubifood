@@ -379,8 +379,10 @@ def _rythme(retraits):
     return res
 
 
-def _retrait_ligne(r, plats):
-    return {'id': r.id, 'heure': _heure(r.date_retrait), 'date_retrait': r.date_retrait.isoformat(),
+def _retrait_ligne(r, plats, origines=None):
+    from .parcours_commande import origine_json
+    return {**origine_json((origines or {}).get(r.user_id), r.menu.agence_id),
+            'id': r.id, 'heure': _heure(r.date_retrait), 'date_retrait': r.date_retrait.isoformat(),
             'user_id': r.user_id, 'user_nom': nom_complet(r.user), 'matricule': r.user.username,
             'agence_id': r.menu.agence_id, 'agence_nom': r.menu.agence.nom_agence,
             'plats': plats.get((r.menu_id, r.user_id), []), 'mode': r.mode,
@@ -417,6 +419,10 @@ class ControleRetraitsView(APIView):
         for c in (Commande.objects.filter(menu__in=menus, statut='retiree').select_related('plat')):
             plats[(c.menu_id, c.user_id)].append(c.plat.nom)
         commandes = Commande.objects.filter(menu__in=menus, statut__in=('en_attente', 'retiree')).count()
+        # Employés d'une autre agence que celle du menu (commandes « externes »)
+        from .parcours_commande import agences_origine, est_externe
+        origines = agences_origine({r.user_id for r in retraits})
+        nb_externes = sum(est_externe(origines.get(r.user_id), r.menu.agence_id) for r in retraits)
 
         # ── Anomalies ──────────────────────────────────────────────
         anomalies = []
@@ -538,7 +544,7 @@ class ControleRetraitsView(APIView):
                 'erreurs_comptoir_mois': erreurs_agent.get(agent_id, 0),
                 'anomalies': [{'type': a['type'], 'description': a['description']}
                               for a in anomalies_agent.get(agent_id, [])],
-                'retraits': [_retrait_ligne(r, plats) for r in rs],
+                'retraits': [_retrait_ligne(r, plats, origines) for r in rs],
             })
         agents.sort(key=lambda a: (a['secours'], a['agent_id'] is None, -a['nb_retraits']))
         en_secours = sum(a['nb_retraits'] for a in agents if a['secours'])
@@ -551,6 +557,7 @@ class ControleRetraitsView(APIView):
             'agence': agence,
             'chiffres': {
                 'retraits': nb,
+                'retraits_externes': nb_externes,
                 'par_prestataire': nb - en_secours - sum(a['nb_retraits'] for a in agents if a['agent_id'] is None),
                 'en_secours': en_secours,
                 'commandes': commandes,

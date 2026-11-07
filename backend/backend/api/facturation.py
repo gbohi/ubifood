@@ -5,8 +5,12 @@ prestataires.
 Règle commune : chaque repas commandé et NON annulé (en attente ou retiré)
 est facturé ; les tarifs appliqués sont ceux en vigueur à la DATE DU MENU.
   - Employé     : tarif de la catégorie salarié de l'agent (PlatCategoriesalarie).
-  - Prestataire : le prestataire rattaché à l'agence du menu
-                  (AgencePrestataire), à son tarif (PlatPrestataire).
+  - Prestataire : le prestataire du menu (Menu.prestataire ; menus
+                  historiques sans prestataire : celui rattaché à l'agence du
+                  menu, AgencePrestataire), à son tarif (PlatPrestataire).
+                  Un employé d'une autre agence paie son repas comme chez lui ;
+                  le prestataire qui l'a servi est payé (pas de refacturation
+                  entre agences).
 
 Contestations de retrait acceptées (ContestationRetrait) :
   - cause erreur_comptoir : la commande est annulée (motif_annulation
@@ -264,8 +268,17 @@ class TarificateurPrestataire:
         for pp in PlatPrestataire.objects.all():
             self.tarifs[pp.prestataire_id].append(pp)
 
-    def prix(self, agence_id, date_menu):
-        """(prestataire ou None, montant Decimal ou None)."""
+    def prix(self, agence_id, date_menu, prestataire=None):
+        """
+        (prestataire ou None, montant Decimal ou None). `prestataire` : celui du
+        menu (Menu.prestataire) s'il est renseigné ; sinon (menu historique
+        d'UbiPharm) le prestataire rattaché à l'agence à la date du menu.
+        Un employé d'une autre agence ne change rien : le prestataire qui a
+        servi le repas est payé, sans refacturation entre agences.
+        """
+        if prestataire is not None:
+            pp = ligne_active(self.tarifs.get(prestataire.id, []), date_menu)
+            return prestataire, (pp.montant if pp else None)
         ap = ligne_active(self.rattachements.get(agence_id, []), date_menu)
         if not ap:
             return None, None
@@ -285,7 +298,7 @@ def lignes_prestataires(commandes_qs):
     commandes = list(
         commandes_qs.filter(statut__in=STATUTS_FACTURES)
         .exclude(Q(contestation__statut='acceptee') & ~Q(contestation__cause='badge_tiers'))
-        .select_related('user', 'plat', 'menu__agence', 'menu__typeequipe')
+        .select_related('user', 'plat', 'menu__agence', 'menu__typeequipe', 'menu__prestataire')
         .order_by('menu__date_menu', 'id')
     )
     if not commandes:
@@ -307,7 +320,7 @@ def lignes_prestataires(commandes_qs):
             prestataire, montant, source = figee.facture.prestataire, figee.montant, 'facture'
             plat, agence = figee.plat_nom or plat, figee.agence_nom or agence
         else:
-            prestataire, montant = tarif.prix(c.menu.agence_id, c.menu.date_menu)
+            prestataire, montant = tarif.prix(c.menu.agence_id, c.menu.date_menu, c.menu.prestataire)
             source = 'calcul'
         lignes.append({
             'commande': c,
