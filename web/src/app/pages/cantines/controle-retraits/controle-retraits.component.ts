@@ -21,6 +21,8 @@ import { environment } from 'src/environments/environment';
 export interface RetraitControle {
   id: number; heure: string; date_retrait: string; user_id: number; user_nom: string; matricule: string;
   agence_id: number; agence_nom: string; plats: string[]; mode: string; valide_par_id: number | null; valide_par_nom: string | null;
+  /** Employé d'une autre agence que celle du menu */
+  externe?: boolean; agence_origine_id?: number | null; agence_origine?: string | null;
 }
 
 export interface AgentControle {
@@ -62,6 +64,7 @@ export interface Controle {
   date: string; agence: number | null;
   chiffres: {
     retraits: number; par_prestataire: number; en_secours: number; commandes: number; a_servir: number;
+    retraits_externes?: number;
     contestations_a_traiter: number; contestations_du_jour: number; anomalies: number;
     retraits_annules_mois: number; annulable_jusqu_a_cloture: boolean;
   };

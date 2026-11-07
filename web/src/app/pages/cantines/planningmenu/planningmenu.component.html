@@ -44,6 +44,11 @@
           @for (te of typeEquipes; track te.id) { <option [value]="te.id">{{ te.libelle }}</option> }
         </select>
       </label>
+      <div class="ubi-origine" role="group" aria-label="Origine des employés">
+        @for (o of origines; track o.cle) {
+          <button type="button" [class.on]="origine === o.cle" (click)="choisirOrigine(o.cle)">{{ o.libelle }}</button>
+        }
+      </div>
     </div>
   </div>
 
@@ -108,6 +113,9 @@
                       <span class="ce-cal-nom">{{ p.nom }}</span>
                       <em>{{ p.commandes }}</em>
                     </div>
+                  }
+                  @if (m.externes) {
+                    <span class="ubi-externe ubi-externe-court" [title]="m.externes + ' commande(s) d\'employés d\'autres agences'"><i class="ri-building-line"></i>dont {{ m.externes }} autre{{ m.externes > 1 ? 's' : '' }} agence{{ m.externes > 1 ? 's' : '' }}</span>
                   }
                   <div class="ce-cal-bas">
                     <span class="ce-tag" [ngClass]="classeEtat(m)">

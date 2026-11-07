@@ -55,6 +55,8 @@ export class SocieteComponent implements OnInit {
       // Cantine : heures avant le début du jour du menu (minuit)
       delai_commande_heures:   [48, [Validators.required, Validators.min(0), Validators.max(720), Validators.pattern(/^\d+$/)]],
       delai_annulation_heures: [48, [Validators.required, Validators.min(0), Validators.max(720), Validators.pattern(/^\d+$/)]],
+      // Note d'un prestataire / d'un plat affichée à partir de ce nombre d'avis (sinon « Nouveau »)
+      seuil_avis_note:         [5, [Validators.required, Validators.min(0), Validators.max(1000), Validators.pattern(/^\d+$/)]],
     });
     this.http.get<any>(this.url)
       .pipe(takeUntilDestroyed(this.destroyRef))

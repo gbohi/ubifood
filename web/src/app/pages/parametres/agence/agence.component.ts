@@ -18,6 +18,9 @@ import {
 } from 'src/app/store/Agence/agence.action';
 import { selectagenceData, selectTotalItems, selectLoading, selectCurrentPage } from 'src/app/store/Agence/agence-selector';
 import { TriServeur } from 'src/app/shared/tri-serveur';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
+import { ADMINS, aUnRole } from 'src/app/core/helpers/roles';
+import { ParcoursCommandeService } from 'src/app/core/services/commande/parcours-commande.service';
 
 @Component({
   selector: 'app-agence',
@@ -32,6 +35,17 @@ export class AgenceComponent implements OnInit, AfterViewInit {
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly actions$ = inject(Actions);
+  private readonly tokenStorage = inject(TokenStorageService);
+  private readonly parcours = inject(ParcoursCommandeService);
+
+  /** Administrateur : tout ; gestionnaire : lecture + ouverture de ses agences */
+  estAdmin = false;
+  private agencesGerees = new Set<number>();
+  /** Valeur d'origine de l'ouverture de l'agence en cours de modification */
+  private ouvertureInitiale = false;
+  /** Enregistrement en attente de la confirmation de fermeture */
+  private enregistrementEnAttente: any = null;
+  @ViewChild('fermetureModal', { static: false }) fermetureModal?: ModalDirective;
 
   // bread crumb items
   breadCrumbItems!: Array<{}>;
@@ -73,9 +87,20 @@ export class AgenceComponent implements OnInit, AfterViewInit {
       { label: 'Agences', active: true }
     ];
 
+    const user = this.tokenStorage.getUser();
+    this.estAdmin = aUnRole(user, ADMINS);
+    const auj = new Date().toISOString().slice(0, 10);
+    for (const l of (user?.user_agences ?? []) as any[]) {
+      const debut = String(l.date_debut ?? '').slice(0, 10);
+      const fin = l.date_fin ? String(l.date_fin).slice(0, 10) : null;
+      const id = Number(l.agence_id ?? l.agence);
+      if (id && debut <= auj && (!fin || fin >= auj)) this.agencesGerees.add(id);
+    }
+
     this.agenceForm = this.formBuilder.group({
       id: [''],
-      nom_agence: ['', [Validators.required]]
+      nom_agence: ['', [Validators.required]],
+      accepter_autres_agences: [false],
     });
 
     this.store.select(selectLoading)
@@ -118,6 +143,7 @@ export class AgenceComponent implements OnInit, AfterViewInit {
           'Succès'
         );
         this.closeAddModal();
+        this.loadData(this.currentPage);
       });
 
     this.actions$
@@ -190,7 +216,8 @@ export class AgenceComponent implements OnInit, AfterViewInit {
   openAddModal() {
     this.lastActiveElement = document.activeElement as HTMLElement;
     this.isEdit = false;
-    this.agenceForm.reset();
+    this.agenceForm.reset({ accepter_autres_agences: false });
+    this.agenceForm.get('nom_agence')?.enable();
     this.addAgence?.show();
   }
 
@@ -209,8 +236,27 @@ export class AgenceComponent implements OnInit, AfterViewInit {
     this.lastActiveElement = document.activeElement as HTMLElement;
     this.isEdit = true;
     this.agenceForm.reset();
-    this.agenceForm.patchValue({ id: editData.id, nom_agence: editData.nom_agence });
+    this.ouvertureInitiale = !!editData.accepter_autres_agences;
+    this.agenceForm.patchValue({
+      id: editData.id, nom_agence: editData.nom_agence, accepter_autres_agences: this.ouvertureInitiale,
+    });
+    if (this.estAdmin) this.agenceForm.get('nom_agence')?.enable();
+    else this.agenceForm.get('nom_agence')?.disable();
     this.addAgence?.show();
+  }
+
+  /** Le gestionnaire de l'agence (ou un administrateur) peut l'ouvrir aux autres agences */
+  peutOuvrir(agenceId: any): boolean {
+    return this.estAdmin || this.agencesGerees.has(Number(agenceId));
+  }
+
+  /** Bouton « Modifier » : administrateur, ou gestionnaire de l'agence (ouverture seulement) */
+  peutModifier(agenceId: any): boolean {
+    return this.peutOuvrir(agenceId);
+  }
+
+  get ouvertureDemandee(): boolean {
+    return !!this.agenceForm.get('accepter_autres_agences')?.value;
   }
 
   // Ajout / mise à jour : le résultat est traité à la réponse du serveur
@@ -222,14 +268,69 @@ export class AgenceComponent implements OnInit, AfterViewInit {
     }
     if (this.isSaving) return;
 
-    const formValue = { ...this.agenceForm.value };
-    this.isSaving = true;
-    if (formValue.id) {
-      this.store.dispatch(updateagenceData({ updatedData: formValue }));
-    } else {
+    const formValue = { ...this.agenceForm.getRawValue() };
+    if (!formValue.id) {
+      // Création (administrateur) : l'ouverture part avec la fiche
       delete formValue.id;
+      formValue.accepter_autres_agences = !!formValue.accepter_autres_agences;
+      this.isSaving = true;
       this.store.dispatch(addagenceData({ newData: formValue }));
+      return;
     }
+    // Fermeture aux autres agences : confirmation (commandes maintenues, employés prévenus)
+    if (this.ouvertureInitiale && !formValue.accepter_autres_agences) {
+      this.enregistrementEnAttente = formValue;
+      this.fermetureModal?.show();
+      return;
+    }
+    this.enregistrer(formValue);
+  }
+
+  confirmerFermeture(): void {
+    const v = this.enregistrementEnAttente;
+    this.enregistrementEnAttente = null;
+    this.fermetureModal?.hide();
+    if (v) this.enregistrer(v);
+  }
+
+  annulerFermeture(): void {
+    this.enregistrementEnAttente = null;
+    this.fermetureModal?.hide();
+  }
+
+  /** Ouverture (route dédiée) puis nom de l'agence (administrateur) */
+  private enregistrer(formValue: any): void {
+    const id = Number(formValue.id);
+    const ouverte = !!formValue.accepter_autres_agences;
+    const avant = this.agences.find(a => a.id === id);
+    const nomChange = this.estAdmin && avant && avant.nom_agence !== formValue.nom_agence;
+    const suite = () => {
+      if (nomChange) {
+        this.store.dispatch(updateagenceData({ updatedData: { id, nom_agence: formValue.nom_agence } as any }));
+      } else {
+        this.isSaving = false;
+        this.closeAddModal();
+        this.loadData(this.currentPage);
+      }
+    };
+    this.isSaving = true;
+    if (ouverte === this.ouvertureInitiale || !this.peutOuvrir(id)) {
+      if (nomChange) suite(); else { this.isSaving = false; this.closeAddModal(); }
+      return;
+    }
+    this.parcours.changerOuverture(id, ouverte).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: r => {
+        this.toastService.success(r.accepter_autres_agences
+          ? `${r.nom_agence} accepte maintenant les commandes des employés des autres agences.`
+          : `${r.nom_agence} est maintenant réservée à ses employés. Les commandes déjà passées sont maintenues.`, 'Succès');
+        this.ouvertureInitiale = r.accepter_autres_agences;
+        suite();
+      },
+      error: err => {
+        this.isSaving = false;
+        this.toastService.error(typeof err === 'string' ? err : "L'ouverture n'a pas pu être modifiée.", 'Erreur');
+      },
+    });
   }
 
   // Suppression d'une ligne

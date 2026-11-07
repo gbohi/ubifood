@@ -15,6 +15,7 @@ import { ComptoirComponent } from './comptoir/comptoir.component';
 import { RelevesPrestataireComponent } from './releves/releves-prestataire.component';
 import { StatistiquesPrestataireComponent } from './statistiques/statistiques-prestataire.component';
 import { EquipeComponent } from './equipe/equipe.component';
+import { ProfilPrestataireComponent } from './profil/profil-prestataire.component';
 
 /**
  * Espace prestataire (étape 1) : pages des comptes « prestataire » (responsable)
@@ -32,6 +33,7 @@ import { EquipeComponent } from './equipe/equipe.component';
     RelevesPrestataireComponent,
     StatistiquesPrestataireComponent,
     EquipeComponent,
+    ProfilPrestataireComponent,
   ],
   imports: [
     CommonModule,

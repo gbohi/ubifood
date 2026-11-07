@@ -20,7 +20,7 @@ import { fetchtypeequipeNoPaginateData } from 'src/app/store/Typeequipe/typeequi
 
 export type EtatMenu = 'termine' | 'en_service' | 'ferme' | 'ouvert';
 
-export interface PlanningPlat { id: number; nom: string; type_plat: string | null; commandes: number; }
+export interface PlanningPlat { id: number; nom: string; type_plat: string | null; commandes: number; externes?: number; }
 export interface PlanningMenu {
   id: number;
   date_menu: string;
@@ -31,6 +31,8 @@ export interface PlanningMenu {
   date_limite_commande: string;
   date_limite_libelle: string;
   commandes: number;
+  /** dont employés d'autres agences */
+  externes?: number;
   retirees: number;
   plats: PlanningPlat[];
 }
@@ -72,6 +74,13 @@ export class PlanningMenuComponent implements OnInit {
   typeEquipes: any[] = [];
   filtreAgence = '';
   filtreEquipe = '';
+  /** Employés de l'agence du menu, des autres agences, ou tous */
+  origine: 'toutes' | 'mon_agence' | 'autres' = 'toutes';
+  readonly origines = [
+    { cle: 'toutes' as const, libelle: 'Toutes' },
+    { cle: 'mon_agence' as const, libelle: 'Mon agence' },
+    { cle: 'autres' as const, libelle: 'Autres agences' },
+  ];
 
   /** Lundi de la semaine affichée (AAAA-MM-JJ) */
   lundi = '';
@@ -115,6 +124,7 @@ export class PlanningMenuComponent implements OnInit {
     let params = new HttpParams().set('debut', this.lundi);
     if (this.filtreAgence) params = params.set('agence', this.filtreAgence);
     if (this.filtreEquipe) params = params.set('typeequipe', this.filtreEquipe);
+    if (this.origine !== 'toutes') params = params.set('origine', this.origine);
     this.isLoading = true;
     this.erreur = null;
     this.http.get<PlanningReponse>(`${this.apiUrl}/planning/`, { params })
@@ -137,11 +147,16 @@ export class PlanningMenuComponent implements OnInit {
       next: r => {
         this.etats = new Map((r?.results ?? r ?? []).map((m: any) => [m.id, {
           publie: m.publie !== false, masque: !!m.masque, motif: m.motif_masquage ?? '',
-          prestataire: (m.menu_plats ?? []).find((mp: any) => mp.plat?.prestataire_libelle)?.plat.prestataire_libelle ?? null,
+          prestataire: (m.prestataire ? m.prestataire_nom : null) ?? (m.menu_plats ?? []).find((mp: any) => mp.plat?.prestataire_libelle)?.plat.prestataire_libelle ?? null,
         }]));
       },
       error: () => this.etats = new Map(),
     });
+  }
+
+  choisirOrigine(o: 'toutes' | 'mon_agence' | 'autres'): void {
+    this.origine = o;
+    this.charger();
   }
 
   demanderMasquage(m: PlanningMenu): void {

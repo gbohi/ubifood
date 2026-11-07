@@ -15,7 +15,7 @@
   @if (donnees; as d) {
     <div class="ep-kpis-ligne ep-kpis-4" [class.ep-attente]="chargement">
       <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-check-double-line"></i></span>
-        <div><small>Retraits du jour</small><b>{{ d.chiffres.retraits }}</b><span>{{ d.chiffres.par_prestataire }} par le prestataire · {{ d.chiffres.en_secours }} en secours UbiPharm</span></div></div>
+        <div><small>Retraits du jour</small><b>{{ d.chiffres.retraits }}</b><span>{{ d.chiffres.par_prestataire }} par le prestataire · {{ d.chiffres.en_secours }} en secours UbiPharm@if (d.chiffres.retraits_externes) { · <b class="ubi-externe-nb">{{ d.chiffres.retraits_externes }} d'autres agences</b> }</span></div></div>
       <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ro"><i class="ri-feedback-line"></i></span>
         <div><small>Contestations à traiter</small><b>{{ d.chiffres.contestations_a_traiter }}</b><span>dont {{ d.chiffres.contestations_du_jour }} sur ce jour</span></div></div>
       <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-alarm-warning-line"></i></span>
@@ -71,7 +71,7 @@
                       <tbody>
                         @for (r of a.retraits; track r.id) {
                           <tr>
-                            <td><b>{{ r.heure }}</b></td><td>{{ r.user_nom }}</td><td>{{ r.matricule }}</td><td>{{ r.agence_nom }}</td>
+                            <td><b>{{ r.heure }}</b></td><td>{{ r.user_nom }}@if (r.externe) { <span class="ubi-externe ubi-externe-court ms-1" [title]="'Employé d\'une autre agence · ' + r.agence_origine"><i class="ri-building-line"></i>{{ r.agence_origine }}</span> }</td><td>{{ r.matricule }}</td><td>{{ r.agence_nom }}</td>
                             <td>{{ r.plats.join(', ') }}</td>
                             <td><span class="lst-tag" [ngClass]="r.mode === 'saisie' ? 't-or' : r.mode === 'scan' ? 't-gr' : 't-gr'">{{ libelleMode(r.mode) }}</span></td>
                             <td class="text-end">

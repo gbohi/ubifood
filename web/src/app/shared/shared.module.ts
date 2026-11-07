@@ -9,12 +9,14 @@ import { BsDropdownModule } from 'ngx-bootstrap/dropdown';
 import { BreadcrumbsComponent } from './breadcrumbs/breadcrumbs.component';
 import { PageEnteteComponent } from './page-entete/page-entete.component';
 import { ListePiedComponent } from './liste-pied/liste-pied.component';
+import { ProfilPrestataireEditeurComponent } from './profil-prestataire/profil-prestataire-editeur.component';
 
 @NgModule({
   declarations: [
     BreadcrumbsComponent,
     PageEnteteComponent,
     ListePiedComponent,
+    ProfilPrestataireEditeurComponent,
   ],
   imports: [
     CommonModule,
@@ -24,6 +26,6 @@ import { ListePiedComponent } from './liste-pied/liste-pied.component';
     BsDropdownModule,
   ],
   // BsDropdownModule : menu « ⋮ » des actions de ligne (gabarit commun des listes)
-  exports: [BreadcrumbsComponent, PageEnteteComponent, ListePiedComponent, BsDropdownModule, RouterModule]
+  exports: [BreadcrumbsComponent, PageEnteteComponent, ListePiedComponent, ProfilPrestataireEditeurComponent, BsDropdownModule, RouterModule]
 })
 export class SharedModule { }

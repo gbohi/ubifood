@@ -47,6 +47,7 @@
                   <span><b>{{ a.servies }}</b>servis</span>
                   <span><b>{{ a.a_servir }}</b>à servir</span>
                   <span><b>{{ a.commandees }}</b>commandés</span>
+                  @if (a.externes) { <span title="Employés d'autres agences"><b class="ubi-externe-nb">{{ a.externes }}</b>autres agences</span> }
                 </div>
               </div>
             }

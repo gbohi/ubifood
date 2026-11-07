@@ -11,6 +11,11 @@
       <a class="ep-onglet" role="tab" routerLink="/prestataire/liste-du-jour"><i class="ri-user-line"></i>Liste nominative (jour de service)</a>
     </div>
     <div class="ep-semaine-nav">
+      <div class="ubi-origine" role="group" aria-label="Origine des employés">
+        @for (o of origines; track o.cle) {
+          <button type="button" [class.on]="origine === o.cle" (click)="choisirOrigine(o.cle)">{{ o.libelle }}</button>
+        }
+      </div>
       <select class="form-select ep-select" [(ngModel)]="agence" (change)="charger()" aria-label="Agence">
         <option value="">Toutes mes agences</option>
         @for (a of contexte?.agences ?? []; track a.id) { <option [ngValue]="a.id">{{ a.nom }}</option> }
@@ -30,6 +35,7 @@
         <section class="ep-carte ep-carte-t">
           <div class="ep-carte-hd">
             <b class="text-capitalize">{{ j.libelle }}</b>
+            @if (j.externes) { <span class="ubi-externe" title="Commandes d'employés d'autres agences"><i class="ri-building-line"></i>{{ j.externes }} autre{{ j.externes > 1 ? 's' : '' }} agence{{ j.externes > 1 ? 's' : '' }}</span> }
             <span class="lst-tag ms-auto" [ngClass]="etat(j).classe"><i [class]="etat(j).icone"></i>{{ etat(j).libelle }}</span>
             @if (j.total) {
               <button type="button" class="lst-ic" title="Imprimer la fiche de production de ce jour" aria-label="Imprimer la fiche de ce jour" (click)="imprimer(j)"><i class="ri-printer-line"></i></button>
@@ -38,7 +44,7 @@
           <div class="lst-table-wrap">
             <table class="lst-table ep-table">
               <thead>
-                <tr><th>Plat</th>@for (a of agences; track a.id) { <th class="n">{{ a.nom }}</th> }<th class="n">Total</th></tr>
+                <tr><th>Plat</th>@for (a of agences; track a.id) { <th class="n">{{ a.nom }}</th> }<th class="n">Total</th>@if (avecExternes) { <th class="n" title="dont employés d'autres agences">Autres ag.</th> }</tr>
               </thead>
               <tbody>
                 @for (p of j.plats; track p.plat_id) {
@@ -46,15 +52,17 @@
                     <td><b>{{ p.plat }}</b>@if (j.etat === 'en_service' || j.etat === 'passe') { <small class="d-block">{{ p.servis }} servi{{ p.servis > 1 ? 's' : '' }}</small> }</td>
                     @for (a of agences; track a.id) { <td class="n">{{ qte(p.par_agence, a.id) || '—' }}</td> }
                     <td class="n"><b>{{ p.total }}</b></td>
+                    @if (avecExternes) { <td class="n">@if (p.externes) { <span class="ubi-externe ubi-externe-court">{{ p.externes }}</span> } @else { — }</td> }
                   </tr>
                 } @empty {
-                  <tr><td [attr.colspan]="agences.length + 2" class="ep-muted">Aucune commande.</td></tr>
+                  <tr><td [attr.colspan]="agences.length + 2 + (avecExternes ? 1 : 0)" class="ep-muted">Aucune commande.</td></tr>
                 }
                 @if (j.plats.length) {
                   <tr class="ep-tot">
                     <td>Total</td>
                     @for (a of agences; track a.id) { <td class="n">{{ qte(j.totaux_par_agence, a.id) }}</td> }
                     <td class="n">{{ j.total }}</td>
+                    @if (avecExternes) { <td class="n">{{ j.externes || '—' }}</td> }
                   </tr>
                 }
               </tbody>
@@ -79,7 +87,7 @@
             <tbody>
               @for (l of lignesListe; track l.commande_id) {
                 <tr>
-                  <td><b>{{ l.nom_complet }}</b></td>
+                  <td><b>{{ l.nom_complet }}</b>@if (l.externe) { <span class="ubi-externe ubi-externe-court ms-1" [title]="'Employé d\'une autre agence · ' + l.agence_origine"><i class="ri-building-line"></i>{{ l.agence_origine }}</span> }</td>
                   <td>{{ l.plat }}</td>
                   <td>{{ l.agence }}</td>
                   <td><span class="lst-tag" [ngClass]="statutListe(l.statut).classe">{{ statutListe(l.statut).libelle }}@if (l.heure_retrait) { {{ l.heure_retrait }} }</span></td>

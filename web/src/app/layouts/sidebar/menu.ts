@@ -19,6 +19,7 @@ export const MENU: MenuItem[] = [
     { id: 306, label: 'Relevés', icon: 'ri-file-text-line', link: '/prestataire/releves', roles: RESPONSABLES_PRESTATAIRE },
     { id: 307, label: 'Statistiques', icon: 'ri-bar-chart-2-line', link: '/prestataire/statistiques', roles: RESPONSABLES_PRESTATAIRE },
     { id: 308, label: 'Mon compte', isTitle: true, roles: RESPONSABLES_PRESTATAIRE },
+    { id: 310, label: 'Mon profil prestataire', icon: 'ri-store-2-line', link: '/prestataire/profil', roles: RESPONSABLES_PRESTATAIRE, isNew: true },
     { id: 309, label: 'Mon équipe', icon: 'ri-team-line', link: '/prestataire/equipe', roles: RESPONSABLES_PRESTATAIRE },
     {
         // Tableau de bord de la cantine (gestionnaires et administrateurs)

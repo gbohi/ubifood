@@ -59,6 +59,8 @@ export interface AccueilServiceAgence {
   commandees: number;
   servies: number;
   a_servir: number;
+  /** dont employés d'autres agences */
+  externes?: number;
 }
 
 export interface AccueilJourGestion {

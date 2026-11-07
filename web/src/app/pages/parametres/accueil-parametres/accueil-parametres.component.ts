@@ -56,8 +56,8 @@ export const GROUPES_PARAMETRES: GroupeParametres[] = [
         lien: '/parametres/user', roles: ADMINS, compte: 'users/', motsCles: 'agent employé compte mot de passe' },
       { titre: 'Rôles', description: 'Super administrateur, administrateur, gestionnaire, employé', icone: 'ri-shield-user-line',
         lien: '/parametres/role', roles: ADMINS, compte: 'groups/', motsCles: 'droits accès groupe' },
-      { titre: 'Agences', description: 'Sites où la cantine est servie', icone: 'ri-map-pin-line',
-        lien: '/parametres/agence', roles: ADMINS, compte: 'agences/', motsCles: 'site siège' },
+      { titre: 'Agences', description: 'Sites où la cantine est servie, ouverture aux autres agences', icone: 'ri-map-pin-line',
+        lien: '/parametres/agence', roles: GESTIONNAIRES, compte: 'agences/', motsCles: 'site siège mission ouverte réservée autres agences' },
       { titre: 'Départements', description: 'Services de rattachement des agents', icone: 'ri-organization-chart',
         lien: '/parametres/departement', roles: ADMINS, compte: 'services/', motsCles: 'service direction' },
       { titre: 'Postes', description: 'Postes occupés, par fonction et service', icone: 'ri-briefcase-4-line',
@@ -71,6 +71,8 @@ export const GROUPES_PARAMETRES: GroupeParametres[] = [
   {
     titre: 'Cantine', icone: 'ri-restaurant-line', teinte: 'p-or',
     cartes: [
+      { titre: 'Réglages de la cantine', description: "Avis nécessaires pour afficher une note, délais", icone: 'ri-settings-4-line',
+        lien: '/parametres/cantine', roles: GESTIONNAIRES, motsCles: 'note avis seuil nouveau délai commande annulation' },
       { titre: 'Types de plat', description: 'Plat principal, dessert…', icone: 'ri-restaurant-2-line',
         lien: '/parametres/typeplat', roles: GESTIONNAIRES, compte: 'typeplats/', motsCles: 'plat menu' },
       { titre: "Types d'équipe", description: 'Journée, nuit… (services de repas)', icone: 'ri-time-line',

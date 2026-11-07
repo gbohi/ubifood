@@ -1,0 +1,95 @@
+<div class="pp">
+  <div class="pp-champs">
+    <!-- Logo -->
+    <div class="pp-bloc">
+      <label class="form-label">Logo</label>
+      <div class="pp-logo-ligne">
+        <span class="pp-logo pp-logo-l">
+          @if (logoAffiche) { <img [src]="logoAffiche" alt="Logo"> } @else { {{ initiales }} }
+        </span>
+        <label class="pp-depot" [class.pp-off]="lectureSeule">
+          <input type="file" accept="image/png,image/jpeg,image/webp" (change)="choisirImage($event, 'logo')" [disabled]="lectureSeule" id="pp-logo">
+          <i class="ri-upload-cloud-2-line"></i>
+          <span><b>Choisir une image</b><br><small>PNG, JPEG ou WebP carré, 512 × 512 px conseillé, 5 Mo max.</small></span>
+        </label>
+      </div>
+      @if (logoAffiche && !lectureSeule) {
+        <button type="button" class="btn btn-sm btn-subtle-danger mt-2" (click)="retirer('logo')" id="pp-retirer-logo"><i class="ri-delete-bin-6-line me-1"></i>Retirer le logo</button>
+      }
+    </div>
+
+    <!-- Couverture -->
+    <div class="pp-bloc">
+      <label class="form-label">Photo de couverture</label>
+      <div class="pp-couv-ligne">
+        <span class="pp-couv-mini">
+          @if (couvertureAffichee) { <img [src]="couvertureAffichee" alt="Couverture"> }
+          @else { <small>Aucune : les photos de vos plats sont utilisées</small> }
+        </span>
+        <label class="pp-depot" [class.pp-off]="lectureSeule">
+          <input type="file" accept="image/png,image/jpeg,image/webp" (change)="choisirImage($event, 'couverture')" [disabled]="lectureSeule" id="pp-couverture">
+          <i class="ri-image-add-line"></i>
+          <span><b>Choisir une photo</b><br><small>Paysage, environ 1200 × 600 px, 5 Mo max.</small></span>
+        </label>
+      </div>
+      @if (couvertureAffichee && !lectureSeule) {
+        <button type="button" class="btn btn-sm btn-subtle-danger mt-2" (click)="retirer('couverture')" id="pp-retirer-couverture"><i class="ri-delete-bin-6-line me-1"></i>Retirer la photo</button>
+      }
+    </div>
+    @if (erreurImage) { <div class="alert alert-danger py-2 small mb-0">{{ erreurImage }}</div> }
+
+    <div class="pp-bloc">
+      <label class="form-label" for="pp-nom">Nom affiché aux employés</label>
+      <input class="form-control" id="pp-nom" maxlength="100" [(ngModel)]="nomAffiche" [disabled]="lectureSeule" [placeholder]="libelle || profil?.libelle || ''">
+      <small class="text-muted">Vide : le nom de la fiche ({{ libelle || profil?.libelle }}).</small>
+    </div>
+    <div class="pp-bloc">
+      <label class="form-label" for="pp-desc">Description courte <span class="text-muted" [class.text-danger]="description.length > max">({{ description.length }} / {{ max }})</span></label>
+      <input class="form-control" id="pp-desc" [(ngModel)]="description" [disabled]="lectureSeule" [class.is-invalid]="description.length > max"
+             placeholder="Ex. Cuisine ivoirienne maison : alloco, garba, kedjenou. Livré chaud au comptoir.">
+      <div class="invalid-feedback">120 caractères au plus.</div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-5 pp-bloc">
+        <label class="form-label" for="pp-cuisine">Cuisine</label>
+        <input class="form-control" id="pp-cuisine" maxlength="100" [(ngModel)]="cuisine" [disabled]="lectureSeule" placeholder="Ex. Ivoirienne">
+      </div>
+      <div class="col-md-7 pp-bloc">
+        <label class="form-label" for="pp-tag">Mots-clés <span class="text-muted">({{ tags.length }} / 8)</span></label>
+        <div class="pp-tags">
+          @for (t of tags; track t) {
+            <span class="pp-tag">{{ t }}@if (!lectureSeule) { <button type="button" (click)="retirerTag(t)" [attr.aria-label]="'Retirer ' + t"><i class="ri-close-line"></i></button> }</span>
+          }
+          @if (!lectureSeule && tags.length < 8) {
+            <input id="pp-tag" [(ngModel)]="nouveauTag" (keydown.enter)="ajouterTag($event)" (blur)="ajouterTag()"
+                   maxlength="30" placeholder="Ajouter (Entrée)">
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Aperçu côté employé -->
+  <div class="pp-apercu">
+    <label class="form-label">Aperçu côté employé</label>
+    <div class="pp-carte">
+      <div class="pp-carte-couv">
+        @if (couvertureAffichee) { <img [src]="couvertureAffichee" alt=""> }
+        @else if (photosPlats.length) {
+          <span class="pp-collage" [attr.data-n]="photosPlats.length">@for (ph of photosPlats; track ph) { <img [src]="ph" alt=""> }</span>
+        } @else { <i class="ri-restaurant-2-line"></i> }
+      </div>
+      <div class="pp-carte-bd">
+        <span class="pp-logo">@if (logoAffiche) { <img [src]="logoAffiche" alt=""> } @else { {{ initiales }} }</span>
+        <div class="pp-l1"><b>{{ nomPublic }}</b>
+          @if (profil?.nouveau !== false) { <span class="pp-nouveau">Nouveau</span> }
+          @else { <span class="pp-note"><i class="ri-star-fill"></i>{{ note }} <small>({{ profil?.nb_avis }})</small></span> }
+        </div>
+        <div class="pp-l2"><i class="ri-restaurant-line"></i>3 plats aujourd'hui@if (cuisine.trim()) { · {{ cuisine.trim() }} }</div>
+        @if (description.trim()) { <div class="pp-l2 pp-desc">{{ description.trim() }}</div> }
+        @if (tags.length) { <div class="pp-mini-tags">@for (t of tags; track t) { <span>{{ t }}</span> }</div> }
+      </div>
+    </div>
+    <small class="text-muted">« 3 plats aujourd'hui » : exemple. Sans photo de couverture, les photos de vos plats sont utilisées.</small>
+  </div>
+</div>

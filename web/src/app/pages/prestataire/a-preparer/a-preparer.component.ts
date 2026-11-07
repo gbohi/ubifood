@@ -6,7 +6,7 @@ import { Component, DestroyRef, OnDestroy, OnInit, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Cellule, exporterExcel, nomFichier } from 'src/app/core/helpers/exports';
 import {
-  APreparer, AgencePresta, ContextePresta, EspacePrestataireService, JourAPreparer, ListeDuJour,
+  APreparer, AgencePresta, ContextePresta, EspacePrestataireService, FiltreOrigine, JourAPreparer, ListeDuJour,
   ajouterJours, isoJour, messageErreur, montantFr, nombreFr, versDate, JOURS_FR, MOIS_FR,
 } from 'src/app/core/services/espace-prestataire/espace-prestataire.service';
 
@@ -23,6 +23,13 @@ export class APreparerComponent implements OnInit, OnDestroy {
   debut = this.aujourdhui;
   nbJours = 3;
   agence: number | '' = '';
+  /** Employés de l'agence du menu, des autres agences, ou tous */
+  origine: FiltreOrigine = 'toutes';
+  readonly origines: { cle: FiltreOrigine; libelle: string }[] = [
+    { cle: 'toutes', libelle: 'Toutes' },
+    { cle: 'mon_agence', libelle: 'Mon agence' },
+    { cle: 'autres', libelle: 'Autres agences' },
+  ];
 
   donnees: APreparer | null = null;
   chargement = true;
@@ -51,12 +58,22 @@ export class APreparerComponent implements OnInit, OnDestroy {
 
   charger(): void {
     this.chargement = true;
-    this.api.aPreparer({ date_debut: this.debut, date_fin: ajouterJours(this.debut, this.nbJours - 1), agence: this.agence })
+    this.api.aPreparer({ date_debut: this.debut, date_fin: ajouterJours(this.debut, this.nbJours - 1), agence: this.agence, origine: this.origine })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: d => { this.donnees = d; this.chargement = false; this.erreur = null; },
         error: e => { this.erreur = messageErreur(e, 'Les quantités n\'ont pas pu être chargées.'); this.chargement = false; },
       });
+  }
+
+  choisirOrigine(o: FiltreOrigine): void {
+    this.origine = o;
+    this.charger();
+  }
+
+  /** Une colonne « dont autres agences » dès qu'une commande externe existe sur la période */
+  get avecExternes(): boolean {
+    return (this.donnees?.jours ?? []).some(j => (j.externes ?? 0) > 0);
   }
 
   decaler(n: number): void {

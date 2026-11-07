@@ -44,7 +44,9 @@ export interface ServiceComptoir {
   commandees: number;
   servies: number;
   a_servir: number;
-  plats: { plat_id: number; nom: string; commandees: number; servies: number; a_servir: number }[];
+  /** dont employés d'autres agences */
+  externes?: number;
+  plats: { plat_id: number; nom: string; commandees: number; servies: number; a_servir: number; externes?: number }[];
   annulable: boolean;
   derniers: {
     id: number; user_id: number; user_nom: string; username: string; date_retrait: string;
@@ -52,6 +54,9 @@ export interface ServiceComptoir {
     /** Agent qui a validé le retrait (prestataire ou gestionnaire en secours) */
     valide_par_nom?: string | null;
     mode?: string;
+    /** Employé d'une autre agence que celle du menu */
+    externe?: boolean;
+    agence_origine?: string | null;
   }[];
 }
 

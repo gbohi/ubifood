@@ -1,0 +1,29 @@
+<div class="lst ep">
+  <app-page-entete titre="Mon profil prestataire" icone="ri-store-2-line" [fil]="[{label: 'Espace prestataire', lien: '/prestataire/accueil'}]"
+                   sousTitre="Ce que voient les employés quand ils choisissent un prestataire"></app-page-entete>
+
+  @if (message) { <div class="ep-alerte a-ve" role="status"><i class="ri-checkbox-circle-line"></i><div><b>{{ message }}</b></div></div> }
+  @if (erreur) { <div class="ep-alerte a-ro" role="alert"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+
+  <div class="lst-carte p-3 p-md-4">
+    @if (chargement) {
+      <div class="lst-charge"><div class="spinner-border" role="status"></div></div>
+    } @else if (profil) {
+      <app-profil-prestataire-editeur [profil]="profil" [libelle]="profil.libelle"></app-profil-prestataire-editeur>
+      <div class="d-flex gap-2 justify-content-end mt-4 flex-wrap">
+        <button type="button" class="btn btn-light" (click)="annuler()" [disabled]="enregistrement || !editeur?.modifie">Annuler les modifications</button>
+        <button type="button" class="btn btn-success" id="enregistrer-profil" (click)="enregistrer()" [disabled]="enregistrement || !editeur?.modifie || !editeur?.valide">
+          @if (enregistrement) { <span class="spinner-border spinner-border-sm me-1" role="status"></span> }
+          Enregistrer
+        </button>
+      </div>
+    }
+  </div>
+  @if (profil) {
+    <div class="ep-alerte a-bl"><i class="ri-star-line"></i><div><small>
+      @if (!profil.nouveau) { Note affichée aux employés : ★ {{ noteFr }} ({{ profil.nb_avis }} avis). }
+      @else { {{ profil.nb_avis }} avis pour l'instant : les employés voient « Nouveau ». }
+      La note s'affiche à partir de {{ profil.seuil_avis_note }} avis (réglage UbiPharm).
+    </small></div></div>
+  }
+</div>

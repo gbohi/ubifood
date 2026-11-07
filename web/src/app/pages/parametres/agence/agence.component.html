@@ -3,7 +3,9 @@
   <app-page-entete titre="Agences" icone="ri-map-pin-line"
                    [fil]="[{label: 'Paramètres', lien: '/parametres/accueil'}, {label: 'Personnel'}]"
                    [compte]="totalItems" unite="agence|agences">
-    <button type="button" class="btn-ubi vert" (click)="openAddModal()"><i class="ri-add-line"></i><span class="pe-lib">Nouvelle agence</span></button>
+    @if (estAdmin) {
+      <button type="button" class="btn-ubi vert" (click)="openAddModal()"><i class="ri-add-line"></i><span class="pe-lib">Nouvelle agence</span></button>
+    }
   </app-page-entete>
 
   <div class="lst-carte" id="agenceList">
@@ -23,25 +25,36 @@
       <table class="lst-table lst-cartes">
         <thead>
           <tr>
-            <th class="lst-c-sel">
+            <th class="lst-c-sel" [class.d-none]="!estAdmin">
               <div class="form-check"><input class="form-check-input" type="checkbox" aria-label="Tout sélectionner" [(ngModel)]="masterSelected" (change)="checkUncheckAll($event)"></div>
             </th>
             <th class="tri" [class.actif]="tri.estActif('nom_agence')" (click)="onSort('nom_agence')">Libellé<i class="ms-1" [ngClass]="tri.icone('nom_agence')"></i></th>
+            <th>Autres agences</th>
             <th class="lst-c-act"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           @for (data of agences; track data.id) {
             <tr id="l_{{ data.id }}">
-              <td class="lst-c-sel">
+              <td class="lst-c-sel" [class.d-none]="!estAdmin">
                 <div class="form-check"><input class="form-check-input" type="checkbox" [attr.aria-label]="'Sélectionner ' + data.nom_agence" [value]="data.id" [(ngModel)]="data.state" (change)="onCheckboxChange()"></div>
               </td>
               <td class="lst-c-principal">
                 <div class="lst-qui"><span class="lst-av carre"><i class="ri-map-pin-line"></i></span><b>{{ data.nom_agence }}</b></div>
               </td>
+              <td data-label="Autres agences">
+                @if (data.accepter_autres_agences) {
+                  <span class="lst-tag t-ve" title="Les employés des autres agences peuvent y commander"><i class="ri-door-open-line"></i>Ouverte</span>
+                } @else {
+                  <span class="lst-tag t-gr" title="Réservée aux employés de l'agence"><i class="ri-lock-line"></i>Réservée</span>
+                }
+              </td>
               <td class="lst-c-act">
                 <div class="lst-act">
-                  <button type="button" class="lst-ic" title="Modifier" aria-label="Modifier" (click)="editList(data.id)"><i class="ri-pencil-line"></i></button>
+                  @if (peutModifier(data.id)) {
+                    <button type="button" class="lst-ic" title="Modifier" aria-label="Modifier" (click)="editList(data.id)"><i class="ri-pencil-line"></i></button>
+                  }
+                  @if (estAdmin) {
                   <div class="btn-group" dropdown container="body" placement="bottom end">
                     <button type="button" dropdownToggle class="lst-ic" title="Plus d'actions" aria-label="Plus d'actions"><i class="ri-more-2-fill"></i></button>
                     <ul *dropdownMenu class="dropdown-menu dropdown-menu-end lst-menu" role="menu">
@@ -51,13 +64,16 @@
                       <li role="menuitem"><a class="dropdown-item rg" href="javascript:void(0);" (click)="removeItem(data.id)"><i class="ri-delete-bin-6-line"></i>Supprimer</a></li>
                     </ul>
                   </div>
+                  } @else {
+                    <button type="button" class="lst-ic" title="Voir le détail" aria-label="Voir le détail" (click)="viewDetails(data.id)"><i class="ri-eye-line"></i></button>
+                  }
                 </div>
               </td>
             </tr>
           }
           @if (agences.length === 0 && !isLoading) {
             <tr class="lst-l-vide">
-              <td colspan="3" class="lst-c-plein">
+              <td colspan="4" class="lst-c-plein">
                 <div class="lst-vide">
                   @if (term) {
                     <i class="ri-search-line"></i>
@@ -66,7 +82,7 @@
                   } @else {
                     <i class="ri-map-pin-line"></i>
                     <h5>Aucune agence pour le moment</h5>
-                    <p>Ajoutez une agence pour commencer.</p>
+                    <p>{{ estAdmin ? 'Ajoutez une agence pour commencer.' : 'Aucune agence n\'est enregistrée.' }}</p>
                   }
                 </div>
               </td>
@@ -88,7 +104,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="addAgenceModalLabel">{{ isEdit ? "Modifier l'agence" : "Ajouter une agence" }}</h5>
+                <h5 class="modal-title" id="addAgenceModalLabel">{{ isEdit ? "Modifier l'agence" + (agenceForm.get('nom_agence')?.value ? ' · ' + agenceForm.get('nom_agence')?.value : '') : "Ajouter une agence" }}</h5>
                 <button type="button" class="btn-close" (click)="closeAddModal()"></button>
             </div>
 
@@ -103,11 +119,28 @@
                             <small *ngIf="agenceForm.get('nom_agence')?.errors?.['required']">Le nom de l'agence est requis</small>
                         </div>
                     </div>
+
+                    @if (!isEdit || peutOuvrir(agenceForm.get('id')?.value)) {
+                      <div class="ag-ouverture" [class.ag-on]="ouvertureDemandee">
+                        <div class="form-check form-switch m-0">
+                          <input class="form-check-input" type="checkbox" role="switch" id="accepter-autres-agences" formControlName="accepter_autres_agences">
+                          <label class="form-check-label" for="accepter-autres-agences">Accepter les commandes des employés d'autres agences</label>
+                        </div>
+                        <p>
+                          Les employés en mission pourront choisir cette agence dans l'application et commander chez ses prestataires.
+                          Le repas est retiré au comptoir de l'agence et payé par l'employé comme d'habitude (compte repas ou retenue).
+                          Ces commandes apparaissent dans vos quantités avec la mention « <b>Employé d'une autre agence</b> ».
+                        </p>
+                        <p class="ag-note"><i class="ri-information-line"></i>
+                          Désactivé : l'agence n'apparaît plus aux employés des autres agences. Les commandes déjà passées sont maintenues.
+                        </p>
+                      </div>
+                    }
                 </div>
                 <div class="modal-footer">
                     <div class="hstack gap-2 justify-content-end">
                         <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()"><i class="ri-close-line align-baseline me-1"></i> Fermer</button>
-                        <button type="submit" class="btn btn-primary" id="add-btn" [disabled]="agenceForm.invalid || isSaving">{{ isEdit ? 'Mettre à jour' : 'Ajouter' }}</button>
+                        <button type="submit" class="btn btn-primary" id="add-btn" [disabled]="agenceForm.invalid || isSaving">{{ isEdit ? 'Enregistrer' : 'Ajouter' }}</button>
                     </div>
                 </div>
             </form>
@@ -160,9 +193,36 @@
                     <label class="form-label fw-medium">Nom de l'agence :</label>
                     <p>{{selectedAgence?.nom_agence}}</p>
                 </div>
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Employés des autres agences :</label>
+                    <p>{{ selectedAgence?.accepter_autres_agences ? 'Acceptés (agence ouverte)' : 'Non acceptés (agence réservée à ses employés)' }}</p>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" (click)="closeViewModal()">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation : fermeture aux autres agences -->
+<div bsModal #fermetureModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true"
+     [config]="{backdrop: 'static', keyboard: false, ignoreBackdropClick: true}" style="z-index: 1070">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body p-4 text-center">
+                <i class="ri-lock-line text-warning display-5"></i>
+                <h5 class="mt-3">Réserver l'agence à ses employés ?</h5>
+                <p class="text-muted mb-2">
+                    Les employés des autres agences ne pourront plus commander à <b>{{ agenceForm.get('nom_agence')?.value }}</b>.
+                </p>
+                <p class="text-muted small mb-4">
+                    Les commandes déjà passées sont <b>maintenues</b> : les employés concernés sont prévenus par une notification.
+                </p>
+                <div class="d-flex gap-2 justify-content-center">
+                    <button type="button" class="btn btn-light" (click)="annulerFermeture()">Garder ouverte</button>
+                    <button type="button" class="btn btn-warning" id="confirmer-fermeture" (click)="confirmerFermeture()">Oui, réserver à ses employés</button>
+                </div>
             </div>
         </div>
     </div>

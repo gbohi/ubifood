@@ -17,6 +17,7 @@ import { FonctionComponent } from './fonction/fonction.component';
 import { CategoriesalarieComponent } from './categoriesalarie/categoriesalarie.component';
 import { PrestataireComponent } from './prestataire/prestataire.component';
 import { PosteComponent } from './poste/poste.component';
+import { ReglagesCantineComponent } from './cantine/reglages-cantine.component';
 import { SocieteComponent } from './societe/societe.component';
 import { BannieresComponent } from './bannieres/bannieres.component';
 import { PopupConnexionComponent } from './popup-connexion/popup-connexion.component';
@@ -67,10 +68,18 @@ const routes: Routes = [
     data: { roles: ADMINS }
   },
   {
+    // Seuil d'avis avant d'afficher une note (délais en lecture) : gestionnaires et administrateurs
+    path: 'cantine',
+    component: ReglagesCantineComponent,
+    canActivate: [RoleGuard],
+    data: { roles: GESTIONNAIRES }
+  },
+  {
+    // Gestionnaires : lecture, et ouverture de leurs agences aux employés des autres agences
     path: 'agence',
     component: AgenceComponent,
     canActivate: [RoleGuard],
-    data: { roles: ADMINS }
+    data: { roles: GESTIONNAIRES }
   },
   {
     path: 'etat',

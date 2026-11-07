@@ -10,6 +10,14 @@ import { Observable, shareReplay } from 'rxjs';
 import { environment } from 'src/environments/environment';
 import { TokenStorageService } from '../token-storage.service';
 
+/** Commande d'un employé d'une autre agence que celle du menu */
+export interface OrigineCommande {
+  externe?: boolean;
+  agence_origine_id?: number | null;
+  agence_origine?: string | null;
+}
+export type FiltreOrigine = 'toutes' | 'mon_agence' | 'autres';
+
 export interface AgencePresta {
   id: number;
   nom: string;
@@ -85,6 +93,7 @@ export interface HistoriqueMenu {
 }
 
 export interface LignePlatJour {
+  externes?: number;
   plat_id: number;
   plat: string;
   par_agence: Record<string, number>;
@@ -93,6 +102,8 @@ export interface LignePlatJour {
 }
 
 export interface JourAPreparer {
+  externes?: number;
+  externes_par_agence?: Record<string, number>;
   date: string;
   libelle: string;
   etat: 'passe' | 'en_service' | 'fige' | 'provisoire' | 'ouvert';
@@ -107,6 +118,7 @@ export interface JourAPreparer {
 }
 
 export interface APreparer {
+  origine?: FiltreOrigine;
   date_debut: string;
   date_fin: string;
   agences: AgencePresta[];
@@ -114,7 +126,7 @@ export interface APreparer {
   semaine: { debut: string; fin: string; nb_repas: number; tarif: number | null; montant_estime: number | null };
 }
 
-export interface LigneListeJour {
+export interface LigneListeJour extends OrigineCommande {
   commande_id: number;
   menu_id: number;
   user_id: number;
@@ -132,6 +144,8 @@ export interface LigneListeJour {
 }
 
 export interface ListeDuJour {
+  origine?: FiltreOrigine;
+  externes?: number;
   date: string;
   agence: number | null;
   total: number;
@@ -140,7 +154,7 @@ export interface ListeDuJour {
   lignes: LigneListeJour[];
 }
 
-export interface RetraitComptoir {
+export interface RetraitComptoir extends OrigineCommande {
   id: number;
   user_id: number;
   user_nom: string;
@@ -158,6 +172,7 @@ export interface RetraitComptoir {
 }
 
 export interface ServiceComptoirPresta {
+  externes?: number;
   date: string;
   agence: { id: number; nom: string; heure_debut_service: string; heure_fin_service: string };
   menus: { id: number; typeequipe_libelle: string }[];
@@ -165,13 +180,13 @@ export interface ServiceComptoirPresta {
   servies: number;
   a_servir: number;
   pct_servis: number;
-  plats: { plat_id: number; nom: string; image_url: string | null; commandees: number; servies: number; a_servir: number }[];
+  plats: { plat_id: number; nom: string; image_url: string | null; commandees: number; servies: number; a_servir: number; externes?: number }[];
   mes_retraits_aujourdhui: number;
   derniers: RetraitComptoir[];
 }
 
-export interface RechercheComptoir {
-  employe: { id: number; nom: string; prenoms: string; nom_complet: string; matricule: string; agence: string };
+export interface RechercheComptoir extends OrigineCommande {
+  employe: { id: number; nom: string; prenoms: string; nom_complet: string; matricule: string; agence: string } & OrigineCommande;
   commandes: { commande_id: number; menu_id: number; plat_id: number; plat: string; plat_image_url: string | null; statut: string; date_commande: string }[];
   deja_retire: boolean;
   retrait: RetraitComptoir | null;
@@ -334,11 +349,11 @@ export class EspacePrestataireService {
   }
 
   // ── Production, liste du jour ───────────────────────────────
-  aPreparer(filtres: { date_debut?: string; date_fin?: string; agence?: any } = {}): Observable<APreparer> {
+  aPreparer(filtres: { date_debut?: string; date_fin?: string; agence?: any; origine?: FiltreOrigine } = {}): Observable<APreparer> {
     return this.http.get<APreparer>(`${this.url}/a-preparer/`, { params: params(filtres) });
   }
 
-  listeDuJour(filtres: { date?: string; agence?: any; statut?: string; search?: string } = {}): Observable<ListeDuJour> {
+  listeDuJour(filtres: { date?: string; agence?: any; statut?: string; search?: string; origine?: FiltreOrigine } = {}): Observable<ListeDuJour> {
     return this.http.get<ListeDuJour>(`${this.url}/liste-du-jour/`, { params: params(filtres) });
   }
 

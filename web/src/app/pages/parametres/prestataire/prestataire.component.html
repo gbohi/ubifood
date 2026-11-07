@@ -40,7 +40,11 @@
                 <div class="form-check"><input class="form-check-input" type="checkbox" [attr.aria-label]="'Sélectionner ' + data.libelle" [value]="data.id" [(ngModel)]="data.state" (change)="onCheckboxChange()"></div>
               </td>
               <td class="lst-c-principal">
-                <div class="lst-qui"><span class="lst-av carre"><i class="ri-truck-line"></i></span><b>{{ data.libelle }}</b></div>
+                <div class="lst-qui">
+                  @if (logoUrl(data); as logo) { <img class="lst-av" [src]="logo" alt=""> }
+                  @else { <span class="lst-av carre"><i class="ri-truck-line"></i></span> }
+                  <div><b>{{ data.libelle }}</b>@if (data.nom_affiche && data.nom_affiche !== data.libelle) { <small class="d-block text-muted">Affiché : {{ data.nom_affiche }}</small> }</div>
+                </div>
               </td>
               <td data-label="Début du contrat"><span class="lst-nowrap">{{ formatDate(data.date_debut) }}</span></td>
               <td data-label="Fin du contrat"><span class="lst-nowrap">{{ data.date_fin ? formatDate(data.date_fin) : '—' }}</span></td>
@@ -201,6 +205,15 @@
               <label class="form-label">RCCM</label>
               <input type="text" class="form-control" formControlName="registre_commerce">
             </div>
+          </div>
+
+          <!-- ── Profil affiché aux employés (parcours de commande) ── -->
+          <h6 class="text-muted text-uppercase mb-2 small">
+            <i class="ri-store-2-line me-1"></i>Profil affiché aux employés
+            <small class="text-lowercase fw-normal">(logo, couverture, description — choix du prestataire dans « Commander »)</small>
+          </h6>
+          <div class="mb-4">
+            <app-profil-prestataire-editeur [profil]="profilEdite" [libelle]="f['libelle'].value" [lectureSeule]="!estAdmin"></app-profil-prestataire-editeur>
           </div>
 
           <!-- ── Tableau Tarifs (PlatPrestataire) ──────────── -->

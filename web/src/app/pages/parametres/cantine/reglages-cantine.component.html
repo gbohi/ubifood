@@ -1,0 +1,55 @@
+<app-page-entete titre="Réglages de la cantine" icone="ri-settings-4-line"
+                 [fil]="[{label: 'Paramètres', lien: '/parametres/accueil'}, {label: 'Cantine'}]"
+                 sousTitre="Notes des prestataires et des plats, délais de commande"></app-page-entete>
+
+<div class="row">
+  <div class="col-xl-8">
+    <div class="card">
+      <div class="card-body">
+        @if (message) {
+          <div class="alert alert-success py-2 small" role="status"><i class="ri-checkbox-circle-line me-1"></i>{{ message }}</div>
+        }
+        @if (erreur) {
+          <div class="alert alert-danger py-2 small" role="alert"><i class="ri-error-warning-line me-1"></i>{{ erreur }}</div>
+        }
+        @if (isLoading) {
+          <div class="text-center py-5"><span class="spinner-border text-primary" role="status"></span></div>
+        } @else if (parametres) {
+          <form (ngSubmit)="enregistrer()">
+            <h6 class="mb-1"><i class="ri-star-line me-1"></i>Notes affichées aux employés</h6>
+            <p class="text-muted small">
+              La note d'un prestataire (moyenne des avis sur ses plats) et celle d'un plat ne s'affichent qu'à partir
+              de ce nombre d'avis. En dessous, l'employé voit l'étiquette « Nouveau ». 0 : la note s'affiche dès le premier avis.
+            </p>
+            <div class="row g-3 align-items-end">
+              <div class="col-md-7">
+                <label class="form-label" for="seuil-avis-note">Nombre d'avis minimum avant d'afficher la note</label>
+                <input type="number" min="0" max="1000" step="1" class="form-control" id="seuil-avis-note" name="seuil_avis_note"
+                       [(ngModel)]="seuil" [class.is-invalid]="!seuilValide">
+                <div class="invalid-feedback">Nombre entier entre 0 et 1000.</div>
+              </div>
+              <div class="col-md-5 text-md-end">
+                <button type="submit" class="btn btn-primary" [disabled]="!seuilValide || !modifie || isSaving">
+                  @if (isSaving) { <span class="spinner-border spinner-border-sm me-1" role="status"></span> }
+                  @else { <i class="ri-save-line me-1"></i> }
+                  Enregistrer
+                </button>
+              </div>
+            </div>
+
+            <hr class="my-4">
+            <h6 class="mb-1"><i class="ri-time-line me-1"></i>Délais de la cantine</h6>
+            <dl class="row small mb-0">
+              <dt class="col-sm-4">Commande</dt><dd class="col-sm-8">{{ delai(parametres.delai_commande_heures) }}</dd>
+              <dt class="col-sm-4">Annulation</dt><dd class="col-sm-8">{{ delai(parametres.delai_annulation_heures) }}</dd>
+            </dl>
+            <p class="text-muted small mb-0">
+              @if (estAdmin) { Les délais se modifient dans <a routerLink="/parametres/societe">Paramètres → Société</a>. }
+              @else { Les délais sont fixés par les administrateurs. }
+            </p>
+          </form>
+        }
+      </div>
+    </div>
+  </div>
+</div>

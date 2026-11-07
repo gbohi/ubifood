@@ -9,6 +9,9 @@
     <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-shopping-basket-2-line"></i></span><div><small>Commandés</small><b>{{ nombreFr(liste?.total) }}</b></div></div>
     <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-check-double-line"></i></span><div><small>Retirés</small><b>{{ nombreFr(liste?.retires) }}</b></div></div>
     <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-time-line"></i></span><div><small>À servir</small><b>{{ nombreFr(liste?.a_servir) }}</b></div></div>
+    @if (liste?.externes) {
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-building-line"></i></span><div><small>Employés d'autres agences</small><b>{{ nombreFr(liste?.externes) }}</b></div></div>
+    }
   </div>
 
   <div class="lst-carte">
@@ -19,6 +22,11 @@
         }
       </div>
       <div class="lst-filtres">
+        <div class="ubi-origine" role="group" aria-label="Origine des employés">
+          @for (o of origines; track o.cle) {
+            <button type="button" [class.on]="origine === o.cle" (click)="choisirOrigine(o.cle)">{{ o.libelle }}</button>
+          }
+        </div>
         <div class="lst-recherche">
           <i class="ri-search-line"></i>
           <input type="search" placeholder="Nom, matricule ou plat" aria-label="Rechercher" [(ngModel)]="recherche" (input)="rechercher()" (search)="rechercher()">
@@ -43,7 +51,8 @@
         <tbody>
           @for (l of liste?.lignes ?? []; track l.commande_id) {
             <tr>
-              <td class="lst-c-principal"><b>{{ l.nom_complet }}</b><small class="d-block">{{ l.matricule }}</small></td>
+              <td class="lst-c-principal"><b>{{ l.nom_complet }}</b><small class="d-block">{{ l.matricule }}</small>
+                @if (l.externe) { <span class="ubi-externe"><i class="ri-building-line"></i>Employé d'une autre agence · {{ l.agence_origine }}</span> }</td>
               <td data-label="Plat">{{ l.plat }}</td>
               <td data-label="Agence"><span class="lst-tag t-bl">{{ l.agence }}</span></td>
               <td data-label="Statut"><span class="lst-tag" [ngClass]="statutLigne(l.statut).classe">{{ statutLigne(l.statut).libelle }}@if (l.heure_retrait) { · {{ l.heure_retrait }} }</span></td>

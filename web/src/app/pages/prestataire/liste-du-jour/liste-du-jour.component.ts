@@ -6,7 +6,7 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 import { estAgentComptoir } from 'src/app/core/helpers/roles';
 import {
-  ContextePresta, EspacePrestataireService, ListeDuJour, isoJour, messageErreur, nombreFr, versDate, JOURS_FR, MOIS_FR,
+  ContextePresta, EspacePrestataireService, FiltreOrigine, ListeDuJour, isoJour, messageErreur, nombreFr, versDate, JOURS_FR, MOIS_FR,
 } from 'src/app/core/services/espace-prestataire/espace-prestataire.service';
 
 @Component({
@@ -23,6 +23,7 @@ export class ListeDuJourComponent implements OnInit {
   date = this.aujourdhui;
   agence: number | '' = '';
   statut = '';
+  origine: FiltreOrigine = 'toutes';
   recherche = '';
   private recherche$ = new Subject<string>();
 
@@ -31,6 +32,11 @@ export class ListeDuJourComponent implements OnInit {
   erreur: string | null = null;
 
   readonly nombreFr = nombreFr;
+  readonly origines: { cle: FiltreOrigine; libelle: string }[] = [
+    { cle: 'toutes', libelle: 'Toutes' },
+    { cle: 'mon_agence', libelle: 'Mon agence' },
+    { cle: 'autres', libelle: 'Autres agences' },
+  ];
   readonly statuts = [
     { cle: '', libelle: 'Tous' },
     { cle: 'a_servir', libelle: 'À servir' },
@@ -46,7 +52,7 @@ export class ListeDuJourComponent implements OnInit {
 
   charger(): void {
     this.chargement = true;
-    this.api.listeDuJour({ date: this.date, agence: this.agence, statut: this.statut, search: this.recherche.trim() })
+    this.api.listeDuJour({ date: this.date, agence: this.agence, statut: this.statut, search: this.recherche.trim(), origine: this.origine })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: l => { this.liste = l; this.chargement = false; this.erreur = null; },
@@ -57,6 +63,8 @@ export class ListeDuJourComponent implements OnInit {
   rechercher(): void { this.recherche$.next(this.recherche); }
 
   choisirStatut(s: string): void { this.statut = s; this.charger(); }
+
+  choisirOrigine(o: FiltreOrigine): void { this.origine = o; this.charger(); }
 
   get titreDate(): string {
     const d = versDate(this.date);

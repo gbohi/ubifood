@@ -28,6 +28,7 @@ import { FonctionComponent } from './fonction/fonction.component';
 import { CategoriesalarieComponent } from './categoriesalarie/categoriesalarie.component';
 import { PrestataireComponent } from './prestataire/prestataire.component';
 import { PosteComponent } from './poste/poste.component';
+import { ReglagesCantineComponent } from './cantine/reglages-cantine.component';
 import { SocieteComponent } from './societe/societe.component';
 import { BannieresComponent } from './bannieres/bannieres.component';
 import { PopupConnexionComponent } from './popup-connexion/popup-connexion.component';
@@ -54,7 +55,8 @@ import { ApplicationMobileComponent } from './application-mobile/application-mob
     FonctionComponent,
     CategoriesalarieComponent,
     PrestataireComponent,
-    PosteComponent
+    PosteComponent,
+    ReglagesCantineComponent,
   ],
   imports: [
     CommonModule,

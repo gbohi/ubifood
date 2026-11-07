@@ -60,6 +60,13 @@ import {
 } from 'src/app/store/AgencePrestataire/agence-prestataire-selector';
 import { AgencePrestataireModel } from 'src/app/store/AgencePrestataire/agence-prestataire.model';
 import { TriServeur } from 'src/app/shared/tri-serveur';
+import { environment } from 'src/environments/environment';
+import { TokenStorageService } from 'src/app/core/services/token-storage.service';
+import { ADMINS, aUnRole } from 'src/app/core/helpers/roles';
+import { ParcoursCommandeService } from 'src/app/core/services/commande/parcours-commande.service';
+import {
+  ProfilEditable, ProfilPrestataireEditeurComponent,
+} from 'src/app/shared/profil-prestataire/profil-prestataire-editeur.component';
 
 // ── Validateur croisé date_fin >= date_debut ──────────────────
 export const datefinValidator: ValidatorFn = (
@@ -128,6 +135,12 @@ export class PrestataireComponent implements OnInit, AfterViewInit {
   @ViewChild('deleteRecordModal', { static: false }) deleteRecordModal?: ModalDirective;
   @ViewChild('viewPrestataire',   { static: false }) viewPrestataire?:   ModalDirective;
   @ViewChild('mainContainer',     { static: false }) mainContainer?:     ElementRef;
+  @ViewChild(ProfilPrestataireEditeurComponent) editeurProfil?: ProfilPrestataireEditeurComponent;
+
+  /** Profil public (logo, couverture, nom affiché…) : écriture réservée aux administrateurs */
+  estAdmin = false;
+  profilEdite: ProfilEditable | null = null;
+  private parcours = inject(ParcoursCommandeService);
 
   constructor(
     private fb: UntypedFormBuilder,
@@ -137,9 +150,16 @@ export class PrestataireComponent implements OnInit, AfterViewInit {
     private prestataireService: PrestataireService,
     private platPrestataireService: PlatPrestataireService,
     private agencePrestataireService: AgencePrestataireService,
+    private tokenStorage: TokenStorageService,
   ) {}
 
+  logoUrl(p: any): string | null {
+    const u = p?.logo_url;
+    return u ? (u.startsWith('http') ? u : `${environment.apiUrl}${u}`) : null;
+  }
+
   ngOnInit(): void {
+    this.estAdmin = aUnRole(this.tokenStorage.getUser(), ADMINS);
     this.prestataireForm = this.fb.group(
       {
         id:         [''],
@@ -330,6 +350,7 @@ export class PrestataireComponent implements OnInit, AfterViewInit {
     this.store.dispatch(AgencePrestataireActions.resetAgencePrestataire());
     this.modalTitle = 'Ajouter un prestataire';
     this.modalBtn   = 'Enregistrer';
+    this.profilEdite = {};
     this.addPrestataire?.show();
   }
 
@@ -356,6 +377,7 @@ export class PrestataireComponent implements OnInit, AfterViewInit {
     });
 
     this.chargerLignes(id);
+    this.profilEdite = { ...editData };
 
     this.modalTitle = 'Modifier le prestataire';
     this.modalBtn   = 'Enregistrer';
@@ -460,8 +482,25 @@ export class PrestataireComponent implements OnInit, AfterViewInit {
       ? this.prestataireService.createPrestataire(formValue)
       : this.prestataireService.updatePrestataire(formValue);
 
+    // Profil public (multipart : logo, couverture) après la fiche, si modifié
+    const editeur = this.editeurProfil;
+    const avecProfil = this.estAdmin && !!editeur?.modifie;
+    if (avecProfil && !editeur!.valide) {
+      this.isSaving = false;
+      this.toastService.error('Profil affiché aux employés : description de 120 caractères au plus, 8 mots-clés au plus.', 'Erreur');
+      return;
+    }
+    const erreursProfil: string[] = [];
     fiche$.pipe(
-      switchMap(p => this.enregistrerLignes(p?.id ?? formValue.id)),
+      switchMap(p => {
+        const id = p?.id ?? formValue.id;
+        if (!avecProfil) return of(id);
+        return this.parcours.enregistrerProfil(id, editeur!.formData()).pipe(
+          map(() => id),
+          catchError(err => { erreursProfil.push(`Profil : ${typeof err === 'string' ? err : 'refusé'}`); return of(id); }));
+      }),
+      switchMap(id => this.enregistrerLignes(id)),
+      map(erreurs => [...erreursProfil, ...erreurs]),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe({
       next: erreurs => {

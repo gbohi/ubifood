@@ -39,6 +39,7 @@
       <span><b>{{ service?.servies ?? 0 }}</b>servis</span>
       <span><b>{{ service?.a_servir ?? 0 }}</b>à servir</span>
       <span><b>{{ service?.commandees ?? 0 }}</b>commandés</span>
+      @if (service?.externes) { <span title="Employés d'autres agences"><b class="ubi-externe-nb">{{ service?.externes }}</b>autres agences</span> }
     </div>
   </div>
 
@@ -204,7 +205,7 @@
           @for (p of service?.plats ?? []; track p.plat_id) {
             <div class="ce-reste-l">
               <b>{{ p.nom }}</b>
-              <span class="ce-muted">{{ p.a_servir }} / {{ p.commandees }}</span>
+              <span class="ce-muted">{{ p.a_servir }} / {{ p.commandees }}@if (p.externes) { <span class="ubi-externe-nb"> · dont {{ p.externes }} autre{{ p.externes > 1 ? 's' : '' }} agence{{ p.externes > 1 ? 's' : '' }}</span> }</span>
               <div class="ce-jauge ce-jauge-fine"><i [style.width.%]="pourcent(p.a_servir, p.commandees)"></i></div>
             </div>
           } @empty {
@@ -222,7 +223,7 @@
             <li>
               <span class="ce-av ce-av-s" [style.background]="couleur(r.user_id)">{{ initiales(r.user_nom) }}</span>
               <div class="ce-fil-txt">
-                <b>{{ r.user_nom }}</b>
+                <b>{{ r.user_nom }}@if (r.externe) { <span class="ubi-externe ubi-externe-court ms-1" [title]="'Employé d\'une autre agence · ' + r.agence_origine">{{ r.agence_origine }}</span> }</b>
                 <small>{{ platsRetires(r) }}</small>
               </div>
               <span class="ce-fil-h ep-fil-droite">

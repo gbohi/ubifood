@@ -12,6 +12,7 @@ import { ComptoirComponent } from './comptoir/comptoir.component';
 import { RelevesPrestataireComponent } from './releves/releves-prestataire.component';
 import { StatistiquesPrestataireComponent } from './statistiques/statistiques-prestataire.component';
 import { EquipeComponent } from './equipe/equipe.component';
+import { ProfilPrestataireComponent } from './profil/profil-prestataire.component';
 
 // Responsable : tout l'espace ; agent de comptoir : Comptoir et Liste du jour
 const RESP = { roles: RESPONSABLES_PRESTATAIRE };
@@ -27,6 +28,7 @@ const routes: Routes = [
   { path: 'comptoir', component: ComptoirComponent, canActivate: [RoleGuard], data: TOUS, title: 'Comptoir | Espace prestataire' },
   { path: 'releves', component: RelevesPrestataireComponent, canActivate: [RoleGuard], data: RESP, title: 'Relevés | Espace prestataire' },
   { path: 'statistiques', component: StatistiquesPrestataireComponent, canActivate: [RoleGuard], data: RESP, title: 'Statistiques | Espace prestataire' },
+  { path: 'profil', component: ProfilPrestataireComponent, canActivate: [RoleGuard], data: RESP, title: 'Mon profil prestataire | Espace prestataire' },
   { path: 'equipe', component: EquipeComponent, canActivate: [RoleGuard], data: RESP, title: 'Mon équipe | Espace prestataire' },
 ];
 

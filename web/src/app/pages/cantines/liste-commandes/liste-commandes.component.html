@@ -4,35 +4,27 @@
   <div class="ce-entete">
     <div class="ce-entete-txt">
       <h1><span class="ce-ic"><i class="ri-shopping-basket-2-line"></i></span>Commander mes repas</h1>
-      <p>@if (nomAgence) { {{ nomAgence }} · }choisissez un plat par jour</p>
-    </div>
-    <div class="ce-btns">
-      <button type="button" class="ce-btn" (click)="semaine(-1)"><i class="ri-arrow-left-s-line"></i>Semaine précédente</button>
-      <button type="button" class="ce-btn" (click)="semaine(1)">Semaine suivante<i class="ri-arrow-right-s-line"></i></button>
+      <p>Où mangez-vous ? Choisissez l'agence, le prestataire, l'équipe puis le jour.</p>
     </div>
   </div>
 
-  <!-- Agence / équipe : gestionnaires et administrateurs (ou agent sans agence) -->
-  @if (estGestion || !nomAgence && agences.length) {
-    <div class="ce-carte ce-barre">
-      <div class="ce-filtres">
-        <label class="ce-champ">
-          <i class="ri-building-line"></i>
-          <select [(ngModel)]="filtreAgence" (change)="changerFiltre()" aria-label="Agence">
-            <option value="">Toutes les agences</option>
-            @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
-          </select>
-        </label>
-        <label class="ce-champ">
-          <i class="ri-time-line"></i>
-          <select [(ngModel)]="filtreEquipe" (change)="changerFiltre()" aria-label="Équipe">
-            <option value="">Toutes les équipes</option>
-            @for (e of equipes; track e.id) { <option [value]="e.id">{{ e.libelle }}</option> }
-          </select>
-        </label>
-      </div>
-    </div>
-  }
+  <!-- ── Fil des étapes ──────────────────────────────────────── -->
+  <nav class="pc-fil" aria-label="Étapes de la commande">
+    <button type="button" class="pc-fil-et" [class.pc-on]="etape === 1" [class.pc-fait]="etape > 1"
+            [attr.aria-current]="etape === 1 ? 'step' : null" (click)="allerEtape(1)">
+      <span class="pc-fil-n">1</span><span class="pc-fil-t"><small>Agence et prestataire</small><b>{{ agence?.nom ?? 'Agence' }}</b></span>
+    </button>
+    <i class="ri-arrow-right-s-line pc-fil-sep"></i>
+    <button type="button" class="pc-fil-et" [class.pc-on]="etape === 2" [class.pc-fait]="etape > 2"
+            [disabled]="!prestataire" [attr.aria-current]="etape === 2 ? 'step' : null" (click)="allerEtape(2)">
+      <span class="pc-fil-n">2</span><span class="pc-fil-t"><small>Équipe</small><b>{{ prestataire?.nom_affiche ?? 'Prestataire' }}</b></span>
+    </button>
+    <i class="ri-arrow-right-s-line pc-fil-sep"></i>
+    <button type="button" class="pc-fil-et" [class.pc-on]="etape === 3"
+            [disabled]="!prestataire || etape < 3 && !equipe" [attr.aria-current]="etape === 3 ? 'step' : null" (click)="allerEtape(3)">
+      <span class="pc-fil-n">3</span><span class="pc-fil-t"><small>Jour et plat</small><b>{{ equipe?.libelle ?? 'Jour' }}</b></span>
+    </button>
+  </nav>
 
   <!-- ── Alertes ──────────────────────────────────────────────── -->
   @if (error) {
@@ -47,161 +39,336 @@
       <button type="button" class="btn-close ms-auto" (click)="dismissAlert()" aria-label="Fermer"></button>
     </div>
   }
-  @if (erreurMenus) {
-    <div class="ce-alerte ce-alerte-ro"><i class="ri-error-warning-line"></i><div>{{ erreurMenus }}</div></div>
+  @if (erreurListe) {
+    <div class="ce-alerte ce-alerte-ro"><i class="ri-error-warning-line"></i><div>{{ erreurListe }}</div></div>
   }
 
-  <!-- ── Bandeau de la semaine ───────────────────────────────── -->
-  <div class="ce-jours" role="tablist">
-    @for (j of jours; track j) {
-      <button type="button" role="tab" class="ce-jour"
-              [class.ce-on]="j === jourSelectionne"
-              [class.ce-off]="etatJour(j) === 'pas_de_menu'"
-              [attr.aria-selected]="j === jourSelectionne"
-              (click)="choisirJour(j)">
-        <b>{{ jourCourt(j) }}@if (estAujourdhui(j)) { <em>auj.</em> }</b>
-        <small>
-          @if (etatJour(j) === 'commande' || etatJour(j) === 'retire') { <i class="ri-checkbox-circle-fill ce-c-vert"></i> }
-          {{ texteJour(j) }}
-        </small>
-        <span class="ce-tag" [ngClass]="tagJour(j).classe">
-          @if (tagJour(j).icone) { <i [class]="tagJour(j).icone"></i> }{{ tagJour(j).texte }}
-        </span>
-      </button>
-    }
-  </div>
-
-  <!-- ── Le jour choisi ──────────────────────────────────────── -->
-  @if (isLoading) {
-    <div class="ce-chargement"><span class="spinner-border" role="status"></span><span>Chargement des menus…</span></div>
-  } @else if (jourSelectionne) {
-    <div class="ce-carte ce-jour-detail">
-      <h3>
-        <i class="ri-calendar-event-line"></i>{{ titreJour(jourSelectionne) }}
-        @if (nbPlatsJour(jourSelectionne)) {
-          <small>
-            {{ nbPlatsJour(jourSelectionne) }} plat{{ nbPlatsJour(jourSelectionne) > 1 ? 's' : '' }} au choix
-            @if (limiteAnnulationJour(jourSelectionne); as lim) {
-              · annulation possible jusqu'au {{ libelleLimite(lim) }}
-            }
-          </small>
+  <!-- ══ Étape 1 : agences + prestataires ═══════════════════════ -->
+  @if (etape === 1) {
+    @if (chargementAgences) {
+      <div class="ce-chargement"><span class="spinner-border" role="status"></span><span>Chargement des agences…</span></div>
+    } @else {
+      <div class="pc-agences" role="radiogroup" aria-label="Agence">
+        @for (a of agences; track a.id) {
+          <button type="button" class="pc-agence" role="radio" [attr.aria-checked]="a.id === agenceId"
+                  [class.pc-on]="a.id === agenceId" [class.pc-mienne]="a.mon_agence" (click)="choisirAgence(a.id)"
+                  [title]="a.nom + (a.mon_agence ? ' (mon agence)' : '')">
+            <span class="pc-agence-rond">
+              <span class="pc-agence-code">{{ a.code }}</span>
+              @if (a.mon_agence) { <span class="pc-agence-pin" title="Mon agence"><i class="ri-map-pin-2-fill"></i></span> }
+            </span>
+            <span class="pc-agence-nom">{{ a.nom }}</span>
+            <small>{{ a.nb_prestataires_aujourdhui }} prestataire{{ a.nb_prestataires_aujourdhui > 1 ? 's' : '' }} auj.</small>
+          </button>
+        } @empty {
+          <div class="ce-vide-page"><i class="ri-building-line"></i><b>Aucune agence disponible</b>
+            <span>Vous n'êtes rattaché à aucune agence et aucune agence n'accepte les commandes des autres agences.</span></div>
         }
-      </h3>
+      </div>
 
-      @if (allergies.length && nbPlatsJour(jourSelectionne)) {
-        <div class="ce-alerte ce-alerte-or ce-alerte-fine">
-          <i class="ri-alert-line"></i>
-          <div>Rappel de vos allergies : <b>{{ allergies.join(', ') }}</b>. Vérifiez la composition avant de choisir.</div>
+      @if (enMission) {
+        <div class="pc-mission" role="status">
+          <i class="ri-briefcase-4-line"></i>
+          <div>Vous commandez à l'agence <b>{{ agence?.nom }}</b><span>&nbsp;(mission)</span></div>
+          <button type="button" class="ce-btn ce-btn-mini" (click)="revenirMonAgence()"><i class="ri-map-pin-2-line"></i>Mon agence{{ nomMonAgence ? ' · ' + nomMonAgence : '' }}</button>
         </div>
       }
 
-      @for (menu of menusDuJour(jourSelectionne); track menu.id) {
-        @if (menusDuJour(jourSelectionne).length > 1 || estGestion) {
-          <div class="ce-menu-ss-titre">
-            <i class="ri-building-line"></i>{{ menu.agence_nom }} · {{ menu.typeequipe_libelle }}
-          </div>
-        }
-        @if (commandeOuverte(menu) && !aDejaCommandePourDate(menu.date_menu)) {
-          <div class="ce-delai">
-            <i class="ri-time-line"></i>
-            Commandes ouvertes jusqu'au {{ libelleLimite(menu.date_limite_commande) }}
-            @if (compteARebours(menu.date_limite_commande); as reste) { <b class="ce-c-orange">· {{ reste }}</b> }
-          </div>
-        } @else if (!commandeOuverte(menu) && !aDejaCommandePourDate(menu.date_menu)) {
-          <div class="ce-delai ce-c-gris">
-            <i class="ri-lock-line"></i>Commandes fermées depuis le {{ libelleLimite(menu.date_limite_commande) }}
-          </div>
-        }
-
-        <div class="ce-plats">
-          @for (plat of getPlats(menu); track plat.id; let i = $index) {
-            <div class="ce-pc"
-                 [class.ce-choisi]="isPlatCommande(menu.id!, plat.id!)"
-                 [class.ce-retire]="isPlatRetire(menu.id!, plat.id!)">
-              <div class="ce-pc-ph" [style.background]="getImageUrl(plat) ? null : degrade(i)">
-                @if (getImageUrl(plat); as url) { <img [src]="url" [alt]="plat.nom"> }
-                @else { <i class="ri-restaurant-2-line"></i> }
-                @if (plat.type_plat_libelle) { <span class="ce-pc-type">{{ plat.type_plat_libelle }}</span> }
-                @if (note(plat)) {
-                  <span class="ce-pc-note" [title]="$any(plat).nb_avis + ' avis'"><i class="ri-star-fill"></i> {{ note(plat) }}</span>
-                }
-              </div>
-              <div class="ce-pc-bd">
-                <h4>{{ plat.nom }}</h4>
-                @if (plat.description && plat.description.trim().toLowerCase() !== plat.nom?.trim()?.toLowerCase()) { <p>{{ plat.description }}</p> }
-
-                @if (isPlatRetire(menu.id!, plat.id!)) {
-                  @if (getCommande(menu.id!, plat.id!); as cmd) {
-                    @if (cmd.mode_paiement) {
-                      <div class="ce-pc-paie" [class.ce-pc-paie-compte]="cmd.mode_paiement === 'compte'">
-                        <i [class]="cmd.mode_paiement === 'compte' ? 'ri-wallet-3-line' : 'ri-file-list-3-line'"></i>
-                        <span>{{ texteMode(cmd) }}</span>
-                      </div>
-                    }
-                  }
-                  <button type="button" class="ce-cta ce-cta-info" disabled>
-                    <i class="ri-checkbox-circle-line"></i>Repas retiré
-                  </button>
-                } @else if (isPlatCommande(menu.id!, plat.id!)) {
-                  @if (getCommande(menu.id!, plat.id!); as cmd) {
-                    @if (cmd.mode_paiement) {
-                      <div class="ce-pc-paie" [class.ce-pc-paie-compte]="cmd.mode_paiement === 'compte'">
-                        <i [class]="cmd.mode_paiement === 'compte' ? 'ri-wallet-3-line' : 'ri-file-list-3-line'"></i>
-                        <span>{{ texteMode(cmd) }}</span>
-                      </div>
-                      @if (cmd.mode_paiement_modifiable) {
-                        <button type="button" class="ce-lien-paie" [disabled]="isSubmitting" (click)="changerMode(menu, plat)">
-                          <i class="ri-exchange-line"></i>Changer le mode de paiement
-                        </button>
-                      }
-                    }
-                  }
-                  @if (annulationOuverte(menu)) {
-                    <button type="button" class="ce-cta ce-cta-choisi" [disabled]="isSubmitting"
-                            (click)="demanderAnnulation(menu.id!, plat.id!, plat.nom, menu.date_limite_annulation)">
-                      <i class="ri-check-line"></i>Votre choix · annuler jusqu'au {{ jourLimite(menu.date_limite_annulation) }}
-                    </button>
+      @if (agence) {
+        <div class="pc-titre-liste">
+          <h3>{{ prestataires.length }} prestataire{{ prestataires.length > 1 ? 's' : '' }} à {{ agence.nom }}</h3>
+          @if (dateListe) { <span class="ce-muted">{{ dateCourte(dateListe) }}</span> }
+        </div>
+        @if (chargementPrestataires) {
+          <div class="ce-chargement"><span class="spinner-border" role="status"></span><span>Chargement des prestataires…</span></div>
+        } @else {
+          <div class="pc-prestas">
+            @for (p of prestataires; track p.id; let i = $index) {
+              <button type="button" class="pc-presta" (click)="choisirPrestataire(p)" [attr.aria-label]="'Choisir ' + p.nom_affiche">
+                <span class="pc-couv" [style.background]="p.photo_couverture_url || p.photos_plats?.length ? null : degrade(p.id + 1)">
+                  @if (url(p.photo_couverture_url); as c) {
+                    <img [src]="c" alt="">
+                  } @else if (p.photos_plats?.length) {
+                    <span class="pc-collage" [attr.data-n]="p.photos_plats!.length">
+                      @for (ph of p.photos_plats!.slice(0, 3); track ph) { <img [src]="url(ph)" alt=""> }
+                    </span>
                   } @else {
-                    <button type="button" class="ce-cta ce-cta-choisi" disabled>
-                      <i class="ri-check-line"></i>Votre choix · confirmé
-                    </button>
+                    <i class="ri-restaurant-2-line"></i>
                   }
-                } @else if (!commandeOuverte(menu)) {
-                  <button type="button" class="ce-cta" disabled><i class="ri-lock-line"></i>Commandes fermées</button>
-                } @else if (aDejaCommandePourDate(menu.date_menu)) {
-                  <button type="button" class="ce-cta" disabled>Déjà commandé ce jour</button>
-                } @else {
-                  <button type="button" class="ce-cta ce-cta-choix" [disabled]="isSubmitting" (click)="commander(menu, plat)">
-                    @if (isSubmitting) { <span class="spinner-border spinner-border-sm"></span> }
-                    {{ isPlatAnnule(menu.id!, plat.id!) ? 'Commander à nouveau' : 'Choisir ce plat' }}
-                  </button>
-                }
+                  @if (p.commande_aujourdhui) {
+                    <span class="pc-badge-cmd"><i class="ri-checkbox-circle-fill"></i>Commandé aujourd'hui</span>
+                  }
+                </span>
+                <span class="pc-presta-bd">
+                  <span class="pc-logo" [style.background]="p.logo_url ? null : degrade(p.id)">
+                    @if (url(p.logo_url); as l) { <img [src]="l" alt=""> } @else { {{ initiales(p.nom_affiche) }} }
+                  </span>
+                  <span class="pc-presta-l1">
+                    <b>{{ p.nom_affiche }}</b>
+                    @if (p.nouveau) { <span class="pc-nouveau">Nouveau</span> }
+                    @else { <span class="pc-note"><i class="ri-star-fill"></i>{{ note(p.note) }} <small>({{ p.nb_avis }})</small></span> }
+                  </span>
+                  <span class="pc-presta-l2">
+                    <i class="ri-restaurant-line"></i>
+                    {{ p.nb_plats_jour ?? 0 }} plat{{ (p.nb_plats_jour ?? 0) > 1 ? 's' : '' }} aujourd'hui@if (p.cuisine) { · {{ p.cuisine }} }
+                  </span>
+                  @if (p.equipes?.length) {
+                    <span class="pc-presta-l2"><i class="ri-team-line"></i>{{ nomsEquipes(p) }}</span>
+                  }
+                  @if (p.prochain_jour_a_reserver; as pj) {
+                    <span class="pc-presta-l2 ce-c-vert"><i class="ri-calendar-check-line"></i>À réserver : {{ pj.libelle }}</span>
+                  }
+                </span>
+              </button>
+            } @empty {
+              <div class="ce-vide-page pc-plein">
+                <i class="ri-store-2-line"></i>
+                <b>Aucun prestataire à {{ agence.nom }}</b>
+                <span>Aucun menu n'est proposé dans cette agence pour le moment.</span>
               </div>
-            </div>
+            }
+          </div>
+        }
+      }
+    }
+  }
+
+  <!-- ══ Étape 2 : prestataire + équipes ════════════════════════ -->
+  @if (etape === 2 && prestataire; as p) {
+    <div class="ce-carte pc-entete-presta">
+      <div class="pc-entete-couv" [style.background]="p.photo_couverture_url || p.photos_plats?.length ? null : degrade(p.id + 1)">
+        @if (url(p.photo_couverture_url); as c) { <img [src]="c" alt=""> }
+        @else if (p.photos_plats?.length) {
+          <span class="pc-collage" [attr.data-n]="p.photos_plats!.length">
+            @for (ph of p.photos_plats!.slice(0, 3); track ph) { <img [src]="url(ph)" alt=""> }
+          </span>
+        }
+        <button type="button" class="pc-retour" (click)="allerEtape(1)" aria-label="Retour aux prestataires"><i class="ri-arrow-left-line"></i></button>
+      </div>
+      <div class="pc-entete-bd">
+        <span class="pc-logo pc-logo-l" [style.background]="p.logo_url ? null : degrade(p.id)">
+          @if (url(p.logo_url); as l) { <img [src]="l" alt=""> } @else { {{ initiales(p.nom_affiche) }} }
+        </span>
+        <div class="pc-entete-txt">
+          <h2>{{ p.nom_affiche }}</h2>
+          <div class="ce-muted">
+            @if (p.nouveau) { <span class="pc-nouveau">Nouveau</span> }
+            @else { <span class="pc-note"><i class="ri-star-fill"></i>{{ note(p.note) }}</span> · {{ p.nb_avis }} avis }
+            · {{ agence?.nom }}@if (p.cuisine) { · {{ p.cuisine }} }
+          </div>
+          @if (p.description_courte) { <p>{{ p.description_courte }}</p> }
+          @if (p.tags.length) {
+            <div class="pc-tags">@for (t of p.tags; track t) { <span>{{ t }}</span> }</div>
           }
         </div>
-      } @empty {
-        <div class="ce-vide-page">
-          <i class="ri-calendar-todo-line"></i>
-          <b>{{ texteJour(jourSelectionne) }}</b>
-          <span>Aucun menu n'est proposé ce jour{{ nomAgence ? ' à ' + nomAgence : '' }}.</span>
-          @if (commandeDuJour(jourSelectionne); as c) {
-            <span>Votre commande : {{ c.plat_detail?.nom }} ({{ c.menu_detail?.agence_nom }})</span>
+      </div>
+    </div>
+
+    <div class="ce-carte pc-equipes">
+      <div class="pc-titre-liste"><h3>Choisissez votre équipe</h3>
+        <span class="ce-muted">{{ equipes.length }} équipe{{ equipes.length > 1 ? 's' : '' }}</span></div>
+      @if (chargementEquipes) {
+        <div class="ce-chargement"><span class="spinner-border" role="status"></span><span>Chargement des équipes…</span></div>
+      } @else {
+        @for (e of equipes; track e.id; let i = $index) {
+          <button type="button" class="pc-equipe" [class.pc-on]="equipe?.id === e.id" (click)="choisirEquipe(e)">
+            <span class="pc-equipe-ic" [attr.data-i]="i % 3"><i [class]="i % 3 === 1 ? 'ri-moon-clear-line' : i % 3 === 2 ? 'ri-calendar-event-line' : 'ri-sun-line'"></i></span>
+            <span class="pc-equipe-txt">
+              <b>{{ e.libelle }}@if (e.mon_equipe) { <span class="ce-tag ce-tag-ve">Mon équipe</span> }</b>
+              <small>Retrait {{ horaires(e) }}@if (plageJours(e)) { · {{ plageJours(e) }} } · {{ e.nb_jours }} jour{{ e.nb_jours > 1 ? 's' : '' }} au menu</small>
+            </span>
+            <i class="ri-arrow-right-s-line"></i>
+          </button>
+        } @empty {
+          <div class="ce-vide-page"><i class="ri-team-line"></i><b>Aucun menu à venir</b>
+            <span>Ce prestataire n'a pas encore publié de menu dans cette agence.</span></div>
+        }
+      }
+    </div>
+  }
+
+  <!-- ══ Étape 3 : jours + plats ════════════════════════════════ -->
+  @if (etape === 3 && prestataire; as p) {
+    <div class="ce-carte pc-entete-mini">
+      <button type="button" class="ce-btn ce-btn-ic" (click)="retour()" aria-label="Retour"><i class="ri-arrow-left-line"></i></button>
+      <span class="pc-logo" [style.background]="p.logo_url ? null : degrade(p.id)">
+        @if (url(p.logo_url); as l) { <img [src]="l" alt=""> } @else { {{ initiales(p.nom_affiche) }} }
+      </span>
+      <div class="pc-entete-txt">
+        <b>{{ p.nom_affiche }}</b>
+        <small class="ce-muted">Équipe {{ equipe?.libelle ?? 'toutes' }} · {{ agence?.nom }}</small>
+      </div>
+      @if (equipes.length > 1) {
+        <div class="pc-puces" role="radiogroup" aria-label="Équipe">
+          @for (e of equipes; track e.id) {
+            <button type="button" role="radio" class="pc-puce" [class.pc-on]="equipe?.id === e.id"
+                    [attr.aria-checked]="equipe?.id === e.id" (click)="choisirEquipe(e)">{{ e.libelle }}</button>
           }
         </div>
       }
     </div>
 
-    <!-- ── Bandeau « jour suivant » après une commande ─────────── -->
-    @if (derniereCommande) {
-      <div class="ce-suivant" role="status">
-        <i class="ri-checkbox-circle-line"></i>
-        <div><b>Commande enregistrée : {{ derniereCommande.platNom }} le {{ jourLong(derniereCommande.date) }}.</b>
-          {{ jourSuivantAReserver ? 'Passez au jour suivant pour continuer.' : 'Plus aucun jour à réserver cette semaine.' }}</div>
-        <button type="button" class="ce-btn ce-btn-vert" (click)="allerJourSuivant()">
-          {{ jourSuivantAReserver ? jourLong(jourSuivantAReserver) : 'Semaine suivante' }}<i class="ri-arrow-right-line"></i>
-        </button>
+    @if (enMission) {
+      <div class="pc-mission" role="status">
+        <i class="ri-briefcase-4-line"></i>
+        <div>Vous commandez à l'agence <b>{{ agence?.nom }}</b><span>&nbsp;(mission)</span></div>
+        <button type="button" class="ce-btn ce-btn-mini" (click)="revenirMonAgence()"><i class="ri-map-pin-2-line"></i>Mon agence</button>
       </div>
+    }
+
+    @if (erreurJours) {
+      <div class="ce-alerte ce-alerte-ro"><i class="ri-error-warning-line"></i><div>{{ erreurJours }}</div></div>
+    }
+
+    <div class="pc-semaine">
+      <button type="button" class="ce-btn ce-btn-ic" (click)="changerSemaine(-1)" [disabled]="!semaine || chargementJours" aria-label="Semaine précédente"><i class="ri-arrow-left-s-line"></i></button>
+      <b>{{ libelleSemaine() }}</b>
+      <button type="button" class="ce-btn ce-btn-ic" (click)="changerSemaine(1)" [disabled]="!semaine || chargementJours" aria-label="Semaine suivante"><i class="ri-arrow-right-s-line"></i></button>
+    </div>
+
+    @if (semaine) {
+      <div class="pc-jours" role="tablist" [class.ce-attente]="chargementJours">
+        @for (j of semaine.jours; track j.date) {
+          <button type="button" role="tab" class="pc-jour" [attr.data-etat]="j.etat"
+                  [class.pc-on]="j.date === jourSelectionne" [attr.aria-selected]="j.date === jourSelectionne"
+                  (click)="choisirJour(j)">
+            <small>{{ jourCourt(j.date) }}</small>
+            <b>{{ numeroJour(j.date) }}</b>
+            <span class="pc-jour-etat">@if (j.etat === 'ferme') { <i class="ri-lock-line"></i> }{{ etatLibelle(j) }}</span>
+            @if (estAujourdhui(j.date)) { <em>auj.</em> }
+          </button>
+        }
+      </div>
+      <div class="pc-legende">
+        <span><i class="pc-pt pc-pt-ve"></i>réservé</span>
+        <span><i class="pc-pt pc-pt-navy"></i>à réserver</span>
+        <span><i class="pc-pt pc-pt-gr"></i>fermé (délai passé ou pas de menu)</span>
+      </div>
+    }
+
+    @if (chargementJours && !semaine) {
+      <div class="ce-chargement"><span class="spinner-border" role="status"></span><span>Chargement des menus…</span></div>
+    } @else if (jour) {
+      @if (jour; as j) {
+      <div class="ce-carte ce-jour-detail" [class.ce-attente]="chargementJours">
+        <h3>
+          <i class="ri-calendar-event-line"></i>{{ titreJour(j.date) }}
+          @if (j.plats.length) { <small>{{ j.plats.length }} plat{{ j.plats.length > 1 ? 's' : '' }}</small> }
+        </h3>
+
+        @if (j.etat === 'a_reserver') {
+          <div class="ce-delai">
+            <i class="ri-time-line"></i>Commandes ouvertes jusqu'au {{ j.libelle_limite }}
+            @if (compteARebours(j.date_limite_commande); as reste) { <b class="ce-c-orange">· {{ reste }}</b> }
+          </div>
+        } @else if (j.etat === 'ferme') {
+          <div class="ce-delai ce-c-gris"><i class="ri-lock-line"></i>Commandes fermées@if (j.libelle_limite) { depuis le {{ j.libelle_limite }} }</div>
+        }
+
+        @if (j.commande && !j.commande.ici) {
+          <div class="ce-alerte ce-alerte-bl ce-alerte-fine">
+            <i class="ri-information-line"></i>
+            <div>Vous avez déjà {{ j.commande.statut === 'retiree' ? 'retiré' : 'commandé' }} <b>{{ j.commande.plat }}</b> ce jour-là
+              chez {{ j.commande.prestataire }} ({{ j.commande.agence }}). Un seul repas par jour.</div>
+          </div>
+        }
+
+        @if (allergies.length && j.plats.length) {
+          <div class="ce-alerte ce-alerte-or ce-alerte-fine">
+            <i class="ri-alert-line"></i>
+            <div>Rappel de vos allergies : <b>{{ allergies.join(', ') }}</b>. Vérifiez la composition avant de choisir.</div>
+          </div>
+        }
+
+        <div class="pc-plats">
+          @for (plat of j.plats; track plat.id + '-' + plat.menu_id; let i = $index) {
+            <div class="pc-plat" [class.ce-choisi]="plat.statut === 'commande'" [class.ce-retire]="estRetire(j, plat)">
+              <span class="pc-plat-ph" [style.background]="plat.photo_url ? null : '#F6EFE6'">
+                @if (url(plat.photo_url); as ph) { <img [src]="ph" [alt]="plat.nom"> }
+                @else { <i class="ri-restaurant-2-line"></i> }
+              </span>
+              <div class="pc-plat-bd">
+                <div class="pc-plat-l1">
+                  <h4>{{ plat.nom }}</h4>
+                  @if (plat.prix != null) { <b class="pc-prix">{{ montant(plat.prix) }}</b> }
+                </div>
+                <div class="pc-plat-l2">
+                  @if (plat.nouveau) { <span class="pc-nouveau">Nouveau</span> }
+                  @else { <span class="pc-note"><i class="ri-star-fill"></i>{{ note(plat.note) }}</span> }
+                  · {{ plat.type_plat }}@if (!equipe && plat.typeequipe) { · {{ plat.typeequipe }} }
+                </div>
+                @if (plat.description && plat.description.trim().toLowerCase() !== plat.nom.trim().toLowerCase()) { <p>{{ plat.description }}</p> }
+                @if (plat.mentions.length) {
+                  <div class="pc-tags">@for (m of plat.mentions; track m) { <span>{{ m }}</span> }</div>
+                }
+
+                @switch (plat.statut) {
+                  @case ('commande') {
+                    @if (commandeDe(plat.commande_id); as cmd) {
+                      @if (cmd.mode_paiement) {
+                        <div class="ce-pc-paie" [class.ce-pc-paie-compte]="cmd.mode_paiement === 'compte'">
+                          <i [class]="cmd.mode_paiement === 'compte' ? 'ri-wallet-3-line' : 'ri-file-list-3-line'"></i>
+                          <span>{{ texteMode(cmd) }}</span>
+                        </div>
+                      }
+                      @if (estRetire(j, plat)) {
+                        <button type="button" class="ce-cta ce-cta-info" disabled><i class="ri-checkbox-circle-line"></i>Repas retiré</button>
+                      } @else {
+                        @if (cmd.mode_paiement_modifiable) {
+                          <button type="button" class="ce-lien-paie" [disabled]="isSubmitting" (click)="changerMode(j, plat)">
+                            <i class="ri-exchange-line"></i>Changer le mode de paiement
+                          </button>
+                        }
+                        @if (annulationOuverte(cmd)) {
+                          <button type="button" class="ce-cta ce-cta-choisi" [disabled]="isSubmitting" (click)="demanderAnnulation(plat)">
+                            <i class="ri-check-line"></i>Réservé · annuler jusqu'au {{ jourLimite(cmd.menu_detail?.date_limite_annulation) }}
+                          </button>
+                        } @else {
+                          <button type="button" class="ce-cta ce-cta-choisi" disabled><i class="ri-check-line"></i>Réservé · confirmé</button>
+                        }
+                      }
+                    } @else {
+                      <button type="button" class="ce-cta ce-cta-choisi" disabled>
+                        <i class="ri-check-line"></i>{{ estRetire(j, plat) ? 'Repas retiré' : 'Réservé' }}
+                      </button>
+                    }
+                  }
+                  @case ('autre_plat_commande') {
+                    <button type="button" class="ce-cta" disabled>Autre plat déjà commandé</button>
+                  }
+                  @case ('ferme') {
+                    <button type="button" class="ce-cta" disabled><i class="ri-lock-line"></i>Commandes fermées</button>
+                  }
+                  @default {
+                    <button type="button" class="ce-cta ce-cta-reserver" [disabled]="isSubmitting" (click)="reserver(j, plat)">
+                      @if (isSubmitting) { <span class="spinner-border spinner-border-sm"></span> }
+                      Réserver
+                    </button>
+                  }
+                }
+              </div>
+            </div>
+          } @empty {
+            <div class="ce-vide-page pc-plein">
+              <i class="ri-calendar-todo-line"></i>
+              <b>Pas de menu ce jour</b>
+              <span>{{ p.nom_affiche }} ne propose pas de menu{{ equipe ? ' pour l\'équipe ' + equipe.libelle : '' }} ce jour-là.</span>
+            </div>
+          }
+        </div>
+      </div>
+
+      @if (derniereCommande) {
+        <div class="ce-suivant" role="status">
+          <i class="ri-checkbox-circle-line"></i>
+          <div><b>Commande enregistrée : {{ derniereCommande.platNom }} le {{ jourLong(derniereCommande.date) }}.</b>
+            {{ jourSuivantAReserver ? 'Passez au jour suivant pour continuer.' : 'Plus aucun jour à réserver cette semaine.' }}</div>
+          <button type="button" class="ce-btn ce-btn-vert" (click)="allerJourSuivant()">
+            {{ jourSuivantAReserver ? jourLong(jourSuivantAReserver.date) : 'Semaine suivante' }}<i class="ri-arrow-right-line"></i>
+          </button>
+        </div>
+      }
+      }
     }
   }
 </div>
@@ -245,8 +412,8 @@
       <div class="modal-body">
         @if (paiement; as p) {
           <div class="ce-paie-plat">
-            <b>{{ p.plat?.nom }}</b>
-            <span class="ce-muted">{{ jourLong(p.menu.date_menu) }}@if (p.info?.prix != null) { · {{ montant(p.info?.prix) }} }</span>
+            <b>{{ p.cible.platNom }} · {{ p.cible.prestataire }}</b>
+            <span class="ce-muted">{{ jourLong(p.cible.date) }}@if (p.info?.prix != null) { · {{ montant(p.info?.prix) }} }@if (p.cible.equipe) { · équipe {{ p.cible.equipe }} }</span>
           </div>
           @if (p.chargement) {
             <div class="ce-chargement"><span class="spinner-border spinner-border-sm" role="status"></span><span>Chargement de votre solde…</span></div>
@@ -281,7 +448,7 @@
               </label>
             </div>
             <p class="ce-muted ce-petit mb-0">
-              Mode modifiable jusqu'au {{ libelleLimite(p.commande?.mode_paiement_limite ?? p.menu.date_limite_commande) }}.
+              Mode modifiable jusqu'au {{ libelleLimite(p.commande?.mode_paiement_limite ?? p.cible.limite) }}.
               Un repas commandé est dû, même s'il n'est pas retiré.
             </p>
           }
@@ -290,7 +457,7 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-light" (click)="fermerPaiement()">Annuler</button>
         <button type="button" class="btn btn-success" id="confirmer-paiement" [disabled]="!paiementValidable" (click)="confirmerPaiement()">
-          {{ paiement?.commande ? 'Changer' : (paiement?.mode === 'compte' ? 'Commander et payer par le compte' : 'Commander') }}
+          {{ paiement?.commande ? 'Changer' : (paiement?.mode === 'compte' ? 'Réserver et payer par le compte' : 'Réserver') }}
         </button>
       </div>
     </div>

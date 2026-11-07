@@ -65,7 +65,7 @@
               </div>
 
               <div class="col-12 mt-4">
-                <h6 class="mb-1"><i class="ri-time-line me-1"></i>Cantine — délais</h6>
+                <h6 class="mb-1"><i class="ri-time-line me-1"></i>Cantine — délais et notes</h6>
                 <small class="text-muted">
                   En heures avant le début du jour du menu. 0 = jusqu'à la veille à minuit ;
                   24 = jusqu'à l'avant-veille à minuit ; 48 = jusqu'à trois jours avant, à minuit.
@@ -85,6 +85,13 @@
                        [class.is-invalid]="form.get('delai_annulation_heures')?.invalid">
                 <div class="invalid-feedback">Nombre entier entre 0 et 720.</div>
                 <small class="text-muted">{{ exempleDelai('delai_annulation_heures') }}</small>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="seuil-avis-note">Nombre d'avis minimum avant d'afficher la note <span class="text-danger">*</span></label>
+                <input type="number" min="0" max="1000" step="1" class="form-control" id="seuil-avis-note" formControlName="seuil_avis_note"
+                       [class.is-invalid]="form.get('seuil_avis_note')?.invalid">
+                <div class="invalid-feedback">Nombre entier entre 0 et 1000.</div>
+                <small class="text-muted">En dessous, les employés voient « Nouveau » à la place de la note du prestataire ou du plat.</small>
               </div>
 
               <div class="col-12">
