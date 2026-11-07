@@ -451,6 +451,7 @@ class Notification(models.Model):
         ('plat_masque',      'Plat masqué par UbiPharm'),
         ('compte_repas',     'Compte repas'),
         ('agence_fermee',    "Agence fermée aux autres agences"),
+        ('facture_prestataire', 'Suivi des factures prestataires'),
         ('info',             'Information'),
     ]
 
@@ -586,6 +587,43 @@ class FacturePrestataire(models.Model):
     nb_repas            = models.PositiveIntegerField()
     montant_total       = models.DecimalField(max_digits=14, decimal_places=2)
 
+    # Suivi du relevé jusqu'au paiement (api/suivi_factures.py) :
+    #   1. relevé émis (clôture) → 2. bon pour accord du prestataire (ou
+    #   contestation) → 3. facture du prestataire déposée → 4. facture validée
+    #   (ou refusée : nouveau dépôt) par la comptabilité → 5. payée.
+    STATUT_CHOICES = [
+        ('emis',            'Relevé émis'),
+        ('conteste',        'Relevé contesté'),
+        ('accorde',         'Bon pour accord'),
+        ('facture_deposee', 'Facture déposée'),
+        ('facture_refusee', 'Facture refusée'),
+        ('facture_validee', 'Facture validée'),
+        ('payee',           'Payée'),
+    ]
+    MODE_PAIEMENT_CHOICES = [
+        ('virement', 'Virement'),
+        ('cheque',   'Chèque'),
+        ('especes',  'Espèces'),
+    ]
+    statut              = models.CharField(max_length=20, choices=STATUT_CHOICES, default='emis')
+    accord_par          = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                            related_name='+')
+    accord_le           = models.DateTimeField(null=True, blank=True)
+    validee_par         = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                            related_name='+')
+    validee_le          = models.DateTimeField(null=True, blank=True)
+    # Paiement (étape 5)
+    date_paiement       = models.DateField(null=True, blank=True)
+    mode_paiement       = models.CharField(max_length=10, choices=MODE_PAIEMENT_CHOICES, blank=True)
+    reference_paiement  = models.CharField(max_length=100, blank=True)
+    justificatif_paiement = models.FileField(upload_to='factures_prestataires/paiements/%Y/', null=True,
+                                             blank=True, max_length=255)
+    paiement_par        = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                            related_name='+')
+    paiement_le         = models.DateTimeField(null=True, blank=True)
+    derniere_relance_le = models.DateTimeField(null=True, blank=True)
+    statut_modifie_le   = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         db_table = 'factures_prestataires'
         unique_together = ('prestataire', 'annee', 'mois')
@@ -593,6 +631,75 @@ class FacturePrestataire(models.Model):
 
     def __str__(self):
         return f"Facture {self.prestataire_libelle} {self.mois:02d}/{self.annee}"
+
+
+class FactureDeposee(models.Model):
+    """
+    Facture du prestataire (PDF) déposée pour un relevé (étape 3). Un nouveau
+    dépôt est permis tant que la facture n'est pas validée : les précédents
+    restent (historique), marqués « remplacée » ou « refusée ».
+    ecart = montant TTC de la facture − montant du relevé (0 : conforme).
+    """
+    STATUT_CHOICES = [
+        ('en_attente', 'En attente de validation'),
+        ('validee',    'Validée'),
+        ('refusee',    'Refusée'),
+        ('remplacee',  'Remplacée par un nouveau dépôt'),
+    ]
+    releve         = models.ForeignKey(FacturePrestataire, on_delete=models.CASCADE, related_name='depots')
+    fichier        = models.FileField(upload_to='factures_prestataires/factures/%Y/', max_length=255)
+    nom_fichier    = models.CharField(max_length=255, blank=True)
+    taille         = models.PositiveIntegerField(default=0)
+    numero_facture = models.CharField(max_length=60)
+    date_facture   = models.DateField()
+    montant_ttc    = models.DecimalField(max_digits=14, decimal_places=2)
+    montant_releve = models.DecimalField(max_digits=14, decimal_places=2)
+    ecart          = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    statut         = models.CharField(max_length=12, choices=STATUT_CHOICES, default='en_attente')
+    deposee_par    = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+    deposee_le     = models.DateTimeField(default=timezone.now)
+    traitee_par    = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    traitee_le     = models.DateTimeField(null=True, blank=True)
+    motif_refus    = models.CharField(max_length=1000, blank=True)
+
+    class Meta:
+        db_table = 'factures_prestataires_depots'
+        ordering = ['-deposee_le', '-id']
+
+    @property
+    def conforme(self):
+        return self.ecart == 0
+
+    def __str__(self):
+        return f"Facture {self.numero_facture} ({self.releve})"
+
+
+class HistoriqueFacturePrestataire(models.Model):
+    """Journal du suivi d'un relevé : qui, quand, quelle action, commentaire."""
+    ACTION_CHOICES = [
+        ('emis',         'Relevé émis'),
+        ('accord',       'Bon pour accord'),
+        ('contestation', 'Relevé contesté'),
+        ('reponse',      'Réponse à la contestation — relevé confirmé'),
+        ('depot',        'Facture déposée'),
+        ('validation',   'Facture validée'),
+        ('refus',        'Facture refusée'),
+        ('paiement',     'Paiement enregistré'),
+        ('relance',      'Relance'),
+    ]
+    releve      = models.ForeignKey(FacturePrestataire, on_delete=models.CASCADE, related_name='historique')
+    action      = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    user        = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    commentaire = models.TextField(blank=True)
+    donnees     = models.JSONField(default=dict, blank=True)
+    created_at  = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'factures_prestataires_historique'
+        ordering = ['created_at', 'id']
+
+    def __str__(self):
+        return f"{self.get_action_display()} — {self.releve}"
 
 
 class LigneFacturePrestataire(models.Model):

@@ -9,9 +9,10 @@ import { ClotureCaisseComponent } from './cloture/cloture-caisse.component';
 import { ValidationCloturesComponent } from './validation-clotures/validation-clotures.component';
 import { RecusComponent } from './recus/recus.component';
 import { ComptesRepasComponent } from './comptes/comptes-repas.component';
+import { PaiementsPrestatairesComponent } from './paiements-prestataires/paiements-prestataires.component';
 
 // Caissier : Caisse, Journal (le sien), Clôture de caisse.
-// Comptabilité : Clôtures à valider, Reçus, Comptes repas, Journal (tous).
+// Comptabilité : Clôtures à valider, Reçus, Comptes repas, Journal (tous), Paiements prestataires.
 // Gestionnaire : Comptes repas de ses agences (lecture). Administrateurs : tout.
 const routes: Routes = [
   { path: '', pathMatch: 'full', component: CaisseComponent, canActivate: [RoleGuard], data: { roles: CAISSIERS }, title: 'Caisse | UbiFood' },
@@ -19,6 +20,7 @@ const routes: Routes = [
   { path: 'cloture', component: ClotureCaisseComponent, canActivate: [RoleGuard], data: { roles: CAISSIERS }, title: 'Clôture de caisse | UbiFood' },
   { path: 'clotures', component: ValidationCloturesComponent, canActivate: [RoleGuard], data: { roles: COMPTABLES }, title: 'Clôtures de caisse à valider | UbiFood' },
   { path: 'recus', component: RecusComponent, canActivate: [RoleGuard], data: { roles: COMPTABLES }, title: 'Reçus de caisse | UbiFood' },
+  { path: 'paiements-prestataires', component: PaiementsPrestatairesComponent, canActivate: [RoleGuard], data: { roles: COMPTABLES }, title: 'Paiements prestataires | UbiFood' },
   { path: 'comptes', component: ComptesRepasComponent, canActivate: [RoleGuard], data: { roles: LECTURE_COMPTES }, title: 'Comptes repas | UbiFood' },
 ];
 

@@ -1,7 +1,8 @@
 // Journal de caisse d'une journée : reçus (n°, heure, employé, type, montant, mode,
 // statut), totaux par type et par caissier, clôtures du jour, PDF A4.
 // Caissier : son propre journal ; comptabilité / administrateurs : tous les caissiers
-// (ou un seul). API : GET caisse/journal/?date=&caissier=, caisse/journal/pdf/.
+// (ou un seul). API : GET caisse/journal/?date=&caissier=, caisse/journal/pdf/,
+// GET caisse/caissiers/ (liste du filtre : tous les caissiers, même sans reçu ce jour-là).
 import { Component, DestroyRef, OnInit, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -33,7 +34,7 @@ export class JournalCaisseComponent implements OnInit {
 
   date = aujourdhuiIso();
   caissier: number | '' = '';
-  /** Caissiers connus (journal « tous » de la journée) pour le filtre */
+  /** Caissiers (rôle caissier et toute personne ayant encaissé) pour le filtre */
   caissiers: { caissier_id: number; caissier_nom: string }[] = [];
   journal: JournalCaisse | null = null;
   chargement = true;
@@ -44,6 +45,12 @@ export class JournalCaisseComponent implements OnInit {
     const q = this.route.snapshot.queryParamMap;
     if (q.get('date')) this.date = q.get('date')!;
     if (q.get('caissier')) this.caissier = Number(q.get('caissier'));
+    if (this.tousLesCaissiers) {
+      this.caisse.caissiers().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+        next: l => this.caissiers = l.map(c => ({ caissier_id: c.id, caissier_nom: c.nom_prenom + (c.actif ? '' : ' (désactivé)') })),
+        error: () => {},
+      });
+    }
     this.charger();
   }
 
@@ -55,10 +62,9 @@ export class JournalCaisseComponent implements OnInit {
         this.journal = j;
         this.chargement = false;
         this.erreur = null;
-        if (!this.caissier) this.caissiers = j.par_caissier.map(c => ({ caissier_id: c.caissier_id, caissier_nom: c.caissier_nom }));
-        else if (!this.caissiers.some(c => c.caissier_id === this.caissier)) {
-          const c = j.par_caissier[0];
-          if (c) this.caissiers = [...this.caissiers, c];
+        // Caissier du journal absent de la liste (liste pas encore chargée) : ajouté
+        for (const c of j.par_caissier) {
+          if (!this.caissiers.some(x => x.caissier_id === c.caissier_id)) this.caissiers = [...this.caissiers, { caissier_id: c.caissier_id, caissier_nom: c.caissier_nom }];
         }
       },
       error: e => { this.chargement = false; this.erreur = messageCaisse(e, 'Le journal n\'a pas pu être chargé.'); },

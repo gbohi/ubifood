@@ -757,6 +757,16 @@ class _NotificationTile extends StatelessWidget {
       return titre.toLowerCase().contains('annul')
           ? (Icons.account_balance_wallet_outlined, TonPastille.or)
           : (Icons.account_balance_wallet_outlined, TonPastille.vert);
+    case 'facture_prestataire':
+      // Suivi des factures prestataires (comptes prestataires, comptabilité)
+      final statut = donnees['statut']?.toString() ?? '';
+      if (statut == 'payee' || statut == 'facture_validee') {
+        return (Icons.receipt_long_outlined, TonPastille.vert);
+      }
+      if (statut == 'conteste' || statut == 'facture_refusee') {
+        return (Icons.receipt_long_outlined, TonPastille.rouge);
+      }
+      return (Icons.receipt_long_outlined, TonPastille.bleu);
     default:
       return (Icons.notifications_none_rounded, TonPastille.bleu);
   }

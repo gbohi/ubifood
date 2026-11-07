@@ -34,14 +34,14 @@
           @for (c of comptes; track c.id) {
             <tr>
               <td class="lst-c-principal">
-                <div class="lst-qui"><span class="lst-av">{{ initiales(c.nom_prenom) }}</span>
+                <div class="lst-qui">@if (c.photo_url) { <img class="lst-av" [src]="c.photo_url" alt="" loading="lazy"> } @else { <span class="lst-av">{{ initiales(c.nom_prenom) }}</span> }
                   <div><b>@if (comptable) { <button type="button" class="ep-lien cs-lien-nom" (click)="ouvrirDetail(c)">{{ c.nom_prenom }}</button> } @else { {{ c.nom_prenom }} }</b>
                     @if (!c.actif) { <span class="lst-tag t-gr">désactivé</span> }</div></div>
               </td>
               <td data-label="Matricule">{{ c.matricule }}</td>
               <td data-label="Agence">{{ c.agence || '—' }}</td>
               <td data-label="Solde" class="n"><b class="cs-solde-liste" [class.ep-c-vert]="c.solde > 0" [class.ep-muted]="!c.solde">{{ fcfa(c.solde) }}</b></td>
-              <td data-label="Dernier mouvement" class="lst-nowrap">{{ jourHeure(c.mis_a_jour) }}</td>
+              <td data-label="Dernier mouvement" class="lst-nowrap">{{ c.dernier_mouvement ? jourHeure(c.dernier_mouvement) : '—' }}</td>
               <td class="lst-c-act bas">
                 @if (comptable) {
                   <div class="lst-act">
@@ -73,7 +73,7 @@
     <div class="modal-content">
       @if (detail; as c) {
         <div class="modal-header">
-          <h5 class="modal-title"><i class="ri-wallet-3-line"></i>{{ c.nom_prenom }} <small>{{ c.matricule }}@if (c.agence) { · {{ c.agence }} }</small></h5>
+          <h5 class="modal-title">@if (c.photo_url) { <img class="lst-av" [src]="c.photo_url" alt=""> } @else { <i class="ri-wallet-3-line"></i> }{{ c.nom_prenom }} <small>{{ c.matricule }}@if (c.agence) { · {{ c.agence }} }</small></h5>
           <button type="button" class="btn-close" (click)="detailModal.hide()" aria-label="Fermer"></button>
         </div>
         <div class="modal-body">
@@ -87,6 +87,59 @@
               <div class="bl"><small>Payés à la caisse</small><b>{{ fcfa(f.totaux.paye_caisse.montant) }}</b><span>{{ f.totaux.paye_caisse.nb }} repas</span></div>
               <div class="or"><small>Reste prévu à la clôture</small><b>{{ fcfa(f.reste_a_payer_prevu) }}</b><span>retenue sur salaire</span></div>
             </div>
+            <div class="ep-onglets mt-3" role="tablist">
+              <button type="button" role="tab" class="ep-onglet" [class.on]="ongletDetail === 'repas'" (click)="ongletDetail = 'repas'"><i class="ri-restaurant-2-line"></i>Repas et reçus</button>
+              <button type="button" role="tab" class="ep-onglet" [class.on]="ongletDetail === 'mouvements'" (click)="ouvrirMouvements()"><i class="ri-exchange-funds-line"></i>Historique des mouvements
+                @if (mouvements) { <em>{{ mouvements.count }}</em> }</button>
+            </div>
+            @if (ongletDetail === 'mouvements') {
+              <div class="cs-mvt-barre">
+                <label><span class="ep-lab">Du</span><input type="date" class="form-control" [(ngModel)]="mvtDebut" (change)="filtrerMouvements()" aria-label="Date de début"></label>
+                <label><span class="ep-lab">Au</span><input type="date" class="form-control" [(ngModel)]="mvtFin" (change)="filtrerMouvements()" aria-label="Date de fin"></label>
+                <label><span class="ep-lab">Type</span>
+                  <select class="form-select" [(ngModel)]="mvtType" (change)="filtrerMouvements()" aria-label="Type de mouvement">
+                    <option value="">Tous les types</option>
+                    @for (t of mouvements?.types ?? []; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
+                  </select></label>
+                <div class="cs-mvt-exports">
+                  <button type="button" class="btn-ubi sm" [disabled]="!!telechargement" (click)="exporterMouvements('xlsx')">
+                    @if (telechargement === 'mvt-xlsx') { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-file-excel-2-line ep-c-vert"></i> }Excel</button>
+                  <button type="button" class="btn-ubi sm" [disabled]="!!telechargement" (click)="exporterMouvements('pdf')">
+                    @if (telechargement === 'mvt-pdf') { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-file-pdf-line ep-c-rouge"></i> }PDF</button>
+                </div>
+              </div>
+              @if (erreurMvt) { <div class="ep-alerte a-ro mt-2"><i class="ri-error-warning-line"></i><div><b>{{ erreurMvt }}</b></div></div> }
+              @if (mouvements; as m) {
+                <div class="cs-mvt-synthese">
+                  <span>Crédits <b class="ep-c-vert">{{ fcfa(m.total_credits, true) }}</b></span>
+                  <span>Débits <b class="ep-c-rouge">{{ fcfa(m.total_debits) }}</b></span>
+                  <span>Solde actuel <b>{{ fcfa(m.solde) }}</b></span>
+                </div>
+              }
+              <div class="cs-mvt-table" [class.ep-attente]="chargementMvt">
+                <table class="ep-sous-table">
+                  <thead><tr><th>Date</th><th>Type</th><th>Libellé</th><th class="text-end">Montant</th><th class="text-end">Solde après</th><th>Reçu</th></tr></thead>
+                  <tbody>
+                    @for (mv of mouvements?.results ?? []; track mv.id) {
+                      <tr>
+                        <td class="lst-nowrap">{{ jourHeure(mv.date) }}</td>
+                        <td>{{ mv.type_libelle }}</td>
+                        <td>{{ mv.libelle || '—' }}</td>
+                        <td class="text-end lst-nowrap"><b [class.ep-c-vert]="mv.montant > 0" [class.ep-c-rouge]="mv.montant < 0">{{ fcfa(mv.montant, true) }}</b></td>
+                        <td class="text-end lst-nowrap">{{ fcfa(mv.solde_apres) }}</td>
+                        <td>@if (mv.recu_id) { <button type="button" class="ep-lien cs-num" [disabled]="!!telechargement" (click)="pdfRecuMouvement(mv.recu_id, mv.recu_numero)" title="Télécharger le reçu (PDF A5)"><i class="ri-file-paper-2-line"></i>{{ mv.recu_numero }}</button> } @else { <span class="ep-muted">—</span> }</td>
+                      </tr>
+                    } @empty {
+                      @if (!chargementMvt) { <tr><td colspan="6" class="ep-muted">Aucun mouvement sur la période.</td></tr> }
+                    }
+                  </tbody>
+                </table>
+                @if (chargementMvt && !mouvements) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+              </div>
+              @if (mouvements; as m) {
+                <app-liste-pied [total]="m.count" [page]="mvtPage" [parPage]="mvtParPage" [nbAffiches]="m.results.length" (pageChanged)="pageMouvements($event.page)"></app-liste-pied>
+              }
+            } @else {
             <h6 class="cs-h6">Repas des mois ouverts ({{ jour(f.date_debut) }} – {{ jour(f.date_fin) }})</h6>
             <table class="ep-sous-table">
               <thead><tr><th>Jour</th><th>Plat</th><th class="text-end">Prix</th><th>Statut</th></tr></thead>
@@ -110,6 +163,7 @@
             </table>
             <p class="ep-muted small mt-2 mb-0"><i class="ri-information-line"></i> Le détail des débits de repas figure dans la colonne Statut (« Débité du compte »).
               <a [routerLink]="['/caisse/recus']" [queryParams]="{ user: c.id, nom: c.nom_prenom }" (click)="detailModal.hide()">Tous les reçus de {{ c.nom_prenom }}</a></p>
+            }
           }
         </div>
         <div class="modal-footer">

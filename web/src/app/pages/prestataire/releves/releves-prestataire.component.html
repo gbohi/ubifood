@@ -1,6 +1,6 @@
-<div class="lst ep">
-  <app-page-entete titre="Relevés" icone="ri-file-text-line" [fil]="[{label: 'Espace prestataire', lien: '/prestataire/accueil'}]"
-                   sousTitre="Repas servis et montants dus, mois par mois — le relevé devient officiel à la clôture du mois par UbiPharm">
+<div class="lst ep sf">
+  <app-page-entete titre="Relevés & factures" icone="ri-file-text-line" [fil]="[{label: 'Espace prestataire', lien: '/prestataire/accueil'}]"
+                   sousTitre="Chaque mois clôturé par UbiPharm : bon pour accord sur le relevé, dépôt de votre facture, validation puis paiement">
     <select class="form-select ep-select" [(ngModel)]="nbMois" (change)="charger()" aria-label="Période">
       <option [ngValue]="6">6 derniers mois</option>
       <option [ngValue]="12">12 derniers mois</option>
@@ -8,42 +8,176 @@
     </select>
   </app-page-entete>
 
-  <div class="ep-kpis-ligne">
-    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-restaurant-line"></i></span><div><small>Repas servis (période)</small><b>{{ nombreFr(totalRepas) }}</b></div></div>
-    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-lock-line"></i></span><div><small>Relevés officiels</small><b>{{ montantFr(totalClotures) }}</b><span>mois clôturés</span></div></div>
-    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-time-line"></i></span><div><small>Provisoire</small><b>{{ montantFr(totalProvisoire) }}</b><span>mois en cours ou à clôturer</span></div></div>
+  <div class="ep-kpis-ligne ep-kpis-4">
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-todo-line"></i></span><div><small>À faire</small><b>{{ aFaire.length }}</b><span>relevé{{ aFaire.length > 1 ? 's' : '' }} en attente de votre part</span></div></div>
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-time-line"></i></span><div><small>En vérification ou à payer</small><b>{{ montantFr(enAttentePaiement) }}</b><span>factures déposées</span></div></div>
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-money-dollar-circle-line"></i></span><div><small>Payé</small><b>{{ montantFr(payes) }}</b><span>sur la période</span></div></div>
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic gr"><i class="ri-time-line"></i></span><div><small>Provisoire</small><b>{{ montantFr(totalProvisoire) }}</b><span>mois en cours ou à clôturer</span></div></div>
   </div>
+
+  @for (s of aFaire; track s.id) {
+    <div class="ep-alerte" [class.a-ro]="s.statut === 'facture_refusee'" [class.a-or]="s.statut !== 'facture_refusee'">
+      <i [class]="s.statut === 'facture_refusee' ? 'ri-close-circle-line' : 'ri-notification-3-line'"></i>
+      <div><b>{{ s.libelle }} · relevé {{ s.numero }} ({{ montantFr(s.montant) }})</b><small>{{ attente(s) }}.</small></div>
+      <button type="button" class="btn-ubi sm navy" (click)="ouvrir(s)"><i class="ri-arrow-right-line"></i>Ouvrir</button>
+    </div>
+  }
 
   <div class="lst-carte">
     @if (erreur) { <div class="ep-alerte a-ro m-3"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
     <div class="lst-table-wrap lst-cartes-wrap">
       <table class="lst-table lst-cartes">
-        <thead><tr><th>Mois</th><th>Relevé</th><th class="text-end">Repas</th><th class="text-end">Montant</th><th>État</th><th>Clôturé le</th><th class="lst-c-act"><span class="visually-hidden">PDF</span></th></tr></thead>
+        <thead><tr><th>Mois</th><th>Relevé</th><th class="text-end">Repas</th><th class="text-end">Montant</th><th>Suivi</th><th class="lst-c-act"><span class="visually-hidden">Actions</span></th></tr></thead>
         <tbody>
           @for (r of releves; track cle(r)) {
-            <tr>
+            @let s = suiviDe(r);
+            <tr [class.sf-ligne]="!!s" (click)="s && ouvrir(s)">
               <td class="lst-c-principal"><div class="lst-qui"><span class="lst-av carre"><i class="ri-calendar-line"></i></span><div><b>{{ r.libelle }}</b><small>{{ r.date_debut | date: 'dd/MM' }} → {{ r.date_fin | date: 'dd/MM/yyyy' }}</small></div></div></td>
-              <td data-label="Relevé">{{ r.numero || '—' }}</td>
+              <td data-label="Relevé"><span class="cs-num">{{ r.numero || '—' }}</span></td>
               <td data-label="Repas" class="text-end">{{ nombreFr(r.nb_repas) }}</td>
               <td data-label="Montant" class="text-end"><b>{{ montantFr(r.montant) }}</b></td>
-              <td data-label="État"><span class="lst-tag" [ngClass]="etat(r).classe"><i [class]="etat(r).icone"></i>{{ etat(r).libelle }}</span></td>
-              <td data-label="Clôturé le">{{ r.cloturee_le ? (r.cloturee_le | date: 'dd/MM/yyyy') : '' }}</td>
-              <td class="lst-c-act">
-                <button type="button" class="btn-ubi sm" [disabled]="telechargement === cle(r)" (click)="telecharger(r)"
-                        [title]="r.etat === 'cloture' ? 'Relevé officiel (PDF)' : 'Relevé provisoire (PDF)'">
-                  @if (telechargement === cle(r)) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-file-pdf-line ep-c-rouge"></i> }
-                  PDF
-                </button>
+              <td data-label="Suivi">
+                <div class="sf-suivi-cell">
+                  <app-suivi-etapes [etapes]="s?.etapes" [compact]="true"></app-suivi-etapes>
+                  <span class="lst-tag" [ngClass]="etat(r).classe"><i [class]="etat(r).icone"></i>{{ etat(r).libelle }}</span>
+                </div>
+              </td>
+              <td class="lst-c-act" (click)="$event.stopPropagation()">
+                <div class="lst-act">
+                  @if (s) {
+                    <button type="button" class="btn-ubi sm" [class.navy]="s.actions.length" (click)="ouvrir(s)"><i class="ri-eye-line"></i>{{ s.actions.length ? 'Agir' : 'Détail' }}</button>
+                  }
+                  <button type="button" class="btn-ubi sm" [disabled]="telechargement === cle(r)" (click)="telecharger(r)"
+                          [title]="r.etat === 'cloture' ? 'Relevé officiel (PDF)' : 'Relevé provisoire (PDF)'">
+                    @if (telechargement === cle(r)) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-file-pdf-line ep-c-rouge"></i> }
+                    PDF
+                  </button>
+                </div>
               </td>
             </tr>
           }
           @if (!chargement && !releves.length && !erreur) {
-            <tr class="lst-l-vide"><td colspan="7" class="lst-c-plein"><div class="lst-vide"><i class="ri-file-text-line"></i><h5>Aucun relevé</h5><p>Les relevés apparaissent dès le premier repas servi.</p></div></td></tr>
+            <tr class="lst-l-vide"><td colspan="6" class="lst-c-plein"><div class="lst-vide"><i class="ri-file-text-line"></i><h5>Aucun relevé</h5><p>Les relevés apparaissent dès le premier repas servi.</p></div></td></tr>
           }
         </tbody>
       </table>
       @if (chargement) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
     </div>
   </div>
-  <div class="ep-alerte a-bl"><i class="ri-information-line"></i><div><small>Les étapes « bon pour accord → facture → paiement » arriveront dans une prochaine version. En cas d'écart, contactez le gestionnaire UbiPharm avant la clôture du mois.</small></div></div>
+  <div class="ep-alerte a-bl"><i class="ri-information-line"></i><div><small>Le relevé devient officiel (numéroté, montants figés) à la clôture du mois par UbiPharm.
+    En cas de désaccord, contestez-le en expliquant l'écart : la comptabilité vous répond avant que vous déposiez votre facture (PDF, 10 Mo au plus).</small></div></div>
+</div>
+
+<!-- ── Tiroir : détail d'un relevé ─────────────────────────────── -->
+@if (detail; as d) {
+  <div class="sf-voile" (click)="fermer()"></div>
+  <aside class="sf-tiroir" role="dialog" aria-modal="true" [attr.aria-label]="'Relevé ' + (d.numero || d.libelle)">
+    <header class="sf-tiroir-hd">
+      <div><small>{{ d.libelle }}</small><h5>Relevé {{ d.numero }}</h5>
+        <span class="lst-tag" [ngClass]="statuts[d.statut].classe"><i [class]="statuts[d.statut].icone"></i>{{ statuts[d.statut].court }}</span></div>
+      <button type="button" class="btn-close" (click)="fermer()" aria-label="Fermer"></button>
+    </header>
+    <div class="sf-tiroir-corps" [class.ep-attente]="chargementDetail">
+      <app-suivi-releve-detail [releve]="d" cote="prestataire">
+        @if (d.actions.includes('accord')) {
+          <div class="ep-alerte a-or"><i class="ri-hand-heart-line"></i><div><b>Le relevé vous convient-il ?</b>
+            <small>Vérifiez le relevé PDF (repas et montants), puis donnez votre bon pour accord ou contestez-le.</small></div></div>
+          <div class="sf-boutons">
+            <button type="button" class="btn-ubi vert" (click)="demander('accord')"><i class="ri-thumb-up-line"></i>Bon pour accord</button>
+            <button type="button" class="btn-ubi rouge" (click)="demander('contester')"><i class="ri-feedback-line"></i>Contester</button>
+          </div>
+        }
+        @if (d.actions.includes('deposer')) {
+          <div class="sf-boutons">
+            <button type="button" class="btn-ubi vert" (click)="ouvrirDepot()"><i class="ri-upload-2-line"></i>{{ d.facture && d.facture.statut !== 'remplacee' ? 'Déposer une nouvelle facture' : 'Déposer ma facture' }}</button>
+            @if (d.statut === 'facture_deposee') { <small class="ep-muted">Vous pouvez remplacer votre facture tant qu'elle n'est pas validée.</small> }
+          </div>
+        }
+      </app-suivi-releve-detail>
+    </div>
+  </aside>
+}
+
+<!-- ── Bon pour accord / contestation ─────────────────────────── -->
+<div bsModal #accordModal="bs-modal" class="modal fade ep-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      @if (detail; as d) {
+        <div class="modal-body p-4">
+          <div class="text-center">
+            <i class="display-5" [class]="modeAccord === 'accord' ? 'ri-thumb-up-line text-success display-5' : 'ri-feedback-line text-danger display-5'"></i>
+            <h5 class="mt-3">{{ modeAccord === 'accord' ? 'Bon pour accord sur le relevé ' + d.numero + ' ?' : 'Contester le relevé ' + d.numero }}</h5>
+            <p class="text-muted">{{ d.libelle }} · {{ d.nb_repas }} repas · <b>{{ montantFr(d.montant) }}</b><br>
+              @if (modeAccord === 'accord') { Vous confirmez les repas et le montant ; vous pourrez ensuite déposer votre facture de ce montant. }
+              @else { La comptabilité est prévenue et vous répond. Le mois étant clôturé, le montant ne change pas : elle vous explique le relevé. }</p>
+          </div>
+          <label class="ep-lab" for="sf-com">{{ modeAccord === 'accord' ? 'Commentaire (facultatif)' : 'Ce que vous contestez' }}@if (modeAccord === 'contester') { <span class="text-danger">*</span> }</label>
+          <textarea id="sf-com" class="form-control mb-3" rows="3" maxlength="1000" [(ngModel)]="commentaire"
+                    [placeholder]="modeAccord === 'accord' ? '' : 'Ex. 12 repas servis le 14 n\'apparaissent pas'"></textarea>
+          @if (erreurAction) { <div class="ep-alerte a-ro mb-3" role="alert"><i class="ri-error-warning-line"></i><div><b>{{ erreurAction }}</b></div></div> }
+          <div class="d-flex gap-2 justify-content-center">
+            <button type="button" class="btn-ubi" (click)="accordModal.hide()">Retour</button>
+            <button type="button" class="btn-ubi" [class.vert]="modeAccord === 'accord'" [class.rouge]="modeAccord === 'contester'"
+                    [disabled]="envoi || (modeAccord === 'contester' && !commentaire.trim())" (click)="confirmerAccord()">
+              @if (envoi) { <span class="spinner-border spinner-border-sm"></span> }{{ modeAccord === 'accord' ? 'Donner mon bon pour accord' : 'Envoyer la contestation' }}</button>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+<!-- ── Dépôt de la facture ────────────────────────────────────── -->
+<div bsModal #depotModal="bs-modal" class="modal fade ep-modal" tabindex="-1" aria-labelledby="sfDepotTitre">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      @if (detail; as d) {
+        <div class="modal-header">
+          <h5 class="modal-title" id="sfDepotTitre"><i class="ri-upload-2-line"></i>Déposer ma facture <small>relevé {{ d.numero }} · {{ d.libelle }}</small></h5>
+          <button type="button" class="btn-close" (click)="depotModal.hide()" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          @if (d.facture?.statut === 'refusee') {
+            <div class="ep-alerte a-ro mb-3"><i class="ri-close-circle-line"></i><div><b>Facture n° {{ d.facture!.numero_facture }} refusée</b><small>{{ d.facture!.motif_refus }}</small></div></div>
+          }
+          <div class="row g-3">
+            <div class="col-sm-6">
+              <label class="ep-lab" for="sf-num">N° de la facture <span class="text-danger">*</span></label>
+              <input id="sf-num" class="form-control" maxlength="60" [(ngModel)]="depot.numero" placeholder="Ex. FAC-2026-118">
+            </div>
+            <div class="col-sm-6">
+              <label class="ep-lab" for="sf-date">Date de la facture <span class="text-danger">*</span></label>
+              <input id="sf-date" type="date" class="form-control" [(ngModel)]="depot.date">
+            </div>
+            <div class="col-12">
+              <label class="ep-lab" for="sf-mt">Montant TTC (F CFA) <span class="text-danger">*</span></label>
+              <input id="sf-mt" type="number" min="0" step="1" class="form-control" [(ngModel)]="depot.montant">
+              @if (ecartSaisi !== null) {
+                @if (ecartSaisi === 0) {
+                  <div class="sf-controle ok"><i class="ri-checkbox-circle-line"></i><span>Montant conforme au relevé ({{ montantFr(d.montant) }}).</span></div>
+                } @else {
+                  <div class="sf-controle ecart"><i class="ri-error-warning-line"></i><span>Écart de <b>{{ ecart(ecartSaisi) }}</b> avec le relevé ({{ montantFr(d.montant) }}) : dépôt possible, mais signalé à la comptabilité.</span></div>
+                }
+              }
+            </div>
+            <div class="col-12">
+              <label class="ep-lab" for="sf-fichier">Facture (PDF, 10 Mo au plus) <span class="text-danger">*</span></label>
+              <label class="sf-fichier" [class.choisi]="fichier" for="sf-fichier">
+                <i [class]="fichier ? 'ri-file-pdf-line' : 'ri-upload-cloud-2-line'"></i>
+                <span>@if (fichier) { <b>{{ fichier.name }}</b><small>{{ taille(fichier.size) }} · cliquez pour changer</small> }
+                  @else { <b>Choisir le fichier PDF</b><small>votre facture signée</small> }</span>
+              </label>
+              <input id="sf-fichier" type="file" accept="application/pdf,.pdf" class="visually-hidden" (change)="choisirFichier($event)">
+            </div>
+          </div>
+          @if (erreurDepot) { <div class="ep-alerte a-ro mt-3" role="alert"><i class="ri-error-warning-line"></i><div><b>{{ erreurDepot }}</b></div></div> }
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-ubi" (click)="depotModal.hide()">Annuler</button>
+          <button type="button" class="btn-ubi vert" [disabled]="envoi || !depotValide" (click)="deposer()">
+            @if (envoi) { <span class="spinner-border spinner-border-sm"></span> } @else { <i class="ri-upload-2-line"></i> }Déposer la facture</button>
+        </div>
+      }
+    </div>
+  </div>
 </div>

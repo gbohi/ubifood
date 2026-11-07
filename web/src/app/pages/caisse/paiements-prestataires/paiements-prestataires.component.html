@@ -1,0 +1,214 @@
+<div class="lst ep cs sf">
+  <app-page-entete titre="Paiements prestataires" icone="ri-bank-card-line" [fil]="[{label: 'Comptabilité'}]"
+                   sousTitre="Relevés des mois clôturés : bon pour accord, facture du prestataire, validation et paiement">
+    <select class="form-select ep-select" [(ngModel)]="annee" (change)="filtrer()" aria-label="Année">
+      @for (a of donnees?.annees ?? []; track a) { <option [ngValue]="a">{{ a }}</option> }
+      @if (donnees && donnees.annee !== null && !donnees.annees.includes(donnees.annee)) { <option [ngValue]="donnees.annee">{{ donnees.annee }}</option> }
+      <option value="toutes">Toutes les années</option>
+    </select>
+  </app-page-entete>
+
+  @if (!peutAgir && donnees) {
+    <div class="ep-alerte a-bl"><i class="ri-eye-line"></i><div><b>Lecture seule</b><small>Relevés des prestataires de vos agences. Les validations et paiements sont faits par la comptabilité.</small></div></div>
+  }
+
+  @if (donnees; as d) {
+    <div class="ep-kpis-ligne ep-kpis-4">
+      <button type="button" class="ep-carte ep-kpi ep-kpi-lien sf-kpi" [class.on]="statut === 'facture_validee'" (click)="filtrerStatut(statut === 'facture_validee' ? '' : 'facture_validee')">
+        <span class="ep-kpi-ic or"><i class="ri-hand-coin-line"></i></span>
+        <div><small>Dus</small><b>{{ fcfa(d.totaux.dus.montant) }}</b><span>{{ d.totaux.dus.nb }} facture{{ d.totaux.dus.nb > 1 ? 's' : '' }} validée{{ d.totaux.dus.nb > 1 ? 's' : '' }} à payer</span></div></button>
+      <button type="button" class="ep-carte ep-kpi ep-kpi-lien sf-kpi" [class.on]="statut === 'a_traiter'" (click)="filtrerStatut(statut === 'a_traiter' ? '' : 'a_traiter')">
+        <span class="ep-kpi-ic ro"><i class="ri-todo-line"></i></span>
+        <div><small>À traiter</small><b>{{ d.totaux.a_traiter }}</b><span>contestations, factures à valider ou à payer</span></div></button>
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-loader-2-line"></i></span>
+        <div><small>En cours</small><b>{{ fcfa(d.totaux.en_cours.montant) }}</b><span>{{ d.totaux.en_cours.nb }} relevé{{ d.totaux.en_cours.nb > 1 ? 's' : '' }} : accord ou facture attendus</span></div></div>
+      <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-checkbox-circle-line"></i></span>
+        <div><small>Payés</small><b>{{ fcfa(d.totaux.payes.montant) }}</b><span>{{ d.totaux.payes.nb }} relevé{{ d.totaux.payes.nb > 1 ? 's' : '' }} · {{ d.annee ?? 'toutes années' }}</span></div></div>
+    </div>
+  }
+
+  @if (erreur) { <div class="ep-alerte a-ro"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+
+  <div class="lst-carte">
+    <div class="lst-barre">
+      <div class="lst-chips" role="group" aria-label="Filtre des statuts">
+        <button type="button" class="lst-chip" [class.on]="!statut" (click)="filtrerStatut('')">Tous</button>
+        <button type="button" class="lst-chip" [class.on]="statut === 'a_traiter'" (click)="filtrerStatut('a_traiter')">À traiter</button>
+        <button type="button" class="lst-chip" [class.on]="statut === 'conteste'" (click)="filtrerStatut('conteste')">Contestés</button>
+        <button type="button" class="lst-chip" [class.on]="statut === 'facture_deposee'" (click)="filtrerStatut('facture_deposee')">Factures à valider</button>
+        <button type="button" class="lst-chip" [class.on]="statut === 'facture_validee'" (click)="filtrerStatut('facture_validee')">À payer</button>
+        <button type="button" class="lst-chip" [class.on]="statut === 'payee'" (click)="filtrerStatut('payee')">Payés</button>
+      </div>
+      <div class="lst-filtres">
+        <select class="form-select" [(ngModel)]="prestataire" (change)="filtrer()" aria-label="Prestataire">
+          <option value="">Tous les prestataires</option>
+          @for (p of donnees?.prestataires ?? []; track p.id) { <option [ngValue]="p.id">{{ p.libelle }}</option> }
+        </select>
+        <select class="form-select" [(ngModel)]="moisFiltre" (change)="filtrer()" aria-label="Mois">
+          <option value="">Tous les mois</option>
+          @for (m of mois; track $index) { <option [ngValue]="$index + 1">{{ m | titlecase }}</option> }
+        </select>
+      </div>
+    </div>
+    @if (chargement && !donnees) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+    <div class="lst-table-wrap" [class.ep-attente]="chargement">
+      <table class="lst-table lst-cartes ep-table">
+        <thead><tr><th>Prestataire</th><th>Mois</th><th class="n">Relevé</th><th class="n">Facture</th><th>Suivi</th><th class="lst-c-act"></th></tr></thead>
+        <tbody>
+          @for (r of donnees?.resultats ?? []; track r.id) {
+            <tr class="sf-ligne" (click)="ouvrir(r)">
+              <td class="lst-c-principal"><div class="lst-qui"><span class="lst-av carre"><i class="ri-store-2-line"></i></span>
+                <div><b>{{ r.prestataire.libelle }}</b><small class="cs-num">{{ r.numero }}</small></div></div></td>
+              <td data-label="Mois">{{ r.libelle }}</td>
+              <td data-label="Relevé" class="n"><b>{{ fcfa(r.montant) }}</b><small class="d-block ep-muted">{{ r.nb_repas }} repas</small></td>
+              <td data-label="Facture" class="n">
+                @if (r.facture; as f) {
+                  <b>{{ fcfa(f.montant_ttc) }}</b>
+                  @if (f.conforme) { <small class="d-block ep-c-vert">conforme</small> } @else { <small class="d-block ep-c-orange"><i class="ri-error-warning-line"></i> écart {{ ecart(f.ecart) }}</small> }
+                } @else { <span class="ep-muted">—</span> }
+              </td>
+              <td data-label="Suivi">
+                <div class="sf-suivi-cell">
+                  <app-suivi-etapes [etapes]="r.etapes" [compact]="true"></app-suivi-etapes>
+                  <span class="lst-tag" [ngClass]="statuts[r.statut].classe"><i [class]="statuts[r.statut].icone"></i>{{ statuts[r.statut].court }}</span>
+                </div>
+                <small class="ep-muted sf-attente">{{ attente(r) }}@if (r.derniere_relance_le) { · relancé le {{ r.derniere_relance_le | date: 'dd/MM' }} }</small>
+              </td>
+              <td class="lst-c-act bas" (click)="$event.stopPropagation()">
+                <div class="lst-act">
+                  @if (principale(r); as a) {
+                    <button type="button" class="btn-ubi sm" [ngClass]="libelles[a].classe" (click)="demander(a, r)"><i [class]="libelles[a].icone"></i>{{ libelles[a].libelle }}</button>
+                  }
+                  @if (r.actions.includes('refuser')) {
+                    <button type="button" class="btn-ubi sm rouge" (click)="demander('refuser', r)"><i class="ri-close-circle-line"></i>Refuser</button>
+                  }
+                  @if (r.actions.includes('relancer')) {
+                    <button type="button" class="btn-ubi sm orange" (click)="demander('relancer', r)" title="Notifier le prestataire"><i class="ri-alarm-warning-line"></i>Relancer</button>
+                  }
+                  <button type="button" class="btn-ubi sm ic" (click)="ouvrir(r)" title="Détail et historique" aria-label="Détail et historique"><i class="ri-eye-line"></i></button>
+                </div>
+              </td>
+            </tr>
+          } @empty {
+            @if (!chargement) {
+              <tr class="lst-l-vide"><td colspan="6"><div class="lst-vide"><i class="ri-bank-card-line"></i><h5>Aucun relevé</h5>
+                <p>Les relevés des prestataires apparaissent à la clôture de chaque mois (Facturation).</p></div></td></tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tiroir : détail d'un relevé ─────────────────────────────── -->
+@if (detail; as d) {
+  <div class="sf-voile" (click)="fermer()"></div>
+  <aside class="sf-tiroir" role="dialog" aria-modal="true" [attr.aria-label]="'Relevé ' + d.numero">
+    <header class="sf-tiroir-hd">
+      <div><small>{{ d.prestataire.libelle }} · {{ d.libelle }}</small><h5>Relevé {{ d.numero }}</h5>
+        <span class="lst-tag" [ngClass]="statuts[d.statut].classe"><i [class]="statuts[d.statut].icone"></i>{{ statuts[d.statut].court }}</span></div>
+      <button type="button" class="btn-close" (click)="fermer()" aria-label="Fermer"></button>
+    </header>
+    <div class="sf-tiroir-corps" [class.ep-attente]="chargementDetail">
+      <app-suivi-releve-detail [releve]="d" cote="compta">
+        @if (d.actions.length) {
+          @if (d.facture && d.statut === 'facture_deposee' && !d.facture.conforme) {
+            <div class="ep-alerte a-or"><i class="ri-error-warning-line"></i><div><b>Écart de {{ ecart(d.facture.ecart) }} avec le relevé</b>
+              <small>Facture {{ fcfa(d.facture.montant_ttc) }} pour un relevé de {{ fcfa(d.montant) }}. Validez si l'écart est justifié, sinon refusez avec le motif.</small></div></div>
+          }
+          <div class="sf-boutons">
+            @for (a of actionsCompta(d); track a) {
+              <button type="button" class="btn-ubi" [ngClass]="libelles[a].classe" (click)="demander(a, d)"><i [class]="libelles[a].icone"></i>{{ libelles[a].libelle }}</button>
+            }
+          </div>
+        }
+      </app-suivi-releve-detail>
+    </div>
+  </aside>
+}
+
+<!-- ── Action de la comptabilité ──────────────────────────────── -->
+<div bsModal #actionModal="bs-modal" class="modal fade ep-modal" tabindex="-1" aria-labelledby="sfActionTitre">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      @if (cible && action; as a) {
+        @let r = cible;
+        <div class="modal-header">
+          <h5 class="modal-title" id="sfActionTitre"><i [class]="libelles[a].icone"></i>
+            @switch (a) {
+              @case ('repondre') { Répondre à la contestation }
+              @case ('valider') { Valider la facture }
+              @case ('refuser') { Refuser la facture }
+              @case ('payer') { Marquer le relevé payé }
+              @case ('relancer') { Relancer le prestataire }
+            }
+            <small>{{ r.prestataire.libelle }} · {{ r.numero }} · {{ r.libelle }}</small></h5>
+          <button type="button" class="btn-close" (click)="actionModal.hide()" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body">
+          @if (a === 'repondre' && r.contestation) {
+            <div class="ep-alerte a-ro mb-3"><i class="ri-chat-3-line"></i><div><b>Le prestataire conteste</b><small class="sf-citation">« {{ r.contestation.commentaire }} »</small></div></div>
+            <p class="small ep-muted">Le mois est clôturé : le montant du relevé ({{ fcfa(r.montant) }}) ne change pas. Expliquez le relevé ; il est confirmé et repasse en attente du bon pour accord.</p>
+          }
+          @if ((a === 'valider' || a === 'refuser') && r.facture; as f) {
+            <div class="sf-recap">
+              <span>Facture n° <b>{{ f.numero_facture }}</b> du {{ f.date_facture | date: 'dd/MM/yyyy' }}</span>
+              <span>Montant TTC <b>{{ fcfa(f.montant_ttc) }}</b> · relevé <b>{{ fcfa(r.montant) }}</b></span>
+              @if (f.conforme) { <span class="lst-tag t-ve"><i class="ri-checkbox-circle-line"></i>Montant conforme</span> }
+              @else { <span class="lst-tag t-or"><i class="ri-error-warning-line"></i>Écart de {{ ecart(f.ecart) }}</span> }
+            </div>
+          }
+          @if (a === 'relancer') {
+            <p class="small ep-muted">Le prestataire reçoit une notification : {{ r.statut === 'emis' ? 'son bon pour accord est attendu' : r.statut === 'facture_refusee' ? 'une facture corrigée est attendue' : 'sa facture est attendue' }}.
+              @if (r.derniere_relance_le) { Dernière relance le {{ r.derniere_relance_le | date: 'dd/MM/yyyy à HH:mm' }}. }</p>
+          }
+          @if (a === 'payer') {
+            <div class="sf-recap mb-3"><span>Montant à payer <b>{{ fcfa(r.facture?.montant_ttc ?? r.montant) }}</b></span>@if (r.facture) { <span>facture n° {{ r.facture.numero_facture }}</span> }</div>
+            <div class="row g-3">
+              <div class="col-sm-6">
+                <label class="ep-lab" for="sf-pdate">Date du paiement <span class="text-danger">*</span></label>
+                <input id="sf-pdate" type="date" class="form-control" [(ngModel)]="paiement.date">
+              </div>
+              <div class="col-sm-6">
+                <label class="ep-lab" for="sf-pmode">Mode <span class="text-danger">*</span></label>
+                <select id="sf-pmode" class="form-select" [(ngModel)]="paiement.mode">
+                  @for (m of modes; track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="ep-lab" for="sf-pref">{{ paiement.mode === 'cheque' ? 'N° du chèque' : 'Référence' }}@if (referenceObligatoire) { <span class="text-danger">*</span> } @else { (facultative) }</label>
+                <input id="sf-pref" class="form-control" maxlength="100" [(ngModel)]="paiement.reference" [placeholder]="paiement.mode === 'virement' ? 'Ex. VIR-2026-0412' : ''">
+              </div>
+              <div class="col-12">
+                <label class="ep-lab" for="sf-pjust">Justificatif (facultatif : PDF, PNG ou JPG, 10 Mo au plus)</label>
+                <label class="sf-fichier" [class.choisi]="justificatif" for="sf-pjust">
+                  <i [class]="justificatif ? 'ri-attachment-2' : 'ri-upload-cloud-2-line'"></i>
+                  <span>@if (justificatif) { <b>{{ justificatif.name }}</b><small>{{ taille(justificatif.size) }} · cliquez pour changer</small> }
+                    @else { <b>Joindre l'avis de virement, la copie du chèque…</b><small>facultatif</small> }</span>
+                </label>
+                <input id="sf-pjust" type="file" accept="application/pdf,.pdf,image/png,image/jpeg" class="visually-hidden" (change)="choisirJustificatif($event)">
+              </div>
+            </div>
+          } @else {
+            <label class="ep-lab" for="sf-texte">
+              @switch (a) {
+                @case ('repondre') { Réponse au prestataire <span class="text-danger">*</span> }
+                @case ('refuser') { Motif du refus <span class="text-danger">*</span> }
+                @default { Commentaire (facultatif) }
+              }
+            </label>
+            <textarea id="sf-texte" class="form-control" rows="3" maxlength="1000" [(ngModel)]="texte"
+                      [placeholder]="a === 'refuser' ? 'Ex. Le montant TTC ne correspond pas au relevé' : ''"></textarea>
+          }
+          @if (erreurAction) { <div class="ep-alerte a-ro mt-3" role="alert"><i class="ri-error-warning-line"></i><div><b>{{ erreurAction }}</b></div></div> }
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-ubi" (click)="actionModal.hide()">Annuler</button>
+          <button type="button" class="btn-ubi" [ngClass]="libelles[a].classe" [disabled]="envoi || !actionValide" (click)="confirmer()">
+            @if (envoi) { <span class="spinner-border spinner-border-sm"></span> } @else { <i [class]="libelles[a].icone"></i> }{{ a === 'repondre' ? 'Envoyer et confirmer le relevé' : libelles[a].libelle }}</button>
+        </div>
+      }
+    </div>
+  </div>
+</div>

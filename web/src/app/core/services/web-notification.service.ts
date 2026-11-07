@@ -167,6 +167,9 @@ export class WebNotificationService {
         case 'compte_repas':            // recharge, remboursement, reçu annulé
           this.toastr.success(body, titre, { timeOut: 6000 });
           break;
+        case 'facture_prestataire':     // suivi des relevés prestataires (prestataire, comptabilité)
+          this.toastr.info(body, titre, { timeOut: 8000, progressBar: true });
+          break;
         default:
           this.toastr.info(body, titre, { timeOut: 4000 });
       }

@@ -12,10 +12,12 @@ import { ClotureCaisseComponent } from './cloture/cloture-caisse.component';
 import { ValidationCloturesComponent } from './validation-clotures/validation-clotures.component';
 import { RecusComponent } from './recus/recus.component';
 import { ComptesRepasComponent } from './comptes/comptes-repas.component';
+import { PaiementsPrestatairesComponent } from './paiements-prestataires/paiements-prestataires.component';
 
 /**
  * Compte repas et caisse (étape 2) : écran de caisse, journal et clôture de caisse
- * (caissiers), contrôle par la comptabilité (clôtures, reçus, comptes repas).
+ * (caissiers), contrôle par la comptabilité (clôtures, reçus, comptes repas) et,
+ * étape 3, paiements prestataires (suivi des relevés jusqu'au paiement).
  * Styles : assets/scss/pages/_caisse.scss (+ gabarits _listes.scss et _espace-prestataire.scss).
  */
 @NgModule({
@@ -26,6 +28,7 @@ import { ComptesRepasComponent } from './comptes/comptes-repas.component';
     ValidationCloturesComponent,
     RecusComponent,
     ComptesRepasComponent,
+    PaiementsPrestatairesComponent,
   ],
   imports: [
     CommonModule,

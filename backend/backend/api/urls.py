@@ -11,6 +11,7 @@ from .controle import ContestationRetraitViewSet, ControleRetraitsView
 from . import espace_prestataire as presta
 from . import caisse
 from . import parcours_commande as parcours
+from . import suivi_factures as suivi
 
 
 class ConnexionSerializer(TokenObtainPairSerializer):
@@ -134,6 +135,22 @@ urlpatterns = [
     path('api/prestataire/comptoir/retraits/<int:pk>/annuler/', presta.ComptoirAnnulerView.as_view(),
          name='prestataire-comptoir-annuler'),
     path('api/prestataire/releves/', presta.RelevesView.as_view(), name='prestataire-releves'),
+    # Suivi des factures prestataires (api/suivi_factures.py) : côté prestataire
+    path('api/prestataire/factures/', suivi.PrestaFacturesView.as_view(), name='prestataire-factures'),
+    path('api/prestataire/factures/<int:pk>/', suivi.PrestaFactureDetailView.as_view(),
+         name='prestataire-facture'),
+    path('api/prestataire/factures/<int:pk>/accord/', suivi.PrestaFactureActionView.as_view(action='accord'),
+         name='prestataire-facture-accord'),
+    path('api/prestataire/factures/<int:pk>/contester/', suivi.PrestaFactureActionView.as_view(action='contester'),
+         name='prestataire-facture-contester'),
+    path('api/prestataire/factures/<int:pk>/deposer/', suivi.PrestaFactureActionView.as_view(action='deposer'),
+         name='prestataire-facture-deposer'),
+    path('api/prestataire/factures/<int:pk>/releve-pdf/', suivi.PrestaFichiersView.as_view(quoi='releve'),
+         name='prestataire-facture-releve-pdf'),
+    path('api/prestataire/factures/<int:pk>/depots/<int:depot>/fichier/',
+         suivi.PrestaFichiersView.as_view(quoi='depot'), name='prestataire-facture-depot-fichier'),
+    path('api/prestataire/factures/<int:pk>/justificatif/', suivi.PrestaFichiersView.as_view(quoi='justificatif'),
+         name='prestataire-facture-justificatif'),
     path('api/prestataire/statistiques/', presta.StatistiquesPrestataireView.as_view(),
          name='prestataire-statistiques'),
     path('api/prestataire/equipe/', presta.EquipeView.as_view(), name='prestataire-equipe'),
@@ -165,6 +182,26 @@ urlpatterns = [
     path('api/caisse/journal/', caisse.JournalCaisseView.as_view(), name='caisse-journal'),
     path('api/caisse/journal/pdf/', caisse.JournalCaisseView.as_view(pdf=True), name='caisse-journal-pdf'),
     path('api/caisse/comptes/', caisse.ComptesRepasView.as_view(), name='caisse-comptes'),
+    path('api/caisse/comptes/<int:pk>/mouvements/', caisse.MouvementsCompteView.as_view(),
+         name='caisse-compte-mouvements'),
+    path('api/caisse/comptes/<int:pk>/mouvements/pdf/', caisse.MouvementsCompteView.as_view(export='pdf'),
+         name='caisse-compte-mouvements-pdf'),
+    path('api/caisse/comptes/<int:pk>/mouvements/xlsx/', caisse.MouvementsCompteView.as_view(export='xlsx'),
+         name='caisse-compte-mouvements-xlsx'),
+    path('api/caisse/caissiers/', caisse.CaissiersView.as_view(), name='caisse-caissiers'),
+    # Suivi des factures prestataires : comptabilité (et administrateurs)
+    path('api/paiements-prestataires/', suivi.PaiementsPrestatairesView.as_view(), name='paiements-prestataires'),
+    path('api/paiements-prestataires/<int:pk>/', suivi.PaiementPrestataireDetailView.as_view(),
+         name='paiement-prestataire'),
+    *[path(f'api/paiements-prestataires/<int:pk>/{a}/', suivi.PaiementPrestataireActionView.as_view(action=a),
+           name=f'paiement-prestataire-{a}')
+      for a in ('repondre', 'valider', 'refuser', 'payer', 'relancer')],
+    path('api/paiements-prestataires/<int:pk>/releve-pdf/', suivi.PaiementFichiersView.as_view(quoi='releve'),
+         name='paiement-prestataire-releve-pdf'),
+    path('api/paiements-prestataires/<int:pk>/depots/<int:depot>/fichier/',
+         suivi.PaiementFichiersView.as_view(quoi='depot'), name='paiement-prestataire-depot-fichier'),
+    path('api/paiements-prestataires/<int:pk>/justificatif/', suivi.PaiementFichiersView.as_view(quoi='justificatif'),
+         name='paiement-prestataire-justificatif'),
     path('api/compte-repas/', caisse.MonCompteView.as_view(), name='compte-repas'),
     path('api/compte-repas/mouvements/', caisse.MesMouvementsView.as_view(), name='compte-repas-mouvements'),
     path('api/compte-repas/recus/', caisse.MesRecusView.as_view(), name='compte-repas-recus'),

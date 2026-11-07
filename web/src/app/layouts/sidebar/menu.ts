@@ -16,7 +16,7 @@ export const MENU: MenuItem[] = [
     { id: 303, label: 'À préparer', icon: 'ri-list-check-2', link: '/prestataire/a-preparer', roles: RESPONSABLES_PRESTATAIRE },
     { id: 304, label: 'Comptoir', icon: 'ri-qr-scan-2-line', link: '/prestataire/comptoir', roles: PRESTATAIRES },
     { id: 305, label: 'Liste du jour', icon: 'ri-file-list-3-line', link: '/prestataire/liste-du-jour', roles: PRESTATAIRES },
-    { id: 306, label: 'Relevés', icon: 'ri-file-text-line', link: '/prestataire/releves', roles: RESPONSABLES_PRESTATAIRE },
+    { id: 306, label: 'Relevés & factures', icon: 'ri-file-text-line', link: '/prestataire/releves', roles: RESPONSABLES_PRESTATAIRE },
     { id: 307, label: 'Statistiques', icon: 'ri-bar-chart-2-line', link: '/prestataire/statistiques', roles: RESPONSABLES_PRESTATAIRE },
     { id: 308, label: 'Mon compte', isTitle: true, roles: RESPONSABLES_PRESTATAIRE },
     { id: 310, label: 'Mon profil prestataire', icon: 'ri-store-2-line', link: '/prestataire/profil', roles: RESPONSABLES_PRESTATAIRE, isNew: true },
@@ -184,6 +184,8 @@ export const MENU: MenuItem[] = [
     { id: 412, label: 'Reçus', icon: 'ri-file-paper-2-line', link: '/caisse/recus', roles: COMPTABLES, espaceCaisse: true },
     { id: 413, label: 'Comptes repas', icon: 'ri-wallet-3-line', link: '/caisse/comptes', roles: COMPTABLES, espaceCaisse: true },
     { id: 414, label: 'Journal', icon: 'ri-file-list-3-line', link: '/caisse/journal', roles: COMPTABLES, espaceCaisse: true },
+    // Suivi des relevés prestataires jusqu'au paiement (étape 3)
+    { id: 415, label: 'Paiements prestataires', icon: 'ri-bank-card-line', link: '/caisse/paiements-prestataires', roles: COMPTABLES, espaceCaisse: true, isNew: true },
     {
         // Une seule entrée vers l'accueil des paramètres (cartes par thème,
         // filtrées selon le rôle : le gestionnaire n'y voit que la cantine)

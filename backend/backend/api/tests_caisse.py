@@ -902,7 +902,8 @@ class PermissionsCaisseTests(_CaisseBase):
         r = self.client_pour(self.caissier).get(f'{API}/caisse/employes/', {'q': 'emp1'})
         self.assertEqual(r.status_code, 200)
         res = r.data['resultats'][0]
-        self.assertEqual(set(res), {'id', 'nom', 'prenoms', 'nom_prenom', 'matricule', 'agence', 'actif', 'solde'})
+        self.assertEqual(set(res), {'id', 'nom', 'prenoms', 'nom_prenom', 'matricule', 'agence', 'actif', 'solde',
+                                    'photo_url'})
         self.assertEqual((res['matricule'], res['solde'], res['agence']), ('emp1', 1200.0, 'Siège'))
         # Nom + prénoms, badge exact en tête ; comptes prestataires exclus
         noms = [x['matricule'] for x in self.client_pour(self.caissier).get(

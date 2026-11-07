@@ -33,7 +33,8 @@
             @for (e of resultats; track e.id; let i = $index) {
               <li role="option" [attr.aria-selected]="i === indexActif">
                 <button type="button" [class.on]="i === indexActif" (click)="choisir(e)" (mouseenter)="indexActif = i">
-                  <span class="lst-av" [style.background]="couleur(e.id)">{{ initiales(e.nom_prenom) }}</span>
+                  @if (e.photo_url) { <img class="lst-av" [src]="e.photo_url" alt="" loading="lazy"> }
+                  @else { <span class="lst-av" [style.background]="couleur(e.id)">{{ initiales(e.nom_prenom) }}</span> }
                   <span class="cs-res-txt"><b>{{ e.nom_prenom }}</b><small>{{ e.matricule }}@if (e.agence) { · {{ e.agence }} }</small></span>
                   @if (!e.actif) { <span class="lst-tag t-gr">désactivé</span> }
                   <span class="cs-res-solde"><small>Solde</small><b>{{ fcfa(e.solde) }}</b></span>
@@ -53,7 +54,9 @@
         <!-- ── Fiche de l'employé ─────────────────────────────── -->
         <section class="ep-carte cs-fiche" [class.ep-attente]="chargementFiche">
           <div class="cs-fiche-hd">
-            <span class="cs-av" [style.background]="couleur(f.employe.id)">{{ initiales(f.employe.nom_prenom) }}</span>
+            <!-- Photo : le caissier reconnaît l'employé au guichet ; sinon les initiales -->
+            @if (f.employe.photo_url) { <img class="cs-av" [src]="f.employe.photo_url" [alt]="'Photo de ' + f.employe.nom_prenom"> }
+            @else { <span class="cs-av" [style.background]="couleur(f.employe.id)">{{ initiales(f.employe.nom_prenom) }}</span> }
             <div class="cs-fiche-qui">
               <b>{{ f.employe.nom_prenom }}</b>
               <small>Matricule {{ f.employe.matricule }}@if (f.employe.agence) { · {{ f.employe.agence }} }</small>

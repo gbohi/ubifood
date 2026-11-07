@@ -7,10 +7,14 @@ Documents PDF de la caisse (reportlab) :
     après, mention « Reçu non fiscal ». Reçu annulé : bandeau « ANNULÉ ».
   - Journal de caisse d'une journée (A4) : reçus, totaux par type et par
     caissier, clôtures de caisse du jour.
+  - Mouvements du compte repas d'un employé (A4, comptabilité) et leur
+    export Excel (.xlsx écrit sans bibliothèque : zip + XML SpreadsheetML).
 
 Identité de la société et polices Poppins : comme pdf_factures.py.
 """
 
+import zipfile
+from datetime import datetime
 from io import BytesIO
 from xml.sax.saxutils import escape
 
@@ -256,3 +260,175 @@ def generer_journal(journal, societe):
                _entete_suite(societe, 'Journal de caisse', f" · {jour:%d/%m/%Y}"))
     doc.build(el, canvasmaker=_canvas(societe, f"Journal de caisse {jour:%d/%m/%Y}"))
     return tampon.getvalue()
+
+
+# ══════════════════════════════════════════════════════════════
+# Mouvements du compte repas d'un employé (comptabilité)
+# ══════════════════════════════════════════════════════════════
+
+def _periode(debut, fin):
+    if debut and fin:
+        return f"du {debut:%d/%m/%Y} au {fin:%d/%m/%Y}"
+    if debut:
+        return f"depuis le {debut:%d/%m/%Y}"
+    if fin:
+        return f"jusqu'au {fin:%d/%m/%Y}"
+    return "depuis l'ouverture du compte"
+
+
+def _date_heure(iso):
+    return f"{datetime.fromisoformat(iso):%d/%m/%Y %H:%M}"
+
+
+def generer_mouvements(donnees, societe):
+    """PDF (bytes) du grand livre d'un compte ; donnees : caisse.MouvementsCompteView."""
+    st = _styles()
+    e = donnees['employe']
+    periode = _periode(donnees['debut'], donnees['fin'])
+    meta = _meta([
+        ('Employé', escape(f"{e['nom_prenom']} ({e['matricule']})"), None),
+        ('Agence', escape(e['agence'] or '—'), None),
+        ('Période', periode, None),
+        ('Édité le', f"{timezone.localtime():%d/%m/%Y à %H:%M}", None),
+    ], st)
+    el = [_entete(societe, 'COMPTE REPAS', f"Mouvements · {e['nom_prenom']} · {periode}", meta, st,
+                  sous_ligne_societe='Comptabilité — compte repas prépayé'), Spacer(1, 4 * mm)]
+
+    el.append(_h2('Synthèse', 'mouvements de la période', st))
+    t = donnees['totaux']
+    synthese = [['Crédits (recharges, recrédits…)', 'Débits (repas, remboursements…)', 'Solde actuel du compte'],
+                [_f(t['credits']), _f(t['debits']), _f(donnees['solde'])]]
+    tab = Table(synthese, colWidths=[UTILE / 3] * 3)
+    tab.setStyle(TableStyle(_style_tableau(2, 0, total=True)))
+    el.append(tab)
+
+    el.append(_h2('Détail des mouvements', 'du plus récent au plus ancien', st))
+    cel = ParagraphStyle('mv', parent=st['cellule'], fontSize=7.4, leading=9.2)
+    lignes = [['Date', 'Type', 'Libellé', 'Reçu', 'Montant', 'Solde après']]
+    style = _style_tableau(0, 4, total=False, taille=7.4)
+    for i, m in enumerate(donnees['mouvements'], start=1):
+        lignes.append([_date_heure(m['date']), _p(escape(m['type_libelle']), cel), _p(escape(m['libelle'] or ''), cel),
+                       _p(escape(m['recu_numero'] or ''), cel),
+                       f"{'+' if m['montant'] > 0 else ''}{fcfa(m['montant'])}", fcfa(m['solde_apres'])])
+        if m['montant'] < 0:
+            style.append(('TEXTCOLOR', (4, i), (4, i), ROUGE))
+    if len(lignes) == 1:
+        lignes.append(['', '', 'Aucun mouvement sur la période', '', '', ''])
+    tab = Table(lignes, colWidths=[27 * mm, 30 * mm, UTILE - 135 * mm, 32 * mm, 23 * mm, 23 * mm], repeatRows=1)
+    tab.setStyle(TableStyle(style))
+    el.append(tab)
+    el += [Spacer(1, 3 * mm), _p("Montants en francs CFA : + crédit du compte, − débit. Le solde après est celui "
+                                 "du compte juste après le mouvement.", ParagraphStyle('mn', parent=st['petit'], textColor=G500))]
+    tampon = BytesIO()
+    titre = f"Mouvements du compte repas — {e['nom_prenom']}"
+    doc = _doc(tampon, titre, societe.nom or 'Ubifood', _entete_suite(societe, 'Compte repas', f" · {e['nom_prenom']}"))
+    doc.build(el, canvasmaker=_canvas(societe, f"Compte repas {e['matricule']}"))
+    return tampon.getvalue()
+
+
+def _xlsx_cellule(ref, valeur, style=0):
+    if valeur is None or valeur == '':
+        return f'<c r="{ref}" s="{style}"/>'
+    if isinstance(valeur, (int, float)) and not isinstance(valeur, bool):
+        return f'<c r="{ref}" s="{style}"><v>{valeur}</v></c>'
+    return f'<c r="{ref}" s="{style}" t="inlineStr"><is><t xml:space="preserve">{escape(str(valeur))}</t></is></c>'
+
+
+def _colonne(i):
+    lettres = ''
+    i += 1
+    while i:
+        i, r = divmod(i - 1, 26)
+        lettres = chr(65 + r) + lettres
+    return lettres
+
+
+def classeur_xlsx(nom_feuille, lignes, largeurs, lignes_titre=()):
+    """
+    Classeur Excel minimal (une feuille) : lignes = listes de valeurs (texte ou
+    nombre). Styles : 1 = gras (titres, en-têtes), 2 = nombre « # ##0 ».
+    lignes_titre : indices (0-based) des lignes en gras.
+    """
+    rangs = []
+    for i, ligne in enumerate(lignes, start=1):
+        cellules = ''.join(
+            _xlsx_cellule(f"{_colonne(j)}{i}", v,
+                          1 if (i - 1) in lignes_titre else (2 if isinstance(v, (int, float)) else 0))
+            for j, v in enumerate(ligne))
+        rangs.append(f'<row r="{i}">{cellules}</row>')
+    cols = ''.join(f'<col min="{j}" max="{j}" width="{w}" customWidth="1"/>' for j, w in enumerate(largeurs, start=1))
+    feuille = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+               '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+               f'<cols>{cols}</cols><sheetData>{"".join(rangs)}</sheetData></worksheet>')
+    styles = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+              '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+              '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0"/></numFmts>'
+              '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font>'
+              '<font><b/><sz val="11"/><name val="Calibri"/></font></fonts>'
+              '<fills count="2"><fill><patternFill patternType="none"/></fill>'
+              '<fill><patternFill patternType="gray125"/></fill></fills>'
+              '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+              '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+              '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+              '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+              '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
+              '</styleSheet>')
+    nom = escape(nom_feuille[:31])
+    fichiers = {
+        '[Content_Types].xml': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            '<Override PartName="/xl/styles.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+            '</Types>'),
+        '_rels/.rels': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+            'Target="xl/workbook.xml"/></Relationships>'),
+        'xl/workbook.xml': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            f'<sheets><sheet name="{nom}" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+        'xl/_rels/workbook.xml.rels': (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+            'Target="worksheets/sheet1.xml"/>'
+            '<Relationship Id="rId2" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
+            'Target="styles.xml"/></Relationships>'),
+        'xl/styles.xml': styles,
+        'xl/worksheets/sheet1.xml': feuille,
+    }
+    tampon = BytesIO()
+    with zipfile.ZipFile(tampon, 'w', zipfile.ZIP_DEFLATED) as z:
+        for nom_fichier, contenu in fichiers.items():
+            z.writestr(nom_fichier, contenu)
+    return tampon.getvalue()
+
+
+def generer_mouvements_xlsx(donnees):
+    """Excel (bytes) des mouvements d'un compte : mêmes colonnes que le PDF."""
+    e = donnees['employe']
+    t = donnees['totaux']
+    lignes = [
+        [f"Mouvements du compte repas — {e['nom_prenom']} ({e['matricule']})"],
+        [f"Agence : {e['agence'] or '—'} · Période : {_periode(donnees['debut'], donnees['fin'])}"],
+        ['Crédits', float(t['credits']), 'Débits', float(t['debits']), 'Solde actuel', float(donnees['solde'])],
+        [],
+        ['Date', 'Type', 'Libellé', 'Reçu', 'Montant (F)', 'Solde après (F)'],
+    ]
+    for m in donnees['mouvements']:
+        lignes.append([_date_heure(m['date']), m['type_libelle'], m['libelle'] or '', m['recu_numero'] or '',
+                       m['montant'], m['solde_apres']])
+    return classeur_xlsx('Mouvements', lignes, [18, 22, 48, 20, 14, 16], lignes_titre=(0, 4))

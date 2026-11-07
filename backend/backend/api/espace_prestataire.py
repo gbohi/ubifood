@@ -35,6 +35,7 @@ from rest_framework.views import APIView
 from . import facturation as fact
 from . import releves as rel
 from . import statistiques as stats
+from . import suivi_factures as suivi
 from .models import (
     Agence, AgencePrestataire, AvisPlat, Commande, ContestationRetrait, FacturePrestataire, Menu,
     MenuHistorique, MenuPlat, ParametresSociete, Plat, PlatImage, Retrait, TypePlat, User,
@@ -1108,7 +1109,10 @@ def releves_du_prestataire(prestataire, nb_mois=12):
                  'date_debut': debut.isoformat(), 'date_fin': fin.isoformat()}
         if f is not None:
             ligne.update({'etat': 'cloture', 'releve_id': f.id, 'numero': f.numero, 'nb_repas': f.nb_repas,
-                          'montant': float(f.montant_total), 'cloturee_le': f.cloture.cloturee_le.isoformat()})
+                          'montant': float(f.montant_total), 'cloturee_le': f.cloture.cloturee_le.isoformat(),
+                          # Suivi jusqu'au paiement (suivi_factures.py) : étape en cours et statut
+                          'statut': f.statut, 'statut_libelle': f.get_statut_display(),
+                          'etape': suivi.ETAPE_DU_STATUT.get(f.statut, 2) if f.statut != 'payee' else 6})
         elif (a, m) in clotures:
             ligne = None    # mois clôturé sans repas pour ce prestataire
         else:
@@ -1116,7 +1120,7 @@ def releves_du_prestataire(prestataire, nb_mois=12):
             if synth['nb_repas'] or (a, m) == (aujourdhui.year, aujourdhui.month):
                 ligne.update({'etat': 'en_cours' if fin >= aujourdhui else 'a_cloturer', 'releve_id': None,
                               'numero': None, 'nb_repas': synth['nb_repas'], 'montant': float(synth['montant']),
-                              'cloturee_le': None})
+                              'cloturee_le': None, 'statut': None, 'statut_libelle': None, 'etape': 0})
             else:
                 ligne = None
         if ligne is not None:

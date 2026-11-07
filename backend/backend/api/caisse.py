@@ -16,6 +16,9 @@ Caisse (rôles caissier / comptabilite, administrateurs) :
   POST /caisse/clotures/<id>/valider/ | rejeter/   (comptabilité)
   GET  /caisse/journal/?date=&caissier=   (PDF : /caisse/journal/pdf/)
   GET  /caisse/comptes/                      soldes (comptabilité ; gestionnaire : ses agences)
+  GET  /caisse/comptes/<user_id>/mouvements/?date_debut=&date_fin=&type=   grand livre d'un compte
+       (comptabilité ; paginé) — exports : …/mouvements/pdf/ et …/mouvements/xlsx/
+  GET  /caisse/caissiers/                    caissiers (filtre du journal ; comptabilité)
 
 Employé (ses données) :
   GET  /compte-repas/   /compte-repas/mouvements/   /compte-repas/recus/
@@ -32,7 +35,7 @@ from datetime import date as date_type
 from decimal import Decimal
 from io import BytesIO
 
-from django.db.models import Q, Sum
+from django.db.models import Max, Q, Sum
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -78,10 +81,21 @@ def _agences_actuelles(user_ids):
     return resultat
 
 
-def employe_json(user, agence=None, solde=None):
-    """Champs minimaux d'un employé vus de la caisse."""
+def photo_url(user, request=None):
+    """URL absolue de la photo de profil (None sans photo) ; version contre le cache."""
+    if not user.photo:
+        return None
+    url = user.photo.url
+    if user.updated_at:
+        url = f"{url}?v={int(user.updated_at.timestamp())}"
+    return request.build_absolute_uri(url) if request is not None else url
+
+
+def employe_json(user, agence=None, solde=None, request=None):
+    """Champs minimaux d'un employé vus de la caisse (photo : pour reconnaître l'employé au guichet)."""
     return {'id': user.id, 'nom': user.nom, 'prenoms': user.prenom, 'nom_prenom': nom_complet(user),
             'matricule': user.username, 'agence': agence, 'actif': user.is_active,
+            'photo_url': photo_url(user, request),
             **({'solde': _f(solde)} if solde is not None else {})}
 
 
@@ -231,7 +245,8 @@ class RechercheEmployeView(APIView):
         users = users[:20]
         agences = _agences_actuelles([u.id for u in users])
         soldes = dict(CompteRepas.objects.filter(user__in=users).values_list('user_id', 'solde'))
-        return Response({'resultats': [employe_json(u, agences.get(u.id), soldes.get(u.id, ZERO)) for u in users]})
+        return Response({'resultats': [employe_json(u, agences.get(u.id), soldes.get(u.id, ZERO), request)
+                                       for u in users]})
 
 
 class FicheEmployeView(APIView):
@@ -257,7 +272,7 @@ class FicheEmployeView(APIView):
         if not is_comptabilite(request.user):
             recus = recus.filter(caissier=request.user)
         return Response({
-            'employe': employe_json(employe, _agences_actuelles([employe.id]).get(employe.id)),
+            'employe': employe_json(employe, _agences_actuelles([employe.id]).get(employe.id), request=request),
             **s,
             'derniers_recus': [recu_json(r) for r in recus[:10]],
         })
@@ -532,14 +547,93 @@ class ComptesRepasView(APIView):
             qs = qs.filter(solde__gte=cr.lire_montant(request.query_params['solde_min'], 'solde_min', zero_permis=True))
         qs = qs.order_by('user__nom', 'user__prenom')
         total = qs.aggregate(t=Sum('solde'))['t'] or ZERO
+        # Date du dernier mouvement du grand livre (et non la dernière écriture du compte)
+        qs = qs.annotate(dernier_mouvement=Max('mouvements__created_at'))
         pagination = StandardPagination()
         page = pagination.paginate_queryset(qs, request, view=self)
         agences = _agences_actuelles([c.user_id for c in page])
         r = pagination.get_paginated_response([
-            {**employe_json(c.user, agences.get(c.user_id), c.solde),
-             'mis_a_jour': timezone.localtime(c.updated_at).isoformat()} for c in page])
+            {**employe_json(c.user, agences.get(c.user_id), c.solde, request),
+             'dernier_mouvement': timezone.localtime(c.dernier_mouvement).isoformat() if c.dernier_mouvement else None,
+             'mis_a_jour': timezone.localtime(c.dernier_mouvement or c.updated_at).isoformat()} for c in page])
         r.data['total_soldes'] = _f(total)
         return r
+
+
+def mouvements_compte(employe, date_debut=None, date_fin=None, type_mouvement=None):
+    """Grand livre d'un compte sur la période (du plus récent) et totaux crédits / débits."""
+    qs = MouvementCompte.objects.filter(compte__user=employe).select_related('recu', 'created_by')
+    if date_debut:
+        qs = qs.filter(created_at__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(created_at__date__lte=date_fin)
+    if type_mouvement:
+        if type_mouvement not in dict(MouvementCompte.TYPE_CHOICES):
+            raise ValidationError({'type': "Type de mouvement invalide."})
+        qs = qs.filter(type=type_mouvement)
+    totaux = qs.aggregate(credits=Sum('montant', filter=Q(montant__gt=0)),
+                          debits=Sum('montant', filter=Q(montant__lt=0)))
+    return qs, {'credits': totaux['credits'] or ZERO, 'debits': totaux['debits'] or ZERO}
+
+
+class MouvementsCompteView(APIView):
+    """
+    GET /caisse/comptes/<user_id>/mouvements/?date_debut=&date_fin=&type=&page=&page_size=
+    Grand livre du compte repas d'un employé (comptabilité, administrateurs) :
+    date, type, libellé, montant signé, solde après, reçu. Paginé, du plus récent.
+    Exports : …/mouvements/pdf/ (A4) et …/mouvements/xlsx/ (Excel), mêmes filtres, sans pagination.
+    """
+    permission_classes = [IsComptabilite]
+    export = None
+
+    def get(self, request, pk):
+        employe = _employe(pk, actifs=False)
+        p = request.query_params
+        debut, fin = _date(p.get('date_debut')), _date(p.get('date_fin'))
+        if debut and fin and fin < debut:
+            raise ValidationError({'date_fin': "La date de fin précède la date de début."})
+        qs, totaux = mouvements_compte(employe, debut, fin, p.get('type') or None)
+        solde = CompteRepas.objects.filter(user=employe).values_list('solde', flat=True).first() or ZERO
+        agence = _agences_actuelles([employe.id]).get(employe.id)
+        if self.export:
+            from .pdf_caisse import generer_mouvements, generer_mouvements_xlsx
+            donnees = {'employe': employe_json(employe, agence), 'solde': solde, 'debut': debut, 'fin': fin,
+                       'totaux': totaux, 'mouvements': [mouvement_json(m) for m in qs]}
+            nom = f"mouvements-{employe.username}".lower()
+            if debut or fin:
+                nom += f"-{debut or ''}-{fin or ''}".replace('--', '-').rstrip('-')
+            if self.export == 'pdf':
+                contenu = generer_mouvements(donnees, ParametresSociete.charger())
+                return FileResponse(BytesIO(contenu), content_type='application/pdf', as_attachment=True,
+                                    filename=f"{nom}.pdf")
+            contenu = generer_mouvements_xlsx(donnees)
+            return FileResponse(BytesIO(contenu), as_attachment=True, filename=f"{nom}.xlsx",
+                                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        pagination = StandardPagination()
+        page = pagination.paginate_queryset(qs, request, view=self)
+        r = pagination.get_paginated_response([mouvement_json(m) for m in page])
+        r.data.update({
+            'employe': employe_json(employe, agence, request=request),
+            'solde': _f(solde),
+            'total_credits': _f(totaux['credits']), 'total_debits': _f(totaux['debits']),
+            'types': [{'code': c, 'libelle': l} for c, l in MouvementCompte.TYPE_CHOICES],
+        })
+        return r
+
+
+class CaissiersView(APIView):
+    """
+    GET /caisse/caissiers/   caissiers (rôle « caissier ») et toute personne ayant
+    émis un reçu (administrateur) : filtre du journal de caisse (comptabilité).
+    """
+    permission_classes = [IsComptabilite]
+
+    def get(self, request):
+        ids = set(User.objects.filter(groups__name='caissier').values_list('id', flat=True))
+        ids |= set(Recu.objects.values_list('caissier_id', flat=True).distinct())
+        users = User.objects.filter(id__in=ids).order_by('-is_active', 'nom', 'prenom', 'username')
+        return Response([{'id': u.id, 'nom_prenom': nom_complet(u), 'matricule': u.username, 'actif': u.is_active}
+                         for u in users])
 
 
 # ══════════════════════════════════════════════════════════════

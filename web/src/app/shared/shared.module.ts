@@ -10,6 +10,8 @@ import { BreadcrumbsComponent } from './breadcrumbs/breadcrumbs.component';
 import { PageEnteteComponent } from './page-entete/page-entete.component';
 import { ListePiedComponent } from './liste-pied/liste-pied.component';
 import { ProfilPrestataireEditeurComponent } from './profil-prestataire/profil-prestataire-editeur.component';
+import { SuiviEtapesComponent } from './suivi-releve/suivi-etapes.component';
+import { SuiviReleveDetailComponent } from './suivi-releve/suivi-releve-detail.component';
 
 @NgModule({
   declarations: [
@@ -17,6 +19,8 @@ import { ProfilPrestataireEditeurComponent } from './profil-prestataire/profil-p
     PageEnteteComponent,
     ListePiedComponent,
     ProfilPrestataireEditeurComponent,
+    SuiviEtapesComponent,
+    SuiviReleveDetailComponent,
   ],
   imports: [
     CommonModule,
@@ -26,6 +30,8 @@ import { ProfilPrestataireEditeurComponent } from './profil-prestataire/profil-p
     BsDropdownModule,
   ],
   // BsDropdownModule : menu « ⋮ » des actions de ligne (gabarit commun des listes)
-  exports: [BreadcrumbsComponent, PageEnteteComponent, ListePiedComponent, ProfilPrestataireEditeurComponent, BsDropdownModule, RouterModule]
+  // SuiviEtapes / SuiviReleveDetail : suivi des factures prestataires (espace prestataire et comptabilité)
+  exports: [BreadcrumbsComponent, PageEnteteComponent, ListePiedComponent, ProfilPrestataireEditeurComponent,
+            SuiviEtapesComponent, SuiviReleveDetailComponent, BsDropdownModule, RouterModule]
 })
 export class SharedModule { }

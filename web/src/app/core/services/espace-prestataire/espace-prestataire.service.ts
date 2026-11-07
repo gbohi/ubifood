@@ -207,6 +207,11 @@ export interface ReleveMois {
   nb_repas: number;
   montant: number;
   cloturee_le: string | null;
+  /** Suivi du relevé officiel (étape 3) : null avant la clôture */
+  statut?: string | null;
+  statut_libelle?: string | null;
+  /** Étape en cours (2 à 5), 6 : payé, 0 : mois non clôturé */
+  etape?: number;
 }
 
 export interface AccueilPresta {

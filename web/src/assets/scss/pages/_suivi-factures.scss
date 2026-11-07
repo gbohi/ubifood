@@ -1,0 +1,119 @@
+// Suivi des factures prestataires (étape 3) : « Relevés & factures » de l'espace
+// prestataire et « Paiements prestataires » de la comptabilité.
+// Préfixe « sf- » ; s'appuie sur _listes.scss, _espace-prestataire.scss et _caisse.scss.
+
+.ep-kpi-ic {
+  &.ro { background: #FDE8E4; color: #D9452B; }
+  &.gr { background: #EEF1F6; color: #4A5E7C; }
+}
+.sf-kpi { text-align: left; width: 100%; font: inherit; color: inherit; &.on { outline: 2px solid var(--ubi-navy2); outline-offset: -2px; } }
+
+// ── Étapes ──────────────────────────────────────────────────────
+.sf-etapes {
+  list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); counter-reset: none;
+  .sf-e { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; min-width: 0; }
+  // Liaison avec l'étape précédente
+  .sf-e + .sf-e::before {
+    content: ''; position: absolute; top: 14px; right: 50%; width: 100%; height: 2px; background: #DCE3ED; z-index: 0;
+  }
+  .sf-e.fait + .sf-e::before, .sf-e.fait + .sf-e.en_cours::before, .sf-e.fait + .sf-e.alerte::before { background: #3EC970; }
+  .sf-pastille {
+    position: relative; z-index: 1; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+    background: #fff; border: 2px solid #DCE3ED; color: #8A9AB2; font-weight: 700; font-size: 12.5px;
+    i { font-size: 16px; line-height: 1; }
+  }
+  .fait .sf-pastille { background: #3EC970; border-color: #3EC970; color: #fff; }
+  .en_cours .sf-pastille { border-color: var(--ubi-navy2); color: var(--ubi-navy2); box-shadow: 0 0 0 4px rgba(15, 58, 110, .12); }
+  .alerte .sf-pastille { background: #FDE8E4; border-color: #D9452B; color: #D9452B; box-shadow: 0 0 0 4px rgba(217, 69, 43, .12); }
+  .sf-e-txt { display: flex; flex-direction: column; gap: 1px; padding: 0 4px;
+    b { font-size: 12px; font-weight: 600; color: var(--ubi-navy); line-height: 1.2; }
+    small { font-size: 11px; color: var(--ubi-gris); }
+    em { font-style: normal; font-size: 10.5px; font-weight: 600; color: #C98A16; }
+  }
+  .a_venir .sf-e-txt b { color: #8A9AB2; font-weight: 500; }
+  .alerte .sf-e-txt em { color: #C4381F; }
+
+  // Mini-stepper (lignes de tableau)
+  &.compact {
+    display: inline-flex; gap: 0; align-items: center;
+    .sf-e { flex-direction: row; gap: 0; }
+    .sf-e + .sf-e { padding-left: 8px; }
+    .sf-e + .sf-e::before { top: 50%; right: auto; left: 0; width: 8px; transform: translateY(-50%); }
+    .sf-pastille { width: 18px; height: 18px; font-size: 9.5px; border-width: 1.5px; i { font-size: 11px; } }
+    .en_cours .sf-pastille, .alerte .sf-pastille { box-shadow: 0 0 0 3px rgba(15, 58, 110, .1); }
+    .alerte .sf-pastille { box-shadow: 0 0 0 3px rgba(217, 69, 43, .12); }
+  }
+}
+.sf-suivi-cell { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sf-attente { display: block; margin-top: 3px; font-size: 11.5px; }
+.lst-table tr.sf-ligne { cursor: pointer; &:hover td { background: #F8FAFC; } }
+
+// ── Tiroir de détail ────────────────────────────────────────────
+.sf-voile { position: fixed; inset: 0; background: rgba(9, 36, 64, .35); z-index: 1040; animation: sf-fondu .15s ease; }
+.sf-tiroir {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100vw); background: #fff; z-index: 1041;
+  display: flex; flex-direction: column; box-shadow: -12px 0 32px rgba(9, 36, 64, .18); animation: sf-glisse .2s ease;
+  color: var(--ubi-navy); font-size: 13px;
+}
+.sf-tiroir-hd {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--ubi-bord);
+  small { color: var(--ubi-gris); font-size: 12px; } h5 { margin: 2px 0 6px; font-size: 17px; font-weight: 700; color: var(--ubi-navy); }
+}
+.sf-tiroir-corps { flex: 1; overflow-y: auto; padding: 18px 20px 28px; }
+@keyframes sf-glisse { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sf-fondu { from { opacity: 0; } to { opacity: 1; } }
+
+.sf-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; > .cs-h6 { margin: 6px 0 -6px; } .ep-alerte { margin: 0; } }
+.sf-table-wrap { overflow-x: auto; }
+.sf-actions { display: grid; gap: 10px; &:empty { display: none; } }
+.sf-boutons { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sf-resume {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 10px; align-items: stretch;
+  > div:not(.sf-resume-pdf) { background: #F8FAFC; border-radius: 12px; padding: 10px 12px; min-width: 0;
+    small, span { display: block; color: var(--ubi-gris); font-size: 11px; } b { display: block; font-size: 15px; font-weight: 700; margin: 2px 0; } }
+  .sf-resume-pdf { display: flex; align-items: center; }
+}
+.sf-citation { font-style: italic; color: #3B5374 !important; }
+.sf-facture {
+  display: flex; gap: 12px; align-items: center; border: 1px solid var(--ubi-bord); border-radius: 12px; padding: 12px 14px;
+  &.refusee { border-color: #F8C9BE; background: #FEF8F6; }
+  &.paye { border-color: #BFEBD0; background: #F6FFF9; }
+}
+.sf-facture-ic { width: 38px; height: 38px; border-radius: 10px; background: #FDE8E4; color: #D9452B; display: grid; place-items: center; font-size: 19px; flex-shrink: 0;
+  .paye & { background: #EAFBF1; color: #1C7F45; } }
+.sf-facture-txt { flex: 1; min-width: 0; b { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-weight: 600; } small { display: block; color: var(--ubi-gris); font-size: 11.5px; } }
+.sf-facture-mt { text-align: right; display: grid; gap: 4px; justify-items: end; b { font-size: 15px; small { font-size: 10.5px; color: var(--ubi-gris); font-weight: 500; } } }
+
+// Historique
+.sf-histo {
+  list-style: none; margin: 0; padding: 0; position: relative;
+  li { display: flex; gap: 12px; position: relative; padding-bottom: 14px; }
+  li:not(:last-child)::before { content: ''; position: absolute; left: 14px; top: 30px; bottom: 0; width: 2px; background: #E6EBF2; }
+  b { display: block; font-size: 12.5px; font-weight: 600; } small { display: block; color: var(--ubi-gris); font-size: 11.5px; }
+}
+.sf-histo-ic {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; font-size: 15px; background: #EEF1F6; color: #4A5E7C;
+  &.ve { background: #EAFBF1; color: #1C7F45; } &.ro { background: #FDE8E4; color: #C4381F; }
+  &.bl { background: #E8F0FD; color: var(--ubi-navy2); } &.or { background: #FEF4E4; color: #9A6510; }
+}
+.sf-histo-com { margin: 4px 0 0; background: #F8FAFC; border-radius: 8px; padding: 6px 10px; font-size: 12px; white-space: pre-line; }
+
+// Formulaires (dépôt, paiement)
+.sf-controle {
+  margin-top: 6px; font-size: 12px; display: flex; gap: 6px; align-items: flex-start; border-radius: 8px; padding: 6px 10px;
+  &.ok { background: #EAFBF1; color: #1C7F45; } &.ecart { background: #FEF4E4; color: #9A6510; } i { font-size: 15px; }
+}
+.sf-fichier {
+  display: flex; gap: 12px; align-items: center; border: 1.5px dashed #C9D5E4; border-radius: 12px; padding: 12px 14px; cursor: pointer; margin: 0;
+  > i { font-size: 24px; color: var(--ubi-navy2); } b { display: block; font-size: 13px; } small { display: block; color: var(--ubi-gris); font-size: 11.5px; }
+  &:hover { border-color: var(--ubi-navy2); background: #F8FAFC; }
+  &.choisi { border-style: solid; border-color: #BFEBD0; background: #F6FFF9; > i { color: #D9452B; } }
+}
+.sf-recap { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; background: #F8FAFC; border-radius: 10px; padding: 8px 12px; font-size: 12.5px; margin-bottom: 12px; }
+
+@media (max-width: 767.98px) {
+  .sf-resume { grid-template-columns: repeat(2, minmax(0, 1fr)); .sf-resume-pdf { grid-column: 1 / -1; } }
+  .sf-etapes:not(.compact) .sf-e-txt { b { font-size: 10.5px; } small, em { font-size: 9.5px; } }
+  .sf-facture { flex-wrap: wrap; .sf-facture-txt { flex: 1 1 calc(100% - 52px); } .sf-facture-mt { text-align: left; justify-items: start; flex: 1; } }
+  .sf-tiroir-corps { padding: 14px 14px 24px; }
+}

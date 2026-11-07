@@ -26,7 +26,7 @@ const routes: Routes = [
   { path: 'a-preparer', component: APreparerComponent, canActivate: [RoleGuard], data: RESP, title: 'À préparer | Espace prestataire' },
   { path: 'liste-du-jour', component: ListeDuJourComponent, canActivate: [RoleGuard], data: TOUS, title: 'Liste du jour | Espace prestataire' },
   { path: 'comptoir', component: ComptoirComponent, canActivate: [RoleGuard], data: TOUS, title: 'Comptoir | Espace prestataire' },
-  { path: 'releves', component: RelevesPrestataireComponent, canActivate: [RoleGuard], data: RESP, title: 'Relevés | Espace prestataire' },
+  { path: 'releves', component: RelevesPrestataireComponent, canActivate: [RoleGuard], data: RESP, title: 'Relevés & factures | Espace prestataire' },
   { path: 'statistiques', component: StatistiquesPrestataireComponent, canActivate: [RoleGuard], data: RESP, title: 'Statistiques | Espace prestataire' },
   { path: 'profil', component: ProfilPrestataireComponent, canActivate: [RoleGuard], data: RESP, title: 'Mon profil prestataire | Espace prestataire' },
   { path: 'equipe', component: EquipeComponent, canActivate: [RoleGuard], data: RESP, title: 'Mon équipe | Espace prestataire' },

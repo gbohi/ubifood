@@ -471,6 +471,7 @@ def cloturer_mois(annee, mois, par_user):
         raise ClotureImpossible(f"Le mois {mois:02d}/{annee} est déjà clôturé.")
 
     from .comptes_repas import regler_a_la_cloture
+    from .suivi_factures import releve_emis
     commandes_mois = Commande.objects.filter(menu__date_menu__gte=debut, menu__date_menu__lte=fin)
     try:
         with transaction.atomic():
@@ -522,6 +523,8 @@ def cloturer_mois(annee, mois, par_user):
                         agence_nom=l['agence_menu'], montant=l['montant'],
                     ) for a in p['agents'] for l in a['lignes']
                 ])
+                # Étape 1 du suivi : relevé émis (historique, notification du prestataire)
+                releve_emis(facture_p, par_user)
             for e in employes:
                 facture = FactureMensuelle.objects.create(
                     cloture=cloture, user_id=e['user_id'], annee=annee, mois=mois,

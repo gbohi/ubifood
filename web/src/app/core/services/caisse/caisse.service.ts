@@ -22,6 +22,8 @@ export interface Page<T> { count: number; next: string | null; previous: string 
 export interface EmployeCaisse {
   id: number; nom: string; prenoms: string; nom_prenom: string; matricule: string;
   agence: string | null; actif: boolean; solde?: number;
+  /** Photo de profil (URL absolue) ; null : initiales */
+  photo_url?: string | null;
 }
 
 export interface ModePaiementInfo { code: ModePaiement; libelle: string; actif: boolean }
@@ -108,7 +110,20 @@ export interface JournalCaisse {
   clotures: ClotureCaisse[];
 }
 
-export interface CompteSolde extends EmployeCaisse { solde: number; mis_a_jour: string }
+export interface CompteSolde extends EmployeCaisse {
+  solde: number;
+  /** Date du dernier mouvement du compte (null : aucun) */
+  dernier_mouvement: string | null;
+  mis_a_jour: string;
+}
+
+/** Grand livre d'un compte (comptabilité) : page de mouvements + synthèse de la période */
+export interface MouvementsCompte extends Page<Mouvement> {
+  employe: EmployeCaisse; solde: number; total_credits: number; total_debits: number;
+  types: { code: string; libelle: string }[];
+}
+
+export interface Caissier { id: number; nom_prenom: string; matricule: string; actif: boolean }
 
 /** Libellés et couleurs (classes lst-tag) des statuts de repas — contrat d'API §1 */
 export const STATUTS_REPAS: Record<StatutRepas, { court: string; classe: string; icone: string }> = {
@@ -258,6 +273,21 @@ export class CaisseService {
 
   comptes(filtres: Record<string, any>): Observable<Page<CompteSolde> & { total_soldes: number }> {
     return this.http.get<Page<CompteSolde> & { total_soldes: number }>(`${this.api}/caisse/comptes/`, { params: params(filtres) });
+  }
+
+  /** Mouvements du compte repas d'un employé (comptabilité), paginés, filtres de dates et de type */
+  mouvementsCompte(userId: number, filtres: Record<string, any>): Observable<MouvementsCompte> {
+    return this.http.get<MouvementsCompte>(`${this.api}/caisse/comptes/${userId}/mouvements/`, { params: params(filtres) });
+  }
+
+  /** Export des mouvements (mêmes filtres, sans pagination) : PDF A4 ou Excel */
+  exportMouvements(userId: number, format: 'pdf' | 'xlsx', filtres: Record<string, any>): Observable<Blob> {
+    return this.http.get(`${this.api}/caisse/comptes/${userId}/mouvements/${format}/`, { params: params(filtres), responseType: 'blob' });
+  }
+
+  /** Caissiers (filtre du journal de caisse, comptabilité) */
+  caissiers(): Observable<Caissier[]> {
+    return this.http.get<Caissier[]>(`${this.api}/caisse/caissiers/`);
   }
 
   // ── Espace employé ────────────────────────────────────────
