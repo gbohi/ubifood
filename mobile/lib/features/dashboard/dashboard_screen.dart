@@ -464,7 +464,7 @@ class _BlocGestion extends StatelessWidget {
             onScanner: onScanner,
             onActualiser: prov.charger,
           ),
-          for (final alerte in g.menusManquants) ...[
+          for (final alerte in g.alertes) ...[
             const SizedBox(height: 10),
             AlerteMenuManquant(alerte: alerte),
           ],

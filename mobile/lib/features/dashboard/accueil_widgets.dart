@@ -797,9 +797,12 @@ class AlerteMenuManquant extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final couleur = isDark ? const Color(0xFFFF8A75) : _rougeTexte;
+    final sansAgence = alerte.estEmployesSansAgence;
     final agences = alerte.agences;
-    final texte = '${alerte.titre}'
-        '${agences.isNotEmpty ? ' ($agences)' : ''} — à créer sur le web';
+    final texte = sansAgence
+        ? '${alerte.titre} — agence à renseigner sur le web'
+        : '${alerte.titre}'
+            '${agences.isNotEmpty ? ' ($agences)' : ''} — à créer sur le web';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -808,7 +811,8 @@ class AlerteMenuManquant extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(children: [
-        Icon(Icons.event_busy_rounded, size: 18, color: couleur),
+        Icon(sansAgence ? Icons.person_off_outlined : Icons.event_busy_rounded,
+            size: 18, color: couleur),
         const SizedBox(width: 10),
         Expanded(
           child: Text(texte,

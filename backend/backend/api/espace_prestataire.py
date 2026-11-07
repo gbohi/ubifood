@@ -45,7 +45,8 @@ from .permissions import (
     agences_prestataire, get_roles, is_prestataire_responsable,
 )
 from .prestataires import (
-    filtre_menus_prestataire, historique_json, horaires_service, menus_du_prestataire, tracer_menu,
+    equipes_horaires_json, filtre_menus_prestataire, historique_json, horaires_menus, horaires_service,
+    menus_du_prestataire, tracer_menu,
 )
 from .serializers import (
     MenuSerializer, PlatImageSerializer, PlatImageUploadSerializer, commandes_actives,
@@ -946,12 +947,18 @@ class ComptoirServiceView(APIView):
         for p in plats:
             p['externes'] = externes.get(p['plat_id'], 0)
         ag = Agence.objects.get(pk=agence)
-        debut, fin = horaires_service(ag)
+        # Horaires des équipes des menus du jour (sinon de l'agence, sinon par défaut)
+        parametres = ParametresSociete.charger()
+        debut, fin = horaires_menus(ag, menus, parametres)
+        horaires_eq = {e['id']: e for e in equipes_horaires_json(ag, menus, parametres)}
         return Response({
             'date': timezone.localdate().isoformat(),
             'agence': {'id': ag.id, 'nom': ag.nom_agence, 'heure_debut_service': debut.strftime('%H:%M'),
                        'heure_fin_service': fin.strftime('%H:%M')},
-            'menus': [{'id': m.id, 'typeequipe_libelle': m.typeequipe.libelle} for m in menus],
+            'menus': [{'id': m.id, 'typeequipe_libelle': m.typeequipe.libelle,
+                       'heure_debut_service': horaires_eq[m.typeequipe_id]['heure_debut_service'],
+                       'heure_fin_service': horaires_eq[m.typeequipe_id]['heure_fin_service']}
+                      for m in menus],
             'commandees': commandees, 'servies': servies, 'a_servir': commandees - servies,
             'pct_servis': round(servies / commandees * 100) if commandees else 0,
             'externes': sum(externes.values()),
@@ -1131,7 +1138,7 @@ class RelevesView(APIView):
 # ACCUEIL DU RESPONSABLE
 # ══════════════════════════════════════════════════════════════
 
-def _service_agence(menus, images):
+def _service_agence(menus, images, agence_id=None):
     ids = [m.id for m in menus]
     actives = Commande.objects.filter(menu_id__in=ids, statut__in=ACTIVES)
     plats = [{'plat_id': r['plat_id'], 'plat': r['plat__nom'], 'image_url': images.get(r['plat_id']),
@@ -1140,8 +1147,15 @@ def _service_agence(menus, images):
              .annotate(c=Count('id'), s=Count('id', filter=Q(statut='retiree'))).order_by('-c', 'plat__nom')]
     c = sum(p['commandees'] for p in plats)
     s = sum(p['servies'] for p in plats)
-    return {'commandees': c, 'servies': s, 'a_servir': c - s,
-            'pct_servis': round(s / c * 100) if c else 0, 'plats': plats}
+    donnees = {'commandees': c, 'servies': s, 'a_servir': c - s,
+               'pct_servis': round(s / c * 100) if c else 0, 'plats': plats}
+    if agence_id is not None:
+        # Employés d'une autre agence que celle du menu (« dont N autres agences »)
+        from .parcours_commande import agences_origine, est_externe
+        users = list(actives.values_list('user_id', flat=True))
+        origines = agences_origine(users)
+        donnees['externes'] = sum(est_externe(origines.get(u), agence_id) for u in users)
+    return donnees
 
 
 def equipe_du_jour(prestataire_id, d):
@@ -1174,15 +1188,21 @@ class AccueilPrestataireView(APIView):
         noms = {a['id']: a['nom'] for a in agences_json}
 
         # Service du jour par agence
-        menus_jour = list(menus_du_prestataire(p.id).filter(date_menu=aujourdhui))
+        menus_jour = list(menus_du_prestataire(p.id).filter(date_menu=aujourdhui)
+                          .select_related('agence', 'typeequipe'))
         images = _images(set(Commande.objects.filter(menu__in=menus_jour).values_list('plat_id', flat=True)))
         service = []
         for a in agences_json:
             menus = [m for m in menus_jour if m.agence_id == a['id']]
             if menus:
+                # Horaires des équipes servies aujourd'hui (sinon de l'agence)
+                ag = menus[0].agence
+                debut, fin = horaires_menus(ag, menus, parametres)
                 service.append({'agence_id': a['id'], 'agence_nom': a['nom'],
-                                'heure_debut_service': a['heure_debut_service'],
-                                'heure_fin_service': a['heure_fin_service'], **_service_agence(menus, images)})
+                                'heure_debut_service': debut.strftime('%H:%M'),
+                                'heure_fin_service': fin.strftime('%H:%M'),
+                                'equipes': equipes_horaires_json(ag, menus, parametres),
+                                **_service_agence(menus, images, a['id'])})
 
         # À préparer : prochain jour de service (demain, ou premier jour suivant avec des commandes)
         prochain = aujourdhui + timedelta(days=1)

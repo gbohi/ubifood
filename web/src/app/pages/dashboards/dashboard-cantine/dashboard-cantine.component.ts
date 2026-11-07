@@ -144,11 +144,18 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
 
   detailAgence(a: AccueilServiceAgence): string {
     const equipes = a.equipes?.length ? a.equipes.join(', ') : 'Menu du jour';
-    return `${equipes} · ${a.nb_plats} plat${a.nb_plats > 1 ? 's' : ''}`;
+    const horaires = a.heure_debut_service && a.heure_fin_service ? ` · ${a.heure_debut_service} – ${a.heure_fin_service}` : '';
+    return `${equipes}${horaires} · ${a.nb_plats} plat${a.nb_plats > 1 ? 's' : ''}`;
   }
 
-  styleAFaire(t: AccueilAFaire): { pastille: string; icone: string; action: string; lien: string } {
+  styleAFaire(t: AccueilAFaire): {
+    pastille: string; icone: string; action: string; lien: string | null; params?: Record<string, string>;
+  } {
     switch (t.type) {
+      case 'employes_sans_agence':
+        // Paramètres → Utilisateurs filtré sur « Aucune agence » (administrateurs)
+        return { pastille: 'p-or', icone: 'ri-user-unfollow-line', action: 'Renseigner',
+                 lien: t.lien_utilisateurs ? '/parametres/user' : null, params: { agence: 'aucune', role: 'employe' } };
       case 'menu_manquant':
         return { pastille: 'p-ro', icone: 'ri-calendar-event-line', action: 'Créer', lien: '/cantines/liste-menus' };
       case 'fermeture':

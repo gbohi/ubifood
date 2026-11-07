@@ -797,4 +797,218 @@ void main() {
       });
     }
   });
+
+  // ── Finitions : équipe de l'employé, annulation, employé sans agence ──
+  group('Finitions du parcours', () {
+    test('modèles : agence non renseignée, mon équipe, annulation', () {
+      final sans = AgencesCommande.fromJson({
+        'mon_agence_id': null,
+        'sans_agence': true,
+        'equipe_utilisateur': {'id': 2, 'libelle': 'Nuit'},
+        'agences': [],
+      });
+      expect((sans.sansAgence, sans.agenceNonRenseignee), (true, true));
+      expect(sans.equipeUtilisateur!.libelle, 'Nuit');
+      // Ancien serveur (sans « sans_agence ») : déduit de mon_agence_id
+      final ancien = AgencesCommande.fromJson(_agencesJson());
+      expect((ancien.sansAgence, ancien.agenceNonRenseignee), (false, false));
+      // Prestataire : équipe de l'utilisateur
+      final p = PrestataireCommande.fromJson({
+        ..._prestaA(),
+        'equipes': [
+          {'id': 2, 'libelle': 'Nuit', 'mon_equipe': true},
+          {'id': 1, 'libelle': 'Journée', 'mon_equipe': false},
+        ],
+      });
+      expect(p.sertMonEquipe, isTrue);
+      expect(PrestataireCommande.fromJson(_prestaA()).sertMonEquipe, isFalse);
+      // Équipes : présélection (seule équipe, sinon la mienne)
+      final e = EquipesPrestataire.fromJson({
+        ..._equipesJson(),
+        'equipe_utilisateur': {'id': 2, 'libelle': 'Nuit'}
+      });
+      expect(e.equipeUtilisateur!.id, 2);
+      expect(e.equipeParDefaut!.id, 2);
+      final aucune = EquipesPrestataire.fromJson({
+        ..._equipesJson(),
+        'equipes': [
+          {'id': 1, 'libelle': 'Journée', 'mon_equipe': null},
+          {'id': 3, 'libelle': 'Week-end', 'mon_equipe': null},
+        ],
+      });
+      expect(aucune.equipeParDefaut, isNull);
+      // Jour et plat : date limite d'annulation
+      final j = JourCommande.fromJson({
+        ..._jour(2, 'a_reserver'),
+        'date_limite_annulation': '${_iso(0)}T00:00:00+00:00',
+        'libelle_annulation': 'dimanche à minuit',
+      });
+      expect(j.dateLimiteAnnulation, DateTime.parse('${_iso(0)}T00:00:00Z'));
+      expect(j.libelleAnnulation, 'dimanche à minuit');
+      final pl = PlatJour.fromJson({
+        ..._plat(1, 'Garba', 2, 'disponible'),
+        'date_limite_annulation': '${_iso(1)}T10:00:00+00:00',
+        'libelle_annulation': 'lundi à 10:00',
+      });
+      expect(pl.dateLimiteAnnulation, DateTime.parse('${_iso(1)}T10:00:00Z'));
+      final jours = JoursCommande.fromJson({
+        ..._joursJson(),
+        'equipe': {'id': 2, 'libelle': 'Nuit', 'mon_equipe': true}
+      });
+      expect(jours.equipeMonEquipe, isTrue);
+      expect(JoursCommande.fromJson(_joursJson()).equipeMonEquipe, isNull);
+    });
+
+    test('retrait, accueil : employé d\'une autre agence, sans agence', () {
+      final r = RechercheParBadgeResult.fromJson({
+        'user_id': 4,
+        'user_nom': 'KONAN Yao',
+        'badge': 'M3101',
+        'a_retire': false,
+        'externe': true,
+        'agence_origine': 'Yopougon',
+        'commandes': [],
+      });
+      expect((r.externe, r.agenceOrigine), (true, 'Yopougon'));
+      final g = AccueilGestion.fromJson({
+        'a_faire': [
+          {'type': 'cloture', 'titre': '10/2099 non clôturé'},
+          {
+            'type': 'employes_sans_agence',
+            'titre': '2 employés sans agence ne peuvent pas commander',
+            'nb': 2
+          },
+          {'type': 'menu_manquant', 'titre': 'Pas de menu lundi'},
+        ]
+      });
+      expect(g.alertes.map((a) => a.type),
+          ['menu_manquant', 'employes_sans_agence']);
+    });
+
+    testWidgets('page 1 : agence non renseignée, aucune agence ouverte',
+        (tester) async {
+      await _ouvrir(tester, service: _FauxSansAgence(ouvertes: false));
+      expect(find.byKey(const Key('agence-non-renseignee')), findsOneWidget);
+      expect(
+          find.text("Votre agence n'est pas renseignée — contactez votre "
+              'gestionnaire'),
+          findsOneWidget);
+      expect(find.byKey(const Key('bandeau-sans-agence')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('page 1 : sans agence, agences ouvertes : bandeau',
+        (tester) async {
+      await _ouvrir(tester, service: _FauxSansAgence(ouvertes: true));
+      expect(find.byKey(const Key('agence-non-renseignee')), findsNothing);
+      expect(find.byKey(const Key('bandeau-sans-agence')), findsOneWidget);
+      expect(find.text('1 prestataire à Yopougon'), findsOneWidget);
+    });
+
+    testWidgets('page 2 : mon équipe en premier et présélectionnée',
+        (tester) async {
+      await _ouvrir(tester, service: _FauxMonEquipe());
+      expect(find.textContaining('Nuit (mon équipe)'), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('presta-1')));
+      final nuit = tester.getTopLeft(find.byKey(const Key('equipe-2')));
+      final journee = tester.getTopLeft(find.byKey(const Key('equipe-1')));
+      expect(nuit.dy, lessThan(journee.dy));
+      expect(
+          find.descendant(
+              of: find.byKey(const Key('equipe-2')),
+              matching: find.text('Mon équipe')),
+          findsOneWidget);
+      // Il peut choisir une autre équipe
+      await _tap(tester, find.byKey(const Key('equipe-1')));
+      expect(find.text('Choisissez votre équipe'), findsNothing);
+    });
+
+    testWidgets('page 3 et fiche du plat : « Annulable jusqu\'au … »',
+        (tester) async {
+      await _ouvrir(tester, service: _FauxMonEquipe());
+      await _tap(tester, find.byKey(const Key('presta-1')));
+      await _tap(tester, find.byKey(const Key('equipe-2')));
+      expect(find.text('Équipe Nuit (mon équipe) · Siège Plateau'),
+          findsOneWidget);
+      final texte = "Annulable jusqu'au "
+          '${libelleDateLimite(DateTime.parse('${_iso(1)}T00:00:00Z'))}';
+      expect(find.byKey(const Key('annulable-jusqua')), findsOneWidget);
+      expect(find.text(texte), findsOneWidget);
+      // Fiche du plat (avant de commander) : même date limite
+      await _tap(tester, find.text('Garba thon frit'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text(texte), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    });
+  });
+}
+
+/// Employé sans agence : agences ouvertes ou non
+class _FauxSansAgence extends _FauxParcours {
+  final bool ouvertes;
+  _FauxSansAgence({required this.ouvertes});
+
+  @override
+  Future<AgencesCommande> agences() async {
+    appels.add('agences');
+    final yop = (_agencesJson()['agences'] as List)[1];
+    return AgencesCommande.fromJson({
+      'date': '2099-11-07',
+      'mon_agence_id': null,
+      'sans_agence': true,
+      'equipe_utilisateur': null,
+      'agences': ouvertes ? [yop] : [],
+    });
+  }
+}
+
+/// Employé de l'équipe « Nuit » : équipes (la sienne d'abord), jours avec la
+/// date limite d'annulation
+class _FauxMonEquipe extends _FauxParcours {
+  @override
+  Future<PrestatairesAgence> prestataires(int agenceId,
+      {DateTime? date}) async {
+    appels.add('prestataires:$agenceId');
+    final j = _prestatairesJson(agenceId);
+    final a = j['prestataires'][0] as Map<String, dynamic>;
+    a['equipes'] = [
+      {'id': 2, 'libelle': 'Nuit', 'mon_equipe': true},
+      {'id': 1, 'libelle': 'Journée', 'mon_equipe': false},
+    ];
+    return PrestatairesAgence.fromJson(j);
+  }
+
+  @override
+  Future<EquipesPrestataire> equipes(int prestataireId, int agenceId) async {
+    appels.add('equipes:$prestataireId:$agenceId');
+    final j = _equipesJson();
+    final equipes = (j['equipes'] as List).cast<Map<String, dynamic>>();
+    equipes[0]['mon_equipe'] = false;
+    return EquipesPrestataire.fromJson({
+      ...j,
+      'equipe_utilisateur': {'id': 2, 'libelle': 'Nuit'},
+      'equipes': equipes.reversed.toList(),
+    });
+  }
+
+  @override
+  Future<JoursCommande> jours(
+      {required int agenceId,
+      required int prestataireId,
+      int? equipeId,
+      DateTime? semaine}) async {
+    appels.add('jours:$agenceId:$prestataireId:$equipeId');
+    final j = _joursJson();
+    j['equipe'] = {'id': 2, 'libelle': 'Nuit', 'mon_equipe': true};
+    for (final jour in (j['jours'] as List).cast<Map<String, dynamic>>()) {
+      final d = DateTime.parse(jour['date'] as String);
+      final limite = '${isoJour(d.subtract(const Duration(days: 1)))}'
+          'T00:00:00+00:00';
+      jour['date_limite_annulation'] = limite;
+      for (final p in (jour['plats'] as List).cast<Map<String, dynamic>>()) {
+        p['date_limite_annulation'] = limite;
+      }
+    }
+    return JoursCommande.fromJson(j);
+  }
 }

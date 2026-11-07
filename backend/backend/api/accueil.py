@@ -17,8 +17,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import facturation as fact
-from .models import Agence, Commande, Menu, MenuPlat, ParametresSociete, PlatImage
-from .permissions import IsAuthenticated, agences_gerees, is_gestionnaire
+from .models import Agence, Commande, Menu, MenuPlat, ParametresSociete, PlatImage, User
+from .permissions import (
+    GESTIONNAIRE_ROLES, ROLE_EMPLOYE, IsAuthenticated, agences_gerees, is_admin, is_gestionnaire,
+)
 from .serializers import agence_actuelle, date_limite_commande, libelle_date_limite
 
 JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
@@ -153,6 +155,37 @@ class AccueilView(APIView):
         return Response(donnees)
 
     # ── Gestionnaire / administrateur ─────────────────────────────────
+    @staticmethod
+    def employes_sans_agence():
+        """Employés actifs sans aucune agence (ni gestionnaires ni administrateurs)."""
+        return (User.objects.filter(is_active=True, groups__name=ROLE_EMPLOYE, useragence__isnull=True)
+                .exclude(groups__name__in=GESTIONNAIRE_ROLES).distinct())
+
+    def _employes_sans_agence(self, user):
+        """
+        Alerte « N employés sans agence ne peuvent pas commander » : ils ne
+        commandent que dans les agences ouvertes aux autres agences. Lien vers
+        Paramètres → Utilisateurs filtré sur « Aucune agence » (administrateurs).
+        """
+        nb = self.employes_sans_agence().count()
+        if not nb:
+            return None
+        ouvertes = Agence.objects.filter(accepter_autres_agences=True).count()
+        titre = (f"{nb} employé{'s' if nb > 1 else ''} sans agence "
+                 f"ne peu{'vent' if nb > 1 else 't'} pas commander")
+        if ouvertes:
+            detail = (f"Seule{'s' if ouvertes > 1 else ''} {ouvertes} agence{'s' if ouvertes > 1 else ''} "
+                      f"ouverte{'s' if ouvertes > 1 else ''} aux autres agences leur "
+                      f"{'sont accessibles' if ouvertes > 1 else 'est accessible'} · renseignez leur agence")
+        else:
+            detail = "Aucune agence n'accepte les autres agences · renseignez leur agence"
+        if not is_admin(user):
+            detail += " (Paramètres → Utilisateurs, administrateurs)"
+        return {'type': 'employes_sans_agence', 'nb': nb, 'agences_ouvertes': ouvertes,
+                'titre': titre, 'detail': detail,
+                # Paramètres → Utilisateurs est réservé aux administrateurs
+                'lien_utilisateurs': is_admin(user)}
+
     def _gestion(self, user, aujourdhui, maintenant, jours, parametres):
         geres = agences_gerees(user)
         menus = Menu.objects.all()
@@ -180,9 +213,13 @@ class AccueilView(APIView):
             users = list(commandes.filter(menu__in=menus_jour, statut__in=ACTIVES).values_list('user_id', flat=True))
             origines = agences_origine(users)
             externes = sum(est_externe(origines.get(u), ag.id) for u in users)
+            from .prestataires import horaires_menus
+            debut, fin = horaires_menus(ag, menus_jour, parametres)
             service.append({
                 'agence_id': ag.id, 'agence': ag.nom_agence,
                 'equipes': sorted({m.typeequipe.libelle for m in menus_jour if m.typeequipe_id}),
+                # Horaires de retrait des équipes du jour (sinon de l'agence)
+                'heure_debut_service': debut.strftime('%H:%M'), 'heure_fin_service': fin.strftime('%H:%M'),
                 'nb_plats': MenuPlat.objects.filter(menu__in=menus_jour).values('plat').distinct().count(),
                 'commandees': c['commandees'], 'servies': c['servies'],
                 'a_servir': c['commandees'] - c['servies'],
@@ -252,6 +289,9 @@ class AccueilView(APIView):
                                 'detail': "Clôturez le mois pour figer la facturation"})
 
         a_faire += manquants_a_faire
+        sans_agence = self._employes_sans_agence(user)
+        if sans_agence:
+            a_faire.append(sans_agence)
 
         return {
             'agences': [a.nom_agence for a in agences],

@@ -843,8 +843,10 @@ class _PlatDetailSheetState extends State<_PlatDetailSheet> {
                 cmdProv.isLoading ? null : () => _reserver(context, cmdProv),
           ),
           if (menu.dateLimiteAnnulation != null)
-            aide('Annulable jusqu\'au '
-                '${libelleDateLimite(menu.dateLimiteAnnulation!)}'),
+            aide(menu.annulationFermee
+                ? 'Non annulable : délai d\'annulation dépassé'
+                : 'Annulable jusqu\'au '
+                    '${libelleDateLimite(menu.dateLimiteAnnulation!)}'),
         ];
     }
 

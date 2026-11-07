@@ -79,6 +79,8 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
   // ── Étape 1 : agences + prestataires ─────────────────────────
   agences: AgenceCommande[] = [];
   monAgenceId: number | null = null;
+  /** Employé sans agence : il ne commande que dans les agences ouvertes aux autres agences */
+  sansAgence = false;
   agenceId: number | null = null;
   prestataires: PrestataireCarte[] = [];
   dateListe = '';
@@ -179,6 +181,7 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
         this.chargementAgences = false;
         this.agences = r.agences ?? [];
         this.monAgenceId = r.mon_agence_id;
+        this.sansAgence = r.sans_agence ?? r.mon_agence_id == null;
         const memorisee = this.agenceMemorisee();
         const choix = this.agences.find(a => a.id === memorisee)
           ?? this.agences.find(a => a.id === r.mon_agence_id)
@@ -269,8 +272,10 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
         this.chargementEquipes = false;
         this.prestataire = { ...p, ...r.prestataire };
         this.equipes = r.equipes ?? [];
-        // Une seule équipe : choisie d'office (les puces restent visibles)
+        // Une seule équipe : choisie d'office (les puces restent visibles).
+        // Équipe de l'employé (renvoyée en premier) : présélectionnée, il peut en choisir une autre
         if (this.equipes.length === 1) this.choisirEquipe(this.equipes[0]);
+        else this.equipe = this.equipes.find(e => e.mon_equipe) ?? null;
       },
       error: err => {
         this.chargementEquipes = false;
@@ -344,6 +349,8 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
     if (e < 3 && (this.successMessage || this.error)) this.store.dispatch(resetCommandeError());
     this.etape = e;
     if (e < 3) this.derniereCommande = null;
+    // Étape 3 depuis le fil avec l'équipe présélectionnée : jours à charger
+    if (e === 3 && this.equipe && !this.semaine && !this.chargementJours) this.chargerJours(null);
   }
 
   retour(): void {
@@ -376,6 +383,19 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
   /** Équipes d'une carte : « Journée, Nuit » */
   nomsEquipes(p: PrestataireCarte): string {
     return (p.equipes ?? []).map(e => e.libelle).join(', ');
+  }
+
+  /** Icône d'une équipe d'après son libellé (comme l'application) : 0 jour, 1 nuit / soir, 2 week-end */
+  styleEquipe(libelle: string): number {
+    const l = (libelle ?? '').toLowerCase();
+    if (l.includes('nuit') || l.includes('soir')) return 1;
+    if (l.includes('week') || l.includes('sam') || l.includes('dim')) return 2;
+    return 0;
+  }
+
+  /** Le prestataire propose des menus pour l'équipe de l'employé */
+  aMonEquipe(p: PrestataireCarte): boolean {
+    return (p.equipes ?? []).some(e => e.mon_equipe);
   }
 
   horaires(e: { heure_debut_service?: string | null; heure_fin_service?: string | null }): string {

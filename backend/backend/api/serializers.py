@@ -211,6 +211,43 @@ class AgencePrestataireSerializer(_PeriodeMixin, serializers.ModelSerializer):
 IMAGE_PROFIL_TAILLE_MAX = 5 * 1024 * 1024
 
 
+class TagsField(serializers.Field):
+    """
+    Mots-clés du profil prestataire : liste JSON (« ["Ivoirien", "Grillades"] »),
+    texte JSON de liste ou mots séparés par des virgules (« Ivoirien,Grillades »),
+    y compris en multipart (où JSONField refusait « a,b » : JSON invalide), ou
+    champ « tags » répété. La validation fine est faite par validate_tags.
+    """
+
+    def get_value(self, dictionary):
+        from rest_framework.utils import html
+        if html.is_html_input(dictionary) and self.field_name in dictionary:
+            valeurs = dictionary.getlist(self.field_name)
+            # Plusieurs champs « tags » : une valeur par mot-clé ; champ vide : aucun mot-clé
+            return valeurs if len(valeurs) > 1 else valeurs[-1]
+        return super().get_value(dictionary)
+
+    def to_internal_value(self, data):
+        if data is None or data == '':
+            return []
+        if isinstance(data, str):
+            import json
+            texte = data.strip()
+            if texte.startswith('['):
+                try:
+                    data = json.loads(texte)
+                except ValueError:
+                    raise serializers.ValidationError("tags : liste de mots-clés attendue.")
+            else:
+                data = texte.split(',')
+        if not isinstance(data, (list, tuple)) or not all(isinstance(t, str) for t in data):
+            raise serializers.ValidationError("tags : liste de mots-clés attendue.")
+        return list(data)
+
+    def to_representation(self, value):
+        return list(value or [])
+
+
 class _ProfilPrestataireMixin:
     """
     Profil public du prestataire (parcours de commande des employés) :
@@ -297,7 +334,7 @@ class PrestataireProfilSerializer(_ProfilPrestataireMixin, serializers.ModelSeri
     logo_url = serializers.SerializerMethodField()
     photo_couverture_url = serializers.SerializerMethodField()
     nom_public = serializers.SerializerMethodField()
-    tags = serializers.JSONField(required=False)
+    tags = TagsField(required=False)
     supprimer_logo = serializers.BooleanField(write_only=True, required=False, default=False)
     supprimer_photo_couverture = serializers.BooleanField(write_only=True, required=False, default=False)
 
@@ -315,7 +352,7 @@ class PrestataireSerializer(_ProfilPrestataireMixin, serializers.ModelSerializer
     logo_url = serializers.SerializerMethodField()
     photo_couverture_url = serializers.SerializerMethodField()
     nom_public = serializers.SerializerMethodField()
-    tags = serializers.JSONField(required=False)
+    tags = TagsField(required=False)
     supprimer_logo = serializers.BooleanField(write_only=True, required=False, default=False)
     supprimer_photo_couverture = serializers.BooleanField(write_only=True, required=False, default=False)
     plat_prestataires   = PlatPrestataireSerializer(
@@ -439,6 +476,10 @@ class UserSerializer(serializers.ModelSerializer):
     prestataire = serializers.PrimaryKeyRelatedField(
         queryset=Prestataire.objects.all(), required=False, allow_null=True)
     prestataire_libelle = serializers.ReadOnlyField(source='prestataire.libelle')
+    # Équipe de l'employé (parcours de commande : « Mon équipe »)
+    typeequipe = serializers.PrimaryKeyRelatedField(
+        queryset=TypeEquipe.objects.all(), required=False, allow_null=True)
+    typeequipe_libelle = serializers.ReadOnlyField(source='typeequipe.libelle')
 
     # Noms des rôles (super_admin, admin, gestionnaire, employe) :
     # les clients s'appuient dessus plutôt que sur des IDs de groupe.
@@ -474,6 +515,8 @@ class UserSerializer(serializers.ModelSerializer):
             'statut', 'statut_libelle',
             'last_login', 'last_logout', 'is_active', 'is_superuser',
             'groups', 'roles', 'prestataire', 'prestataire_libelle',
+            # Équipe de l'employé (facultative)
+            'typeequipe', 'typeequipe_libelle',
             # Listes complètes
             'user_services', 'user_agences', 'user_postes',
             'user_categoriesalaries', 'user_allergies',
@@ -780,9 +823,28 @@ class TypePlatSerializer(serializers.ModelSerializer):
 
 
 class TypeEquipeSerializer(serializers.ModelSerializer):
+    """
+    Types d'équipe. Horaires de retrait facultatifs (les deux ou aucun ; vides :
+    horaires de service de l'agence, sinon ceux par défaut).
+    """
     class Meta:
         model = TypeEquipe
         fields = '__all__'
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        inst = self.instance
+        debut = attrs.get('heure_debut_retrait', getattr(inst, 'heure_debut_retrait', None))
+        fin = attrs.get('heure_fin_retrait', getattr(inst, 'heure_fin_retrait', None))
+        if bool(debut) != bool(fin):
+            champ = 'heure_fin_retrait' if debut else 'heure_debut_retrait'
+            raise serializers.ValidationError(
+                {champ: "Renseignez les deux heures de retrait, ou laissez-les vides "
+                        "(horaires de l'agence)."})
+        if debut and fin and fin <= debut:
+            raise serializers.ValidationError(
+                {'heure_fin_retrait': "L'heure de fin du retrait doit être après l'heure de début."})
+        return attrs
 
 
 class PlatImageSerializer(serializers.ModelSerializer):

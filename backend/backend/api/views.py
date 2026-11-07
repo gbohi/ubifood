@@ -288,10 +288,20 @@ class UserFilter(django_filters.FilterSet):
     service          = django_filters.NumberFilter(method='filtrer_affectation')
     poste            = django_filters.NumberFilter(method='filtrer_affectation')
     categoriesalarie = django_filters.NumberFilter(method='filtrer_affectation')
+    # Équipe de l'employé (parcours de commande)
+    typeequipe       = django_filters.NumberFilter(field_name='typeequipe')
+    # « Aucune agence » : aucune ligne d'agence (ces employés ne peuvent commander
+    # que dans les agences ouvertes aux autres agences)
+    sans_agence      = django_filters.BooleanFilter(method='filtrer_sans_agence')
 
     class Meta:
         model  = User
         fields = ['statut', 'is_active']
+
+    def filtrer_sans_agence(self, queryset, name, value):
+        if value is None:
+            return queryset
+        return queryset.filter(useragence__isnull=value).distinct()
 
     def filtrer_affectation(self, queryset, name, value):
         relation = {'agence': 'useragence', 'service': 'userservice', 'poste': 'userposte',
@@ -321,7 +331,7 @@ class UserViewSet(BaseViewSet):
     @staticmethod
     def _prefetch(qs):
         from django.db.models import Prefetch
-        return qs.select_related('statut').prefetch_related(
+        return qs.select_related('statut', 'typeequipe').prefetch_related(
             Prefetch('userservice_set',
                      queryset=UserService.objects.select_related('service', 'statut')),
             Prefetch('useragence_set',
@@ -1899,7 +1909,8 @@ class CommandeViewSet(BaseViewSet):
         if not menu_id or not str(menu_id).isdigit():
             return Response({'detail': 'Menu requis.'}, status=400)
 
-        verifier_menu_gere(request.user, get_object_or_404(Menu, pk=menu_id))
+        menu = get_object_or_404(Menu, pk=menu_id)
+        verifier_menu_gere(request.user, menu)
         try:
             user = User.objects.get(username=badge)
         except User.DoesNotExist:
@@ -1907,11 +1918,15 @@ class CommandeViewSet(BaseViewSet):
 
         retrait   = Retrait.objects.filter(user=user, menu_id=menu_id).first()
         commandes = self._base_queryset().filter(user=user, menu_id=menu_id)
+        # Employé d'une autre agence que celle du menu (badge « Employé d'une autre agence · X »)
+        from .parcours_commande import agences_origine, origine_json
+        origine = origine_json(agences_origine({user.id}).get(user.id), menu.agence_id)
 
         return Response({
             'user_id':   user.id,
             'user_nom':  nom_complet(user),
             'badge':     user.username,
+            **origine,
             'a_retire':  retrait is not None,
             # Heure du retrait déjà enregistré (alerte « déjà retiré à 12:41 »)
             'date_retrait': retrait.date_retrait if retrait else None,
@@ -2271,6 +2286,7 @@ class RetraitViewSet(BaseViewSet):
         servies = sum(p['servies'] for p in plats)
         # Employés d'une autre agence que celle du menu (commandes « externes »)
         from .parcours_commande import agences_origine, est_externe, origine_json
+        from .prestataires import horaires_json
         rangs = list(actives.values_list('plat_id', 'user_id'))
         origines = agences_origine({u for _, u in rangs})
         for p in plats:
@@ -2296,6 +2312,8 @@ class RetraitViewSet(BaseViewSet):
                 'id': menu.id, 'date_menu': menu.date_menu,
                 'agence_id': menu.agence_id, 'agence_nom': menu.agence.nom_agence,
                 'typeequipe_libelle': menu.typeequipe.libelle if menu.typeequipe_id else None,
+                # Horaires de retrait de l'équipe (sinon de l'agence, sinon par défaut)
+                **horaires_json(menu.agence, menu.typeequipe),
             },
             'commandees': commandees,
             'servies': servies,

@@ -292,10 +292,29 @@ def _prestataire_demande(cle, agence):
     return prestataire
 
 
-def _horaires(agence, parametres):
-    from .prestataires import horaires_service
-    debut, fin = horaires_service(agence, parametres)
-    return {'heure_debut_service': debut.strftime('%H:%M'), 'heure_fin_service': fin.strftime('%H:%M')}
+def _horaires(agence, parametres, typeequipe=None):
+    """Horaires de retrait effectifs : ceux de l'équipe, sinon de l'agence, sinon par défaut."""
+    from .prestataires import horaires_json
+    return horaires_json(agence, typeequipe, parametres)
+
+
+def mon_equipe(user, equipe_id):
+    """L'équipe est-elle celle de l'utilisateur ? None si aucune équipe ne lui est attribuée."""
+    if not user.typeequipe_id:
+        return None
+    return equipe_id == user.typeequipe_id
+
+
+def equipe_utilisateur_json(user):
+    """Équipe de l'utilisateur (User.typeequipe) : {id, libelle} ou None."""
+    e = user.typeequipe if user.typeequipe_id else None
+    return {'id': e.id, 'libelle': e.libelle} if e else None
+
+
+def tri_equipes(user, equipes, cle='libelle'):
+    """Équipe de l'utilisateur d'abord, puis ordre alphabétique."""
+    return sorted(equipes, key=lambda e: (user.typeequipe_id is None or e['id'] != user.typeequipe_id,
+                                          (e[cle] or '').upper()))
 
 
 def _commandes_actives(user, debut, fin):
@@ -351,7 +370,12 @@ class CommanderAgencesView(APIView):
                 **_horaires(a, parametres),
             })
         resultat.sort(key=lambda x: (not x['mon_agence'], x['nom'].upper()))
-        return Response({'date': aujourdhui.isoformat(), 'mon_agence_id': mon, 'agences': resultat})
+        return Response({'date': aujourdhui.isoformat(), 'mon_agence_id': mon,
+                         # Employé sans agence : il ne commande que dans les agences ouvertes ;
+                         # aucune ouverte → message « Votre agence n'est pas renseignée… »
+                         'sans_agence': mon is None,
+                         'equipe_utilisateur': equipe_utilisateur_json(user),
+                         'agences': resultat})
 
 
 # ══════════════════════════════════════════════════════════════
@@ -420,8 +444,10 @@ class CommanderPrestatairesView(APIView):
                 **prestataire_json(cle, prestataire, notes, seuil),
                 'photos_plats': photos,
                 'nb_plats_jour': len({mp.plat_id for m in ms if m.date_menu == d for mp in m.menu_plats.all()}),
-                'equipes': [{'id': e.id, 'libelle': e.libelle, **_horaires(agence, parametres)}
-                            for e in sorted(equipes.values(), key=lambda e: e.libelle)],
+                'equipes': tri_equipes(user, [{'id': e.id, 'libelle': e.libelle,
+                                               'mon_equipe': mon_equipe(user, e.id),
+                                               **_horaires(agence, parametres, e)}
+                                              for e in equipes.values()]),
                 'commande_aujourdhui': any(c.menu.date_menu == aujourdhui and cle_prestataire(c.menu) == cle
                                            for c in mes),
                 'prochain_jour_a_reserver': prochain,
@@ -429,7 +455,9 @@ class CommanderPrestatairesView(APIView):
         # Prestataires qui servent ce jour-là d'abord, « Cantine UbiPharm » en dernier
         resultat.sort(key=lambda p: (p['nb_plats_jour'] == 0, p['cantine_ubipharm'], p['nom_affiche'].upper()))
         return Response({'agence': {'id': agence.id, 'nom': agence.nom_agence, 'code': code_agence(agence.nom_agence)},
-                         'date': d.isoformat(), 'seuil_avis_note': seuil, 'prestataires': resultat})
+                         'date': d.isoformat(), 'seuil_avis_note': seuil,
+                         'equipe_utilisateur': equipe_utilisateur_json(user),
+                         'prestataires': resultat})
 
 
 # ══════════════════════════════════════════════════════════════
@@ -441,6 +469,7 @@ class CommanderEquipesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
+        user = request.user
         agence = _agence_demandee(request)
         prestataire = _prestataire_demande(pk, agence)
         aujourdhui = timezone.localdate()
@@ -452,19 +481,20 @@ class CommanderEquipesView(APIView):
         for m in menus:
             e = equipes.setdefault(m.typeequipe_id, {
                 'id': m.typeequipe_id, 'libelle': m.typeequipe.libelle,
-                # Pas d'équipe enregistrée pour l'utilisateur : null (inconnu)
-                'mon_equipe': None,
-                **_horaires(agence, parametres), 'jours': []})
+                # Équipe de l'utilisateur (User.typeequipe) ; null s'il n'en a pas
+                'mon_equipe': mon_equipe(user, m.typeequipe_id),
+                **_horaires(agence, parametres, m.typeequipe), 'jours': []})
             if m.date_menu.isoformat() not in e['jours']:
                 e['jours'].append(m.date_menu.isoformat())
-        resultat = sorted(equipes.values(), key=lambda e: e['libelle'].upper())
+        # Équipe de l'utilisateur d'abord (présélectionnée par les écrans)
+        resultat = tri_equipes(user, equipes.values())
         for e in resultat:
             e['nb_jours'] = len(e['jours'])
             e['prochain_menu'] = e['jours'][0] if e['jours'] else None
         return Response({
             'agence': {'id': agence.id, 'nom': agence.nom_agence},
             'prestataire': prestataire_json(pk, prestataire, notes_prestataires(), parametres.seuil_avis_note),
-            'equipe_utilisateur': None,
+            'equipe_utilisateur': equipe_utilisateur_json(user),
             'equipes': resultat,
         })
 
@@ -481,7 +511,7 @@ class CommanderJoursView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from .serializers import date_limite_commande, libelle_date_limite
+        from .serializers import date_limite_annulation, date_limite_commande, libelle_date_limite
         user = request.user
         p = request.query_params
         agence = _agence_demandee(request)
@@ -536,6 +566,8 @@ class CommanderJoursView(APIView):
         for d in jours:
             menus_jour = [m for m in menus if m.date_menu == d]
             limite = date_limite_commande(d, parametres)
+            # Annulation possible jusqu'à cette date (affichée avant de commander)
+            limite_annul = date_limite_annulation(d, parametres)
             ouvert = d >= aujourdhui and maintenant < limite
             commande = par_jour_cmd.get(d)
             if not menus_jour:
@@ -570,13 +602,20 @@ class CommanderJoursView(APIView):
                         'prix': float(prix) if prix is not None else None,
                         'menu_id': m.id, 'typeequipe_id': m.typeequipe_id,
                         'typeequipe': m.typeequipe.libelle,
+                        'mon_equipe': mon_equipe(user, m.typeequipe_id),
+                        'date_limite_annulation': limite_annul.isoformat(),
+                        'libelle_annulation': libelle_date_limite(limite_annul),
                         'statut': statut,
                         'commande_id': commande.id if statut == 'commande' else None,
                     })
             resultat.append({
                 'date': d.isoformat(), 'libelle': _jour_libelle(d), 'etat': etat,
                 'date_limite_commande': limite.isoformat(), 'libelle_limite': libelle_date_limite(limite),
-                'menus': [{'id': m.id, 'typeequipe_id': m.typeequipe_id, 'typeequipe': m.typeequipe.libelle}
+                'date_limite_annulation': limite_annul.isoformat(),
+                'libelle_annulation': libelle_date_limite(limite_annul),
+                'annulable': maintenant < limite_annul,
+                'menus': [{'id': m.id, 'typeequipe_id': m.typeequipe_id, 'typeequipe': m.typeequipe.libelle,
+                           'mon_equipe': mon_equipe(user, m.typeequipe_id)}
                           for m in menus_jour],
                 'commande': _commande_json(commande, ici=commande.menu_id in ids_menus) if commande else None,
                 'plats': plats,
@@ -591,7 +630,9 @@ class CommanderJoursView(APIView):
         return Response({
             'agence': {'id': agence.id, 'nom': agence.nom_agence},
             'prestataire': prestataire_json(cle, prestataire, notes_prestataires(), seuil),
-            'equipe': {'id': equipe.id, 'libelle': equipe.libelle} if equipe else None,
+            'equipe': ({'id': equipe.id, 'libelle': equipe.libelle, 'mon_equipe': mon_equipe(user, equipe.id)}
+                       if equipe else None),
+            'equipe_utilisateur': equipe_utilisateur_json(user),
             'semaine': {'debut': jours[0].isoformat(), 'fin': jours[-1].isoformat(),
                         'precedente': (jours[0] - timedelta(days=7)).isoformat(),
                         'suivante': (jours[0] + timedelta(days=7)).isoformat()},

@@ -542,6 +542,10 @@ class RechercheParBadgeResult {
   /// Photo de l'agent si le serveur la fournit (sinon initiales)
   final String? photoUrl;
 
+  /// Employé d'une autre agence que celle du menu (son agence actuelle)
+  final bool externe;
+  final String? agenceOrigine;
+
   const RechercheParBadgeResult({
     required this.userId,
     required this.userNom,
@@ -549,6 +553,8 @@ class RechercheParBadgeResult {
     required this.aRetire,
     required this.commandes,
     this.photoUrl,
+    this.externe = false,
+    this.agenceOrigine,
   });
 
   factory RechercheParBadgeResult.fromJson(Map<String, dynamic> j) =>
@@ -561,6 +567,8 @@ class RechercheParBadgeResult {
             .map((e) => Commande.fromJson(e))
             .toList(),
         photoUrl: _absoluteUrl(j['photo_url'] as String?),
+        externe: j['externe'] == true,
+        agenceOrigine: j['agence_origine'] as String?,
       );
 }
 
@@ -899,7 +907,8 @@ class JourGestion {
       );
 }
 
-/// Alerte du gestionnaire (« menu_manquant », « fermeture », « cloture »)
+/// Alerte du gestionnaire (« menu_manquant », « fermeture », « cloture »,
+/// « employes_sans_agence »)
 class AFaire {
   final String type;
   final String titre;
@@ -917,6 +926,9 @@ class AFaire {
       this.listeAgences = const []});
 
   bool get estMenuManquant => type == 'menu_manquant';
+
+  /// Employés sans agence (ils ne commandent que dans les agences ouvertes)
+  bool get estEmployesSansAgence => type == 'employes_sans_agence';
 
   /// Agences concernées par un menu manquant (ancien serveur : début du détail)
   String get agences => listeAgences.isNotEmpty
@@ -948,6 +960,13 @@ class AccueilGestion {
 
   List<AFaire> get menusManquants =>
       aFaire.where((a) => a.estMenuManquant).toList();
+
+  /// Alertes affichées sur l'accueil mobile : menus manquants puis employés
+  /// sans agence
+  List<AFaire> get alertes => [
+        ...menusManquants,
+        ...aFaire.where((a) => a.estEmployesSansAgence),
+      ];
 
   factory AccueilGestion.fromJson(Map<String, dynamic> j) => AccueilGestion(
         agences: (j['agences'] as List? ?? []).map((e) => '$e').toList(),

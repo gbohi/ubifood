@@ -216,7 +216,11 @@ export interface AccueilPresta {
   agences: AgencePresta[];
   service_du_jour: {
     agence_id: number; agence_nom: string; heure_debut_service: string; heure_fin_service: string;
+    /** Équipes servies aujourd'hui, avec leurs horaires de retrait */
+    equipes?: { id: number; libelle: string; heure_debut_service: string; heure_fin_service: string }[];
     commandees: number; servies: number; a_servir: number; pct_servis: number;
+    /** dont employés d'autres agences */
+    externes?: number;
     plats: { plat_id: number; plat: string; image_url: string | null; commandees: number; servies: number; a_servir: number }[];
   }[];
   a_preparer: JourAPreparer | null;

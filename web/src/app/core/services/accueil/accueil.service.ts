@@ -59,6 +59,9 @@ export interface AccueilServiceAgence {
   commandees: number;
   servies: number;
   a_servir: number;
+  /** Horaires de retrait des équipes du jour (sinon de l'agence) */
+  heure_debut_service?: string;
+  heure_fin_service?: string;
   /** dont employés d'autres agences */
   externes?: number;
 }
@@ -73,7 +76,12 @@ export interface AccueilJourGestion {
 }
 
 export interface AccueilAFaire {
-  type: 'menu_manquant' | 'fermeture' | 'cloture';
+  type: 'menu_manquant' | 'fermeture' | 'cloture' | 'employes_sans_agence';
+  /** employes_sans_agence : nombre d'employés, agences ouvertes aux autres agences */
+  nb?: number;
+  agences_ouvertes?: number;
+  /** Lien vers Paramètres → Utilisateurs (« Aucune agence ») : administrateurs seulement */
+  lien_utilisateurs?: boolean;
   titre: string;
   detail: string;
   date?: string;

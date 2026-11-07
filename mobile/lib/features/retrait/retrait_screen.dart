@@ -749,6 +749,15 @@ class _ResultatCard extends StatelessWidget {
                     if ((agence ?? '').isNotEmpty) agence!,
                   ].join(' · '),
                   style: TextStyle(fontSize: 11.5, color: gris)),
+              if (result.externe) ...[
+                const SizedBox(height: 4),
+                PastilleStatut(
+                    key: const Key('badge-externe'),
+                    label: "Employé d'une autre agence"
+                        '${(result.agenceOrigine ?? '').isNotEmpty ? ' · ${result.agenceOrigine}' : ''}',
+                    icone: Icons.apartment_rounded,
+                    ton: TonPastille.or),
+              ],
             ]),
           ),
           const SizedBox(width: 8),

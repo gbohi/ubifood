@@ -1,7 +1,9 @@
 import { Component, DestroyRef, OnInit, AfterViewInit, ViewChild, inject } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
+import {
+  AbstractControl, UntypedFormBuilder, UntypedFormGroup, ValidationErrors, ValidatorFn, Validators,
+} from '@angular/forms';
 import { ModalDirective } from 'ngx-bootstrap/modal';
 import { PageChangedEvent } from 'ngx-bootstrap/pagination';
 import { ToastrService } from 'ngx-toastr';
@@ -18,6 +20,15 @@ import {
 } from 'src/app/store/Typeequipe/typeequipe.action';
 import { selecttypeequipeData, selectTotalItems, selectLoading, selectCurrentPage } from 'src/app/store/Typeequipe/typeequipe-selector';
 import { TriServeur } from 'src/app/shared/tri-serveur';
+
+/** Horaires de retrait : les deux heures ou aucune, et la fin après le début */
+export const horairesRetraitValidator: ValidatorFn = (g: AbstractControl): ValidationErrors | null => {
+  const debut = g.get('heure_debut_retrait')?.value || '';
+  const fin = g.get('heure_fin_retrait')?.value || '';
+  if (!debut && !fin) return null;
+  if (!debut || !fin) return { horairesIncomplets: true };
+  return fin <= debut ? { horairesOrdre: true } : null;
+};
 
 @Component({
   selector: 'app-typeequipe',
@@ -73,10 +84,13 @@ export class TypeequipeComponent implements OnInit, AfterViewInit {
       { label: 'Types d\'équipe', active: true }
     ];
 
+    // Horaires de retrait facultatifs (les deux ou aucun) : vides, ceux de l'agence
     this.typeequipeForm = this.formBuilder.group({
       id: [''],
-      libelle: ['', [Validators.required]]
-    });
+      libelle: ['', [Validators.required]],
+      heure_debut_retrait: [''],
+      heure_fin_retrait: [''],
+    }, { validators: horairesRetraitValidator });
 
     this.store.select(selectLoading)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -209,7 +223,11 @@ export class TypeequipeComponent implements OnInit, AfterViewInit {
     this.lastActiveElement = document.activeElement as HTMLElement;
     this.isEdit = true;
     this.typeequipeForm.reset();
-    this.typeequipeForm.patchValue({ id: editData.id, libelle: editData.libelle });
+    this.typeequipeForm.patchValue({
+      id: editData.id, libelle: editData.libelle,
+      heure_debut_retrait: this.heureCourte(editData.heure_debut_retrait),
+      heure_fin_retrait: this.heureCourte(editData.heure_fin_retrait),
+    });
     this.addTypeequipe?.show();
   }
 
@@ -223,6 +241,8 @@ export class TypeequipeComponent implements OnInit, AfterViewInit {
     if (this.isSaving) return;
 
     const formValue = { ...this.typeequipeForm.value };
+    formValue.heure_debut_retrait = formValue.heure_debut_retrait || null;
+    formValue.heure_fin_retrait = formValue.heure_fin_retrait || null;
     this.isSaving = true;
     if (formValue.id) {
       this.store.dispatch(updatetypeequipeData({ updatedData: formValue }));
@@ -230,6 +250,17 @@ export class TypeequipeComponent implements OnInit, AfterViewInit {
       delete formValue.id;
       this.store.dispatch(addtypeequipeData({ newData: formValue }));
     }
+  }
+
+  /** « 18:00:00 » → « 18:00 » (champ heure) */
+  heureCourte(h?: string | null): string {
+    return h ? h.slice(0, 5) : '';
+  }
+
+  /** Horaires de retrait affichés dans la liste : « 18 h – 20 h 30 » */
+  horairesRetrait(t: { heure_debut_retrait?: string | null; heure_fin_retrait?: string | null }): string {
+    const h = (v: string) => v.slice(0, 5).replace(':', ' h ').replace(' h 00', ' h');
+    return t.heure_debut_retrait && t.heure_fin_retrait ? `${h(t.heure_debut_retrait)} – ${h(t.heure_fin_retrait)}` : '';
   }
 
   // Suppression d'une ligne

@@ -71,6 +71,41 @@ def horaires_service(agence, parametres=None):
     return debut, fin
 
 
+def horaires_retrait(agence, typeequipe=None, parametres=None):
+    """
+    (début, fin) du retrait pour une équipe dans une agence : horaires de
+    l'équipe (TypeEquipe.heure_debut_retrait / heure_fin_retrait) s'ils sont
+    renseignés, sinon ceux de l'agence, sinon ceux par défaut (Paramètres → Société).
+    """
+    if typeequipe is not None and typeequipe.heure_debut_retrait and typeequipe.heure_fin_retrait:
+        return typeequipe.heure_debut_retrait, typeequipe.heure_fin_retrait
+    return horaires_service(agence, parametres)
+
+
+def horaires_menus(agence, menus, parametres=None):
+    """
+    (début, fin) du service pour des menus d'une agence : du plus tôt au plus
+    tard des horaires de retrait de leurs équipes (horaires de l'agence sans menu).
+    """
+    plages = {horaires_retrait(agence, m.typeequipe, parametres) for m in menus}
+    if not plages:
+        return horaires_service(agence, parametres)
+    return min(d for d, _ in plages), max(f for _, f in plages)
+
+
+def equipes_horaires_json(agence, menus, parametres=None):
+    """Équipes des menus, avec leurs horaires de retrait effectifs (ordre alphabétique)."""
+    equipes = {m.typeequipe_id: m.typeequipe for m in menus if m.typeequipe_id}
+    return [{'id': e.id, 'libelle': e.libelle, **horaires_json(agence, e, parametres)}
+            for e in sorted(equipes.values(), key=lambda e: e.libelle.upper())]
+
+
+def horaires_json(agence, typeequipe=None, parametres=None):
+    """{'heure_debut_service': 'HH:MM', 'heure_fin_service': 'HH:MM'} (horaires effectifs)."""
+    debut, fin = horaires_retrait(agence, typeequipe, parametres)
+    return {'heure_debut_service': debut.strftime('%H:%M'), 'heure_fin_service': fin.strftime('%H:%M')}
+
+
 def historique_json(h):
     from .serializers import nom_complet
     return {

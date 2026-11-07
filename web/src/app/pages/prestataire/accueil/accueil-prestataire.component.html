@@ -33,7 +33,7 @@
           <div class="ep-carte-hd">
             <span class="ep-ag"><i class="ri-building-line"></i>{{ s.agence_nom }}</span>
             <b>Service du jour</b>
-            <small>{{ s.heure_debut_service }} – {{ s.heure_fin_service }}</small>
+            <small [title]="horairesEquipes(s)">{{ s.heure_debut_service }} – {{ s.heure_fin_service }}</small>
             <span class="lst-tag t-ve ms-auto"><i class="ri-checkbox-blank-circle-fill"></i>{{ s.pct_servis }} % servis</span>
           </div>
           <div class="ep-kpis3">
@@ -41,6 +41,9 @@
             <div class="vert"><b>{{ nombreFr(s.servies) }}</b><small>servis</small></div>
             <div class="orange"><b>{{ nombreFr(s.a_servir) }}</b><small>à servir</small></div>
           </div>
+          @if (s.externes) {
+            <p class="ep-externes"><span class="ubi-externe" title="Employés d'autres agences"><i class="ri-building-line"></i>dont {{ nombreFr(s.externes) }} autre{{ s.externes > 1 ? 's' : '' }} agence{{ s.externes > 1 ? 's' : '' }}</span></p>
+          }
           <div class="ep-plats-av">
             @for (p of s.plats; track p.plat_id) {
               <div class="ep-plat-av">

@@ -39,6 +39,8 @@ import { selectAllPosteWithoutPagination } from 'src/app/store/Poste/poste-selec
 import { fetchposteNoPaginateData } from 'src/app/store/Poste/poste.action';
 import { selectAllCategoriesalarieWithoutPagination } from 'src/app/store/Categoriesalarie/categoriesalarie-selector';
 import { fetchcategoriesalarieNoPaginateData } from 'src/app/store/Categoriesalarie/categoriesalarie.action';
+import { selectAllTypeequipeWithoutPagination } from 'src/app/store/Typeequipe/typeequipe-selector';
+import { fetchtypeequipeNoPaginateData } from 'src/app/store/Typeequipe/typeequipe.action';
 
 
 
@@ -69,6 +71,9 @@ import { LIBELLES_ROLES } from 'src/app/core/helpers/roles';
 // VALIDATORS
 // ============================================================
 
+/** Valeur du filtre d'agence « Aucune agence » (filtre serveur sans_agence=true) */
+export const AUCUNE_AGENCE = 'aucune';
+
 export const passwordMatchValidator: ValidatorFn = (group: AbstractControl): ValidationErrors | null => {
   const pwd  = group.get('password')?.value;
   const pwd2 = group.get('password2')?.value;
@@ -96,6 +101,7 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Tri serveur des colonnes : clé de colonne → champ autorisé par l'API (ordering_fields)
   readonly tri = new TriServeur({ id: 'id', nom: 'nom,prenom', username: 'username' });
+  readonly aucuneAgence = AUCUNE_AGENCE;
 
   breadCrumbItems = [
     { label: 'Paramètres', active: false },
@@ -110,6 +116,8 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
   postes:            any[] = [];
   categoriesalaries: any[] = [];
   groupes:           any[] = [];
+  /** Types d'équipe (équipe de l'employé : « Mon équipe » du parcours de commande) */
+  typeequipes:       any[] = [];
 
   totalItems  = 0;
   currentPage = 1;
@@ -192,6 +200,8 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
       groups:          [[]],
       // Espace prestataire : prestataire du compte (rôles prestataire / agent_comptoir)
       prestataire:     [null],
+      // Équipe de l'employé (facultative) : présélectionnée quand il commande
+      typeequipe:      [null],
     }, { validators: passwordMatchValidator });
 
     this.mdpForm = this.fb.group({
@@ -214,6 +224,7 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
       poste:            [''],
       categoriesalarie: [''],
       allergie:         [''],
+      typeequipe:       [''],
     });
 
     this.store.select(selectLoading).pipe(takeUntil(this.destroy$)).subscribe(v => this.isLoading = v);
@@ -242,12 +253,22 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
     this.store.dispatch(fetchcategoriesalarieNoPaginateData());
     this.store.select(selectAllCategoriesalarieWithoutPagination).pipe(takeUntil(this.destroy$)).subscribe(d => this.categoriesalaries = d ?? []);
 
+    this.store.dispatch(fetchtypeequipeNoPaginateData());
+    this.store.select(selectAllTypeequipeWithoutPagination).pipe(takeUntil(this.destroy$)).subscribe(d => this.typeequipes = d ?? []);
+
     this.http.get<any[]>(`${environment.apiUrl}/api/api/allnopagin/prestataires/`).pipe(catchError(() => of([])), takeUntil(this.destroy$))
       .subscribe(d => this.prestataires = (d ?? []).map(p => ({ id: p.id, libelle: p.libelle })));
 
     this.roleService.getAllRolesNoPaginate().pipe(takeUntil(this.destroy$)).subscribe(data => {
       this.groupes = data ?? [];
       this.chargerComptesRoles();
+      // ?role=employe (alerte « employés sans agence » de l'accueil) : pastille du rôle
+      const role = this.route.snapshot.queryParamMap.get('role');
+      const id = role ? this.idGroupe(role) : null;
+      if (id != null) {
+        this.searchForm.patchValue({ groupe: `${id}` });
+        this.applySearch();
+      }
     });
 
     // Compteurs des filtres rapides : recalculés après chaque modification
@@ -277,7 +298,14 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const recherche = this.route.snapshot.queryParamMap.get('search');
     if (recherche) this.term = recherche;
-    this.loadData(1);
+    // ?agence=aucune : ouverture filtrée sur « Aucune agence » (alerte de l'accueil)
+    const agence = this.route.snapshot.queryParamMap.get('agence');
+    if (agence) {
+      this.searchForm.patchValue({ agence });
+      this.applySearch();
+    } else {
+      this.loadData(1);
+    }
   }
 
   ngAfterViewInit(): void {
@@ -366,10 +394,15 @@ getDerniereCategorie(user: any): any | null {
     const v = this.searchForm.value ?? {};
     const filtres: Record<string, string> = {};
     ['nom', 'prenom', 'username', 'email', 'statut', 'is_active', 'groupe',
-     'service', 'agence', 'poste', 'categoriesalarie', 'allergie'].forEach(cle => {
+     'service', 'agence', 'poste', 'categoriesalarie', 'allergie', 'typeequipe'].forEach(cle => {
       const val = v[cle];
       if (val !== null && val !== undefined && `${val}`.trim() !== '') filtres[cle] = `${val}`.trim();
     });
+    // « Aucune agence » : comptes sans aucune agence (ils ne commandent que dans les agences ouvertes)
+    if (filtres['agence'] === AUCUNE_AGENCE) {
+      delete filtres['agence'];
+      filtres['sans_agence'] = 'true';
+    }
     this.filtresAvances = filtres;
     this.loadData(1);
   }
@@ -377,7 +410,7 @@ getDerniereCategorie(user: any): any | null {
   resetSearch(): void {
     this.searchForm.reset({
       nom: '', prenom: '', username: '', email: '', statut: '', is_active: '', groupe: '',
-      service: '', agence: '', poste: '', categoriesalarie: '', allergie: '',
+      service: '', agence: '', poste: '', categoriesalarie: '', allergie: '', typeequipe: '',
     });
     this.term = '';
     this.filtresAvances = {};
@@ -395,7 +428,7 @@ getDerniereCategorie(user: any): any | null {
     const v = this.searchForm?.value;
     return v && (v.nom || v.prenom || v.username || v.email || v.statut ||
       (v.is_active !== '' && v.is_active !== null) || v.groupe ||
-      v.service || v.agence || v.poste || v.categoriesalarie || v.allergie);
+      v.service || v.agence || v.poste || v.categoriesalarie || v.allergie || v.typeequipe);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -693,7 +726,7 @@ getDerniereCategorie(user: any): any | null {
     this.lastActiveElement = document.activeElement as HTMLElement;
     this.currentUserId = null; this._resetAllLignes();
     this.submitted = false; this.userForm.reset();
-    this.userForm.patchValue({ is_active: true, groups: [], prestataire: null });
+    this.userForm.patchValue({ is_active: true, groups: [], prestataire: null, typeequipe: null });
     this._motDePasseObligatoire(true);
     this.setModalTitle('Ajouter un utilisateur'); this.setModalBtn('Enregistrer'); this.addUser?.show();
   }
@@ -708,7 +741,7 @@ getDerniereCategorie(user: any): any | null {
     const editData = this.users.find(u => u.id === id);
     if (!editData) return;
     this.currentUserId = id; this._resetAllLignes(); this.submitted = false;
-    this.userForm.patchValue({ ...editData, password: '', password2: '', groups: (editData.groups || []).map(Number), prestataire: editData.prestataire ?? null });
+    this.userForm.patchValue({ ...editData, password: '', password2: '', groups: (editData.groups || []).map(Number), prestataire: editData.prestataire ?? null, typeequipe: editData.typeequipe ?? null });
     this._motDePasseObligatoire(false);
     this._chargerHistorique(editData);
     this.setModalTitle('Modifier l\'utilisateur'); this.setModalBtn('Enregistrer'); this.addUser?.show();
@@ -802,6 +835,8 @@ getDerniereCategorie(user: any): any | null {
     if (!formValue.password) { delete formValue.password; delete formValue.password2; }
     formValue.groups = (formValue.groups || []).map(Number);
     formValue.prestataire = this.estRolePrestataire && formValue.prestataire ? Number(formValue.prestataire) : null;
+    // Compte prestataire : pas d'équipe (il ne commande pas)
+    formValue.typeequipe = !this.estRolePrestataire && formValue.typeequipe ? Number(formValue.typeequipe) : null;
     formValue.email = formValue.email || '';
     formValue.contact = formValue.contact || '';
     formValue.poste_telephone = formValue.poste_telephone || '';

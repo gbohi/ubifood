@@ -469,6 +469,9 @@ class ServiceAgencePrestataire {
   final int commandees;
   final int servies;
   final int aServir;
+
+  /// dont employés d'autres agences
+  final int externes;
   final List<PlatService> plats;
 
   const ServiceAgencePrestataire({
@@ -479,6 +482,7 @@ class ServiceAgencePrestataire {
     this.commandees = 0,
     this.servies = 0,
     this.aServir = 0,
+    this.externes = 0,
     this.plats = const [],
   });
 
@@ -494,6 +498,7 @@ class ServiceAgencePrestataire {
         commandees: _int(j['commandees']),
         servies: _int(j['servies']),
         aServir: _int(j['a_servir']),
+        externes: _int(j['externes']),
         plats: _maps(j['plats']).map(PlatService.fromJson).toList(),
       );
 }

@@ -48,7 +48,12 @@ export class AccueilPrestataireComponent implements OnInit {
     return `${j[0].toUpperCase()}${j.slice(1)} ${d.getDate()} ${MOIS_FR[d.getMonth()]} ${d.getFullYear()} · ${this.donnees.heure}`;
   }
 
-  pct(n: number, total: number): number {
+  /** Horaires de retrait par équipe (info-bulle) : « Jour 11:30 – 14:30 · Nuit 19:00 – 21:00 » */
+  horairesEquipes(s: { equipes?: { libelle: string; heure_debut_service: string; heure_fin_service: string }[] }): string {
+    return (s.equipes ?? []).map(e => `${e.libelle} ${e.heure_debut_service} – ${e.heure_fin_service}`).join(' · ');
+  }
+
+    pct(n: number, total: number): number {
     return total ? Math.min(100, Math.round(100 * n / total)) : 0;
   }
 

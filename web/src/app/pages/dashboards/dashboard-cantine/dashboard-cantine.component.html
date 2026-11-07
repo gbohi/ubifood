@@ -70,7 +70,9 @@
               <li>
                 <span class="acc-pastille" [ngClass]="styleAFaire(t).pastille"><i [class]="styleAFaire(t).icone"></i></span>
                 <div class="acc-afaire-txt"><b>{{ t.titre }}</b><small>{{ t.detail }}</small></div>
-                <a [routerLink]="styleAFaire(t).lien">{{ styleAFaire(t).action }}</a>
+                @if (styleAFaire(t).lien; as lien) {
+                  <a [routerLink]="lien" [queryParams]="styleAFaire(t).params ?? null">{{ styleAFaire(t).action }}</a>
+                }
               </li>
             }
           </ul>

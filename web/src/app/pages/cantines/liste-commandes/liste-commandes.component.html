@@ -61,10 +61,25 @@
             <small>{{ a.nb_prestataires_aujourdhui }} prestataire{{ a.nb_prestataires_aujourdhui > 1 ? 's' : '' }} auj.</small>
           </button>
         } @empty {
-          <div class="ce-vide-page"><i class="ri-building-line"></i><b>Aucune agence disponible</b>
-            <span>Vous n'êtes rattaché à aucune agence et aucune agence n'accepte les commandes des autres agences.</span></div>
+          @if (sansAgence) {
+            <div class="ce-vide-page pc-sans-agence"><i class="ri-building-line"></i>
+              <b>Votre agence n'est pas renseignée — contactez votre gestionnaire</b>
+              <span>Sans agence, vous ne pouvez commander que dans les agences ouvertes aux employés des autres agences,
+                et aucune ne l'est pour le moment. Demandez à votre gestionnaire de renseigner votre agence.</span></div>
+          } @else {
+            <div class="ce-vide-page"><i class="ri-building-line"></i><b>Aucune agence disponible</b>
+              <span>Aucune agence n'accepte vos commandes pour le moment.</span></div>
+          }
         }
       </div>
+
+      @if (sansAgence && agences.length) {
+        <div class="ce-alerte ce-alerte-or ce-alerte-fine pc-sans-agence-info" role="status">
+          <i class="ri-information-line"></i>
+          <div><b>Votre agence n'est pas renseignée.</b> Vous ne pouvez commander que dans les agences ouvertes aux
+            autres agences. Contactez votre gestionnaire pour qu'il renseigne votre agence.</div>
+        </div>
+      }
 
       @if (enMission) {
         <div class="pc-mission" role="status">
@@ -113,7 +128,7 @@
                     {{ p.nb_plats_jour ?? 0 }} plat{{ (p.nb_plats_jour ?? 0) > 1 ? 's' : '' }} aujourd'hui@if (p.cuisine) { · {{ p.cuisine }} }
                   </span>
                   @if (p.equipes?.length) {
-                    <span class="pc-presta-l2"><i class="ri-team-line"></i>{{ nomsEquipes(p) }}</span>
+                    <span class="pc-presta-l2"><i class="ri-team-line"></i>{{ nomsEquipes(p) }}@if (aMonEquipe(p)) { <span class="ce-tag ce-tag-ve pc-tag-equipe">Mon équipe</span> }</span>
                   }
                   @if (p.prochain_jour_a_reserver; as pj) {
                     <span class="pc-presta-l2 ce-c-vert"><i class="ri-calendar-check-line"></i>À réserver : {{ pj.libelle }}</span>
@@ -166,13 +181,14 @@
 
     <div class="ce-carte pc-equipes">
       <div class="pc-titre-liste"><h3>Choisissez votre équipe</h3>
+        @if (equipe?.mon_equipe) { <span class="ce-muted pc-preselection"><i class="ri-user-star-line"></i>Votre équipe est présélectionnée</span> }
         <span class="ce-muted">{{ equipes.length }} équipe{{ equipes.length > 1 ? 's' : '' }}</span></div>
       @if (chargementEquipes) {
         <div class="ce-chargement"><span class="spinner-border" role="status"></span><span>Chargement des équipes…</span></div>
       } @else {
-        @for (e of equipes; track e.id; let i = $index) {
+        @for (e of equipes; track e.id) {
           <button type="button" class="pc-equipe" [class.pc-on]="equipe?.id === e.id" (click)="choisirEquipe(e)">
-            <span class="pc-equipe-ic" [attr.data-i]="i % 3"><i [class]="i % 3 === 1 ? 'ri-moon-clear-line' : i % 3 === 2 ? 'ri-calendar-event-line' : 'ri-sun-line'"></i></span>
+            <span class="pc-equipe-ic" [attr.data-i]="styleEquipe(e.libelle)"><i [class]="['ri-sun-line', 'ri-moon-clear-line', 'ri-calendar-event-line'][styleEquipe(e.libelle)]"></i></span>
             <span class="pc-equipe-txt">
               <b>{{ e.libelle }}@if (e.mon_equipe) { <span class="ce-tag ce-tag-ve">Mon équipe</span> }</b>
               <small>Retrait {{ horaires(e) }}@if (plageJours(e)) { · {{ plageJours(e) }} } · {{ e.nb_jours }} jour{{ e.nb_jours > 1 ? 's' : '' }} au menu</small>
@@ -196,13 +212,14 @@
       </span>
       <div class="pc-entete-txt">
         <b>{{ p.nom_affiche }}</b>
-        <small class="ce-muted">Équipe {{ equipe?.libelle ?? 'toutes' }} · {{ agence?.nom }}</small>
+        <small class="ce-muted">Équipe {{ equipe?.libelle ?? 'toutes' }}@if (equipe?.mon_equipe) { <span class="ce-tag ce-tag-ve pc-tag-equipe">Mon équipe</span> } · {{ agence?.nom }}</small>
       </div>
       @if (equipes.length > 1) {
         <div class="pc-puces" role="radiogroup" aria-label="Équipe">
           @for (e of equipes; track e.id) {
             <button type="button" role="radio" class="pc-puce" [class.pc-on]="equipe?.id === e.id"
-                    [attr.aria-checked]="equipe?.id === e.id" (click)="choisirEquipe(e)">{{ e.libelle }}</button>
+                    [attr.aria-checked]="equipe?.id === e.id" (click)="choisirEquipe(e)"
+                    [title]="e.mon_equipe ? 'Mon équipe' : e.libelle">@if (e.mon_equipe) { <i class="ri-user-star-line"></i> }{{ e.libelle }}</button>
           }
         </div>
       }
@@ -297,6 +314,13 @@
                   @else { <span class="pc-note"><i class="ri-star-fill"></i>{{ note(plat.note) }}</span> }
                   · {{ plat.type_plat }}@if (!equipe && plat.typeequipe) { · {{ plat.typeequipe }} }
                 </div>
+                @if (plat.statut === 'disponible' && (plat.libelle_annulation || j.libelle_annulation); as annul) {
+                  @if (j.annulable === false) {
+                    <div class="pc-annulable"><i class="ri-lock-line"></i>Non annulable : délai d'annulation dépassé ({{ annul }})</div>
+                  } @else {
+                    <div class="pc-annulable"><i class="ri-arrow-go-back-line"></i>Annulable jusqu'au {{ annul }}</div>
+                  }
+                }
                 @if (plat.description && plat.description.trim().toLowerCase() !== plat.nom.trim().toLowerCase()) { <p>{{ plat.description }}</p> }
                 @if (plat.mentions.length) {
                   <div class="pc-tags">@for (m of plat.mentions; track m) { <span>{{ m }}</span> }</div>

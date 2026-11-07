@@ -81,6 +81,10 @@ export interface RechercheParBadgeResult {
   a_retire:  boolean;
   /** Heure du retrait déjà enregistré (si a_retire) */
   date_retrait?: string | null;
+  /** Employé d'une autre agence que celle du menu (agence actuelle de l'employé) */
+  externe?: boolean;
+  agence_origine_id?: number | null;
+  agence_origine?: string | null;
   commandes: CommandeModel[];
 }
 

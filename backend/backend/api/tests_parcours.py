@@ -516,3 +516,235 @@ class CommandesExternesTests(_ParcoursBase):
         r = self.client_pour(self.gestionnaire).get(f'{API}/statistiques/detail/',
                                                     {'debut': aujourdhui, 'fin': aujourdhui})
         self.assertEqual(sorted(l['externe'] for l in r.data['results']), [False, True])
+
+
+class FinitionsParcoursTests(_ParcoursBase):
+    """
+    Finitions du parcours de commande : horaires de retrait par équipe, équipe
+    de l'employé (« Mon équipe »), date limite d'annulation, commandes externes
+    au retrait du gestionnaire et à l'accueil du prestataire, employés sans
+    agence, mots-clés du profil prestataire en multipart.
+    """
+
+    def horaires(self, equipe, debut, fin):
+        from datetime import time as dtime
+        equipe.heure_debut_retrait = dtime(*debut) if debut else None
+        equipe.heure_fin_retrait = dtime(*fin) if fin else None
+        equipe.save()
+
+    # ── 1. Horaires de retrait par équipe ────────────────────────────
+    def test_type_equipe_horaires_validation(self):
+        url = f'{API}/typeequipes/{self.soir.id}/'
+        client = self.client_pour(self.gestionnaire)
+        r = client.patch(url, {'heure_debut_retrait': '18:00'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('heure_fin_retrait', r.data)
+        r = client.patch(url, {'heure_debut_retrait': '20:00', 'heure_fin_retrait': '18:00'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        r = client.patch(url, {'heure_debut_retrait': '18:00', 'heure_fin_retrait': '20:30'}, format='json')
+        self.assertEqual((r.status_code, r.data['heure_debut_retrait'], r.data['heure_fin_retrait']),
+                         (200, '18:00:00', '20:30:00'))
+        # Les deux vidées ensemble : horaires de l'agence
+        r = client.patch(url, {'heure_debut_retrait': None, 'heure_fin_retrait': None}, format='json')
+        self.assertEqual((r.status_code, r.data['heure_debut_retrait']), (200, None))
+        self.assertEqual(self.client_pour(self.employe).patch(
+            url, {'heure_debut_retrait': '18:00', 'heure_fin_retrait': '20:00'}, format='json').status_code, 403)
+
+    def test_horaires_effectifs_equipe_agence_defaut(self):
+        from datetime import time as dtime
+        self.horaires(self.soir, (18, 0), (20, 30))
+        self.menu(self.presta_a, plats=[self.plat_a], jours=5)
+        self.menu(self.presta_a, plats=[self.plat_a], jours=6, equipe=self.soir)
+        client = self.client_pour(self.employe)
+
+        def horaires_equipes(url, **params):
+            r = client.get(url, {'agence': self.agence.id, **params})
+            self.assertEqual(r.status_code, 200, r.data)
+            equipes = (r.data['equipes'] if 'equipes' in r.data
+                       else next(p for p in r.data['prestataires'] if p['id'] == self.presta_a.id)['equipes'])
+            return {e['libelle']: (e['heure_debut_service'], e['heure_fin_service']) for e in equipes}
+        # Soir : ses horaires ; Jour : ceux par défaut (agence sans horaires)
+        attendu = {'Jour': ('11:30', '14:30'), 'Soir': ('18:00', '20:30')}
+        self.assertEqual(horaires_equipes(f'{API}/commander/prestataires/'), attendu)
+        self.assertEqual(horaires_equipes(f'{API}/commander/prestataires/{self.presta_a.id}/equipes/'), attendu)
+        # Horaires de l'agence : utilisés par l'équipe sans horaires propres
+        self.agence.heure_debut_service, self.agence.heure_fin_service = dtime(12, 0), dtime(14, 0)
+        self.agence.save()
+        self.assertEqual(horaires_equipes(f'{API}/commander/prestataires/{self.presta_a.id}/equipes/'),
+                         {'Jour': ('12:00', '14:00'), 'Soir': ('18:00', '20:30')})
+
+    def test_controle_hors_horaires_selon_l_equipe_du_menu(self):
+        from datetime import datetime, time as dtime
+        from .models import Retrait
+        self.horaires(self.soir, (18, 0), (20, 30))
+        d = timezone.localdate() - timedelta(days=1)
+        tz = timezone.get_current_timezone()
+        m_soir = Menu.objects.create(date_menu=d, agence=self.agence, typeequipe=self.soir, prestataire=self.presta_a)
+        m_jour = Menu.objects.create(date_menu=d, agence=self.agence, typeequipe=self.typeequipe,
+                                     prestataire=self.presta_a)
+        a19h = datetime.combine(d, dtime(19, 0), tzinfo=tz)
+        for u, m in ((self.employe, m_soir), (self.emp_yop, m_jour)):
+            Commande.objects.create(user=u, menu=m, plat=self.plat_a, statut='retiree')
+            Retrait.objects.create(user=u, menu=m, badge_matricule=u.username, valide_par=self.agent_a,
+                                   mode='scan', date_retrait=a19h)
+        r = self.client_pour(self.gestionnaire).get(f'{API}/controle-retraits/', {'date': d.isoformat()})
+        hors = [a for a in r.data['anomalies'] if a['type'] == 'hors_horaires']
+        # 19:00 : normal pour l'équipe du soir (18:00 – 20:30), hors horaires pour l'équipe Jour
+        self.assertEqual([a['matricule'] for a in hors], [self.emp_yop.username])
+        self.assertEqual((hors[0]['equipe'], hors[0]['heure_debut'], hors[0]['heure_fin']), ('Jour', '11:30', '14:30'))
+
+    def test_horaires_et_externes_cote_prestataire_et_gestionnaire(self):
+        self.horaires(self.soir, (18, 0), (20, 30))
+        self.ouvrir(self.agence)
+        m = self.menu(self.presta_a, plats=[self.plat_a], jours=0, equipe=self.soir)
+        Commande.objects.create(user=self.employe, menu=m, plat=self.plat_a)
+        Commande.objects.create(user=self.emp_yop, menu=m, plat=self.plat_a)
+        # Accueil du responsable : horaires de l'équipe, « dont N autres agences »
+        r = self.client_pour(self.resp_a).get(f'{API}/prestataire/accueil/')
+        s = r.data['service_du_jour'][0]
+        self.assertEqual((s['heure_debut_service'], s['heure_fin_service'], s['commandees'], s['externes']),
+                         ('18:00', '20:30', 2, 1))
+        self.assertEqual(s['equipes'], [{'id': self.soir.id, 'libelle': 'Soir', 'heure_debut_service': '18:00',
+                                         'heure_fin_service': '20:30'}])
+        # Comptoir : horaires de l'équipe du menu
+        r = self.client_pour(self.agent_a).get(f'{API}/prestataire/comptoir/service/', {'agence': self.agence.id})
+        self.assertEqual((r.data['agence']['heure_debut_service'], r.data['menus'][0]['heure_fin_service']),
+                         ('18:00', '20:30'))
+        # Gestionnaire : service du jour (retrait) et accueil
+        r = self.client_pour(self.gestionnaire).get(f'{API}/retraits/service/', {'menu': m.id})
+        self.assertEqual((r.data['menu']['heure_debut_service'], r.data['menu']['heure_fin_service']),
+                         ('18:00', '20:30'))
+        r = self.client_pour(self.gestionnaire).get(f'{API}/accueil/')
+        self.assertEqual(r.data['gestion']['service_du_jour'][0]['heure_debut_service'], '18:00')
+
+    # ── 2. Équipe de l'employé ───────────────────────────────────────
+    def test_equipe_de_l_employe(self):
+        admin = self.client_pour(self.admin)
+        r = admin.patch(f'{API}/users/{self.employe.id}/', {'typeequipe': self.soir.id}, format='json')
+        self.assertEqual((r.status_code, r.data['typeequipe'], r.data['typeequipe_libelle']), (200, self.soir.id, 'Soir'))
+        # Filtre de la liste des utilisateurs
+        r = admin.get(f'{API}/users/', {'typeequipe': self.soir.id})
+        self.assertEqual([u['id'] for u in r.data['results']], [self.employe.id])
+        self.employe.refresh_from_db()
+        client = self.client_pour(self.employe)
+        r = client.get(f'{API}/users/me/')
+        self.assertEqual((r.data['typeequipe'], r.data['typeequipe_libelle']), (self.soir.id, 'Soir'))
+        # L'employé ne la change pas lui-même
+        self.assertEqual(client.patch(f'{API}/users/me/', {'typeequipe': None}, format='json').status_code, 400)
+
+        self.menu(self.presta_a, plats=[self.plat_a], jours=5)
+        m_soir = self.menu(self.presta_a, plats=[self.plat_a], jours=6, equipe=self.soir)
+        r = client.get(f'{API}/commander/prestataires/{self.presta_a.id}/equipes/', {'agence': self.agence.id})
+        # Son équipe d'abord (présélection), puis les autres
+        self.assertEqual([(e['libelle'], e['mon_equipe']) for e in r.data['equipes']],
+                         [('Soir', True), ('Jour', False)])
+        self.assertEqual(r.data['equipe_utilisateur'], {'id': self.soir.id, 'libelle': 'Soir'})
+        r = client.get(f'{API}/commander/prestataires/', {'agence': self.agence.id})
+        a = next(p for p in r.data['prestataires'] if p['id'] == self.presta_a.id)
+        self.assertEqual([(e['libelle'], e['mon_equipe']) for e in a['equipes']], [('Soir', True), ('Jour', False)])
+        self.assertEqual(r.data['equipe_utilisateur']['id'], self.soir.id)
+        r = client.get(f'{API}/commander/jours/', {'agence': self.agence.id, 'prestataire': self.presta_a.id,
+                                                  'semaine': m_soir.date_menu.isoformat()})
+        self.assertEqual(r.data['equipe_utilisateur']['id'], self.soir.id)
+        plats = [p for j in r.data['jours'] for p in j['plats']]
+        self.assertEqual({(p['typeequipe'], p['mon_equipe']) for p in plats}, {('Jour', False), ('Soir', True)})
+        # Sans équipe : inconnue (null), ordre alphabétique
+        r = self.client_pour(self.emp_yop).get(f'{API}/commander/prestataires/{self.presta_a.id}/equipes/',
+                                               {'agence': self.agence.id})
+        self.assertEqual(r.status_code, 403)   # Siège fermé aux autres agences
+        self.ouvrir(self.agence)
+        r = self.client_pour(self.emp_yop).get(f'{API}/commander/prestataires/{self.presta_a.id}/equipes/',
+                                               {'agence': self.agence.id})
+        self.assertEqual([(e['libelle'], e['mon_equipe']) for e in r.data['equipes']], [('Jour', None), ('Soir', None)])
+        self.assertIsNone(r.data['equipe_utilisateur'])
+        # Équipe supprimée : l'employé n'en a plus
+        self.soir.delete()
+        self.employe.refresh_from_db()
+        self.assertIsNone(self.employe.typeequipe_id)
+
+    # ── 3. Date limite d'annulation ──────────────────────────────────
+    def test_date_limite_annulation_par_jour_et_par_plat(self):
+        from .serializers import date_limite_annulation
+        m = self.menu(self.presta_a, plats=[self.plat_a], jours=5)
+        params = {'agence': self.agence.id, 'prestataire': self.presta_a.id, 'semaine': m.date_menu.isoformat()}
+        r = self.client_pour(self.employe).get(f'{API}/commander/jours/', params)
+        jour = next(j for j in r.data['jours'] if j['date'] == m.date_menu.isoformat())
+        limite = date_limite_annulation(m.date_menu)
+        self.assertEqual((jour['date_limite_annulation'], jour['annulable']), (limite.isoformat(), True))
+        self.assertTrue(jour['libelle_annulation'].endswith('à minuit'))
+        self.assertEqual((jour['plats'][0]['date_limite_annulation'], jour['plats'][0]['libelle_annulation']),
+                         (limite.isoformat(), jour['libelle_annulation']))
+        # Délai d'annulation propre (plus long que celui de commande)
+        p = ParametresSociete.charger()
+        p.delai_annulation_heures = 24 * 10
+        p.save()
+        r = self.client_pour(self.employe).get(f'{API}/commander/jours/', params)
+        jour = next(j for j in r.data['jours'] if j['date'] == m.date_menu.isoformat())
+        self.assertEqual((jour['etat'], jour['annulable']), ('a_reserver', False))
+
+    # ── 4. Commandes externes ────────────────────────────────────────
+    def test_recherche_par_badge_signale_l_employe_externe(self):
+        self.ouvrir(self.agence)
+        m = self.menu(self.presta_a, plats=[self.plat_a], jours=0)
+        Commande.objects.create(user=self.emp_yop, menu=m, plat=self.plat_a)
+        url = f'{API}/commandes/recherche-par-badge/'
+        r = self.client_pour(self.gestionnaire).get(url, {'badge': self.emp_yop.username, 'menu': m.id})
+        self.assertEqual((r.status_code, r.data['externe'], r.data['agence_origine'], r.data['agence_origine_id']),
+                         (200, True, 'Yopougon', self.yop.id))
+        r = self.client_pour(self.gestionnaire).get(url, {'badge': self.employe.username, 'menu': m.id})
+        self.assertEqual((r.data['externe'], r.data['agence_origine']), (False, 'Siège'))
+        r = self.client_pour(self.gestionnaire).get(url, {'badge': self.employe2.username, 'menu': m.id})
+        self.assertEqual((r.data['externe'], r.data['agence_origine']), (False, None))
+
+    # ── 5. Employés sans agence ──────────────────────────────────────
+    def test_employes_sans_agence(self):
+        # employe2 : employé sans agence ; aucune agence ouverte
+        r = self.client_pour(self.employe2).get(f'{API}/commander/agences/')
+        self.assertEqual((r.data['sans_agence'], r.data['agences'], r.data['mon_agence_id']), (True, [], None))
+        self.assertFalse(self.client_pour(self.employe).get(f'{API}/commander/agences/').data['sans_agence'])
+
+        def alerte(user):
+            a_faire = self.client_pour(user).get(f'{API}/accueil/').data['gestion']['a_faire']
+            return next((a for a in a_faire if a['type'] == 'employes_sans_agence'), None)
+        a = alerte(self.admin)
+        self.assertEqual((a['nb'], a['titre'], a['lien_utilisateurs']),
+                         (1, '1 employé sans agence ne peut pas commander', True))
+        self.assertIn("Aucune agence n'accepte", a['detail'])
+        self.assertFalse(alerte(self.gestionnaire)['lien_utilisateurs'])
+        # Agence ouverte : il peut y commander, l'alerte le précise
+        self.ouvrir(self.yop)
+        self.assertIn('Seule 1 agence ouverte', alerte(self.admin)['detail'])
+        # Filtre « Aucune agence » de Paramètres → Utilisateurs
+        r = self.client_pour(self.admin).get(f'{API}/users/', {'sans_agence': 'true', 'page_size': 100})
+        ids = {u['id'] for u in r.data['results']}
+        self.assertIn(self.employe2.id, ids)
+        self.assertNotIn(self.employe.id, ids)
+        r = self.client_pour(self.admin).get(f'{API}/users/', {'sans_agence': 'false', 'page_size': 100})
+        self.assertNotIn(self.employe2.id, {u['id'] for u in r.data['results']})
+        # Agence renseignée : plus d'alerte
+        UserAgence.objects.create(user=self.employe2, agence=self.agence, statut=self.statut,
+                                  date_debut=timezone.now() - timedelta(days=1))
+        self.assertIsNone(alerte(self.admin))
+
+    # ── 6. Mots-clés du profil en multipart ──────────────────────────
+    def test_tags_en_multipart_liste_json_ou_virgules(self):
+        url = f'{API}/prestataire/profil/'
+        client = self.client_pour(self.resp_a)
+        for envoye, attendu in (('Ivoirien, Grillades', ['Ivoirien', 'Grillades']),
+                                ('["Attiéké", "Poisson braisé"]', ['Attiéké', 'Poisson braisé']),
+                                (['Végétarien', 'Maison'], ['Végétarien', 'Maison']),
+                                ('', [])):
+            r = client.patch(url, {'tags': envoye}, format='multipart')
+            self.assertEqual((r.status_code, r.data.get('tags')), (200, attendu), (envoye, r.data))
+        r = client.patch(url, {'tags': ['A', 'B']}, format='json')
+        self.assertEqual(r.data['tags'], ['A', 'B'])
+        r = client.patch(url, {'tags': 'A,B'}, format='json')
+        self.assertEqual(r.data['tags'], ['A', 'B'])
+        r = client.patch(url, {'tags': '[pas du json'}, format='multipart')
+        self.assertEqual(r.status_code, 400)
+        r = client.patch(url, {'tags': ','.join(str(i) for i in range(9))}, format='multipart')
+        self.assertEqual((r.status_code, r.data['tags']), (400, ['8 mots-clés au plus.']))
+        # Administration : même champ
+        r = self.client_pour(self.admin).patch(f'{API}/prestataires/{self.presta_b.id}/',
+                                               {'tags': 'Maquis,Grillades', 'logo': _png()}, format='multipart')
+        self.assertEqual((r.status_code, r.data['tags']), (200, ['Maquis', 'Grillades']))

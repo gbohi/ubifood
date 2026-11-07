@@ -160,6 +160,8 @@
   .vert b { color: #3EC970; }
   .orange b { color: #C98A16; }
 }
+// « dont N autres agences » sous les chiffres du service du jour
+.ep-externes { margin: -6px 0 12px; }
 .ep-plats-av { display: grid; gap: 10px; }
 .ep-plat-av {
   display: grid; grid-template-columns: 34px minmax(0, 1fr) minmax(60px, 120px) auto; gap: 10px; align-items: center;

@@ -30,7 +30,7 @@ from .models import (
     Agence, ClotureMensuelle, Commande, ContestationRetrait, Menu, ParametresSociete, Retrait, User,
 )
 from .permissions import IsAuthenticated, IsGestionnaireRole, agences_gerees, is_gestionnaire
-from .prestataires import horaires_service
+from .prestataires import horaires_retrait
 from .serializers import nom_complet
 
 DELAI_CONTESTATION_JOURS = 31
@@ -413,7 +413,7 @@ class ControleRetraitsView(APIView):
         parametres = ParametresSociete.charger()
 
         retraits = list(Retrait.objects.filter(menu__in=menus)
-                        .select_related('user', 'menu__agence', 'valide_par__prestataire')
+                        .select_related('user', 'menu__agence', 'menu__typeequipe', 'valide_par__prestataire')
                         .order_by('date_retrait'))
         plats = defaultdict(list)
         for c in (Commande.objects.filter(menu__in=menus, statut='retiree').select_related('plat')):
@@ -444,12 +444,14 @@ class ControleRetraitsView(APIView):
                      'retrait_ids': [x.id for x in rafale]}
                 anomalies.append(a)
                 anomalies_agent[agent_id].append(a)
+        # Horaires de retrait de l'équipe du menu, sinon de l'agence, sinon par défaut
         horaires = {}
         for r in retraits:
             ag = r.menu.agence
-            if ag.id not in horaires:
-                horaires[ag.id] = horaires_service(ag, parametres)
-            debut, fin = horaires[ag.id]
+            cle_h = (ag.id, r.menu.typeequipe_id)
+            if cle_h not in horaires:
+                horaires[cle_h] = horaires_retrait(ag, r.menu.typeequipe, parametres)
+            debut, fin = horaires[cle_h]
             heure = timezone.localtime(r.date_retrait).time()
             if not (debut <= heure <= fin):
                 a = {'type': 'hors_horaires', 'libelle': 'Retrait hors horaires de service',
@@ -457,8 +459,12 @@ class ControleRetraitsView(APIView):
                      'agent_nom': nom_complet(r.valide_par) if r.valide_par_id else None,
                      'agence_nom': ag.nom_agence, 'retrait_id': r.id, 'heure': _heure(r.date_retrait),
                      'user_nom': nom_complet(r.user), 'matricule': r.user.username,
+                     'equipe': r.menu.typeequipe.libelle if r.menu.typeequipe_id else None,
+                     'heure_debut': debut.strftime('%H:%M'), 'heure_fin': fin.strftime('%H:%M'),
                      'description': (f"{_heure(r.date_retrait)} — {nom_complet(r.user)} "
-                                     f"(service {debut:%H:%M} – {fin:%H:%M})")}
+                                     + (f"(retrait équipe {r.menu.typeequipe.libelle} : "
+                                        if r.menu.typeequipe_id else "(service ")
+                                     + f"{debut:%H:%M} – {fin:%H:%M})")}
                 anomalies.append(a)
                 anomalies_agent[r.valide_par_id].append(a)
         saisis = [r for r in retraits if r.mode == 'saisie']

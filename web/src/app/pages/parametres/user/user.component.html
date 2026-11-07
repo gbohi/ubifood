@@ -37,6 +37,7 @@
         </div>
         <select class="form-select" aria-label="Agence" [ngModel]="searchForm.value.agence" (ngModelChange)="choisirAgence($event)">
           <option value="">Toutes les agences</option>
+          <option [value]="aucuneAgence">Aucune agence</option>
           @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
         </select>
       </div>
@@ -105,7 +106,15 @@
               <label class="form-label small mb-1">Agence</label>
               <select class="form-select form-select-sm" formControlName="agence">
                 <option value="">Toutes</option>
+                <option [value]="aucuneAgence">Aucune agence</option>
                 @for (a of agences; track a.id) { <option [value]="a.id">{{ a.nom_agence }}</option> }
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Équipe</label>
+              <select class="form-select form-select-sm" formControlName="typeequipe">
+                <option value="">Toutes</option>
+                @for (t of typeequipes; track t.id) { <option [value]="t.id">{{ t.libelle }}</option> }
               </select>
             </div>
             <div class="col-6 col-md-2">
@@ -160,6 +169,7 @@
             </th>
             <th>Contact</th>
             <th>Agence</th>
+            <th>Équipe</th>
             <th>Poste · Service</th>
             <th>Rôle</th>
             <th>Compte</th>
@@ -197,6 +207,10 @@
                 } @else {
                   <span class="lst-tag t-or"><i class="ri-error-warning-line"></i>Aucune agence</span>
                 }
+              </td>
+              <td data-label="Équipe">
+                @if (data.typeequipe_libelle) { <span class="lst-tag t-ve"><i class="ri-team-line"></i>{{ data.typeequipe_libelle }}</span> }
+                @else { <span class="muted">—</span> }
               </td>
               <td data-label="Poste">
                 @if (getDernierPoste(data); as pst) {
@@ -249,7 +263,7 @@
           }
           @if (users.length === 0 && !isLoading) {
             <tr class="lst-l-vide">
-              <td colspan="8" class="lst-c-plein">
+              <td colspan="9" class="lst-c-plein">
                 <div class="lst-vide">
                   <i class="ri-user-search-line"></i>
                   <h5>Aucun utilisateur trouvé</h5>
@@ -332,6 +346,16 @@
                 <label class="form-check-label">Compte actif</label>
               </div>
             </div>
+            @if (!estRolePrestataire) {
+              <div class="col-md-4">
+                <label class="form-label" for="user-typeequipe">Équipe <small class="text-muted">(facultatif)</small></label>
+                <select id="user-typeequipe" class="form-select" formControlName="typeequipe">
+                  <option [ngValue]="null">Aucune équipe</option>
+                  @for (t of typeequipes; track t.id) { <option [ngValue]="t.id">{{ t.libelle }}</option> }
+                </select>
+                <div class="form-text">Mise en avant (« Mon équipe ») et présélectionnée quand l'employé commande.</div>
+              </div>
+            }
           </div>
 
           <!-- Rôles -->
@@ -629,6 +653,7 @@
           <div class="col-md-4"><label class="form-label fw-medium">Poste tél. :</label><p>{{selectedUser?.poste_telephone||'—'}}</p></div>
           <div class="col-md-2"><label class="form-label fw-medium">Statut :</label><p><span class="badge bg-info-subtle text-info">{{getStatutLibelle(selectedUser?.statut)}}</span></p></div>
           <div class="col-md-2"><label class="form-label fw-medium">État :</label><p>@if(selectedUser?.is_active){<span class="badge bg-success-subtle text-success">Actif</span>}@else{<span class="badge bg-danger-subtle text-danger">Inactif</span>}</p></div>
+          <div class="col-md-6"><label class="form-label fw-medium">Équipe :</label><p class="mb-0">{{ selectedUser?.typeequipe_libelle || 'Aucune' }}</p></div>
           <div class="col-12"><label class="form-label fw-medium">Rôle(s) :</label><p class="mb-0">@if(selectedUser?.groups&&selectedUser.groups.length>0){@for(gid of selectedUser.groups;track gid){<span class="badge bg-secondary-subtle text-secondary me-1"><i class="ri-shield-check-line me-1"></i>{{getGroupeName(gid)}}</span>}}@else{<span class="text-muted small">Aucun</span>}</p></div>
         </div>
 

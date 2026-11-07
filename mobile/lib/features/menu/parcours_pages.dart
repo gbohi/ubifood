@@ -608,6 +608,17 @@ class _PageAgences extends StatelessWidget {
           onPressed: onActualiser,
         ),
       ));
+    } else if (liste.isEmpty && agences?.agenceNonRenseignee == true) {
+      // Employé sans agence et aucune agence ouverte aux autres agences
+      enfants.add(const EmptyState(
+        key: Key('agence-non-renseignee'),
+        icon: Icons.domain_disabled_rounded,
+        title: "Votre agence n'est pas renseignée — contactez votre "
+            'gestionnaire',
+        subtitle: 'Sans agence, vous ne pouvez commander que dans les '
+            "agences ouvertes aux autres agences, et aucune ne l'est pour "
+            'le moment.',
+      ));
     } else if (liste.isEmpty) {
       enfants.add(const EmptyState(
         icon: Icons.store_mall_directory_outlined,
@@ -615,6 +626,19 @@ class _PageAgences extends StatelessWidget {
         subtitle: "Aucune agence ne vous est ouverte pour l'instant",
       ));
     } else {
+      if (agences?.sansAgence == true) {
+        enfants.add(const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: BandeauInfo(
+            key: Key('bandeau-sans-agence'),
+            icone: Icons.info_outline_rounded,
+            ton: TonPastille.or,
+            texte: "Votre agence n'est pas renseignée : vous ne pouvez "
+                'commander que dans les agences ouvertes aux autres '
+                'agences. Contactez votre gestionnaire.',
+          ),
+        ));
+      }
       enfants.add(_RangeeAgences(
           agences: liste, agenceId: agenceId, onAgence: onAgence));
       if (mission) {
@@ -907,7 +931,10 @@ class _CartePrestataire extends StatelessWidget {
         "Pas de menu aujourd'hui",
       if (p.cuisine.isNotEmpty) 'Cuisine ${_minuscule(p.cuisine)}',
     ];
-    final equipes = p.equipes.map((e) => e.libelle).join(', ');
+    final equipes = p.equipes
+        .map((e) =>
+            e.monEquipe == true ? '${e.libelle} (mon équipe)' : e.libelle)
+        .join(', ');
 
     Widget ligne(IconData icone, String texte) => Row(children: [
           Icon(icone, size: 13, color: gris),
@@ -1145,10 +1172,16 @@ class _PageEquipesState extends State<_PageEquipes> {
         subtitle: "Ce prestataire n'a pas encore publié de menu ici",
       ));
     } else {
+      // Équipe de l'utilisateur : renvoyée en premier et présélectionnée
+      // (mise en avant) ; il peut en choisir une autre
+      final mienne = _donnees?.equipeParDefaut;
       for (final e in equipes) {
         contenu.add(Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: _CarteEquipe(equipe: e, onTap: () => widget.onEquipe(e)),
+          child: _CarteEquipe(
+              equipe: e,
+              preselectionnee: mienne?.id == e.id,
+              onTap: () => widget.onEquipe(e)),
         ));
       }
     }
@@ -1275,8 +1308,14 @@ class _BoutonRetourRond extends StatelessWidget {
 
 class _CarteEquipe extends StatelessWidget {
   final EquipeCommande equipe;
+
+  /// Équipe proposée d'office (celle de l'utilisateur, ou la seule)
+  final bool preselectionnee;
   final VoidCallback onTap;
-  const _CarteEquipe({required this.equipe, required this.onTap});
+  const _CarteEquipe(
+      {required this.equipe,
+      this.preselectionnee = false,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1284,7 +1323,7 @@ class _CarteEquipe extends StatelessWidget {
     final gris =
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
     final (icone, couleur) = _iconeEquipe(equipe.libelle);
-    final mienne = equipe.monEquipe == true;
+    final mienne = equipe.monEquipe == true || preselectionnee;
     final details = [
       if (_horaires(equipe.heureDebutService, equipe.heureFinService)
           case final h?)
@@ -1332,7 +1371,7 @@ class _CarteEquipe extends StatelessWidget {
                                   .textTheme
                                   .titleSmall
                                   ?.copyWith(fontWeight: FontWeight.w800)),
-                          if (mienne)
+                          if (equipe.monEquipe == true)
                             const PastilleStatut(
                                 label: 'Mon équipe', ton: TonPastille.vert),
                         ]),
@@ -1502,7 +1541,9 @@ class _PageJoursState extends State<_PageJours> {
                     Text(
                         [
                           if (equipe != null && equipe.isNotEmpty)
-                            'Équipe $equipe',
+                            d?.equipeMonEquipe == true
+                                ? 'Équipe $equipe (mon équipe)'
+                                : 'Équipe $equipe',
                           if (agenceNom != null && agenceNom.isNotEmpty)
                             agenceNom,
                         ].join(' · '),
@@ -1629,6 +1670,8 @@ class _PageJoursState extends State<_PageJours> {
           MenuPlat(id: x.id, plat: x.versPlat()),
       ],
       dateLimiteCommande: j.dateLimiteCommande,
+      // « Annulable jusqu'au … » de la fiche du plat, avant de commander
+      dateLimiteAnnulation: p.dateLimiteAnnulation ?? j.dateLimiteAnnulation,
       prestataireId: presta?.id,
       prestataireNom: presta?.nomAffiche,
     );
@@ -1713,6 +1756,27 @@ class _PageJoursState extends State<_PageJours> {
             "jusqu'au ${j.libelleLimite}",
         ].join(' · '),
       ));
+      if (j.dateLimiteAnnulation != null) {
+        // Délai d'annulation plus long que celui de commande : déjà dépassé
+        final depasse = !DateTime.now().isBefore(j.dateLimiteAnnulation!);
+        out.add(Padding(
+          padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
+          child: Row(children: [
+            Icon(depasse ? Icons.lock_outline_rounded : Icons.undo_rounded,
+                size: 14, color: gris),
+            const SizedBox(width: 5),
+            Expanded(
+              child: Text(
+                  depasse
+                      ? "Non annulable : délai d'annulation dépassé"
+                      : "Annulable jusqu'au "
+                          '${libelleDateLimite(j.dateLimiteAnnulation!)}',
+                  key: const Key('annulable-jusqua'),
+                  style: TextStyle(fontSize: 11.5, color: gris)),
+            ),
+          ]),
+        ));
+      }
     } else if (j.etat == EtatJour.ferme) {
       out.add(const BandeauInfo(
         icone: Icons.lock_outline_rounded,

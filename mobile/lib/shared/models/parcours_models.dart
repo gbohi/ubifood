@@ -86,18 +86,48 @@ class AgenceCommande {
       );
 }
 
+/// Équipe de l'utilisateur (Paramètres → Utilisateurs)
+class EquipeUtilisateur {
+  final int id;
+  final String libelle;
+  const EquipeUtilisateur({required this.id, this.libelle = ''});
+
+  static EquipeUtilisateur? fromJsonOuNull(dynamic v) {
+    if (v is! Map || _intOuNull(v['id']) == null) return null;
+    return EquipeUtilisateur(id: _int(v['id']), libelle: _texte(v['libelle']));
+  }
+}
+
 class AgencesCommande {
   final DateTime? date;
   final int? monAgenceId;
+
+  /// Employé sans agence : il ne commande que dans les agences ouvertes aux
+  /// autres agences (aucune → « Votre agence n'est pas renseignée »)
+  final bool sansAgence;
+  final EquipeUtilisateur? equipeUtilisateur;
   final List<AgenceCommande> agences;
 
-  const AgencesCommande({this.date, this.monAgenceId, this.agences = const []});
+  const AgencesCommande(
+      {this.date,
+      this.monAgenceId,
+      this.sansAgence = false,
+      this.equipeUtilisateur,
+      this.agences = const []});
 
   factory AgencesCommande.fromJson(Map<String, dynamic> j) => AgencesCommande(
         date: jourIso(j['date']),
         monAgenceId: _intOuNull(j['mon_agence_id']),
+        sansAgence: j['sans_agence'] is bool
+            ? j['sans_agence'] as bool
+            : _intOuNull(j['mon_agence_id']) == null,
+        equipeUtilisateur:
+            EquipeUtilisateur.fromJsonOuNull(j['equipe_utilisateur']),
         agences: _maps(j['agences']).map(AgenceCommande.fromJson).toList(),
       );
+
+  /// Aucune agence où commander : agence non renseignée et aucune ouverte
+  bool get agenceNonRenseignee => sansAgence && agences.isEmpty;
 
   AgenceCommande? get monAgence =>
       agences.where((a) => a.monAgence).firstOrNull ??
@@ -115,17 +145,22 @@ class EquipeService {
   final String? heureDebutService;
   final String? heureFinService;
 
+  /// Équipe de l'utilisateur (null : aucune équipe ne lui est attribuée)
+  final bool? monEquipe;
+
   const EquipeService(
       {required this.id,
       required this.libelle,
       this.heureDebutService,
-      this.heureFinService});
+      this.heureFinService,
+      this.monEquipe});
 
   factory EquipeService.fromJson(Map<String, dynamic> j) => EquipeService(
         id: _int(j['id']),
         libelle: _texte(j['libelle']),
         heureDebutService: j['heure_debut_service'] as String?,
         heureFinService: j['heure_fin_service'] as String?,
+        monEquipe: j['mon_equipe'] is bool ? j['mon_equipe'] as bool : null,
       );
 }
 
@@ -230,6 +265,9 @@ class PrestataireCommande {
 
   /// Note affichable (assez d'avis)
   bool get aUneNote => !nouveau && note != null;
+
+  /// Le prestataire sert l'équipe de l'utilisateur
+  bool get sertMonEquipe => equipes.any((e) => e.monEquipe == true);
 }
 
 class PrestatairesAgence {
@@ -268,7 +306,8 @@ class EquipeCommande {
   final int id;
   final String libelle;
 
-  /// Équipe de l'utilisateur (null : inconnu)
+  /// Équipe de l'utilisateur (User.typeequipe) ; null : aucune équipe ne lui
+  /// est attribuée
   final bool? monEquipe;
   final String? heureDebutService;
   final String? heureFinService;
@@ -309,14 +348,23 @@ class EquipesPrestataire {
   final int agenceId;
   final String agenceNom;
   final PrestataireCommande? prestataire;
+  final EquipeUtilisateur? equipeUtilisateur;
+
+  /// Équipe de l'utilisateur en premier (serveur)
   final List<EquipeCommande> equipes;
 
   const EquipesPrestataire({
     required this.agenceId,
     required this.agenceNom,
     this.prestataire,
+    this.equipeUtilisateur,
     this.equipes = const [],
   });
+
+  /// Équipe à présélectionner : la seule, sinon celle de l'utilisateur
+  EquipeCommande? get equipeParDefaut => equipes.length == 1
+      ? equipes.first
+      : equipes.where((e) => e.monEquipe == true).firstOrNull;
 
   factory EquipesPrestataire.fromJson(Map<String, dynamic> j) {
     final agence = _map(j['agence']);
@@ -327,6 +375,8 @@ class EquipesPrestataire {
       prestataire: p is Map
           ? PrestataireCommande.fromJson(Map<String, dynamic>.from(p))
           : null,
+      equipeUtilisateur:
+          EquipeUtilisateur.fromJsonOuNull(j['equipe_utilisateur']),
       equipes: _maps(j['equipes']).map(EquipeCommande.fromJson).toList(),
     );
   }
@@ -449,6 +499,10 @@ class PlatJour {
   final StatutPlatJour statut;
   final int? commandeId;
 
+  /// Annulation possible jusqu'à cette date (affichée avant de commander)
+  final DateTime? dateLimiteAnnulation;
+  final String libelleAnnulation;
+
   const PlatJour({
     required this.id,
     required this.nom,
@@ -467,6 +521,8 @@ class PlatJour {
     this.typeEquipe = '',
     this.statut = StatutPlatJour.disponible,
     this.commandeId,
+    this.dateLimiteAnnulation,
+    this.libelleAnnulation = '',
   });
 
   factory PlatJour.fromJson(Map<String, dynamic> j) {
@@ -494,6 +550,9 @@ class PlatJour {
       typeEquipe: _texte(j['typeequipe']),
       statut: StatutPlatJour.depuis(j['statut']),
       commandeId: _intOuNull(j['commande_id']),
+      dateLimiteAnnulation:
+          DateTime.tryParse(_texte(j['date_limite_annulation']))?.toUtc(),
+      libelleAnnulation: _texte(j['libelle_annulation']),
     );
   }
 
@@ -527,6 +586,10 @@ class JourCommande {
   final EtatJour etat;
   final DateTime? dateLimiteCommande;
   final String libelleLimite;
+
+  /// Annulation possible jusqu'à cette date (« Annulable jusqu'au … »)
+  final DateTime? dateLimiteAnnulation;
+  final String libelleAnnulation;
   final List<MenuJour> menus;
   final CommandeJour? commande;
   final List<PlatJour> plats;
@@ -537,6 +600,8 @@ class JourCommande {
     this.etat = EtatJour.pasDeMenu,
     this.dateLimiteCommande,
     this.libelleLimite = '',
+    this.dateLimiteAnnulation,
+    this.libelleAnnulation = '',
     this.menus = const [],
     this.commande,
     this.plats = const [],
@@ -549,6 +614,9 @@ class JourCommande {
         dateLimiteCommande:
             DateTime.tryParse(_texte(j['date_limite_commande']))?.toUtc(),
         libelleLimite: _texte(j['libelle_limite']),
+        dateLimiteAnnulation:
+            DateTime.tryParse(_texte(j['date_limite_annulation']))?.toUtc(),
+        libelleAnnulation: _texte(j['libelle_annulation']),
         menus: _maps(j['menus']).map(MenuJour.fromJson).toList(),
         commande: CommandeJour.fromJsonOuNull(j['commande']),
         plats: _maps(j['plats']).map(PlatJour.fromJson).toList(),
@@ -561,6 +629,9 @@ class JoursCommande {
   final PrestataireCommande? prestataire;
   final int? equipeId;
   final String? equipeLibelle;
+
+  /// L'équipe choisie est celle de l'utilisateur (null : il n'en a pas)
+  final bool? equipeMonEquipe;
   final DateTime debut;
   final DateTime fin;
   final DateTime? precedente;
@@ -576,6 +647,7 @@ class JoursCommande {
     this.prestataire,
     this.equipeId,
     this.equipeLibelle,
+    this.equipeMonEquipe,
     required this.debut,
     required this.fin,
     this.precedente,
@@ -603,6 +675,8 @@ class JoursCommande {
           : null,
       equipeId: _intOuNull(equipe['id']),
       equipeLibelle: equipe['libelle'] as String?,
+      equipeMonEquipe:
+          equipe['mon_equipe'] is bool ? equipe['mon_equipe'] as bool : null,
       debut: debut,
       fin: jourIso(semaine['fin']) ?? debut.add(const Duration(days: 6)),
       precedente: jourIso(semaine['precedente']),

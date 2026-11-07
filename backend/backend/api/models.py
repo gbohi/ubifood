@@ -49,6 +49,10 @@ class User(AbstractUser):
     ]
     mode_paiement_prefere = models.CharField(max_length=10, choices=MODE_PAIEMENT_PREFERE_CHOICES,
                                              default='compte')
+    # Équipe de l'employé (Paramètres → Utilisateurs) : mise en avant et
+    # présélectionnée dans le parcours de commande (il peut en choisir une autre)
+    typeequipe = models.ForeignKey('TypeEquipe', on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='membres', verbose_name='Équipe')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -160,6 +164,11 @@ class TypePlat(BaseModel):
 
 class TypeEquipe(BaseModel):
     libelle = models.CharField(max_length=100)
+    # Horaires de retrait propres à l'équipe (vides : horaires de service de
+    # l'agence, sinon ceux par défaut de Paramètres → Société). Les deux
+    # heures sont renseignées ensemble ou laissées vides.
+    heure_debut_retrait = models.TimeField('Début du retrait', null=True, blank=True)
+    heure_fin_retrait   = models.TimeField('Fin du retrait', null=True, blank=True)
 
 class Plat(BaseModel):
     nom = models.CharField(max_length=255)

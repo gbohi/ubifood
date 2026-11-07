@@ -27,6 +27,7 @@
               <div class="form-check"><input class="form-check-input" type="checkbox" aria-label="Tout sélectionner" [(ngModel)]="masterSelected" (change)="checkUncheckAll($event)"></div>
             </th>
             <th class="tri" [class.actif]="tri.estActif('libelle')" (click)="onSort('libelle')">Libellé<i class="ms-1" [ngClass]="tri.icone('libelle')"></i></th>
+            <th>Horaires de retrait</th>
             <th class="lst-c-act"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -38,6 +39,10 @@
               </td>
               <td class="lst-c-principal">
                 <div class="lst-qui"><span class="lst-av carre"><i class="ri-time-line"></i></span><b>{{ data.libelle }}</b></div>
+              </td>
+              <td data-label="Retrait">
+                @if (horairesRetrait(data); as h) { <span class="lst-tag t-bl"><i class="ri-time-line"></i>{{ h }}</span> }
+                @else { <span class="muted" title="Horaires de service de chaque agence (sinon ceux par défaut)">Horaires de l'agence</span> }
               </td>
               <td class="lst-c-act">
                 <div class="lst-act">
@@ -57,7 +62,7 @@
           }
           @if (typeequipes.length === 0 && !isLoading) {
             <tr class="lst-l-vide">
-              <td colspan="3" class="lst-c-plein">
+              <td colspan="4" class="lst-c-plein">
                 <div class="lst-vide">
                   @if (term) {
                     <i class="ri-search-line"></i>
@@ -103,6 +108,25 @@
                             <small *ngIf="typeequipeForm.get('libelle')?.errors?.['required']">Le libellé est requis</small>
                         </div>
                     </div>
+
+                    <label class="form-label mb-1">Horaires de retrait <small class="text-muted">(facultatif)</small></label>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label for="debut-retrait-input" class="form-label small text-muted mb-1">Début</label>
+                            <input type="time" class="form-control" formControlName="heure_debut_retrait" id="debut-retrait-input">
+                        </div>
+                        <div class="col-6">
+                            <label for="fin-retrait-input" class="form-label small text-muted mb-1">Fin</label>
+                            <input type="time" class="form-control" formControlName="heure_fin_retrait" id="fin-retrait-input">
+                        </div>
+                    </div>
+                    @if (typeequipeForm.errors?.['horairesIncomplets']) {
+                        <div class="text-danger mt-1"><small>Renseignez les deux heures, ou laissez-les vides.</small></div>
+                    } @else if (typeequipeForm.errors?.['horairesOrdre']) {
+                        <div class="text-danger mt-1"><small>L'heure de fin doit être après l'heure de début.</small></div>
+                    }
+                    <div class="form-text">Vides : horaires de service de chaque agence (sinon ceux par défaut de Paramètres → Société).
+                        Utilisés pour le retrait des repas de cette équipe et le contrôle « retrait hors horaires ».</div>
                 </div>
                 <div class="modal-footer">
                     <div class="hstack gap-2 justify-content-end">
@@ -159,6 +183,10 @@
                 <div class="mb-3">
                     <label class="form-label fw-medium">Libellé :</label>
                     <p>{{selectedTypeequipe?.libelle}}</p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-medium">Horaires de retrait :</label>
+                    <p>{{ (selectedTypeequipe && horairesRetrait(selectedTypeequipe)) || "Horaires de l'agence" }}</p>
                 </div>
             </div>
             <div class="modal-footer">

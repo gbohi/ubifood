@@ -1,6 +1,9 @@
 export interface TypeequipelistModel {
     id?: any;
     libelle?: any;
+    /** Horaires de retrait propres à l'équipe (« HH:MM:SS »), vides : horaires de l'agence */
+    heure_debut_retrait?: string | null;
+    heure_fin_retrait?: string | null;
 }
 
 

@@ -225,7 +225,10 @@ class CarteServiceAgence extends StatelessWidget {
         Text(
             '${service.servies} servi${service.servies > 1 ? 's' : ''} · '
             '${service.aServir} à servir · ${service.commandees} commandé'
-            '${service.commandees > 1 ? 's' : ''}',
+            '${service.commandees > 1 ? 's' : ''}'
+            // Employés d'une autre agence que celle du menu
+            '${service.externes > 0 ? ' · dont ${service.externes} autre${service.externes > 1 ? 's' : ''} agence${service.externes > 1 ? 's' : ''}' : ''}',
+            key: const Key('chiffres-service'),
             style: TextStyle(fontSize: 12, color: gris)),
         if (service.plats.isNotEmpty) const SizedBox(height: 6),
         for (final p in service.plats)

@@ -15,9 +15,15 @@ export interface AgenceCommande {
   heure_debut_service: string | null; heure_fin_service: string | null;
 }
 
+/** Horaires de retrait effectifs : ceux de l'équipe, sinon de l'agence, sinon par défaut */
 export interface EquipeResume {
   id: number; libelle: string; heure_debut_service?: string | null; heure_fin_service?: string | null;
+  /** Équipe de l'utilisateur (null : aucune équipe ne lui est attribuée) */
+  mon_equipe?: boolean | null;
 }
+
+/** Équipe de l'utilisateur (Paramètres → Utilisateurs), null s'il n'en a pas */
+export type EquipeUtilisateur = { id: number; libelle: string } | null;
 
 export interface ProfilPublic {
   id: number; libelle: string; nom_affiche: string; cantine_ubipharm?: boolean;
@@ -48,6 +54,9 @@ export interface PlatCommande {
   note: number | null; nb_avis: number; nouveau: boolean;
   prix: number | null;
   menu_id: number; typeequipe_id: number; typeequipe: string;
+  mon_equipe?: boolean | null;
+  /** Annulation possible jusqu'à cette date (affichée avant de commander) */
+  date_limite_annulation?: string; libelle_annulation?: string;
   statut: StatutPlat; commande_id: number | null;
 }
 
@@ -61,7 +70,8 @@ export interface CommandeJour {
 export interface JourCommande {
   date: string; libelle: string; etat: EtatJourCommande;
   date_limite_commande?: string; libelle_limite?: string;
-  menus: { id: number; typeequipe_id: number; typeequipe: string }[];
+  date_limite_annulation?: string; libelle_annulation?: string; annulable?: boolean;
+  menus: { id: number; typeequipe_id: number; typeequipe: string; mon_equipe?: boolean | null }[];
   commande: CommandeJour | null;
   plats: PlatCommande[];
 }
@@ -69,7 +79,8 @@ export interface JourCommande {
 export interface JoursCommande {
   agence: { id: number; nom: string };
   prestataire: ProfilPublic;
-  equipe: { id: number; libelle: string } | null;
+  equipe: { id: number; libelle: string; mon_equipe?: boolean | null } | null;
+  equipe_utilisateur?: EquipeUtilisateur;
   semaine: { debut: string; fin: string; precedente: string; suivante: string };
   aujourdhui: string;
   jour_par_defaut: string;
@@ -91,13 +102,15 @@ export class ParcoursCommandeService {
 
   constructor(private http: HttpClient) {}
 
-  agences(): Observable<{ date: string; mon_agence_id: number | null; agences: AgenceCommande[] }> {
+  /** sans_agence : employé sans agence (il ne commande que dans les agences ouvertes) */
+  agences(): Observable<{ date: string; mon_agence_id: number | null; sans_agence?: boolean;
+                          equipe_utilisateur?: EquipeUtilisateur; agences: AgenceCommande[] }> {
     return this.http.get<any>(`${this.api}/commander/agences/`);
   }
 
   prestataires(agence: number, date?: string): Observable<{
     agence: { id: number; nom: string; code: string }; date: string; seuil_avis_note: number;
-    prestataires: PrestataireCarte[];
+    equipe_utilisateur?: EquipeUtilisateur; prestataires: PrestataireCarte[];
   }> {
     let params = new HttpParams().set('agence', String(agence));
     if (date) params = params.set('date', date);
@@ -106,7 +119,7 @@ export class ParcoursCommandeService {
 
   equipes(prestataire: number, agence: number): Observable<{
     agence: { id: number; nom: string }; prestataire: ProfilPublic;
-    equipe_utilisateur: number | null; equipes: EquipeCommande[];
+    equipe_utilisateur: EquipeUtilisateur; equipes: EquipeCommande[];
   }> {
     return this.http.get<any>(`${this.api}/commander/prestataires/${prestataire}/equipes/`,
       { params: new HttpParams().set('agence', String(agence)) });

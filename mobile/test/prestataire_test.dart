@@ -790,4 +790,40 @@ void main() {
       });
     }
   });
+
+  group('Accueil du responsable : employés d\'autres agences', () {
+    testWidgets('« dont N autres agences » sous les chiffres du service',
+        (tester) async {
+      final service = ServiceAgencePrestataire.fromJson({
+        'agence_id': 4,
+        'agence_nom': 'Siège',
+        'heure_debut_service': '18:00',
+        'heure_fin_service': '20:30',
+        'commandees': 12,
+        'servies': 5,
+        'a_servir': 7,
+        'externes': 3,
+        'plats': [],
+      });
+      expect(service.externes, 3);
+      await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(body: CarteServiceAgence(service: service))));
+      expect(
+          find.text(
+              '5 servis · 7 à servir · 12 commandés · dont 3 autres agences'),
+          findsOneWidget);
+      expect(find.text('18:00 – 20:30'), findsOneWidget);
+      // Aucun employé d'une autre agence : rien de plus
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: CarteServiceAgence(
+                  service: ServiceAgencePrestataire.fromJson({
+        'agence_id': 4,
+        'agence_nom': 'Siège',
+        'commandees': 1
+      })))));
+      expect(find.textContaining('autres agences'), findsNothing);
+    });
+  });
 }

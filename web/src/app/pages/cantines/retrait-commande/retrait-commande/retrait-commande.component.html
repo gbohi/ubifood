@@ -139,6 +139,9 @@
             <div class="ce-res-qui">
               <h2>{{ resultatBadge.user_nom }}</h2>
               <small>{{ resultatBadge.badge }}@if (menuSelectionne) { · {{ menuSelectionne.agence_nom }} }</small>
+              @if (resultatBadge.externe) {
+                <div class="mt-2"><span class="ubi-externe ubi-externe-l"><i class="ri-building-line"></i>Employé d'une autre agence · {{ resultatBadge.agence_origine }}</span></div>
+              }
             </div>
             @if (vientDEtreValide) {
               <span class="ce-tag ce-tag-ve ce-tag-l"><i class="ri-check-double-line"></i>Retrait enregistré</span>
