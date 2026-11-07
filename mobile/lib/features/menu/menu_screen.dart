@@ -1,4 +1,8 @@
 // lib/features/menu/menu_screen.dart
+//
+// Onglet Menus : parcours de commande agence → prestataire → équipe → jour
+// (pages dans parcours_pages.dart), fiche détaillée d'un plat, réservation
+// avec choix du mode de paiement, annulation.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -6,16 +10,23 @@ import 'package:intl/intl.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../shared/models/models.dart';
+import '../../shared/models/parcours_models.dart';
+import '../../core/api/api_client.dart' show messageErreurApi;
 import '../../core/widgets/common_widgets.dart';
 import '../../core/widgets/tic_echeance.dart';
 import '../../core/services/cantine_service.dart';
+import '../../core/services/parcours_service.dart';
 import '../avis/avis_widgets.dart';
 import '../paiements/choix_paiement_sheet.dart';
-import '../../shared/models/compte_repas_models.dart' show ModePaiementCommande;
-import '../dashboard/accueil_widgets.dart' show fermeDans, formatFcfa, jourCourt;
+import '../../shared/models/compte_repas_models.dart'
+    show InfoPaiement, ModePaiementCommande;
+import '../dashboard/accueil_widgets.dart' show fermeDans, formatFcfa;
+
+part 'parcours_pages.dart';
 
 /// Menu à afficher à l'ouverture de l'onglet (depuis l'accueil : un jour
-/// de « Ma semaine », « Réserver » du prochain repas).
+/// de « Ma semaine », « Réserver » du prochain repas). L'onglet ouvre
+/// l'agence, le prestataire, l'équipe et le jour du menu si possible.
 class CibleMenu {
   final int? menuId;
   final DateTime? date;
@@ -25,317 +36,10 @@ class CibleMenu {
 /// Demande d'affichage d'un menu, traitée par l'onglet Menu.
 final menuDemande = ValueNotifier<CibleMenu?>(null);
 
-class MenuScreen extends StatefulWidget {
-  const MenuScreen({super.key});
-  @override
-  State<MenuScreen> createState() => _MenuScreenState();
-}
-
-class _MenuScreenState extends State<MenuScreen> {
-  Menu? _menuSelectionne;
-  _AgenceLocal? _agenceSelectionnee;
-  _EquipeLocal? _equipeSelectionnee;
-
-  /// Demande de l'accueil en attente des menus ; rechargés une fois si le
-  /// menu demandé n'est pas dans la liste (menu créé depuis).
-  CibleMenu? _cible;
-  bool _cibleRechargee = false;
-
-  void _onDemande() {
-    final c = menuDemande.value;
-    if (c == null || !mounted) return;
-    menuDemande.value = null;
-    setState(() {
-      _cible = c;
-      _cibleRechargee = false;
-    });
-  }
-
-  /// Applique la demande en attente (sélection du menu, et de son agence
-  /// si le filtre l'excluait). Appelé pendant build : simples affectations.
-  void _appliquerCible(MenuProvider menuProv) {
-    final cible = _cible;
-    if (cible == null || menuProv.loading) return;
-    final menus = menuProv.menus;
-    String? jour(DateTime? d) =>
-        d == null ? null : DateFormat('yyyy-MM-dd').format(d);
-    final date = jour(cible.date);
-    final agenceId = context.read<AuthProvider>().user?.derniereAgenceId;
-    Menu? trouve;
-    if (cible.menuId != null) {
-      trouve = menus.where((m) => m.id == cible.menuId).firstOrNull;
-    }
-    if (trouve == null && date != null) {
-      final duJour = menus.where((m) => m.dateMenu == date);
-      trouve = duJour
-              .where((m) =>
-                  _agenceSelectionnee == null ||
-                  m.agenceId.toString() == _agenceSelectionnee!.id)
-              .firstOrNull ??
-          duJour.where((m) => m.agenceId == agenceId).firstOrNull ??
-          duJour.firstOrNull;
-    }
-    if (trouve == null && !_cibleRechargee) {
-      _cibleRechargee = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.read<MenuProvider>().loadMenus();
-      });
-      return;
-    }
-    _cible = null;
-    if (trouve == null) return;
-    _menuSelectionne = trouve;
-    if (_agenceSelectionnee != null &&
-        _agenceSelectionnee!.id != trouve.agenceId.toString()) {
-      _agenceSelectionnee =
-          _AgenceLocal(id: trouve.agenceId.toString(), nom: trouve.agenceNom);
-    }
-    if (_equipeSelectionnee != null &&
-        _equipeSelectionnee!.id != trouve.typeEquipeId.toString()) {
-      _equipeSelectionnee = null;
-    }
-  }
-
-  @override
-  void dispose() {
-    menuDemande.removeListener(_onDemande);
-    super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    menuDemande.addListener(_onDemande);
-    _cible = menuDemande.value;
-    menuDemande.value = null;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final auth = context.read<AuthProvider>();
-      final agenceId = auth.user?.derniereAgenceId;
-      final agenceNom = auth.user?.derniereAgence;
-
-      // Menus de toutes les agences : un agent peut commander là où il se
-      // trouve ; son agence est seulement pré-sélectionnée dans le filtre.
-      await context.read<MenuProvider>().loadMenus();
-      if (!mounted) return;
-      context.read<CommandeProvider>().loadMesCommandes();
-
-      // ✅ Pré-sélectionner l'agence du user APRÈS le chargement
-      // → les items du dropdown existent déjà → pas d'assertion error
-      if (agenceId != null && agenceNom != null) {
-        final menus = context.read<MenuProvider>().menus;
-        final agenceExiste = menus.any(
-          (m) => m.agenceId.toString() == agenceId.toString(),
-        );
-        if (agenceExiste) {
-          setState(() {
-            _agenceSelectionnee = _AgenceLocal(
-              id: agenceId.toString(),
-              nom: agenceNom,
-            );
-          });
-        }
-      }
-    });
-  }
-
-  Future<void> _recharger() => Future.wait([
-        context.read<MenuProvider>().loadMenus(),
-        context.read<CommandeProvider>().loadMesCommandes(),
-      ]);
-
-  /// État vide / erreur rafraîchissable par glissement
-  Widget _defilable(Widget child) => RefreshIndicator(
-        onRefresh: _recharger,
-        child: LayoutBuilder(
-          builder: (_, constraints) => SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: child,
-            ),
-          ),
-        ),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Consumer<MenuProvider>(builder: (_, menuProv, __) {
-        final agences = <String, String>{};
-        final equipes = <String, String>{};
-        for (final m in menuProv.menus) {
-          agences[m.agenceId.toString()] = m.agenceNom;
-          equipes[m.typeEquipeId.toString()] = m.typeEquipeLibelle;
-        }
-
-        // Filtre devenu sans menu après actualisation : ignoré
-        final agenceSel = agences.containsKey(_agenceSelectionnee?.id)
-            ? _agenceSelectionnee
-            : null;
-        final equipeSel = equipes.containsKey(_equipeSelectionnee?.id)
-            ? _equipeSelectionnee
-            : null;
-
-        void ouvrirFiltres() => _FiltresSheet.show(
-              context,
-              agences: agences,
-              equipes: equipes,
-              agenceSelectionnee: agenceSel,
-              equipeSelectionnee: equipeSel,
-              onAgenceChanged: (a) => setState(() {
-                _agenceSelectionnee = a;
-                _menuSelectionne = null;
-              }),
-              onEquipeChanged: (e) => setState(() {
-                _equipeSelectionnee = e;
-                _menuSelectionne = null;
-              }),
-            );
-
-        final enTete = EnTeteMarine(
-          titre: 'Menus',
-          sousTitre: 'Choisissez votre repas de la semaine',
-          actions: [
-            EnTeteBouton(
-              icone: Icons.tune_rounded,
-              tooltip: 'Filtrer par agence et équipe',
-              onPressed: menuProv.menus.isEmpty ? null : ouvrirFiltres,
-            ),
-          ],
-          bas: menuProv.menus.isEmpty
-              ? null
-              : Wrap(spacing: 6, runSpacing: 6, children: [
-                  EnTetePastille(
-                    icone: Icons.location_on_outlined,
-                    label: agenceSel?.nom ?? 'Toutes les agences',
-                    onTap: ouvrirFiltres,
-                  ),
-                  if (equipes.isNotEmpty)
-                    EnTetePastille(
-                      icone: Icons.groups_outlined,
-                      label: equipeSel?.nom ?? 'Toutes les équipes',
-                      onTap: ouvrirFiltres,
-                    ),
-                ]),
-        );
-
-        // Squelettes au premier chargement seulement : une actualisation
-        // garde la liste affichée
-        if (menuProv.loading && menuProv.menus.isEmpty) {
-          return Column(children: [
-            enTete,
-            Expanded(
-              child: ListView(
-                  padding: const EdgeInsets.all(14),
-                  children:
-                      List.generate(4, (_) => const ShimmerCard(height: 98))),
-            ),
-          ]);
-        }
-
-        if (menuProv.error != null && menuProv.menus.isEmpty) {
-          return Column(children: [
-            enTete,
-            Expanded(
-              child: _defilable(EmptyState(
-                icon: Icons.cloud_off_rounded,
-                title: 'Chargement impossible',
-                subtitle: menuProv.error,
-                action: ElevatedButton.icon(
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('Réessayer'),
-                  onPressed: _recharger,
-                ),
-              )),
-            ),
-          ]);
-        }
-
-        _appliquerCible(menuProv);
-
-        final menusFiltres = menuProv.menus.where((m) {
-          final okAgence =
-              agenceSel == null || m.agenceId.toString() == agenceSel.id;
-          final okEquipe =
-              equipeSel == null || m.typeEquipeId.toString() == equipeSel.id;
-          return okAgence && okEquipe;
-        }).toList();
-
-        // Toujours l'instance de la dernière liste chargée (après une
-        // actualisation, l'ancienne garde des plats périmés)
-        final selection = _menuSelectionne == null
-            ? null
-            : menusFiltres
-                .where((m) => m.id == _menuSelectionne!.id)
-                .firstOrNull;
-
-        if (selection == null && menusFiltres.isNotEmpty) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() {
-                _menuSelectionne = menusFiltres.firstWhere((m) => m.isToday,
-                    orElse: () => menusFiltres.first);
-              });
-            }
-          });
-        }
-
-        return Column(children: [
-          enTete,
-          // Actualisation en échec : les menus affichés peuvent être périmés
-          if (menuProv.error != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-              child: BandeauInfo(
-                icone: Icons.cloud_off_rounded,
-                ton: TonPastille.rouge,
-                texte: 'Actualisation impossible : ${menuProv.error}',
-                action: TextButton(
-                  onPressed: menuProv.loading ? null : _recharger,
-                  child: const Text('Réessayer'),
-                ),
-              ),
-            ),
-          if (menusFiltres.isNotEmpty)
-            _JoursSelector(
-              menus: menusFiltres,
-              // Plusieurs agences possibles : on distingue par l'agence,
-              // sinon par l'équipe.
-              distinguerParAgence: agenceSel == null,
-              selected: selection,
-              onSelected: (m) => setState(() => _menuSelectionne = m),
-            ),
-          Expanded(
-            child: menusFiltres.isEmpty
-                ? _defilable(const EmptyState(
-                    icon: Icons.calendar_today_outlined,
-                    title: 'Aucun menu disponible',
-                    subtitle: 'Aucun menu pour ces filtres',
-                  ))
-                : selection == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : RefreshIndicator(
-                        onRefresh: _recharger,
-                        child: _MenuDetail(menu: selection),
-                      ),
-          ),
-        ]);
-      }),
-    );
-  }
-}
-
-class _AgenceLocal {
-  final String id;
-  final String nom;
-  const _AgenceLocal({required this.id, required this.nom});
-}
-
-class _EquipeLocal {
-  final String id;
-  final String nom;
-  const _EquipeLocal({required this.id, required this.nom});
-}
+/// Bouton retour (Android) sur l'onglet Menus : revient à la page
+/// précédente du parcours. true si le retour a été traité (sinon l'onglet
+/// est sur sa première page). Branché par l'onglet, appelé par MainShell.
+bool Function()? retourDansMenus;
 
 /// Commande active (en attente ou retirée) pour ce menu, sinon pour le même
 /// jour dans un autre menu (autre agence / équipe).
@@ -353,406 +57,51 @@ class _EquipeLocal {
   return (ceMenu, ceJour);
 }
 
+/// « Traiteur A (Siège) », « Siège » : où une commande a été passée
+String _ouCommande(Commande c) {
+  final m = c.menuDetail;
+  if (m == null) return 'une autre agence';
+  final agence = m.agenceNom.isEmpty ? 'une autre agence' : m.agenceNom;
+  return m.prestataireNom == null ? agence : '${m.prestataireNom} ($agence)';
+}
+
 String _minuscule(String s) =>
     s.isEmpty ? s : s[0].toLowerCase() + s.substring(1);
 
-// ══════════════════════════════════════════════════════════════
-// FILTRES (feuille ouverte depuis l'en-tête)
-// ══════════════════════════════════════════════════════════════
-
-class _FiltresSheet extends StatelessWidget {
-  final Map<String, String> agences;
-  final Map<String, String> equipes;
-  final _AgenceLocal? agenceSelectionnee;
-  final _EquipeLocal? equipeSelectionnee;
-  final ValueChanged<_AgenceLocal?> onAgenceChanged;
-  final ValueChanged<_EquipeLocal?> onEquipeChanged;
-
-  const _FiltresSheet({
-    required this.agences,
-    required this.equipes,
-    required this.agenceSelectionnee,
-    required this.equipeSelectionnee,
-    required this.onAgenceChanged,
-    required this.onEquipeChanged,
-  });
-
-  static Future<void> show(
-    BuildContext context, {
-    required Map<String, String> agences,
-    required Map<String, String> equipes,
-    required _AgenceLocal? agenceSelectionnee,
-    required _EquipeLocal? equipeSelectionnee,
-    required ValueChanged<_AgenceLocal?> onAgenceChanged,
-    required ValueChanged<_EquipeLocal?> onEquipeChanged,
-  }) =>
-      showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        isScrollControlled: true,
-        builder: (_) => _FiltresSheet(
-          agences: agences,
-          equipes: equipes,
-          agenceSelectionnee: agenceSelectionnee,
-          equipeSelectionnee: equipeSelectionnee,
-          onAgenceChanged: onAgenceChanged,
-          onEquipeChanged: onEquipeChanged,
-        ),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    void choisir(VoidCallback appliquer) {
-      appliquer();
-      Navigator.of(context).pop();
-    }
-
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Filtrer les menus',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          const LibelleSection('Agence'),
-          Wrap(spacing: 6, runSpacing: 6, children: [
-            FiltrePastille(
-              label: 'Toutes les agences',
-              actif: agenceSelectionnee == null,
-              onTap: () => choisir(() => onAgenceChanged(null)),
-            ),
-            for (final e in agences.entries)
-              FiltrePastille(
-                label: e.value,
-                actif: agenceSelectionnee?.id == e.key,
-                onTap: () => choisir(() =>
-                    onAgenceChanged(_AgenceLocal(id: e.key, nom: e.value))),
-              ),
-          ]),
-          if (equipes.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            const LibelleSection('Équipe'),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              FiltrePastille(
-                label: 'Toutes les équipes',
-                actif: equipeSelectionnee == null,
-                onTap: () => choisir(() => onEquipeChanged(null)),
-              ),
-              for (final e in equipes.entries)
-                FiltrePastille(
-                  label: e.value,
-                  actif: equipeSelectionnee?.id == e.key,
-                  onTap: () => choisir(() =>
-                      onEquipeChanged(_EquipeLocal(id: e.key, nom: e.value))),
-                ),
-            ]),
-          ],
-        ]),
+/// Bandeau « Annulation possible · … » (Annuler) sous la carte « Votre
+/// repas »
+List<Widget> _bandeauAnnulation(
+    BuildContext context, CommandeProvider cmdProv, Commande c, Menu menu) {
+  if (c.statut != StatutCommande.enAttente || c.estNonRetiree()) return [];
+  final Widget bandeau;
+  if (!menu.annulationFermee) {
+    final delai = fermeDans(menu.dateLimiteAnnulation, DateTime.now());
+    bandeau = BandeauInfo(
+      icone: Icons.timer_outlined,
+      ton: TonPastille.or,
+      texte: [
+        'Annulation possible',
+        if (delai != null) _minuscule(delai),
+      ].join(' · '),
+      action: TextButton(
+        style: TextButton.styleFrom(foregroundColor: AppColors.error),
+        onPressed: cmdProv.isLoading
+            ? null
+            : () => _confirmerAnnulationCommande(context, cmdProv, menu, c.id),
+        child: const Text('Annuler',
+            style: TextStyle(fontWeight: FontWeight.w700)),
       ),
     );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-// SÉLECTEUR JOURS (avec l'état de chaque jour)
-// ══════════════════════════════════════════════════════════════
-
-class _JoursSelector extends StatelessWidget {
-  final List<Menu> menus;
-  final bool distinguerParAgence;
-  final Menu? selected;
-  final ValueChanged<Menu> onSelected;
-
-  const _JoursSelector({
-    required this.menus,
-    required this.distinguerParAgence,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final commandes = context.watch<CommandeProvider>().mesCommandes;
-    // Plusieurs menus le même jour (équipes / agences) : 2e ligne explicative
-    final parDate = <String, int>{};
-    for (final m in menus) {
-      parDate[m.dateMenu] = (parDate[m.dateMenu] ?? 0) + 1;
-    }
-    final avecSousTitre = parDate.values.any((n) => n > 1);
-    return TicEcheance(
-      echeances: [for (final m in menus) m.dateLimiteCommande],
-      builder: (context) => LayoutBuilder(builder: (_, contraintes) {
-        const marge = 14.0, ecart = 8.0;
-        final n = menus.length;
-        final dispo = contraintes.maxWidth - 2 * marge;
-        final largeur = n <= 5
-            ? ((dispo - ecart * (n - 1)) / n).clamp(56.0, 96.0)
-            : (avecSousTitre ? 74.0 : 64.0);
-        return SizedBox(
-          height: avecSousTitre ? 92 : 80,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(marge, 12, marge, 0),
-            itemCount: n,
-            separatorBuilder: (_, __) => const SizedBox(width: ecart),
-            itemBuilder: (_, i) {
-              final menu = menus[i];
-              final (_, ceJour) = _commandesDuJour(commandes, menu);
-              return SizedBox(
-                width: largeur,
-                child: _JourChip(
-                  menu: menu,
-                  selectionne: selected?.id == menu.id,
-                  reserve: ceJour != null,
-                  sousTitre: (parDate[menu.dateMenu] ?? 0) > 1
-                      ? (distinguerParAgence
-                          ? menu.agenceNom
-                          : menu.typeEquipeLibelle)
-                      : null,
-                  onTap: () => onSelected(menu),
-                ),
-              );
-            },
-          ),
-        );
-      }),
+  } else {
+    bandeau = BandeauInfo(
+      icone: Icons.lock_outline_rounded,
+      ton: TonPastille.gris,
+      texte: menu.commandeFermee
+          ? 'Commandes et annulations fermées pour ce jour'
+          : 'Annulation fermée pour ce jour',
     );
   }
-}
-
-class _JourChip extends StatelessWidget {
-  final Menu menu;
-  final bool selectionne;
-  final bool reserve;
-  final String? sousTitre;
-  final VoidCallback onTap;
-  const _JourChip({
-    required this.menu,
-    required this.selectionne,
-    required this.reserve,
-    required this.sousTitre,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final date = DateTime.tryParse(menu.dateMenu);
-    final ouvert = !menu.commandeFermee;
-    // Sélection : marine (vert en mode sombre, le marine y est invisible)
-    final fondSel = isDark ? AppColors.accent : AppColors.primary;
-    final texteSel = isDark ? AppColors.primary : Colors.white;
-    final texte = selectionne
-        ? texteSel
-        : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary);
-    final gris = selectionne
-        ? texteSel.withOpacity(0.75)
-        : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary);
-
-    final IconData icone;
-    final Color couleurIcone;
-    final String etat;
-    if (reserve) {
-      icone = Icons.check_circle_rounded;
-      couleurIcone = selectionne
-          ? (isDark ? AppColors.primary : AppColors.accent)
-          : (isDark ? AppColors.accent : const Color(0xFF1F9D55));
-      etat = 'réservé';
-    } else if (ouvert) {
-      icone = Icons.add_circle_outline_rounded;
-      couleurIcone = selectionne
-          ? (isDark ? AppColors.primary : AppColors.accent)
-          : AppColors.accentDark;
-      etat = 'à réserver';
-    } else {
-      icone = Icons.lock_outline_rounded;
-      couleurIcone = gris;
-      etat = 'commandes fermées';
-    }
-
-    final jour = date != null ? jourCourt(date) : '—';
-    final num = date != null ? '${date.day}' : '—';
-    return Semantics(
-      button: true,
-      selected: selectionne,
-      label: [
-        if (date != null) DateFormat('EEEE d MMMM', 'fr_FR').format(date),
-        if (menu.isToday) "aujourd'hui",
-        if (sousTitre != null) sousTitre!,
-        etat,
-      ].join(', '),
-      excludeSemantics: true,
-      child: Material(
-        color: selectionne
-            ? fondSel
-            : (isDark ? AppColors.darkCard : AppColors.lightCard),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(
-            color: selectionne
-                ? fondSel
-                : menu.isToday
-                    ? AppColors.accentDark
-                    : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
-            width: !selectionne && menu.isToday ? 1.6 : 1,
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-            child:
-                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text(jour, style: TextStyle(fontSize: 11, color: gris)),
-              Text(num,
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w800, color: texte)),
-              if (sousTitre != null)
-                Text(sousTitre!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 9, fontWeight: FontWeight.w500, color: gris)),
-              Icon(icone, size: 15, color: couleurIcone),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-// DÉTAIL DU MENU : statut du jour (une seule fois) + plats compacts
-// ══════════════════════════════════════════════════════════════
-
-class _MenuDetail extends StatelessWidget {
-  final Menu menu;
-
-  const _MenuDetail({required this.menu});
-
-  /// Reconstruit à l'heure limite de commande / d'annulation : bandeau,
-  /// « Réserver » et « Annuler » se ferment sans action de l'utilisateur.
-  @override
-  Widget build(BuildContext context) => TicEcheance(
-        echeances: [menu.dateLimiteCommande, menu.dateLimiteAnnulation],
-        builder: _contenu,
-      );
-
-  Widget _contenu(BuildContext context) {
-    final cmdProv = context.watch<CommandeProvider>();
-    final (ceMenu, ceJour) = _commandesDuJour(cmdProv.mesCommandes, menu);
-    final autreMenuCeJour = ceMenu == null ? ceJour : null;
-    final peutReserver =
-        ceMenu == null && autreMenuCeJour == null && !menu.commandeFermee;
-    final nb = menu.menuPlats.length;
-
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 100),
-      children: [
-        if (ceMenu != null) ...[
-          _CarteVotreRepas(commande: ceMenu, menu: menu),
-          ..._bandeauAnnulation(context, cmdProv, ceMenu),
-        ] else if (autreMenuCeJour != null)
-          _bandeauAutreMenu(autreMenuCeJour)
-        else if (!menu.commandeFermee)
-          BandeauInfo(
-            icone: Icons.alarm_rounded,
-            ton: TonPastille.or,
-            texte: [
-              'Commandes ouvertes',
-              if (fermeDans(menu.dateLimiteCommande, DateTime.now()) != null)
-                _minuscule(fermeDans(menu.dateLimiteCommande, DateTime.now())!),
-            ].join(' · '),
-          )
-        else
-          const BandeauInfo(
-            icone: Icons.lock_outline_rounded,
-            ton: TonPastille.gris,
-            texte: 'Commandes fermées pour ce jour',
-          ),
-        const SizedBox(height: 6),
-        if (nb == 0)
-          const EmptyState(
-            icon: Icons.no_meals_rounded,
-            title: 'Aucun plat',
-            subtitle: 'Aucun plat ajouté pour ce menu',
-          )
-        else ...[
-          LibelleSection(peutReserver
-              ? 'Choisissez 1 plat sur $nb'
-              : '$nb ${nb > 1 ? 'plats proposés' : 'plat proposé'}'),
-          for (final mp in menu.menuPlats)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _CartePlat(
-                plat: mp.plat,
-                menu: menu,
-                commandee: ceMenu?.platDetail?.id == mp.plat.id,
-                // Un autre repas est déjà choisi ce jour : plats grisés
-                grisee:
-                    (ceMenu != null && ceMenu.platDetail?.id != mp.plat.id) ||
-                        autreMenuCeJour != null,
-                peutReserver: peutReserver,
-              ),
-            ),
-        ],
-      ],
-    );
-  }
-
-  List<Widget> _bandeauAnnulation(
-      BuildContext context, CommandeProvider cmdProv, Commande c) {
-    if (c.statut != StatutCommande.enAttente || c.estNonRetiree()) return [];
-    final Widget bandeau;
-    if (!menu.annulationFermee) {
-      final delai = fermeDans(menu.dateLimiteAnnulation, DateTime.now());
-      bandeau = BandeauInfo(
-        icone: Icons.timer_outlined,
-        ton: TonPastille.or,
-        texte: [
-          'Annulation possible',
-          if (delai != null) _minuscule(delai),
-        ].join(' · '),
-        action: TextButton(
-          style: TextButton.styleFrom(foregroundColor: AppColors.error),
-          onPressed: cmdProv.isLoading
-              ? null
-              : () =>
-                  _confirmerAnnulationCommande(context, cmdProv, menu, c.id),
-          child: const Text('Annuler',
-              style: TextStyle(fontWeight: FontWeight.w700)),
-        ),
-      );
-    } else {
-      bandeau = BandeauInfo(
-        icone: Icons.lock_outline_rounded,
-        ton: TonPastille.gris,
-        texte: menu.commandeFermee
-            ? 'Commandes et annulations fermées pour ce jour'
-            : 'Annulation fermée pour ce jour',
-      );
-    }
-    return [const SizedBox(height: 10), bandeau];
-  }
-
-  Widget _bandeauAutreMenu(Commande c) {
-    final agence = c.menuDetail?.agenceNom ?? 'une autre agence';
-    final plat = c.platDetail?.nom ?? 'un plat';
-    final annulable = c.statut == StatutCommande.enAttente &&
-        !(c.menuDetail?.annulationFermee ?? true);
-    return BandeauInfo(
-      icone: Icons.location_off_rounded,
-      ton: TonPastille.rouge,
-      texte: 'Vous avez déjà commandé « $plat » chez $agence ce jour.'
-          '${annulable ? '\nAnnulez cette commande pour en passer une autre.' : ''}',
-    );
-  }
+  return [const SizedBox(height: 10), bandeau];
 }
 
 /// Carte verte « Votre repas » (le jour a déjà une commande)
@@ -899,152 +248,22 @@ class _CarteVotreRepas extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-// CARTE PLAT COMPACTE (la grande photo reste dans la fiche détaillée)
-// ══════════════════════════════════════════════════════════════
-
-class _CartePlat extends StatefulWidget {
-  final Plat plat;
-  final Menu menu;
-  final bool commandee;
-  final bool grisee;
-  final bool peutReserver;
-
-  const _CartePlat({
-    required this.plat,
-    required this.menu,
-    required this.commandee,
-    required this.grisee,
-    required this.peutReserver,
-  });
-
-  @override
-  State<_CartePlat> createState() => _CartePlatState();
-}
-
-class _CartePlatState extends State<_CartePlat> {
-  bool _envoi = false;
-
-  Future<void> _reserver(CommandeProvider cmdProv) async {
-    setState(() => _envoi = true);
-    await _reserverPlat(context, cmdProv, widget.menu, widget.plat);
-    if (mounted) setState(() => _envoi = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cmdProv = context.watch<CommandeProvider>();
-    final plat = widget.plat;
-    final gris =
-        isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
-    final description = plat.descriptionUtile;
-    final type = plat.typePlatLibelle;
-
-    Widget? note;
-    if (plat.noteMoyenne != null && (plat.nbAvis ?? 1) > 0) {
-      note = Row(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.star_rounded, size: 14, color: kCouleurEtoile),
-        const SizedBox(width: 2),
-        Text(
-            formatNoteMoyenne(plat.noteMoyenne!) +
-                (plat.nbAvis != null ? ' · ${plat.nbAvis} avis' : ''),
-            style: TextStyle(fontSize: 11, color: gris)),
-      ]);
-    } else if (plat.nbAvis == 0) {
-      note =
-          Text('Pas encore noté', style: TextStyle(fontSize: 11, color: gris));
-    }
-
-    final Widget? droite = widget.commandee
-        ? const Icon(Icons.check_circle_rounded,
-            color: AppColors.accentDark, size: 26, semanticLabel: 'Commandé')
-        : widget.peutReserver
-            ? BoutonVert(
-                label: 'Réserver',
-                compact: true,
-                chargement: _envoi,
-                onPressed: cmdProv.isLoading ? null : () => _reserver(cmdProv),
-              )
-            : null;
-
-    final carte = Material(
-      color: isDark ? AppColors.darkCard : AppColors.lightCard,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: widget.commandee
-              ? AppColors.accentDark
-              : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
-          width: widget.commandee ? 2 : 1,
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        // Toute la carte ouvre la fiche détaillée du plat
-        onTap: () =>
-            _PlatDetailSheet.show(context, menu: widget.menu, plat: plat),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(children: [
-            VignettePlat(url: plat.imageUrl, taille: 78, rayon: 12),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(plat.nom,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700)),
-                    if (description != null) ...[
-                      const SizedBox(height: 2),
-                      Text(description,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11.5, color: gris)),
-                    ],
-                    if (type != null || note != null) ...[
-                      const SizedBox(height: 6),
-                      Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            if (type != null)
-                              PastilleStatut(
-                                  label: type,
-                                  ton: type.toLowerCase().contains('principal')
-                                      ? TonPastille.vert
-                                      : TonPastille.bleu),
-                            if (note != null) note,
-                          ]),
-                    ],
-                  ]),
-            ),
-            if (droite != null) ...[const SizedBox(width: 8), droite],
-          ]),
-        ),
-      ),
-    );
-    return widget.grisee ? Opacity(opacity: 0.55, child: carte) : carte;
-  }
-}
-
 /// Réserve [plat] (carte compacte et fiche détaillée : mêmes messages),
 /// après le choix du mode de paiement (compte repas / retenue sur salaire)
-Future<void> _reserverPlat(BuildContext context, CommandeProvider cmdProv,
-    Menu menu, Plat plat) async {
+Future<void> _reserverPlat(
+    BuildContext context, CommandeProvider cmdProv, Menu menu, Plat plat,
+    {Future<InfoPaiement> Function()? chargerInfo}) async {
   if (cmdProv.isLoading) return;
   final facturation = context.read<FacturationProvider>();
   final mode = await ChoixPaiementSheet.show(context,
       menuId: menu.id,
-      platNom: plat.nom,
+      // « Garba · Traiteur Délices d'Abidjan »
+      platNom: menu.prestataireNom == null
+          ? plat.nom
+          : '${plat.nom} · ${menu.prestataireNom}',
       jour: DateTime.tryParse(menu.dateMenu),
-      limite: menu.dateLimiteCommande);
+      limite: menu.dateLimiteCommande,
+      chargerInfo: chargerInfo);
   if (mode == null || !context.mounted) return;
   final ok = await cmdProv.commander(
       menuId: menu.id, platId: plat.id, modePaiement: mode.code);
@@ -1602,7 +821,7 @@ class _PlatDetailSheetState extends State<_PlatDetailSheet> {
               texte: 'Déjà commandé ce jour',
               ton: TonPastille.rouge),
           aide('Vous avez déjà commandé « ${c.platDetail?.nom ?? 'un plat'} » '
-              'chez ${c.menuDetail?.agenceNom ?? 'une autre agence'} ce jour.'
+              'chez ${_ouCommande(c)} ce jour.'
               // Conseil d'annulation seulement si elle est encore possible
               '${c.statut == StatutCommande.enAttente && !menu.annulationFermee ? '\nAnnulez cette commande pour en passer une autre.' : ''}'),
         ];

@@ -219,7 +219,10 @@ class _MainShellState extends State<MainShell> {
       child: PopScope(
         canPop: _index == 0,
         onPopInvoked: (didPop) {
-          if (!didPop) setState(() => _index = 0);
+          if (didPop) return;
+          // Onglet Menus : retour à la page précédente du parcours
+          if (_index == 1 && (retourDansMenus?.call() ?? false)) return;
+          setState(() => _index = 0);
         },
         child: Scaffold(
           key: _scaffoldKey,

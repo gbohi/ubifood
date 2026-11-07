@@ -225,6 +225,11 @@ class Menu {
   final DateTime? dateLimiteCommande;
   final DateTime? dateLimiteAnnulation;
 
+  /// Prestataire qui sert le menu (null : « Cantine UbiPharm », menus
+  /// historiques sans prestataire) et son nom affiché
+  final int? prestataireId;
+  final String? prestataireNom;
+
   const Menu({
     required this.id,
     required this.dateMenu,
@@ -235,6 +240,8 @@ class Menu {
     required this.menuPlats,
     this.dateLimiteCommande,
     this.dateLimiteAnnulation,
+    this.prestataireId,
+    this.prestataireNom,
   });
 
   bool get commandeFermee =>
@@ -266,6 +273,12 @@ class Menu {
             DateTime.tryParse(j['date_limite_commande'] ?? '')?.toUtc(),
         dateLimiteAnnulation:
             DateTime.tryParse(j['date_limite_annulation'] ?? '')?.toUtc(),
+        prestataireId:
+            j['prestataire'] is num ? (j['prestataire'] as num).toInt() : null,
+        prestataireNom: j['prestataire_nom'] is String &&
+                (j['prestataire_nom'] as String).trim().isNotEmpty
+            ? j['prestataire_nom'] as String
+            : null,
       );
 }
 
