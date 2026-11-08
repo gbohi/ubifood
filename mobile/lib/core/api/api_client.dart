@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config.dart';
 
@@ -182,8 +183,19 @@ class ApiClient {
   Future<void> logout() => clearTokens();
 
   Future<bool> hasToken() async {
-    final token = await _storage.read(key: _kAccessToken);
-    return token != null;
+    try {
+      final token = await _storage.read(key: _kAccessToken);
+      return token != null;
+    } catch (e) {
+      // Stockage chiffré illisible (ex. données restaurées depuis une
+      // sauvegarde Android, clé de chiffrement différente) : on repart
+      // d'une session vide au lieu de bloquer le démarrage.
+      debugPrint('⚠️ Stockage sécurisé illisible, réinitialisé : $e');
+      try {
+        await _storage.deleteAll();
+      } catch (_) {}
+      return false;
+    }
   }
 
   // ── CRUD helpers ──────────────────────────────────────────

@@ -29,16 +29,19 @@ void main() async {
 
   await initializeDateFormatting('fr_FR', null);
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // Un échec des notifications (permissions, services Google absents…)
-  // ne doit pas empêcher l'application de démarrer
+  // Firebase et les notifications ne doivent jamais bloquer le démarrage
+  // (services Google absents, configuration invalide, réseau lent…)
   try {
-    await notificationService.init();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).timeout(const Duration(seconds: 10));
+    try {
+      await notificationService.init().timeout(const Duration(seconds: 15));
+    } catch (e) {
+      debugPrint('⚠️ Notifications indisponibles : $e');
+    }
   } catch (e) {
-    debugPrint('⚠️ Notifications indisponibles : $e');
+    debugPrint('⚠️ Firebase indisponible : $e');
   }
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -189,13 +192,22 @@ class _AuthGateState extends State<_AuthGate> {
   Future<void> _checkAuth() async {
     // restoreSession() recharge le profil si un jeton est stocké :
     // l'utilisateur reste connecté entre deux lancements de l'app.
-    final results = await Future.wait([
-      context.read<AuthProvider>().restoreSession(),
-      onboardingDejaVu(),
-      Future.delayed(const Duration(milliseconds: 1500)),
-    ]);
-    final etat = results[0] as EtatSession;
-    final onbDone = results[1] as bool;
+    // Quoi qu'il arrive (stockage illisible, erreur inattendue), l'écran de
+    // démarrage doit laisser la place à la connexion : avant, une exception
+    // ici laissait l'application bloquée sur le splash.
+    EtatSession etat = EtatSession.deconnecte;
+    bool onbDone = true;
+    try {
+      final results = await Future.wait([
+        context.read<AuthProvider>().restoreSession(),
+        onboardingDejaVu().catchError((_) => true),
+        Future.delayed(const Duration(milliseconds: 1500)),
+      ]).timeout(const Duration(seconds: 60));
+      etat = results[0] as EtatSession;
+      onbDone = results[1] as bool;
+    } catch (e) {
+      debugPrint('⚠️ Restauration de session impossible : $e');
+    }
 
     if (etat == EtatSession.connecte) {
       // Sans attendre : l'envoi du token FCM ne doit pas retarder l'accueil
