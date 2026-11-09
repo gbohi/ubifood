@@ -98,7 +98,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           (c.menuDetail?.isToday ?? false));
       return _RepasDuJourCard(
           commande: duJour.firstOrNull,
-          etiquette: isGestionnaire ? 'Mon repas' : "Aujourd'hui");
+          etiquette: isGestionnaire ? 'Mon repas' : null);
     });
 
     final recentes = Column(
@@ -113,7 +113,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Consumer<CommandeProvider>(builder: (_, cmdProv, __) {
           if (cmdProv.listLoading && cmdProv.mesCommandes.isEmpty) {
             return Column(
-                children: List.generate(3, (_) => const ShimmerCard(height: 72)));
+                children:
+                    List.generate(3, (_) => const ShimmerCard(height: 72)));
           }
           final liste = cmdProv.mesCommandes.take(3).toList();
           if (liste.isEmpty) {
@@ -129,8 +130,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             );
           }
           return Column(
-              children:
-                  liste.map((c) => _CommandeItem(commande: c)).toList());
+              children: liste.map((c) => _CommandeItem(commande: c)).toList());
         }),
       ],
     );
@@ -244,10 +244,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text('Bonjour,',
-                                  style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
-                                      fontSize: 11)),
                               Text(auth.user?.fullName ?? 'Utilisateur',
                                   style: const TextStyle(
                                       color: Colors.white,
@@ -354,8 +350,8 @@ class _AccueilConsumer extends StatelessWidget {
         if (prov.error != null && !prov.loading) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: AccueilErreur(
-                message: prov.error!, onReessayer: prov.charger),
+            child:
+                AccueilErreur(message: prov.error!, onReessayer: prov.charger),
           );
         }
         return Column(
@@ -671,8 +667,8 @@ class _BannerSliderState extends State<_BannerSlider> {
 
 class _RepasDuJourCard extends StatelessWidget {
   final Commande? commande;
-  final String etiquette;
-  const _RepasDuJourCard({this.commande, this.etiquette = "Aujourd'hui"});
+  final String? etiquette;
+  const _RepasDuJourCard({this.commande, this.etiquette});
 
   static const _vertFonce = Color(0xFF15803D);
   static const _vert = Color(0xFF22A55A);
@@ -688,8 +684,8 @@ class _RepasDuJourCard extends StatelessWidget {
       // Sans commande : les menus ; avec commande : le QR code à présenter
       onTap: () => c == null
           ? MainShellNavigator.of(context)?.navigateTo(1)
-          : Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const QrCodeScreen())),
+          : Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const QrCodeScreen())),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -706,33 +702,38 @@ class _RepasDuJourCard extends StatelessWidget {
           ],
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20)),
-              child: Text(etiquette,
-                  style: const TextStyle(
+          if (etiquette != null || c != null) ...[
+            Row(children: [
+              if (etiquette != null)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20)),
+                  child: Text(etiquette!,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600)),
+                ),
+              const Spacer(),
+              if (c != null)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
                       color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600)),
-            ),
-            const Spacer(),
-            if (c != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20)),
-                child: Text(retire ? 'Retiré' : 'À retirer',
-                    style: const TextStyle(
-                        color: _vertFonce,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700)),
-              ),
-          ]),
-          const SizedBox(height: 14),
+                      borderRadius: BorderRadius.circular(20)),
+                  child: Text(retire ? 'Retiré' : 'À retirer',
+                      style: const TextStyle(
+                          color: _vertFonce,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                ),
+            ]),
+            const SizedBox(height: 14),
+          ],
           if (c == null) ...[
             Row(children: [
               Container(
@@ -754,27 +755,9 @@ class _RepasDuJourCard extends StatelessWidget {
                               color: Colors.white,
                               fontSize: 17,
                               fontWeight: FontWeight.w700)),
-                      SizedBox(height: 4),
-                      Text('Pensez à réserver vos prochains repas '
-                          'avant la date limite de commande.',
-                          style: TextStyle(color: Colors.white70, fontSize: 12)),
                     ]),
               ),
             ]),
-            const SizedBox(height: 14),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                style: TextButton.styleFrom(
-                    foregroundColor: _vertFonce,
-                    backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12))),
-                icon: const Icon(Icons.restaurant_menu_rounded, size: 16),
-                label: const Text('Voir les menus'),
-                onPressed: () => MainShellNavigator.of(context)?.navigateTo(1),
-              ),
-            ),
           ] else ...[
             Row(children: [
               ClipRRect(
@@ -800,7 +783,8 @@ class _RepasDuJourCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text('Mon repas du jour',
-                          style: TextStyle(color: Colors.white70, fontSize: 12)),
+                          style:
+                              TextStyle(color: Colors.white70, fontSize: 12)),
                       const SizedBox(height: 2),
                       Text(plat?.nom ?? 'Repas commandé',
                           style: const TextStyle(
@@ -860,7 +844,8 @@ class _RepasDuJourCard extends StatelessWidget {
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 8),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
                               EtoilesNote(
                                   note: c.avis!.note,
                                   size: 18,

@@ -71,11 +71,12 @@ class _LoginScreenState extends State<LoginScreen>
     await _login();
   }
 
-  InputDecoration _decoration(String indice, IconData icone, bool erreur, bool isDark,
+  InputDecoration _decoration(
+      String indice, IconData icone, bool erreur, bool isDark,
       {Widget? suffixe}) {
     final rayon = BorderRadius.circular(14);
-    OutlineInputBorder bord(Color c, [double l = 1.5]) =>
-        OutlineInputBorder(borderRadius: rayon, borderSide: BorderSide(color: c, width: l));
+    OutlineInputBorder bord(Color c, [double l = 1.5]) => OutlineInputBorder(
+        borderRadius: rayon, borderSide: BorderSide(color: c, width: l));
     final normal = erreur
         ? AppColors.error
         : (isDark ? AppColors.darkBorder : AppColors.lightBorder);
@@ -146,28 +147,13 @@ class _LoginScreenState extends State<LoginScreen>
                           children: [
                             SvgPicture.asset('assets/images/logo_white.svg',
                                 height: 34, semanticsLabel: 'UbiFood'),
-                            const SizedBox(height: 44),
-                            const Text('Bonjour 👋',
-                                style: TextStyle(
-                                    color: AppColors.accent,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 50),
                             const Text('Votre repas\nvous attend',
                                 style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 30,
                                     height: 1.15,
                                     fontWeight: FontWeight.w800)),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: 210,
-                              child: Text(
-                                  'Connectez-vous pour réserver ou retirer votre repas.',
-                                  style: TextStyle(
-                                      color: Colors.white.withOpacity(0.72),
-                                      fontSize: 14)),
-                            ),
                           ]),
                     ),
                   ]),
@@ -184,7 +170,8 @@ class _LoginScreenState extends State<LoginScreen>
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                    color:
+                        isDark ? AppColors.darkSurface : AppColors.lightSurface,
                     borderRadius:
                         const BorderRadius.vertical(top: Radius.circular(30)),
                   ),
@@ -193,13 +180,6 @@ class _LoginScreenState extends State<LoginScreen>
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Connexion',
-                              style: Theme.of(context).textTheme.headlineSmall),
-                          const SizedBox(height: 4),
-                          Text('Avec votre matricule UbiPharm',
-                              style: Theme.of(context).textTheme.bodyMedium),
-                          const SizedBox(height: 22),
-
                           // Erreur du serveur (identifiants, réseau…)
                           if (erreur != null)
                             Container(
@@ -229,8 +209,11 @@ class _LoginScreenState extends State<LoginScreen>
                             textInputAction: TextInputAction.next,
                             autocorrect: false,
                             onChanged: _onSaisie,
-                            decoration: _decoration('Votre matricule',
-                                Icons.person_outline_rounded, erreur != null, isDark),
+                            decoration: _decoration(
+                                'Votre matricule',
+                                Icons.person_outline_rounded,
+                                erreur != null,
+                                isDark),
                             validator: (v) => (v == null || v.trim().isEmpty)
                                 ? 'Le matricule est requis'
                                 : null,
@@ -245,8 +228,11 @@ class _LoginScreenState extends State<LoginScreen>
                             textInputAction: TextInputAction.done,
                             onChanged: _onSaisie,
                             onFieldSubmitted: (_) => _soumettre(),
-                            decoration: _decoration('Votre mot de passe',
-                                Icons.lock_outline_rounded, erreur != null, isDark,
+                            decoration: _decoration(
+                                'Votre mot de passe',
+                                Icons.lock_outline_rounded,
+                                erreur != null,
+                                isDark,
                                 suffixe: IconButton(
                                   tooltip: _obscure
                                       ? 'Afficher le mot de passe'
@@ -295,7 +281,8 @@ class _LoginScreenState extends State<LoginScreen>
                                 borderRadius: BorderRadius.circular(14),
                                 boxShadow: [
                                   BoxShadow(
-                                      color: AppColors.accentDark.withOpacity(0.35),
+                                      color: AppColors.accentDark
+                                          .withOpacity(0.35),
                                       blurRadius: 22,
                                       offset: const Offset(0, 10)),
                                 ],
@@ -318,14 +305,16 @@ class _LoginScreenState extends State<LoginScreen>
                                         child: CircularProgressIndicator(
                                             strokeWidth: 2.4,
                                             color: AppColors.primary,
-                                            semanticsLabel: 'Connexion en cours'))
+                                            semanticsLabel:
+                                                'Connexion en cours'))
                                     : const Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                             Text('Se connecter',
                                                 style: TextStyle(
                                                     fontSize: 15.5,
-                                                    fontWeight: FontWeight.w700)),
+                                                    fontWeight:
+                                                        FontWeight.w700)),
                                             SizedBox(width: 10),
                                             Icon(Icons.arrow_forward_rounded,
                                                 size: 20),
