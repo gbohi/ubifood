@@ -52,13 +52,13 @@
         @for (a of agences; track a.id) {
           <button type="button" class="pc-agence" role="radio" [attr.aria-checked]="a.id === agenceId"
                   [class.pc-on]="a.id === agenceId" [class.pc-mienne]="a.mon_agence" (click)="choisirAgence(a.id)"
-                  [title]="a.nom + (a.mon_agence ? ' (mon agence)' : '')">
+                  [title]="a.nom + (a.mon_agence ? ' (mon agence)' : (a.mission ? ' (mission : équipe programmée)' : ''))">
             <span class="pc-agence-rond">
               <span class="pc-agence-code">{{ a.code }}</span>
               @if (a.mon_agence) { <span class="pc-agence-pin" title="Mon agence"><i class="ri-map-pin-2-fill"></i></span> }
             </span>
             <span class="pc-agence-nom">{{ a.nom }}</span>
-            <small>{{ a.nb_prestataires_aujourdhui }} prestataire{{ a.nb_prestataires_aujourdhui > 1 ? 's' : '' }} auj.</small>
+            <small>@if (a.mission) { <b class="pc-mission"><i class="ri-briefcase-4-line"></i>Mission</b> } @else { {{ a.nb_prestataires_aujourdhui }} prestataire{{ a.nb_prestataires_aujourdhui > 1 ? 's' : '' }} auj. }</small>
           </button>
         } @empty {
           @if (sansAgence) {

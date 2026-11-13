@@ -146,6 +146,13 @@ def lire_jours(valeur):
     return sorted(jours)
 
 
+def _cle(texte):
+    """Libellé comparé sans accents ni casse (« Siège » = « siege »)."""
+    import unicodedata
+    t = unicodedata.normalize('NFD', str(texte or '')).encode('ascii', 'ignore').decode()
+    return ' '.join(t.lower().split())
+
+
 def nom(user):
     from .serializers import nom_complet
     return nom_complet(user)
@@ -172,23 +179,34 @@ class AccesEquipes:
         self.restreintes = {e.id: e for e in TypeEquipe.objects.filter(sur_planning=True)}
         self.exclusives = {i for i, e in self.restreintes.items() if e.exclusive_planning}
         self.progs = []
+        self._acces_normal = False   # calculé à la demande (None = toutes les agences)
         if self.restreintes and user is not None and user.is_authenticated:
             qs = ProgrammationEquipe.objects.filter(user=user, typeequipe_id__in=list(self.restreintes))
             if fin is not None:
                 qs = qs.filter(date_debut__lte=fin)
             if debut is not None:
                 qs = qs.filter(Q(date_fin__isnull=True) | Q(date_fin__gte=debut))
-            self.progs = list(qs.order_by('date_debut', 'id'))
+            self.progs = list(qs.select_related('agence').order_by('date_debut', 'id'))
 
     @property
     def actif(self):
         return bool(self.restreintes)
 
-    def programmation(self, equipe_id, d):
-        return next((p for p in self.progs if p.typeequipe_id == equipe_id and couvre(p, d)), None)
+    @property
+    def acces_normal(self):
+        """Agences accessibles sans programmation (sa propre agence, agences ouvertes ; None : toutes)."""
+        if self._acces_normal is False:
+            from .parcours_commande import acces_agences
+            self._acces_normal = acces_agences(self.user, missions=False)[1] if self.user is not None else None
+        return self._acces_normal
 
-    def est_programme(self, equipe_id, d):
-        return self.programmation(equipe_id, d) is not None
+    def programmation(self, equipe_id, d, agence_id=None):
+        """Programmation couvrant le jour (dans l'agence `agence_id` si elle est donnée)."""
+        return next((p for p in self.progs if p.typeequipe_id == equipe_id and couvre(p, d)
+                     and (agence_id is None or p.agence_id in (agence_id, None))), None)
+
+    def est_programme(self, equipe_id, d, agence_id=None):
+        return self.programmation(equipe_id, d, agence_id) is not None
 
     def exclusive_du_jour(self, d):
         """Équipe exclusive dans laquelle l'utilisateur est programmé ce jour-là (ou None)."""
@@ -197,27 +215,48 @@ class AccesEquipes:
                 return self.restreintes[p.typeequipe_id]
         return None
 
-    def visible(self, equipe_id, d):
+    def visible(self, equipe_id, d, agence_id=None):
+        """
+        Équipe sur planning : programmé ce jour-là dans cette agence. Autre équipe :
+        pas de programmation exclusive ce jour-là, et agence accessible sans
+        programmation (une agence de mission fermée n'ouvre que l'équipe programmée).
+        """
         if not self.restreintes:
             return True
         if equipe_id in self.restreintes:
-            return self.est_programme(equipe_id, d)
-        return self.exclusive_du_jour(d) is None
+            return self.est_programme(equipe_id, d, agence_id)
+        if self.exclusive_du_jour(d) is not None:
+            return False
+        acces = self.acces_normal
+        return agence_id is None or acces is None or agence_id in acces
 
-    def motif(self, equipe_id, d):
+    def motif(self, equipe_id, d, agence_id=None):
         """Pourquoi l'équipe n'est pas accessible ce jour-là (None si elle l'est)."""
-        if self.visible(equipe_id, d):
+        if self.visible(equipe_id, d, agence_id):
             return None
         if equipe_id in self.restreintes:
-            return (f"Vous n'êtes pas programmé(e) dans l'équipe {self.restreintes[equipe_id].libelle} "
-                    f"le {jour_txt(d)}.")
+            libelle = self.restreintes[equipe_id].libelle
+            ailleurs = self.programmation(equipe_id, d)
+            if ailleurs is not None and ailleurs.agence_id:
+                return (f"Vous êtes programmé(e) dans l'équipe {libelle} à {ailleurs.agence.nom_agence} "
+                        f"le {jour_txt(d)}.")
+            return f"Vous n'êtes pas programmé(e) dans l'équipe {libelle} le {jour_txt(d)}."
         ex = self.exclusive_du_jour(d)
-        return f"Vous êtes programmé(e) dans l'équipe {ex.libelle} le {jour_txt(d)}."
+        if ex is not None:
+            return f"Vous êtes programmé(e) dans l'équipe {ex.libelle} le {jour_txt(d)}."
+        return "Cette agence n'accepte que l'équipe dans laquelle vous êtes programmé(e)."
 
-    def periode(self, equipe_id, a_partir=None):
+    def agences_mission(self):
+        """Agences où l'utilisateur est programmé (en cours ou à venir)."""
+        aujourdhui = timezone.localdate()
+        return {p.agence_id for p in self.progs
+                if p.agence_id and (p.date_fin is None or p.date_fin >= aujourdhui - timedelta(days=1))}
+
+    def periode(self, equipe_id, a_partir=None, agence_id=None):
         """Programmation en cours ou prochaine pour l'équipe : {du, au, jours, libelle} ou None."""
         a_partir = a_partir or timezone.localdate()
         progs = sorted((p for p in self.progs if p.typeequipe_id == equipe_id
+                        and (agence_id is None or p.agence_id in (agence_id, None))
                         and (p.date_fin is None or p.date_fin >= a_partir)), key=lambda p: p.date_debut)
         if not progs:
             return None
@@ -226,12 +265,12 @@ class AccesEquipes:
                 'jours': sorted(jours_de(p)),
                 'libelle': f"Programmé(e) {periode_txt(p.date_debut, p.date_fin)}"}
 
-    def equipe_json(self, equipe_id):
+    def equipe_json(self, equipe_id, agence_id=None):
         """Champs ajoutés à une équipe dans le parcours de commande."""
         e = self.restreintes.get(equipe_id)
         if e is None:
             return {'sur_planning': False, 'programmation': None}
-        return {'sur_planning': True, 'programmation': self.periode(equipe_id)}
+        return {'sur_planning': True, 'programmation': self.periode(equipe_id, agence_id=agence_id)}
 
     # ── Date limite de commande (commande tardive) ─────────────
     def limite_commande(self, d, typeequipe, agence, parametres=None):
@@ -240,7 +279,7 @@ class AccesEquipes:
         normale = date_limite_commande(d, p)
         if not p.planning_commande_tardive or typeequipe is None or typeequipe.id not in self.restreintes:
             return normale
-        prog = self.programmation(typeequipe.id, d)
+        prog = self.programmation(typeequipe.id, d, getattr(agence, 'id', None))
         if prog is None or max(prog.created_at, prog.updated_at) <= normale:
             return normale
         from .prestataires import horaires_retrait
@@ -254,13 +293,13 @@ def filtrer_menus(acces, menus):
     """Menus (objets avec typeequipe_id et date_menu) visibles de l'utilisateur."""
     if not acces.actif:
         return list(menus)
-    return [m for m in menus if acces.visible(m.typeequipe_id, m.date_menu)]
+    return [m for m in menus if acces.visible(m.typeequipe_id, m.date_menu, m.agence_id)]
 
 
 def verifier_commande_equipe(user, menu):
     """POST /commandes/ : refuse une commande dans une équipe non accessible ce jour-là."""
     acces = AccesEquipes(user, menu.date_menu, menu.date_menu)
-    motif = acces.motif(menu.typeequipe_id, menu.date_menu)
+    motif = acces.motif(menu.typeequipe_id, menu.date_menu, menu.agence_id)
     if motif:
         raise PermissionDenied(f"Commande impossible : {motif}")
     return acces
@@ -271,9 +310,12 @@ def exclure_menus_invisibles(user, qs):
     acces = AccesEquipes(user)
     if not acces.actif:
         return qs
-    candidats = qs.filter(Q(typeequipe_id__in=list(acces.restreintes)) | Q(
-        date_menu__in=_dates_exclusives(acces))).values_list('id', 'typeequipe_id', 'date_menu')
-    interdits = [mid for mid, eq, d in candidats if not acces.visible(eq, d)]
+    filtre = Q(typeequipe_id__in=list(acces.restreintes)) | Q(date_menu__in=_dates_exclusives(acces))
+    if acces.acces_normal is not None:
+        # Agences de mission fermées aux autres agences : seulement l'équipe programmée
+        filtre |= Q(agence_id__in=acces.agences_mission() - set(acces.acces_normal))
+    candidats = qs.filter(filtre).values_list('id', 'typeequipe_id', 'date_menu', 'agence_id')
+    interdits = [mid for mid, eq, d, ag in candidats if not acces.visible(eq, d, ag)]
     return qs.exclude(id__in=interdits) if interdits else qs
 
 
@@ -314,13 +356,45 @@ def agence_de(user_ids):
     return agences_origine(user_ids)
 
 
-def verifier_employe_gere(acteur, employe, agences=None):
+def employe_gere(acteur, employe, agence_id=None, agences=None):
+    """Employé de ses agences, ou programmation dans l'une de ses agences (mission)."""
+    if is_admin(acteur):
+        return True
+    geres = agences_gerees(acteur) or set()
+    if agence_id is not None and agence_id in geres:
+        return True
+    agence = (agences or agence_de({employe.id})).get(employe.id)
+    return agence is not None and agence.id in geres
+
+
+def verifier_employe_gere(acteur, employe, agences=None, agence_id=None):
+    if not employe_gere(acteur, employe, agence_id, agences):
+        raise PermissionDenied(f"{nom(employe)} n'est pas un employé de vos agences "
+                               "(ni programmé(e) dans l'une d'elles).")
+
+
+def lire_agence(valeur, nom_champ='agence'):
+    if valeur in (None, ''):
+        return None
+    try:
+        return Agence.objects.get(pk=int(valeur))
+    except (TypeError, ValueError, Agence.DoesNotExist):
+        raise ValidationError({nom_champ: "Agence introuvable."})
+
+
+def verifier_agence_programmation(acteur, employe, agence):
+    """Agence de la programmation : la sienne (gérée) ou une agence de mission gérée par l'acteur."""
     if is_admin(acteur):
         return
     geres = agences_gerees(acteur) or set()
-    agence = (agences or agence_de({employe.id})).get(employe.id)
-    if agence is None or agence.id not in geres:
-        raise PermissionDenied(f"{nom(employe)} n'est pas un employé de vos agences.")
+    if agence.id in geres:
+        return
+    propre = agence_de({employe.id}).get(employe.id)
+    if propre is not None and propre.id in geres and agence.id == propre.id:
+        return
+    if propre is not None and propre.id in geres:
+        return   # gestionnaire de l'agence de l'employé : peut l'envoyer en mission
+    raise PermissionDenied(f"Vous ne gérez ni l'agence {agence.nom_agence} ni l'agence de {nom(employe)}.")
 
 
 def equipe_planning(valeur):
@@ -356,15 +430,20 @@ class Rapport:
 
 
 def _couverture(progs, debut, fin):
-    jours = set()
+    """{(jour, agence_id)} couverts par les programmations."""
+    cases = set()
     for p in progs:
         d = max(p.date_debut, debut)
         f = min(p.date_fin or fin, fin)
         while d <= f:
             if d.weekday() in jours_de(p):
-                jours.add(d)
+                cases.add((d, p.agence_id))
             d += timedelta(days=1)
-    return jours
+    return cases
+
+
+def _jours(cases):
+    return sorted({d for d, _ in cases})
 
 
 def _ligne_commande(c, prix=None):
@@ -389,16 +468,22 @@ def mesurer_impact(employe, equipe, avant, apres, rapport, executer=False, par=N
     fin = aujourdhui + timedelta(days=HORIZON_IMPACT)
     cov_avant = _couverture(avant, aujourdhui, fin)
     cov_apres = _couverture(apres, aujourdhui, fin)
-    retires = sorted(cov_avant - cov_apres)
-    ajoutes = sorted(cov_apres - cov_avant)
+    cases_retirees = cov_avant - cov_apres
+    retires = _jours(cases_retirees)
+    # Jours nouvellement programmés (quelle que soit l'agence)
+    ajoutes = sorted(set(_jours(cov_apres)) - set(_jours(cov_avant)))
 
     a_notifier_employe = []
     annulees_ici = []
     if retires:
-        commandes = list(Commande.objects.filter(user=employe, statut='en_attente', menu__typeequipe=equipe,
-                                                 menu__date_menu__in=retires)
-                         .select_related('user', 'plat', 'menu__agence', 'menu__typeequipe', 'menu__prestataire')
-                         .order_by('menu__date_menu'))
+        commandes = [c for c in Commande.objects.filter(user=employe, statut='en_attente', menu__typeequipe=equipe,
+                                                        menu__date_menu__in=retires)
+                     .select_related('user', 'plat', 'menu__agence', 'menu__typeequipe', 'menu__prestataire')
+                     .order_by('menu__date_menu')
+                     # Commande dans une agence où la journée n'est plus programmée
+                     if ((c.menu.date_menu, c.menu.agence_id) in cases_retirees
+                         or (c.menu.date_menu, None) in cases_retirees)
+                     and (c.menu.date_menu, c.menu.agence_id) not in cov_apres]
         from . import comptes_repas as cr
         from .models import ClotureMensuelle
         for c in commandes:
@@ -441,7 +526,8 @@ def mesurer_impact(employe, equipe, avant, apres, rapport, executer=False, par=N
                 tardive = None
                 if p.planning_commande_tardive:
                     from .prestataires import horaires_retrait
-                    debut_retrait = horaires_retrait(_agence_employe(employe), equipe, p)[0]
+                    ag = next((Agence.objects.filter(pk=a).first() for dd, a in cov_apres if dd == d and a), None)
+                    debut_retrait = horaires_retrait(ag or _agence_employe(employe), equipe, p)[0]
                     t = (timezone.make_aware(datetime.combine(d, debut_retrait))
                          - timedelta(hours=p.planning_commande_tardive_heures))
                     if maintenant < t:
@@ -587,12 +673,13 @@ def _envoyer(user_ids, titre, message):
 # ══════════════════════════════════════════════════════════════
 
 def _progs(employe, equipe):
-    return list(ProgrammationEquipe.objects.filter(user=employe, typeequipe=equipe).order_by('date_debut', 'id'))
+    return list(ProgrammationEquipe.objects.filter(user=employe, typeequipe=equipe).select_related('agence')
+                .order_by('date_debut', 'id'))
 
 
 def _copie(p, **champs):
     c = ProgrammationEquipe(id=p.id, user_id=p.user_id, typeequipe_id=p.typeequipe_id, date_debut=p.date_debut,
-                            date_fin=p.date_fin, jours=list(p.jours or []), motif=p.motif)
+                            date_fin=p.date_fin, jours=list(p.jours or []), motif=p.motif, agence_id=p.agence_id)
     c.created_at, c.updated_at = p.created_at, p.updated_at
     for k, v in champs.items():
         setattr(c, k, v)
@@ -628,13 +715,16 @@ def _enregistrer(employe, equipe, nouvelles, par):
         if n.id and n.id in existantes and n.id not in gardees:
             e = existantes[n.id]
             gardees.add(n.id)
-            if (e.date_debut, e.date_fin, sorted(jours_de(e))) != (n.date_debut, n.date_fin, sorted(jours_de(n))):
+            if ((e.date_debut, e.date_fin, sorted(jours_de(e)), e.agence_id)
+                    != (n.date_debut, n.date_fin, sorted(jours_de(n)), n.agence_id)):
                 e.date_debut, e.date_fin, e.jours = n.date_debut, n.date_fin, list(n.jours or TOUS_JOURS)
+                e.agence_id = n.agence_id
                 e.user_updated = par
                 e.save()
         else:
             ProgrammationEquipe.objects.create(user=employe, typeequipe=equipe, date_debut=n.date_debut,
                                                date_fin=n.date_fin, jours=list(n.jours or TOUS_JOURS),
+                                               agence_id=n.agence_id,
                                                motif=n.motif or '', importee=getattr(n, 'importee', False),
                                                user_created=par, user_updated=par)
     ProgrammationEquipe.objects.filter(id__in=set(existantes) - gardees).delete()
@@ -663,28 +753,50 @@ def changer(employe, equipe, nouvelles, rapport, par, motif, action, description
         _tracer(employe, equipe, action, description, par, motif)
 
 
+def agence_programmation(employe, agence=None):
+    """Agence de la programmation : celle donnée (mission), sinon celle de l'employé."""
+    if agence is not None:
+        return agence
+    propre = _agence_employe(employe)
+    if propre is None:
+        raise ValidationError({'agence': f"{nom(employe)} n'a pas d'agence : précisez l'agence de la programmation."})
+    return propre
+
+
+def texte_agence(employe, agence):
+    """« à VRI (mission) » si l'agence n'est pas celle de l'employé, sinon vide."""
+    propre = _agence_employe(employe)
+    if agence is None or (propre is not None and propre.id == agence.id):
+        return ''
+    return f" à {agence.nom_agence} (mission)"
+
+
 def programmer(employe, equipe, debut, fin, jours, rapport, par, motif='', apercu=False, parametres=None,
-               action='programmation', importee=False):
+               action='programmation', importee=False, agence=None):
     if fin is not None and fin < debut:
         raise ValidationError({'date_fin': "La date de fin doit être après la date de début."})
+    agence = agence_programmation(employe, agence)
     nouvelles = [_copie(p) for p in _progs(employe, equipe)]
     n = ProgrammationEquipe(user=employe, typeequipe=equipe, date_debut=debut, date_fin=fin,
-                            jours=lire_jours(jours), motif=motif or '', importee=importee)
+                            jours=lire_jours(jours), motif=motif or '', importee=importee, agence=agence)
     n.created_at = n.updated_at = timezone.now()
     nouvelles.append(n)
-    texte = periode_txt(debut, fin) + (f" ({jours_txt(n.jours)})" if sorted(n.jours) != TOUS_JOURS else '')
+    texte = (periode_txt(debut, fin) + (f" ({jours_txt(n.jours)})" if sorted(n.jours) != TOUS_JOURS else '')
+             + texte_agence(employe, agence))
     changer(employe, equipe, nouvelles, rapport, par, motif, action,
             f"Programmé(e) {texte}", apercu, parametres, texte_periode=texte)
     rapport.programmes += 1
 
 
 def retirer(employe, equipe, a_partir, fin, rapport, par, motif='', apercu=False, parametres=None,
-            action='retrait'):
-    progs = _progs(employe, equipe)
+            action='retrait', agences=None):
+    """Retire l'employé de l'équipe (dans les agences `agences` seulement si elles sont données)."""
+    tous = _progs(employe, equipe)
+    progs = [x for x in tous if agences is None or x.agence_id in agences]
     if not progs:
         return False
     debut = a_partir or min(p.date_debut for p in progs)
-    nouvelles = _decouper(progs, debut, fin)
+    nouvelles = _decouper(progs, debut, fin) + [_copie(x) for x in tous if x not in progs]
     changer(employe, equipe, nouvelles, rapport, par, motif, action,
             f"Retiré(e) {periode_txt(debut, fin)}", apercu, parametres)
     rapport.retires += 1
@@ -715,15 +827,35 @@ def _employes_geres(acteur, agence_id=None):
     return users
 
 
-def _employe(acteur, valeur):
+def _employe(acteur, valeur, agence_id=None, controler=True):
     try:
         employe = User.objects.get(pk=int(valeur))
     except (TypeError, ValueError, User.DoesNotExist):
         raise NotFound("Employé introuvable.")
     if is_compte_prestataire(employe):
         raise ValidationError("Les comptes prestataires ne se programment pas.")
-    verifier_employe_gere(acteur, employe)
+    if controler:
+        verifier_employe_gere(acteur, employe, agence_id=agence_id)
     return employe
+
+
+def _perimetre(acteur, agence_id=None):
+    """(agences du périmètre ou None = toutes, employés de ces agences)."""
+    geres = None if is_admin(acteur) else (agences_gerees(acteur) or set())
+    if agence_id is not None:
+        if geres is not None and agence_id not in geres:
+            raise PermissionDenied("Agence non gérée.")
+        geres = {agence_id}
+    return geres, _employes_geres(acteur, agence_id)
+
+
+def _progs_perimetre(acteur, equipe, agence_id=None):
+    """Programmations visibles : dans ses agences, ou d'un employé de ses agences (mission ailleurs)."""
+    agences, employes = _perimetre(acteur, agence_id)
+    qs = ProgrammationEquipe.objects.filter(typeequipe=equipe)
+    if agences is not None:
+        qs = qs.filter(Q(agence_id__in=agences) | Q(user__in=employes))
+    return qs
 
 
 class PlanningEquipesView(APIView):
@@ -750,6 +882,9 @@ class PlanningEquipesView(APIView):
             'equipes': [{'id': e.id, 'libelle': e.libelle, 'exclusive_planning': e.exclusive_planning}
                         for e in equipes],
             'agences': [{'id': a.id, 'nom': a.nom_agence} for a in agences.order_by('nom_agence')],
+            # Agences de mission possibles (toutes ; le gestionnaire y envoie les employés de ses agences)
+            'toutes_agences': [{'id': a.id, 'nom': a.nom_agence}
+                               for a in Agence.objects.all().order_by('nom_agence')],
             'typeequipe': equipe.id if equipe else None, 'agence': agence_id,
             'semaine': {'debut': jours[0].isoformat(), 'fin': jours[-1].isoformat(),
                         'precedente': (lundi - timedelta(days=7)).isoformat(),
@@ -763,11 +898,9 @@ class PlanningEquipesView(APIView):
         }
         if equipe is None:
             return Response(base)
-        employes = _employes_geres(request.user, agence_id)
-        progs = list(ProgrammationEquipe.objects.filter(typeequipe=equipe, user__in=employes,
-                                                        date_debut__lte=jours[-1])
+        progs = list(_progs_perimetre(request.user, equipe, agence_id).filter(date_debut__lte=jours[-1])
                      .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=jours[0]))
-                     .select_related('user', 'user_created').order_by('date_debut'))
+                     .select_related('user', 'user_created', 'agence').order_by('date_debut'))
         par_user = defaultdict(list)
         for pr in progs:
             par_user[pr.user_id].append(pr)
@@ -795,9 +928,16 @@ class PlanningEquipesView(APIView):
                     nb_cmd += 1
                 cases.append({'date': d.isoformat(), 'programme': prog is not None,
                               'programmation_id': prog.id if prog else None,
+                              'agence': prog.agence.nom_agence if prog and prog.agence_id else None,
+                              'mission': bool(prog and prog.agence_id and origines.get(uid)
+                                              and prog.agence_id != origines[uid].id),
                               'commande': ({'id': c.id, 'plat': c.plat.nom, 'statut': c.statut} if c else None)})
             ag = origines.get(uid)
-            tous = _progs(u, equipe)
+            tous = [x for x in _progs(u, equipe) if x.id in {y.id for y in ps} or x.date_fin is None
+                    or x.date_fin >= timezone.localdate()]
+            ids_visibles = set(_progs_perimetre(request.user, equipe, agence_id).filter(user=u)
+                               .values_list('id', flat=True))
+            tous = [x for x in tous if x.id in ids_visibles]
             lignes.append({
                 'employe': {'id': u.id, 'nom': nom(u), 'matricule': u.username,
                             'agence': ag.nom_agence if ag else None, 'agence_id': ag.id if ag else None},
@@ -807,10 +947,12 @@ class PlanningEquipesView(APIView):
                                     'jours': sorted(jours_de(x)), 'jours_libelle': jours_txt(x.jours),
                                     'libelle': periode_txt(x.date_debut, x.date_fin),
                                     'importee': x.importee, 'motif': x.motif,
+                                    'agence_id': x.agence_id,
+                                    'agence': x.agence.nom_agence if x.agence_id else None,
+                                    'mission': bool(x.agence_id and ag and x.agence_id != ag.id),
                                     'saisi_par': ('Import Excel' if x.importee else
                                                   (nom(x.user_created) if x.user_created_id else ''))}
-                                   for x in tous if x.date_fin is None or x.date_fin >= timezone.localdate()
-                                   or x in ps],
+                                   for x in tous],
             })
         lignes.sort(key=lambda l: l['employe']['nom'].upper())
         base['lignes'] = lignes
@@ -827,7 +969,11 @@ class PlanningEmployesView(APIView):
         verifier_saisie(request.user)
         q = request.query_params
         agence_id = int(q['agence']) if str(q.get('agence') or '').isdigit() else None
-        users = _employes_geres(request.user, agence_id)
+        if _vrai(q.get('tous')):
+            # Mission dans l'une de ses agences : employés de toutes les agences
+            users = User.objects.filter(is_active=True, prestataire__isnull=True)
+        else:
+            users = _employes_geres(request.user, agence_id)
         texte = (q.get('q') or '').strip()
         if texte:
             users = users.filter(Q(nom__icontains=texte) | Q(prenom__icontains=texte) | Q(username__icontains=texte))
@@ -845,7 +991,10 @@ class PlanningHistoriqueView(APIView):
     def get(self, request):
         verifier_saisie(request.user)
         q = request.query_params
-        qs = HistoriqueProgrammation.objects.filter(user__in=_employes_geres(request.user))
+        agences, employes = _perimetre(request.user)
+        qs = HistoriqueProgrammation.objects.all()
+        if agences is not None:
+            qs = qs.filter(Q(user__in=employes) | Q(user__programmations_equipe__agence_id__in=agences)).distinct()
         if str(q.get('user') or '').isdigit():
             qs = qs.filter(user_id=int(q['user']))
         if str(q.get('typeequipe') or '').isdigit():
@@ -875,11 +1024,16 @@ class ProgrammerView(APIView):
             raise ValidationError({'date_fin': "La date de fin doit être après la date de début."})
         jours = lire_jours(d.get('jours'))
         apercu = _vrai(d.get('apercu'))
+        # Agence de mission (facultative) : sinon l'agence de chaque employé
+        agence = lire_agence(d.get('agence'))
         p = ParametresSociete.charger()
         rapport = Rapport()
-        employes = [_employe(request.user, i) for i in dict.fromkeys(ids)]
+        employes = [_employe(request.user, i, controler=False) for i in dict.fromkeys(ids)]
         for e in employes:
-            programmer(e, equipe, debut, fin, jours, rapport, request.user, d.get('motif') or '', apercu, p)
+            verifier_agence_programmation(request.user, e, agence_programmation(e, agence))
+        for e in employes:
+            programmer(e, equipe, debut, fin, jours, rapport, request.user, d.get('motif') or '', apercu, p,
+                       agence=agence)
         return Response({'apercu': apercu, **rapport.json()})
 
 
@@ -889,10 +1043,10 @@ class ProgrammationDetailView(APIView):
 
     def _prog(self, request, pk):
         verifier_saisie(request.user)
-        prog = ProgrammationEquipe.objects.select_related('user', 'typeequipe').filter(pk=pk).first()
+        prog = ProgrammationEquipe.objects.select_related('user', 'typeequipe', 'agence').filter(pk=pk).first()
         if prog is None:
             raise NotFound("Programmation introuvable.")
-        verifier_employe_gere(request.user, prog.user)
+        verifier_employe_gere(request.user, prog.user, agence_id=prog.agence_id)
         return prog
 
     def patch(self, request, pk):
@@ -903,11 +1057,16 @@ class ProgrammationDetailView(APIView):
         if fin is not None and fin < debut:
             raise ValidationError({'date_fin': "La date de fin doit être après la date de début."})
         jours = lire_jours(d.get('jours')) if 'jours' in d else sorted(jours_de(prog))
+        agence = lire_agence(d.get('agence')) if d.get('agence') else prog.agence
+        if agence is not None and agence.id != prog.agence_id:
+            verifier_agence_programmation(request.user, prog.user, agence)
         apercu = _vrai(d.get('apercu'))
         rapport = Rapport()
-        nouvelles = [_copie(x, date_debut=debut, date_fin=fin, jours=jours) if x.id == prog.id else _copie(x)
+        nouvelles = [_copie(x, date_debut=debut, date_fin=fin, jours=jours, agence_id=getattr(agence, 'id', None))
+                     if x.id == prog.id else _copie(x)
                      for x in _progs(prog.user, prog.typeequipe)]
-        texte = periode_txt(debut, fin) + (f" ({jours_txt(jours)})" if sorted(jours) != TOUS_JOURS else '')
+        texte = (periode_txt(debut, fin) + (f" ({jours_txt(jours)})" if sorted(jours) != TOUS_JOURS else '')
+                 + texte_agence(prog.user, agence))
         changer(prog.user, prog.typeequipe, nouvelles, rapport, request.user, d.get('motif') or '',
                 'modification', f"Période modifiée : {texte}", apercu, ParametresSociete.charger(),
                 texte_periode=texte)
@@ -934,12 +1093,19 @@ class RetirerView(APIView):
         verifier_saisie(request.user)
         d = request.data
         equipe = equipe_planning(d.get('typeequipe'))
-        employe = _employe(request.user, d.get('user'))
+        employe = _employe(request.user, d.get('user'), controler=False)
+        # Gestionnaire : toutes les programmations d'un employé de ses agences ;
+        # sinon seulement celles dans ses agences (mission)
+        agences = None
+        if not is_admin(request.user) and not employe_gere(request.user, employe):
+            agences = agences_gerees(request.user) or set()
+            if not ProgrammationEquipe.objects.filter(user=employe, typeequipe=equipe, agence_id__in=agences).exists():
+                raise PermissionDenied(f"{nom(employe)} n'est ni un employé de vos agences ni programmé(e) dans l'une d'elles.")
         a_partir = lire_date(d.get('a_partir_de'), 'a_partir_de', requis=False)
         apercu = _vrai(d.get('apercu'))
         rapport = Rapport()
         if not retirer(employe, equipe, a_partir, None, rapport, request.user, d.get('motif') or '', apercu,
-                       ParametresSociete.charger()):
+                       ParametresSociete.charger(), agences=agences):
             raise ValidationError(f"{nom(employe)} n'est pas programmé(e) dans l'équipe {equipe.libelle}.")
         return Response({'apercu': apercu, **rapport.json()})
 
@@ -970,6 +1136,8 @@ class ImporterView(APIView):
         p = ParametresSociete.charger()
         equipes = {e.libelle.strip().lower(): e for e in TypeEquipe.objects.filter(sur_planning=True)}
         gerables = set(_employes_geres(request.user).values_list('id', flat=True))
+        agences_noms = {_cle(a.nom_agence): a for a in Agence.objects.all()}
+        geres = None if is_admin(request.user) else (agences_gerees(request.user) or set())
         matricules = {str(l.get('matricule') or '').strip() for l in lignes if isinstance(l, dict)}
         users = {u.username: u for u in User.objects.filter(username__in=matricules)}
         # Excel enregistre souvent « 01427 » comme le nombre 1427 : matricules
@@ -989,15 +1157,25 @@ class ImporterView(APIView):
             mat = str(l.get('matricule') or '').strip()
             res = {'ligne': num, 'matricule': mat, 'employe': None, 'equipe': str(l.get('equipe') or '').strip(),
                    'date_debut': l.get('date_debut'), 'date_fin': l.get('date_fin'), 'jours': l.get('jours'),
-                   'statut': 'ok', 'message': ''}
+                   'agence': str(l.get('agence') or '').strip(), 'statut': 'ok', 'message': ''}
             try:
                 u = users.get(mat)
                 if u is None:
                     raise ValidationError("Matricule inconnu")
                 res['employe'] = nom(u)
                 res['matricule'] = u.username
-                if u.id not in gerables:
+                ag = None
+                if res['agence']:
+                    ag = agences_noms.get(_cle(res['agence']))
+                    if ag is None:
+                        raise ValidationError("Agence inconnue")
+                if u.id not in gerables and not (ag is not None and geres is not None and ag.id in geres):
                     raise ValidationError("Employé hors de vos agences")
+                if ag is None:
+                    ag = _agence_employe(u)
+                    if ag is None:
+                        raise ValidationError("Employé sans agence : précisez l'agence")
+                res['agence'] = ag.nom_agence
                 e = equipes.get(res['equipe'].lower())
                 if e is None:
                     raise ValidationError("Équipe inconnue ou non réservée au planning")
@@ -1013,7 +1191,7 @@ class ImporterView(APIView):
                               if x.date_debut <= (fin or date.max) and (x.date_fin is None or x.date_fin >= debut)]
                 if existantes and mode == 'ajouter':
                     res['statut'], res['message'] = 'avertissement', "Chevauche une période existante (fusionnée)"
-                valides.append((u, e, debut, fin, jours))
+                valides.append((u, e, debut, fin, jours, ag))
             except ValidationError as exc:
                 detail = exc.detail
                 if isinstance(detail, dict):
@@ -1026,15 +1204,15 @@ class ImporterView(APIView):
         rapport = Rapport()
         if valides:
             par_cle = defaultdict(list)
-            for u, e, debut, fin, jours in valides:
-                par_cle[(u.id, e.id)].append((u, e, debut, fin, jours))
+            for v in valides:
+                par_cle[(v[0].id, v[1].id)].append(v)
             if mode == 'ajouter':
                 for groupe in par_cle.values():
                     u, e = groupe[0][0], groupe[0][1]
                     nouvelles = [_copie(x) for x in _progs(u, e)]
-                    for _, _, debut, fin, jours in groupe:
+                    for _, _, debut, fin, jours, ag in groupe:
                         n = ProgrammationEquipe(user=u, typeequipe=e, date_debut=debut, date_fin=fin, jours=jours,
-                                                importee=True)
+                                                importee=True, agence=ag)
                         n.created_at = n.updated_at = timezone.now()
                         nouvelles.append(n)
                     texte = ', '.join(periode_txt(g[2], g[3]) for g in groupe)
@@ -1053,13 +1231,18 @@ class ImporterView(APIView):
                                     .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=debut))
                                     .filter(**({'date_debut__lte': fin} if fin else {}))
                                     .values_list('user_id', flat=True)) | dans_fichier
+                    concernes |= set(ProgrammationEquipe.objects.filter(typeequipe=e)
+                                     .filter(**({} if geres is None else {'agence_id__in': geres}))
+                                     .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=debut))
+                                     .filter(**({'date_debut__lte': fin} if fin else {}))
+                                     .values_list('user_id', flat=True))
                     for uid in concernes:
                         u = next((v[0] for v in lignes_e if v[0].id == uid), None) or User.objects.get(pk=uid)
                         nouvelles = _decouper(_progs(u, e), debut, fin)
                         mes = [v for v in lignes_e if v[0].id == uid]
-                        for _, _, d1, d2, jours in mes:
+                        for _, _, d1, d2, jours, ag in mes:
                             n = ProgrammationEquipe(user=u, typeequipe=e, date_debut=d1, date_fin=d2, jours=jours,
-                                                    importee=True)
+                                                    importee=True, agence=ag)
                             n.created_at = n.updated_at = timezone.now()
                             nouvelles.append(n)
                         texte = ', '.join(periode_txt(v[2], v[3]) for v in mes)
@@ -1088,14 +1271,13 @@ class CopierSemaineView(APIView):
         ref = lire_date(d.get('semaine'), 'semaine')
         lundi = ref - timedelta(days=ref.weekday())
         precedent = lundi - timedelta(days=7)
-        employes = _employes_geres(request.user, agence_id)
         progs = defaultdict(list)
-        for x in (ProgrammationEquipe.objects.filter(typeequipe=equipe, user__in=employes, date_debut__lte=lundi - timedelta(days=1))
-                  .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=precedent)).select_related('user')):
-            progs[x.user_id].append(x)
+        for x in (_progs_perimetre(request.user, equipe, agence_id).filter(date_debut__lte=lundi - timedelta(days=1))
+                  .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=precedent)).select_related('user', 'agence')):
+            progs[(x.user_id, x.agence_id)].append(x)
         p = ParametresSociete.charger()
         rapport = Rapport()
-        for uid, ps in progs.items():
+        for (uid, _ag), ps in progs.items():
             u = ps[0].user
             jours = sorted({(precedent + timedelta(days=i)).weekday() for i in range(7)
                             if any(couvre(x, precedent + timedelta(days=i)) for x in ps)})
@@ -1105,7 +1287,7 @@ class CopierSemaineView(APIView):
             if deja:
                 continue  # déjà programmé(e) cette semaine : inchangé
             programmer(u, equipe, lundi, lundi + timedelta(days=6), jours, rapport, request.user,
-                       'Copie de la semaine précédente', False, p, action='copie')
+                       'Copie de la semaine précédente', False, p, action='copie', agence=ps[0].agence)
         return Response({'apercu': False, **rapport.json()})
 
 
@@ -1131,12 +1313,12 @@ def envoyer_rappels(maintenant=None):
         return 0
     horizon = aujourdhui + timedelta(days=p.planning_rappel_jours + 1 + p.delai_commande_heures // 24 + 1)
     menus = defaultdict(set)
-    for eq, d in (Menu.objects.filter(typeequipe_id__in=list(equipes), publie=True, masque=False,
-                                      date_menu__gt=aujourdhui, date_menu__lte=horizon)
-                  .values_list('typeequipe_id', 'date_menu')):
-        menus[eq].add(d)
-    for eq, dates in menus.items():
-        for d in sorted(dates):
+    for eq, d, ag in (Menu.objects.filter(typeequipe_id__in=list(equipes), publie=True, masque=False,
+                                          date_menu__gt=aujourdhui, date_menu__lte=horizon)
+                      .values_list('typeequipe_id', 'date_menu', 'agence_id')):
+        menus[(eq, d)].add(ag)
+    for (eq, d), agences_menu in sorted(menus.items(), key=lambda x: x[0][1]):
+        if True:
             limite = date_limite_commande(d, p)
             if not (limite - timedelta(days=p.planning_rappel_jours) <= maintenant < limite):
                 continue
@@ -1145,6 +1327,8 @@ def envoyer_rappels(maintenant=None):
             for prog in progs:
                 if not couvre(prog, d) or not prog.user.is_active:
                     continue
+                if prog.agence_id is not None and prog.agence_id not in agences_menu:
+                    continue   # pas de menu de l'équipe dans l'agence où il est programmé
                 if Commande.objects.filter(user=prog.user, menu__date_menu=d,
                                            statut__in=('en_attente', 'retiree')).exists():
                     continue

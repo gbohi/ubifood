@@ -187,6 +187,10 @@ class ProgrammationEquipe(BaseModel):
     """
     user       = models.ForeignKey('User', on_delete=models.CASCADE, related_name='programmations_equipe')
     typeequipe = models.ForeignKey(TypeEquipe, on_delete=models.CASCADE, related_name='programmations')
+    # Agence où l'employé est programmé : la sienne, ou une agence de mission
+    # (il y voit et commande l'équipe, même si l'agence est fermée aux autres agences)
+    agence     = models.ForeignKey(Agence, on_delete=models.CASCADE, null=True, blank=True,
+                                   related_name='programmations_equipe')
     date_debut = models.DateField()
     date_fin   = models.DateField(null=True, blank=True)
     jours      = models.JSONField(default=list, blank=True)

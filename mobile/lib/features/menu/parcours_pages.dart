@@ -785,7 +785,7 @@ class _IconeAgence extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selectionnee,
-      label: 'Agence ${agence.nom}${mienne ? ' (mon agence)' : ''}',
+      label: 'Agence ${agence.nom}${mienne ? ' (mon agence)' : (agence.mission ? ' (mission)' : '')}',
       excludeSemantics: true,
       child: InkWell(
         key: Key('agence-${agence.id}'),
@@ -854,6 +854,14 @@ class _IconeAgence extends StatelessWidget {
                     color: selectionnee
                         ? (isDark ? AppColors.accent : AppColors.accentDark)
                         : (mienne ? texte : gris))),
+            // Agence de mission : seulement l'équipe où l'employé est programmé
+            if (agence.mission)
+              Text('Mission',
+                  key: Key('mission-${agence.id}'),
+                  style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFB45309))),
           ]),
         ),
       ),

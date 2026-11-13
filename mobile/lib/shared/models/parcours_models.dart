@@ -56,6 +56,9 @@ class AgenceCommande {
   final String code;
   final bool monAgence;
   final bool accepterAutresAgences;
+
+  /// Agence où l'utilisateur est programmé en mission (équipe sur planning)
+  final bool mission;
   final int nbPrestatairesAujourdhui;
   final int nbPrestatairesSemaine;
   final String? heureDebutService;
@@ -67,6 +70,7 @@ class AgenceCommande {
     this.code = '',
     this.monAgence = false,
     this.accepterAutresAgences = false,
+    this.mission = false,
     this.nbPrestatairesAujourdhui = 0,
     this.nbPrestatairesSemaine = 0,
     this.heureDebutService,
@@ -79,6 +83,7 @@ class AgenceCommande {
         code: _texte(j['code']),
         monAgence: j['mon_agence'] == true,
         accepterAutresAgences: j['accepter_autres_agences'] == true,
+        mission: j['mission'] == true,
         nbPrestatairesAujourdhui: _int(j['nb_prestataires_aujourdhui']),
         nbPrestatairesSemaine: _int(j['nb_prestataires_semaine']),
         heureDebutService: j['heure_debut_service'] as String?,

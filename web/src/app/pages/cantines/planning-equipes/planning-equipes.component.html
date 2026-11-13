@@ -67,15 +67,16 @@
                     <div><b>{{ l.employe.nom }}</b><small class="d-block ep-muted">Mat. {{ l.employe.matricule }}@if (l.employe.agence) { · {{ l.employe.agence }} }</small></div></div></td>
                   @for (c of l.jours; track c.date; let i = $index) {
                     <td class="pq-c-j">
-                      <div [class]="classeCase(l, i)" [title]="c.commande ? 'Programmé(e) · repas commandé : ' + c.commande.plat : (c.programme ? 'Programmé(e)' : 'Non programmé(e) : ne voit pas l\'équipe ce jour-là')">
-                        @if (c.commande) { <i class="ri-check-line"></i> }
+                      <div [class]="classeCase(l, i) + (c.mission ? ' mission' : '')" [title]="(c.commande ? 'Programmé(e) · repas commandé : ' + c.commande.plat : (c.programme ? 'Programmé(e)' : 'Non programmé(e) : ne voit pas l\'équipe ce jour-là')) + (c.agence ? ' · ' + c.agence : '')">
+                        @if (c.commande) { <i class="ri-check-line"></i> } @else if (c.mission) { <i class="ri-briefcase-4-line"></i> }
                       </div>
                     </td>
                   }
                   <td class="pq-periode">
                     @for (p of l.programmations; track p.id) {
                       <button type="button" class="pq-per" (click)="ouvrirModifier(l, p)" title="Modifier cette période">
-                        {{ p.libelle }}@if (p.jours.length < 7) { <small>· {{ p.jours_libelle }}</small> }<i class="ri-pencil-line"></i>
+                        {{ p.libelle }}@if (p.jours.length < 7) { <small>· {{ p.jours_libelle }}</small> }
+                        @if (p.mission) { <span class="lst-tag t-or pq-mis"><i class="ri-briefcase-4-line"></i>Mission · {{ p.agence }}</span> }<i class="ri-pencil-line"></i>
                       </button>
                     }
                   </td>
@@ -100,6 +101,7 @@
         <div class="pq-legende">
           <span><i class="pq-l on"></i>Programmé(e)</span>
           <span><i class="pq-l cmd"></i>Programmé(e) et repas commandé</span>
+          <span><i class="pq-l mis"></i>En mission dans une autre agence</span>
           <span><i class="pq-l"></i>Non programmé(e) : ne voit pas l'équipe {{ libelleEquipe }} ce jour-là</span>
           <button type="button" class="ep-lien ms-auto" (click)="basculerJournal()"><i class="ri-history-line"></i>{{ journalOuvert ? 'Masquer le journal' : 'Journal des changements' }}</button>
         </div>
@@ -139,6 +141,12 @@
           <div class="col-sm-6"><label class="ep-lab" for="pg-au">Au <span class="ep-muted">(vide : jusqu'à nouvel ordre)</span></label>
             <input id="pg-au" type="date" class="form-control" [(ngModel)]="prog.date_fin" [min]="prog.date_debut"></div>
         </div>
+        <label class="ep-lab mt-3" for="pg-ag">Agence</label>
+        <select id="pg-ag" class="form-select" [(ngModel)]="prog.agence">
+          <option value="">Agence de chaque employé</option>
+          @for (a of donnees?.toutes_agences ?? []; track a.id) { <option [ngValue]="a.id">{{ a.nom }} (mission)</option> }
+        </select>
+        <small class="ep-muted d-block mt-1">Mission : l'employé voit et commande l'équipe {{ libelleEquipe }} uniquement dans cette agence, même si elle est fermée aux autres agences.</small>
         <label class="ep-lab mt-3">Jours concernés</label>
         <div class="pq-jours" role="group" aria-label="Jours concernés">
           @for (s of sigles; track $index) {
@@ -153,6 +161,8 @@
         }
         <div class="pq-recherche mb-2"><i class="ri-search-line"></i>
           <input id="pg-q" type="search" class="form-control" [(ngModel)]="rechercheEmploye" (ngModelChange)="chercherEmployes()" placeholder="Nom ou matricule…"></div>
+        <div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="pg-autres" [(ngModel)]="autresAgences" (change)="chercherEmployes()">
+          <label class="form-check-label small" for="pg-autres">Chercher aussi dans les autres agences (mission dans l'une de mes agences)</label></div>
         <div class="pq-liste">
           @for (e of employesTrouves; track e.id) {
             <label class="pq-emp"><input type="checkbox" class="form-check-input" [checked]="selection.has(e.id)" (change)="basculerEmploye(e)">
@@ -249,6 +259,10 @@
             <div class="col-6"><label class="ep-lab" for="md-au">Au</label>
               <input id="md-au" type="date" class="form-control" [(ngModel)]="modif.date_fin" [min]="modif.date_debut" (change)="apercuModif = null"></div>
           </div>
+          <label class="ep-lab mt-3" for="md-ag">Agence</label>
+          <select id="md-ag" class="form-select" [(ngModel)]="modif.agence" (change)="apercuModif = null">
+            @for (a of donnees?.toutes_agences ?? []; track a.id) { <option [ngValue]="a.id">{{ a.nom }}{{ a.nom === m.ligne.employe.agence ? '' : ' (mission)' }}</option> }
+          </select>
           <label class="ep-lab mt-3">Jours concernés</label>
           <div class="pq-jours">
             @for (s of sigles; track $index) {
@@ -287,7 +301,7 @@
           <button type="button" class="btn-close ms-auto" (click)="importModal.hide()" aria-label="Fermer"></button></div>
         <div class="d-flex gap-3 align-items-center flex-wrap mb-3">
           <button type="button" class="btn-ubi" (click)="telechargerModele()"><i class="ri-download-2-line"></i>Télécharger le modèle</button>
-          <small class="ep-muted">Colonnes : <b>Matricule · Équipe · Date début · Date fin · Jours</b> <i>(Date fin et Jours facultatifs, ex. « Lu-Ve »)</i></small>
+          <small class="ep-muted">Colonnes : <b>Matricule · Équipe · Date début · Date fin · Jours · Agence</b> <i>(Date fin, Jours et Agence facultatifs ; Agence vide = celle de l'employé)</i></small>
         </div>
         <label class="pq-depot" [class.ok]="fichierNom">
           <input type="file" accept=".xlsx,.xls,.csv" (change)="lireFichier($event)" class="visually-hidden">
@@ -298,10 +312,10 @@
         @if (controle; as c) {
           <div class="lst-table-wrap pq-import mt-3">
             <table class="lst-table">
-              <thead><tr><th>Ligne</th><th>Employé</th><th>Équipe</th><th>Période</th><th>Contrôle</th></tr></thead>
+              <thead><tr><th>Ligne</th><th>Employé</th><th>Équipe</th><th>Agence</th><th>Période</th><th>Contrôle</th></tr></thead>
               <tbody>
                 @for (l of c.lignes; track l.ligne) {
-                  <tr><td>{{ l.ligne }}</td><td>{{ l.matricule }}@if (l.employe) { · {{ l.employe }} }</td><td>{{ l.equipe }}</td>
+                  <tr><td>{{ l.ligne }}</td><td>{{ l.matricule }}@if (l.employe) { · {{ l.employe }} }</td><td>{{ l.equipe }}</td><td>{{ l.agence || '—' }}</td>
                     <td>{{ l.periode || ((l.date_debut || '?') + ' → ' + (l.date_fin || '…')) }}</td>
                     <td><span class="lst-tag" [ngClass]="l.statut === 'ok' ? 't-ve' : l.statut === 'erreur' ? 't-ro' : 't-or'">
                       @if (l.statut === 'ok') { <i class="ri-check-line"></i>OK } @else { {{ l.message }} }</span></td></tr>

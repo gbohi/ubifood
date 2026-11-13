@@ -108,3 +108,11 @@
   display: inline-flex; align-items: center; gap: 4px; margin-top: 5px; background: var(--ubi-navy, #092440); color: #fff;
   font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 9px; width: fit-content;
 }
+
+// Mission dans une autre agence
+.pq-case.on.mission { background: #B45309; }
+.pq-case.on.mission.cmd { background: var(--ubi-vert2); }
+.pq-l.mis { background: #B45309; }
+.pq-mis { margin-left: 4px; font-size: 10.5px; padding: 1px 7px; }
+.pq-per { flex-wrap: wrap; }
+.pc-mission { color: #B45309; font-weight: 600; display: inline-flex; gap: 3px; align-items: center; }

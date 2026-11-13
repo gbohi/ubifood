@@ -11,6 +11,8 @@ import { ModePaiement } from 'src/app/store/Commande/commande.model';
 export interface AgenceCommande {
   id: number; nom: string; code: string; mon_agence: boolean;
   accepter_autres_agences: boolean;
+  /** Agence où l'utilisateur est programmé en mission (équipe sur planning seulement) */
+  mission?: boolean;
   nb_prestataires_aujourdhui: number; nb_prestataires_semaine: number;
   heure_debut_service: string | null; heure_fin_service: string | null;
 }

@@ -16,7 +16,7 @@ from django.utils import timezone
 from . import comptes_repas as cr
 from .models import (
     Categoriesalarie, Commande, HistoriqueProgrammation, Menu, MenuPlat, Notification, ParametresSociete,
-    PlatCategoriesalarie, ProgrammationEquipe, RappelPlanning, TypeEquipe, UserCategoriesalarie,
+    PlatCategoriesalarie, ProgrammationEquipe, RappelPlanning, TypeEquipe, UserAgence, UserCategoriesalarie,
 )
 from .planning_equipes import envoyer_rappels, lire_jours
 from .tests import API, _EspacePrestataireBase, _synchrone
@@ -37,10 +37,12 @@ class _PlanningBase(_EspacePrestataireBase):
         UserCategoriesalarie.objects.create(user=self.employe, categoriesalarie=cat, statut=self.statut,
                                             date_debut=debut)
         self.aujourdhui = timezone.localdate()
+        UserAgence.objects.create(user=self.employe2, agence=self.agence, statut=self.statut,
+                                  date_debut=timezone.now() - timedelta(days=30))
 
-    def menu(self, jours, equipe=None, plats=None):
-        m = Menu.objects.create(date_menu=self.aujourdhui + timedelta(days=jours), agence=self.agence,
-                                typeequipe=equipe or self.typeequipe, prestataire=self.presta_a)
+    def menu(self, jours, equipe=None, plats=None, agence=None, prestataire=None):
+        m = Menu.objects.create(date_menu=self.aujourdhui + timedelta(days=jours), agence=agence or self.agence,
+                                typeequipe=equipe or self.typeequipe, prestataire=prestataire or self.presta_a)
         for p in plats or [self.plat_a]:
             MenuPlat.objects.create(menu=m, plat=p)
         return m
@@ -340,3 +342,88 @@ class ProgrammationTests(_PlanningBase):
         self.assertTrue(RappelPlanning.objects.filter(user=self.employe, date_menu=m.date_menu).exists())
         self.assertTrue(Notification.objects.filter(user=self.employe, titre__startswith='Pensez à réserver')
                         .exists())
+
+
+class MissionTests(_PlanningBase):
+    """Employé du Siège programmé de nuit à Yopougon (agence fermée aux autres agences)."""
+
+    def setUp(self):
+        super().setUp()
+        self.ouvrir_yop = lambda v: (setattr(self.yop, 'accepter_autres_agences', v), self.yop.save())
+        self.ouvrir_yop(False)
+        self.gest_yop = self.creer_user('gestyop', 'gestionnaire')
+        UserAgence.objects.create(user=self.gest_yop, agence=self.yop, statut=self.statut,
+                                  date_debut=timezone.now() - timedelta(days=30))
+
+    def programmer_yop(self, par=None, **extra):
+        return self.programmer(agence=self.yop.id, par=par, **extra)
+
+    def test_agence_par_defaut_celle_de_l_employe(self):
+        self.programmer()
+        self.assertEqual(ProgrammationEquipe.objects.get().agence, self.agence)
+
+    def test_mission_voit_et_commande_la_nuit_a_yop_seulement(self):
+        self.assertEqual(self.programmer_yop().status_code, 200)
+        self.assertEqual(ProgrammationEquipe.objects.get().agence, self.yop)
+        nuit_yop = self.menu(5, self.nuit, plats=[self.plat_b], agence=self.yop, prestataire=self.presta_b)
+        jour_yop = self.menu(5, plats=[self.plat_b], agence=self.yop, prestataire=self.presta_b)
+        nuit_siege = self.menu(5, self.nuit)
+        client = self.client_pour(self.employe)
+        # Yopougon apparaît (mission) malgré la fermeture aux autres agences
+        r = client.get(f'{API}/commander/agences/')
+        yop = next(a for a in r.data['agences'] if a['id'] == self.yop.id)
+        self.assertTrue(yop['mission'])
+        r = client.get(f'{API}/commander/prestataires/{self.presta_b.id}/equipes/', {'agence': self.yop.id})
+        self.assertEqual([e['libelle'] for e in r.data['equipes']], ['Nuit'])
+        self.assertIn('Programmé(e)', r.data['equipes'][0]['programmation']['libelle'])
+        # Commande de nuit à Yopougon : oui ; équipe Jour à Yopougon : non ; nuit au Siège : non
+        r = client.post(f'{API}/commandes/', {'menu_id': nuit_yop.id, 'plat_id': self.plat_b.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        Commande.objects.filter(pk=r.data['id']).delete()
+        r = client.post(f'{API}/commandes/', {'menu_id': jour_yop.id, 'plat_id': self.plat_b.id}, format='json')
+        self.assertEqual(r.status_code, 403)
+        r = client.post(f'{API}/commandes/', {'menu_id': nuit_siege.id, 'plat_id': self.plat_a.id}, format='json')
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('Yopougon', str(r.data['detail']))
+
+    def test_gestionnaires_de_yop_et_du_siege(self):
+        # Gestionnaire de Yopougon : peut envoyer un employé du Siège en mission chez lui
+        self.assertEqual(self.programmer_yop(par=self.gest_yop).status_code, 200)
+        # ... mais pas le programmer au Siège
+        self.assertEqual(self.programmer(par=self.gest_yop, debut=20, fin=25).status_code, 403)
+        r = self.client_pour(self.gest_yop).get(f'{API}/planning-equipes/', {'semaine': self.aujourdhui.isoformat()})
+        ligne = r.data['lignes'][0]
+        self.assertEqual(ligne['employe']['matricule'], 'emp1')
+        self.assertTrue(ligne['programmations'][0]['mission'])
+        self.assertEqual(ligne['programmations'][0]['agence'], 'Yopougon')
+        # Le gestionnaire du Siège voit aussi son employé en mission
+        r = self.client_pour(self.gestionnaire).get(f'{API}/planning-equipes/', {'semaine': self.aujourdhui.isoformat()})
+        self.assertEqual(len(r.data['lignes']), 1)
+        # Recherche d'employés d'autres agences pour une mission
+        r = self.client_pour(self.gest_yop).get(f'{API}/planning-equipes/employes/', {'q': 'emp1', 'tous': '1'})
+        self.assertIn('emp1', [e['matricule'] for e in r.data])
+        # Retrait par le gestionnaire de Yopougon
+        r = self.client_pour(self.gest_yop).post(f'{API}/planning-equipes/retirer/',
+                                                 {'user': self.employe.id, 'typeequipe': self.nuit.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(ProgrammationEquipe.objects.exists())
+
+    def test_import_avec_colonne_agence(self):
+        r = self.client_pour(self.admin).post(f'{API}/planning-equipes/importer/', {'lignes': [
+            {'matricule': 'emp1', 'equipe': 'Nuit', 'agence': 'yopougon', 'date_debut': self.aujourdhui.isoformat()},
+            {'matricule': 'emp2', 'equipe': 'Nuit', 'date_debut': self.aujourdhui.isoformat()},
+            {'matricule': 'emp2', 'equipe': 'Nuit', 'agence': 'Inconnue', 'date_debut': self.aujourdhui.isoformat()},
+        ]}, format='json')
+        self.assertEqual([l['statut'] for l in r.data['lignes']], ['ok', 'ok', 'erreur'])
+        self.assertEqual(ProgrammationEquipe.objects.get(user=self.employe).agence, self.yop)
+        self.assertEqual(ProgrammationEquipe.objects.get(user=self.employe2).agence, self.agence)
+
+    def test_deplacement_de_mission_annule_la_commande_de_l_ancienne_agence(self):
+        self.programmer(fin=10)
+        c = Commande.objects.create(user=self.employe, menu=self.menu(5, self.nuit), plat=self.plat_a)
+        prog = ProgrammationEquipe.objects.get()
+        r = self.client_pour(self.admin).patch(f'{API}/planning-equipes/{prog.id}/', {'agence': self.yop.id},
+                                               format='json')
+        self.assertEqual((r.status_code, r.data['nb_annulees']), (200, 1))
+        c.refresh_from_db()
+        self.assertEqual(c.statut, 'annulee')

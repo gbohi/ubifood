@@ -134,10 +134,21 @@ def menus_visibles():
 # ACCÈS AUX AGENCES
 # ══════════════════════════════════════════════════════════════
 
-def acces_agences(user):
+def agences_mission(user):
+    """Agences où l'utilisateur est programmé dans une équipe sur planning (en cours ou à venir)."""
+    from .models import ProgrammationEquipe
+    if user is None or not user.is_authenticated:
+        return set()
+    hier = timezone.localdate() - timedelta(days=1)
+    return set(ProgrammationEquipe.objects.filter(user=user, agence__isnull=False, typeequipe__sur_planning=True)
+               .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=hier)).values_list('agence_id', flat=True))
+
+
+def acces_agences(user, missions=True):
     """
     (id de l'agence de l'utilisateur ou None, agences accessibles ou None = toutes).
-    Employé : son agence + les agences ouvertes aux autres agences.
+    Employé : son agence + les agences ouvertes aux autres agences + les agences
+    où il est programmé (mission : seulement l'équipe programmée, planning_equipes.py).
     Gestionnaire : en plus ses agences. Administrateur : toutes.
     """
     from .serializers import agence_actuelle
@@ -150,6 +161,8 @@ def acces_agences(user):
         acces.add(mon)
     if is_gestionnaire(user):
         acces |= agences_gerees(user) or set()
+    if missions:
+        acces |= agences_mission(user)
     return mon, acces
 
 
@@ -348,6 +361,7 @@ class CommanderAgencesView(APIView):
     def get(self, request):
         user = request.user
         mon, acces = acces_agences(user)
+        normal = acces_agences(user, missions=False)[1]
         aujourdhui = timezone.localdate()
         lundi = aujourdhui - timedelta(days=aujourdhui.weekday())
         dimanche = lundi + timedelta(days=6)
@@ -358,7 +372,7 @@ class CommanderAgencesView(APIView):
         acces_eq = AccesEquipes(user, lundi, dimanche, parametres)
         for agence_id, prest_id, d, eq in (menus_visibles().filter(date_menu__gte=lundi, date_menu__lte=dimanche)
                                            .values_list('agence_id', 'prestataire_id', 'date_menu', 'typeequipe_id')):
-            if not acces_eq.visible(eq, d):
+            if not acces_eq.visible(eq, d, agence_id):
                 continue
             cle = prest_id or CANTINE_UBIPHARM_ID
             semaine[agence_id].add(cle)
@@ -366,10 +380,13 @@ class CommanderAgencesView(APIView):
                 aujourd[agence_id].add(cle)
         resultat = []
         for a in agences:
+            # Agence de mission : accessible par la programmation seulement
+            mission = normal is not None and a.id not in normal
             resultat.append({
                 'id': a.id, 'nom': a.nom_agence, 'code': code_agence(a.nom_agence),
                 'mon_agence': a.id == mon,
-                'accepter_autres_agences': a.accepter_autres_agences,
+                'accepter_autres_agences': a.accepter_autres_agences or mission,
+                'mission': mission,
                 'nb_prestataires_aujourdhui': len(aujourd.get(a.id, ())),
                 'nb_prestataires_semaine': len(semaine.get(a.id, ())),
                 **_horaires(a, parametres),
@@ -454,7 +471,7 @@ class CommanderPrestatairesView(APIView):
                 'nb_plats_jour': len({mp.plat_id for m in ms if m.date_menu == d for mp in m.menu_plats.all()}),
                 'equipes': tri_equipes(user, [{'id': e.id, 'libelle': e.libelle,
                                                'mon_equipe': mon_equipe(user, e.id),
-                                               **acces_eq.equipe_json(e.id),
+                                               **acces_eq.equipe_json(e.id, agence.id),
                                                **_horaires(agence, parametres, e)}
                                               for e in equipes.values()]),
                 'commande_aujourdhui': any(c.menu.date_menu == aujourdhui and cle_prestataire(c.menu) == cle
@@ -497,7 +514,7 @@ class CommanderEquipesView(APIView):
                 # Équipe de l'utilisateur (User.typeequipe) ; null s'il n'en a pas
                 'mon_equipe': mon_equipe(user, m.typeequipe_id),
                 # sur_planning, programmation {du, au, jours, libelle} (« Programmé(e) du … au … »)
-                **acces_eq.equipe_json(m.typeequipe_id),
+                **acces_eq.equipe_json(m.typeequipe_id, agence.id),
                 **_horaires(agence, parametres, m.typeequipe), 'jours': []})
             if m.date_menu.isoformat() not in e['jours']:
                 e['jours'].append(m.date_menu.isoformat())
@@ -595,7 +612,7 @@ class CommanderJoursView(APIView):
             # dans une équipe exclusive) : jour « non_programme », sans plats
             motif_indispo = None
             if equipe is not None and menus_jour:
-                motif_indispo = acces_eq.motif(equipe.id, d)
+                motif_indispo = acces_eq.motif(equipe.id, d, agence.id)
             menus_jour = [] if motif_indispo else filtrer_menus(acces_eq, menus_jour)
             limite = limite_jour(d, menus_jour)
             # Annulation possible jusqu'à cette date (affichée avant de commander)
@@ -666,7 +683,7 @@ class CommanderJoursView(APIView):
             'agence': {'id': agence.id, 'nom': agence.nom_agence},
             'prestataire': prestataire_json(cle, prestataire, notes_prestataires(), seuil),
             'equipe': ({'id': equipe.id, 'libelle': equipe.libelle, 'mon_equipe': mon_equipe(user, equipe.id),
-                        **acces_eq.equipe_json(equipe.id)}
+                        **acces_eq.equipe_json(equipe.id, agence.id)}
                        if equipe else None),
             'equipe_utilisateur': equipe_utilisateur_json(user),
             'semaine': {'debut': jours[0].isoformat(), 'fin': jours[-1].isoformat(),

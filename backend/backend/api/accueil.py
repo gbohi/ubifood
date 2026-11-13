@@ -100,7 +100,7 @@ class AccueilView(APIView):
             acces = AccesEquipes(user, jours[0], horizon, parametres)
             if acces.actif:
                 menus_agence = {d: ms for d, ms in
-                                ((d, [m for m in ms if acces.visible(m.typeequipe_id, d)])
+                                ((d, [m for m in ms if acces.visible(m.typeequipe_id, d, m.agence_id)])
                                  for d, ms in menus_agence.items()) if ms}
 
         def etat_jour(d):

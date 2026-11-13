@@ -14,11 +14,14 @@ import { environment } from 'src/environments/environment';
 
 export interface CasePlanning {
   date: string; programme: boolean; programmation_id: number | null;
+  /** Agence de la programmation ; mission : autre agence que celle de l'employé */
+  agence?: string | null; mission?: boolean;
   commande: { id: number; plat: string; statut: string } | null;
 }
 export interface ProgrammationLigne {
   id: number; date_debut: string; date_fin: string | null; jours: number[]; jours_libelle: string;
   libelle: string; importee: boolean; motif: string; saisi_par: string;
+  agence_id: number | null; agence: string | null; mission: boolean;
 }
 export interface LignePlanning {
   employe: { id: number; nom: string; matricule: string; agence: string | null; agence_id: number | null };
@@ -28,6 +31,8 @@ export interface LignePlanning {
 export interface GrillePlanning {
   equipes: { id: number; libelle: string; exclusive_planning: boolean }[];
   agences: { id: number; nom: string }[];
+  /** Agences de mission possibles */
+  toutes_agences: { id: number; nom: string }[];
   typeequipe: number | null; agence: number | null;
   semaine: { debut: string; fin: string; precedente: string; suivante: string };
   jours: { date: string; libelle: string }[];
@@ -47,7 +52,7 @@ export interface Rapport {
   nb_annulees: number; nb_maintenues: number; nb_conflits: number; programmes: number; retires: number;
 }
 export interface LigneImport {
-  ligne: number; matricule: string; employe: string | null; equipe: string; periode?: string;
+  ligne: number; matricule: string; employe: string | null; equipe: string; periode?: string; agence?: string;
   date_debut: any; date_fin: any; jours: any; statut: 'ok' | 'avertissement' | 'erreur'; message: string;
 }
 
@@ -75,7 +80,9 @@ export class PlanningEquipesComponent implements OnInit {
 
   // ── Programmer ─────────────────────────────────────────────
   @ViewChild('programmerModal') programmerModal?: ModalDirective;
-  prog = { date_debut: '', date_fin: '', jours: [0, 1, 2, 3, 4, 5, 6] as number[], motif: '' };
+  prog = { date_debut: '', date_fin: '', jours: [0, 1, 2, 3, 4, 5, 6] as number[], motif: '', agence: '' as number | '' };
+  /** Recherche aussi parmi les employés des autres agences (mission dans l'une de mes agences) */
+  autresAgences = false;
   employesTrouves: { id: number; nom: string; matricule: string; agence: string | null }[] = [];
   selection = new Map<number, { id: number; nom: string; matricule: string }>();
   rechercheEmploye = '';
@@ -92,7 +99,7 @@ export class PlanningEquipesComponent implements OnInit {
 
   @ViewChild('modifierModal') modifierModal?: ModalDirective;
   aModifier: { ligne: LignePlanning; p: ProgrammationLigne } | null = null;
-  modif = { date_debut: '', date_fin: '', jours: [] as number[], motif: '' };
+  modif = { date_debut: '', date_fin: '', jours: [] as number[], motif: '', agence: null as number | null };
   apercuModif: Rapport | null = null;
 
   // ── Résultat d'une opération ──────────────────────────────
@@ -186,7 +193,8 @@ export class PlanningEquipesComponent implements OnInit {
     if (!this.equipe) { this.toastr.warning("Aucune équipe n'est réservée aux employés programmés (Paramètres → Types d'équipe)."); return; }
     const lundiSuivant = this.donnees ? this.decaler(this.donnees.semaine.debut, 7) : this.iso(new Date());
     this.prog = { date_debut: this.maxIso(this.donnees?.semaine.debut ?? lundiSuivant, this.donnees?.aujourdhui ?? ''),
-                  date_fin: this.donnees?.semaine.fin ?? '', jours: [0, 1, 2, 3, 4, 5, 6], motif: '' };
+                  date_fin: this.donnees?.semaine.fin ?? '', jours: [0, 1, 2, 3, 4, 5, 6], motif: '', agence: '' };
+    this.autresAgences = false;
     this.selection.clear();
     if (employe) this.selection.set(employe.employe.id, employe.employe);
     this.rechercheEmploye = '';
@@ -203,7 +211,8 @@ export class PlanningEquipesComponent implements OnInit {
     clearTimeout(this.minuterie);
     this.minuterie = setTimeout(() => {
       let params = new HttpParams().set('q', this.rechercheEmploye.trim());
-      if (this.agence !== '') params = params.set('agence', this.agence);
+      if (this.autresAgences) params = params.set('tous', '1');
+      else if (this.agence !== '') params = params.set('agence', this.agence);
       this.http.get<any[]>(`${this.api}/employes/`, { params }).subscribe({
         next: r => this.employesTrouves = r,
         error: () => this.employesTrouves = [],
@@ -226,6 +235,7 @@ export class PlanningEquipesComponent implements OnInit {
     this.http.post<Rapport>(`${this.api}/programmer/`, {
       typeequipe: this.equipe, user_ids: [...this.selection.keys()], date_debut: this.prog.date_debut,
       date_fin: this.prog.date_fin || null, jours: this.prog.jours, motif: this.prog.motif,
+      agence: this.prog.agence === '' ? null : this.prog.agence,
     }).subscribe({
       next: r => {
         this.envoi = false;
@@ -304,14 +314,14 @@ export class PlanningEquipesComponent implements OnInit {
 
   ouvrirModifier(ligne: LignePlanning, p: ProgrammationLigne): void {
     this.aModifier = { ligne, p };
-    this.modif = { date_debut: p.date_debut, date_fin: p.date_fin ?? '', jours: [...p.jours], motif: '' };
+    this.modif = { date_debut: p.date_debut, date_fin: p.date_fin ?? '', jours: [...p.jours], motif: '', agence: p.agence_id };
     this.apercuModif = null;
     this.modifierModal?.show();
   }
 
   private corpsModif(apercu: boolean) {
     return { date_debut: this.modif.date_debut, date_fin: this.modif.date_fin || null, jours: this.modif.jours,
-             motif: this.modif.motif, apercu };
+             motif: this.modif.motif, agence: this.modif.agence, apercu };
   }
 
   verifierModif(): void {
@@ -381,12 +391,12 @@ export class PlanningEquipesComponent implements OnInit {
     const equipe = this.libelleEquipe || 'Nuit';
     const lundi = this.donnees ? this.decaler(this.donnees.semaine.debut, 7) : this.iso(new Date());
     const donnees = [
-      ['Matricule', 'Équipe', 'Date début', 'Date fin', 'Jours'],
-      ['01427', equipe, this.fr(lundi), this.fr(this.decaler(lundi, 6)), 'Lu-Ve'],
-      ['01102', equipe, this.fr(lundi), '', ''],
+      ['Matricule', 'Équipe', 'Date début', 'Date fin', 'Jours', 'Agence'],
+      ['01427', equipe, this.fr(lundi), this.fr(this.decaler(lundi, 6)), 'Lu-Ve', ''],
+      ['01102', equipe, this.fr(lundi), '', '', this.donnees?.toutes_agences?.[0]?.nom ?? ''],
     ];
     const ws = XLSX.utils.aoa_to_sheet(donnees);
-    ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+    ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }];
     const aide = XLSX.utils.aoa_to_sheet([
       ['Colonne', 'Contenu'],
       ['Matricule', "Identifiant de connexion de l'employé"],
@@ -394,6 +404,7 @@ export class PlanningEquipesComponent implements OnInit {
       ['Date début', 'JJ/MM/AAAA'],
       ['Date fin', 'JJ/MM/AAAA — vide : jusqu\'à nouvel ordre'],
       ['Jours', 'Vide : tous les jours. Sinon « Lu-Ve », « Lu,Me,Ve », « Sa-Di »…'],
+      ['Agence', "Vide : l'agence de l'employé. Sinon le nom de l'agence de mission (ex. Yopougon)"],
     ]);
     aide['!cols'] = [{ wch: 14 }, { wch: 70 }];
     const wb = XLSX.utils.book_new();
@@ -435,7 +446,7 @@ export class PlanningEquipesComponent implements OnInit {
     const ent = brutes[iEntete].map(c => this.normaliser(String(c)));
     const col = (...noms: string[]) => ent.findIndex(e => noms.some(n => e.startsWith(n)));
     const c = { mat: col('matricule'), eq: col('equipe', 'quipe'), deb: col('date d', 'debut', 'du'),
-                fin: col('date f', 'fin', 'au'), jours: col('jours') };
+                fin: col('date f', 'fin', 'au'), jours: col('jours'), agence: col('agence') };
     const res: any[] = [];
     brutes.slice(iEntete + 1).forEach((r, i) => {
       const mat = String(r[c.mat] ?? '').trim();
@@ -445,6 +456,7 @@ export class PlanningEquipesComponent implements OnInit {
         equipe: c.eq >= 0 ? String(r[c.eq] ?? '').trim() || this.libelleEquipe : this.libelleEquipe,
         date_debut: this.dateCellule(r[c.deb]), date_fin: c.fin >= 0 ? this.dateCellule(r[c.fin]) : '',
         jours: c.jours >= 0 ? String(r[c.jours] ?? '').trim() : '',
+        agence: c.agence >= 0 ? String(r[c.agence] ?? '').trim() : '',
       });
     });
     return res;

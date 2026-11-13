@@ -794,6 +794,13 @@ void main() {
   });
 
   group('Planning des équipes (équipe de nuit)', () {
+    test('agence de mission', () {
+      final a = AgenceCommande.fromJson(
+          {'id': 3, 'nom': 'Vridi', 'mission': true, 'accepter_autres_agences': true});
+      expect((a.mission, a.accepterAutresAgences), (true, true));
+      expect(AgenceCommande.fromJson({'id': 1, 'nom': 'Siège'}).mission, isFalse);
+    });
+
     test('modèles : programmation et jour non programmé', () async {
       final e = await _FauxPlanning().equipes(1, 1);
       expect(e.equipes[1].surPlanning, isTrue);
