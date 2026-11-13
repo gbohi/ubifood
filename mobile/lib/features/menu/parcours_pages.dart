@@ -1382,6 +1382,33 @@ class _CarteEquipe extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(fontSize: 11.5, color: gris)),
                     ],
+                    // Équipe sur planning (ex. Nuit) : période de l'employé
+                    if (equipe.programmation.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        key: Key('programmation-${equipe.id}'),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.event_available_rounded,
+                              size: 12, color: Colors.white),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(equipe.programmation,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ]),
+                      ),
+                    ],
                   ]),
             ),
             Icon(Icons.chevron_right_rounded, color: gris),
@@ -1703,6 +1730,17 @@ class _PageJoursState extends State<_PageJours> {
     ];
 
     final cmd = j.commande;
+    if (j.etat == EtatJour.nonProgramme) {
+      out.add(EmptyState(
+        key: const Key('jour-non-programme'),
+        icon: Icons.event_busy_rounded,
+        title: 'Non programmé(e)',
+        subtitle: j.motifIndisponible.isNotEmpty
+            ? j.motifIndisponible
+            : "Vous n'êtes pas programmé(e) dans cette équipe ce jour-là.",
+      ));
+      return out;
+    }
     if (j.etat == EtatJour.pasDeMenu) {
       out.add(const EmptyState(
         icon: Icons.no_meals_rounded,
@@ -1920,8 +1958,10 @@ class _PuceJour extends StatelessWidget {
         ),
       EtatJour.ferme => ('Fermé', gris, Icons.lock_outline_rounded),
       EtatJour.pasDeMenu => ('Fermé', gris, Icons.lock_outline_rounded),
+      EtatJour.nonProgramme => ('Non prog.', gris, Icons.lock_outline_rounded),
     };
     final grise = jour.etat == EtatJour.pasDeMenu ||
+        jour.etat == EtatJour.nonProgramme ||
         (jour.etat == EtatJour.ferme && !selectionne);
     final pastille = selectionne && jour.etat == EtatJour.aReserver
         ? Container(

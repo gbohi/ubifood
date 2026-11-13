@@ -315,6 +315,13 @@ class EquipeCommande {
   final int nbJours;
   final DateTime? prochainMenu;
 
+  /// Équipe réservée aux employés programmés (ex. Nuit)
+  final bool surPlanning;
+
+  /// « Programmé(e) du 09/11 au 13/11/2026 » : période de l'utilisateur dans
+  /// une équipe sur planning (vide sinon)
+  final String programmation;
+
   const EquipeCommande({
     required this.id,
     required this.libelle,
@@ -324,6 +331,8 @@ class EquipeCommande {
     this.jours = const [],
     this.nbJours = 0,
     this.prochainMenu,
+    this.surPlanning = false,
+    this.programmation = '',
   });
 
   factory EquipeCommande.fromJson(Map<String, dynamic> j) {
@@ -340,6 +349,10 @@ class EquipeCommande {
       jours: jours,
       nbJours: _int(j['nb_jours'], jours.length),
       prochainMenu: jourIso(j['prochain_menu']),
+      surPlanning: j['sur_planning'] == true,
+      programmation: j['programmation'] is Map
+          ? _texte((j['programmation'] as Map)['libelle'])
+          : '',
     );
   }
 }
@@ -390,12 +403,16 @@ enum EtatJour {
   pasDeMenu,
   reserve,
   aReserver,
-  ferme;
+  ferme,
+
+  /// Équipe sur planning : l'employé n'y est pas programmé ce jour-là
+  nonProgramme;
 
   static EtatJour depuis(dynamic v) => switch (v) {
         'reserve' => EtatJour.reserve,
         'a_reserver' => EtatJour.aReserver,
         'ferme' => EtatJour.ferme,
+        'non_programme' => EtatJour.nonProgramme,
         _ => EtatJour.pasDeMenu,
       };
 }
@@ -594,6 +611,9 @@ class JourCommande {
   final CommandeJour? commande;
   final List<PlatJour> plats;
 
+  /// « Vous n'êtes pas programmé(e) dans l'équipe Nuit le sam. 14/11. »
+  final String motifIndisponible;
+
   const JourCommande({
     required this.date,
     this.libelle = '',
@@ -605,6 +625,7 @@ class JourCommande {
     this.menus = const [],
     this.commande,
     this.plats = const [],
+    this.motifIndisponible = '',
   });
 
   factory JourCommande.fromJson(Map<String, dynamic> j) => JourCommande(
@@ -620,6 +641,7 @@ class JourCommande {
         menus: _maps(j['menus']).map(MenuJour.fromJson).toList(),
         commande: CommandeJour.fromJsonOuNull(j['commande']),
         plats: _maps(j['plats']).map(PlatJour.fromJson).toList(),
+        motifIndisponible: _texte(j['motif_indisponible']),
       );
 }
 

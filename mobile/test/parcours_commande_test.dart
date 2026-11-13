@@ -396,6 +396,48 @@ class _Facturation extends FacturationProvider {
   Future<void> charger() async {}
 }
 
+/// Équipe Nuit « sur planning » : l'employé y est programmé (badge) ; jeudi
+/// non programmé dans l'équipe choisie
+class _FauxPlanning extends _FauxParcours {
+  @override
+  Future<EquipesPrestataire> equipes(int prestataireId, int agenceId) async {
+    appels.add('equipes:$prestataireId:$agenceId');
+    final j = _equipesJson();
+    final equipes = (j['equipes'] as List).cast<Map<String, dynamic>>();
+    equipes[1] = {
+      ...equipes[1],
+      'sur_planning': true,
+      'programmation': {
+        'du': _iso(0),
+        'au': _iso(4),
+        'jours': [0, 1, 2, 3, 4],
+        'libelle': 'Programmé(e) du 09/11 au 13/11/2099'
+      },
+    };
+    return EquipesPrestataire.fromJson(j);
+  }
+
+  @override
+  Future<JoursCommande> jours(
+      {required int agenceId,
+      required int prestataireId,
+      int? equipeId,
+      DateTime? semaine}) async {
+    appels.add('jours:$agenceId:$prestataireId:$equipeId:'
+        '${semaine == null ? '' : isoJour(semaine)}');
+    final j = _joursJson();
+    final jours = (j['jours'] as List).cast<Map<String, dynamic>>();
+    jours[4] = {
+      ..._jour(4, 'non_programme'),
+      'plats': [],
+      'motif_indisponible':
+          "Vous n'êtes pas programmé(e) dans l'équipe Nuit le ven. 13/11."
+    };
+    j['jour_par_defaut'] = _iso(4);
+    return JoursCommande.fromJson(j);
+  }
+}
+
 Future<_FauxParcours> _ouvrir(WidgetTester tester,
     {bool sombre = false,
     double largeur = 390,
@@ -746,6 +788,45 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Réserver ce plat'), findsOneWidget);
+    });
+  });
+
+  group('Planning des équipes (équipe de nuit)', () {
+    test('modèles : programmation et jour non programmé', () async {
+      final e = await _FauxPlanning().equipes(1, 1);
+      expect(e.equipes[1].surPlanning, isTrue);
+      expect(e.equipes[1].programmation, 'Programmé(e) du 09/11 au 13/11/2099');
+      expect(e.equipes[0].surPlanning, isFalse);
+      expect(e.equipes[0].programmation, isEmpty);
+      final d = await _FauxPlanning().jours(agenceId: 1, prestataireId: 1);
+      expect(d.jours[4].etat, EtatJour.nonProgramme);
+      expect(d.jours[4].motifIndisponible, contains('pas programmé(e)'));
+    });
+
+    testWidgets('badge de programmation et jour « Non programmé »',
+        (tester) async {
+      await _ouvrir(tester, service: _FauxPlanning());
+      await _tap(tester, find.byKey(const Key('presta-1')));
+      expect(find.byKey(const Key('programmation-2')), findsOneWidget);
+      expect(find.text('Programmé(e) du 09/11 au 13/11/2099'), findsOneWidget);
+      expect(find.byKey(const Key('programmation-1')), findsNothing);
+      await _tap(tester, find.byKey(const Key('equipe-2')));
+      await _tap(tester, find.byKey(Key('jour-${_iso(4)}')));
+      expect(find.text('Non prog.'), findsOneWidget);
+      expect(find.byKey(const Key('jour-non-programme')), findsOneWidget);
+      expect(find.textContaining("pas programmé(e) dans l'équipe Nuit"),
+          findsOneWidget);
+      expect(find.byKey(const Key('reserver-1')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('pas de débordement sur 320 px', (tester) async {
+      await _ouvrir(tester, service: _FauxPlanning(), largeur: 320);
+      await _tap(tester, find.byKey(const Key('presta-1')));
+      expect(tester.takeException(), isNull);
+      await _tap(tester, find.byKey(const Key('equipe-2')));
+      await _tap(tester, find.byKey(Key('jour-${_iso(4)}')));
+      expect(tester.takeException(), isNull);
     });
   });
 
