@@ -1,4 +1,5 @@
 // src/app/core/services/accueil/accueil.service.ts
+import { SuiviRepasEmploye } from 'src/app/shared/suivi-repas/suivi-repas.model';
 //
 // Écran d'accueil (employé et gestionnaire) : GET /api/api/accueil/
 // renvoie en une seule requête tout ce qu'il faut afficher.
@@ -103,6 +104,8 @@ export interface Accueil {
   prochain_a_reserver: AccueilProchain | null;
   mois: AccueilMois;
   recentes: AccueilCommande[];
+  /** Suivi du repas du jour (ou de nuit de la veille en cours) : frise des étapes */
+  suivi?: SuiviRepasEmploye | null;
   gestion?: AccueilGestion;
 }
 

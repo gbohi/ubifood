@@ -42,6 +42,9 @@
     </div>
   </div>
 
+  <!-- Suivi des livraisons : Préparation, Livraison partie, Arrivé au comptoir, incident -->
+  <app-suivi-services [agenceId]="agenceId"></app-suivi-services>
+
   @if (erreurService) {
     <div class="ce-alerte ce-alerte-ro"><i class="ri-error-warning-line"></i><div>{{ erreurService }}</div></div>
   }

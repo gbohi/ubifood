@@ -1,0 +1,61 @@
+@if (services.length) {
+  <section class="sr" aria-label="Suivi des services du jour">
+    <h2 class="sr-titre"><i class="ri-route-line"></i>Suivi des livraisons</h2>
+    @for (s of services; track s.menu_id) {
+      <div class="sr-bloc">
+        <div class="sr-tete">
+          <div><b>{{ s.agence }}@if (s.equipe) { · équipe {{ s.equipe }} }</b>
+            <small>{{ s.nb_repas }} repas · retrait {{ s.heure_debut }} – {{ s.heure_fin }}@if (s.retrait_lendemain) { (lendemain) } · {{ s.nb_retires }} retirés</small></div>
+          <span class="lst-tag sr-statut" [ngClass]="classeStatut(s)">{{ s.statut_libelle }}</span>
+        </div>
+        <div class="sr-etapes">
+          @for (e of etapesService(s); track e.code) {
+            @if (e.statut === 'fait') {
+              <div class="sr-e fait"><i class="ri-checkbox-circle-fill"></i><div>{{ libelleEtape(e.code) }}<small>{{ e.heure }}@if (e.auto) { · auto } @else if (e.par) { · {{ e.par }} }</small></div></div>
+            } @else if (s.prochaine_action === e.code) {
+              <button type="button" class="sr-e go" [disabled]="envoi === s.menu_id" (click)="declarer(s, e.code)">
+                <i [class]="iconeEtape(e.code)"></i><div>{{ libelleEtape(e.code) }}<small>prévient {{ s.nb_repas - s.nb_retires }} employé{{ s.nb_repas - s.nb_retires > 1 ? 's' : '' }}</small></div></button>
+            } @else {
+              <button type="button" class="sr-e attente" [disabled]="envoi === s.menu_id" (click)="declarer(s, e.code)" [title]="'Enregistrer « ' + libelleEtape(e.code) + ' »'">
+                <i [class]="iconeEtape(e.code)"></i><div>{{ libelleEtape(e.code) }}<small>@if (e.prevu) { prévu {{ e.prevu }} } @else { à venir }</small></div></button>
+            }
+          }
+          @if (incidentsActif && s.statut !== 'arrive' && s.statut !== 'retire') {
+            <button type="button" class="sr-e inc" (click)="ouvrirIncident(s)"><i class="ri-alarm-warning-line"></i>Incident</button>
+          }
+        </div>
+        @if (s.incident; as i) {
+          <div class="sr-incident"><i class="ri-alarm-warning-line"></i>
+            <span><b>{{ i.type_libelle }}</b> signalé à {{ i.heure }}@if (i.heure_prevue) { · arrivée prévue vers {{ i.heure_prevue }} }@if (i.message) { · {{ i.message }} }</span></div>
+        }
+      </div>
+    }
+  </section>
+}
+
+<div bsModal #incidentModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4">
+        <div class="d-flex align-items-center mb-3"><h5 class="m-0">Signaler un incident · {{ cible?.agence }}</h5>
+          <button type="button" class="btn-close ms-auto" (click)="incidentModal.hide()" aria-label="Fermer"></button></div>
+        <label class="sr-type" [class.on]="incident.type === 'retard'">
+          <input type="radio" class="form-check-input" name="inc-type" value="retard" [(ngModel)]="incident.type">
+          <span><b>Retard</b><small>Nouvelle heure d'arrivée</small>
+            <input type="time" class="form-control form-control-sm mt-2" style="max-width:140px" [(ngModel)]="incident.heure" (focus)="incident.type = 'retard'" aria-label="Nouvelle heure d'arrivée"></span>
+        </label>
+        <label class="sr-type" [class.on]="incident.type === 'autre'">
+          <input type="radio" class="form-check-input" name="inc-type" value="autre" [(ngModel)]="incident.type">
+          <span><b>Autre</b><small>Message libre (repas renversé, portions manquantes…)</small></span>
+        </label>
+        <label class="ep-lab" for="inc-msg">Message aux employés @if (incident.type === 'retard') { <span class="ep-muted">(facultatif)</span> }</label>
+        <input id="inc-msg" class="form-control" maxlength="300" [(ngModel)]="incident.message" placeholder="Embouteillage sur le pont.">
+        <p class="ep-muted small mt-2 mb-3"><i class="ri-notification-3-line"></i> {{ (cible?.nb_repas ?? 0) - (cible?.nb_retires ?? 0) }} employés et les gestionnaires de {{ cible?.agence }} seront prévenus.</p>
+        <div class="d-flex gap-2 justify-content-end">
+          <button type="button" class="btn-ubi" (click)="incidentModal.hide()">Annuler</button>
+          <button type="button" class="btn-ubi vert" [disabled]="!incidentValide || envoi !== null" (click)="envoyerIncident()">Envoyer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

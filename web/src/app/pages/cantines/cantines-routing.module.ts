@@ -19,6 +19,7 @@ import { StatistiquesComponent } from './statistiques/statistiques.component';
 import { ControleRetraitsComponent } from './controle-retraits/controle-retraits.component';
 import { MonCompteRepasComponent } from './mon-compte-repas/mon-compte-repas.component';
 import { PlanningEquipesComponent } from './planning-equipes/planning-equipes.component';
+import { SuiviLivraisonsComponent } from './suivi-livraisons/suivi-livraisons.component';
 
 
 const routes: Routes = [
@@ -32,6 +33,8 @@ const routes: Routes = [
   // Planning des équipes « sur planning » (ex. Nuit) : administrateurs et gestionnaires
   // (le serveur refuse les gestionnaires si Paramètres → Société ne les autorise pas)
   { path: 'planning-equipes', component: PlanningEquipesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES }, title: 'Planning des équipes | UbiFood' },
+  // Suivi des livraisons des prestataires et ponctualité
+  { path: 'suivi-livraisons', component: SuiviLivraisonsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES }, title: 'Suivi des livraisons | UbiFood' },
   { path: 'mes-commandes', component: MesCommandesComponent },
   // Compte repas prépayé de l'employé connecté (solde, repas payés, reçus de caisse)
   { path: 'mon-compte-repas', component: MonCompteRepasComponent, title: 'Mon compte repas | UbiFood' },

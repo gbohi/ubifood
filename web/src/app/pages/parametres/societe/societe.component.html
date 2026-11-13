@@ -134,6 +134,52 @@
                 </div>
               </div>
 
+              <!-- Suivi des repas -->
+              <div class="col-12">
+                <h6 class="mt-3 mb-1 fw-semibold"><i class="ri-route-line me-1"></i>Suivi des repas</h6>
+                <small class="text-muted d-block mb-2">Étapes déclarées par les prestataires et vues par les employés (frise de l'accueil).
+                  Une étape désactivée disparaît chez l'employé et chez le prestataire.</small>
+                <div class="soc-planning">
+                  <table class="soc-suivi">
+                    <thead><tr><th>Étape</th><th>Active</th><th>Notification</th><th>Automatique</th></tr></thead>
+                    <tbody>
+                      @for (l of lignesSuivi; track l.code) {
+                        @if (etapesSuivi[l.code]; as e) {
+                          <tr>
+                            <td><b><i [class]="l.icone + ' me-1'"></i>{{ l.libelle }}</b><small>{{ l.detail }}</small></td>
+                            <td><div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch"
+                                  [id]="'sv-' + l.code" [(ngModel)]="e.actif" [ngModelOptions]="{standalone: true}" [attr.aria-label]="l.libelle + ' active'"></div></td>
+                            <td><div class="soc-seg" role="group" [attr.aria-label]="'Notification : ' + l.libelle">
+                                <button type="button" [class.on]="e.push" [disabled]="!e.actif || l.code === 'retire'" (click)="e.push = true">Push</button>
+                                <button type="button" [class.on]="!e.push" [disabled]="!e.actif || l.code === 'retire'" (click)="e.push = false">Dans l'appli</button></div></td>
+                            <td>
+                              @if (l.code === 'preparation') {
+                                <span class="small">sinon <input type="number" min="0" max="12" step="0.5" class="form-control form-control-sm d-inline-block soc-num"
+                                  [(ngModel)]="e.auto_heures" [ngModelOptions]="{standalone: true}" [disabled]="!e.actif" aria-label="Heures avant le retrait"> h avant le retrait</span>
+                              } @else if (l.code === 'arrive') {
+                                <div class="form-check m-0"><input class="form-check-input" type="checkbox" id="sv-arrive-auto" [(ngModel)]="e.auto"
+                                  [ngModelOptions]="{standalone: true}" [disabled]="!e.actif"><label class="form-check-label small" for="sv-arrive-auto">sinon à l'heure de début du retrait</label></div>
+                              } @else { <span class="text-muted">—</span> }
+                            </td>
+                          </tr>
+                        }
+                      }
+                    </tbody>
+                  </table>
+                  <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="sv-rap" formControlName="suivi_rappel_actif">
+                    <label class="form-check-label" for="sv-rap"><b>Rappel avant la fin du retrait</b>
+                      <small>Si le repas n'est pas encore retiré :
+                        <input type="number" min="0" max="240" class="form-control form-control-sm d-inline-block soc-num" formControlName="suivi_rappel_minutes"
+                               [class.is-invalid]="form.get('suivi_rappel_minutes')?.invalid" aria-label="Minutes avant la fin"> min avant la fin.</small></label></div>
+                  <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="sv-inc" formControlName="suivi_incidents_actif">
+                    <label class="form-check-label" for="sv-inc"><b>Incidents du prestataire</b>
+                      <small>Retard (nouvelle heure d'arrivée) ou message libre : employés du service et gestionnaires de l'agence.</small></label></div>
+                  <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="sv-pref" formControlName="suivi_preferences_employe">
+                    <label class="form-check-label" for="sv-pref"><b>Les employés peuvent couper les notifications du suivi</b>
+                      <small>Dans leur profil, sauf « Repas arrivé ».</small></label></div>
+                </div>
+              </div>
+
               <div class="col-12">
                 <label class="form-label">Logo (PNG ou JPEG, 2 Mo maximum)</label>
                 <div class="d-flex align-items-center gap-3 flex-wrap">

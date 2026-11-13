@@ -41,6 +41,20 @@ export class SocieteComponent implements OnInit {
 
   constructor(private http: HttpClient, private fb: UntypedFormBuilder) {}
 
+  /** Étapes du suivi des repas : active, notification push, déclenchement automatique */
+  etapesSuivi: Record<string, { actif: boolean; push: boolean; auto?: boolean; auto_heures?: number | null }> = {
+    confirmee: { actif: true, push: true }, preparation: { actif: true, push: false, auto_heures: 2 },
+    en_route: { actif: true, push: false }, arrive: { actif: true, push: true, auto: true },
+    retire: { actif: true, push: true },
+  };
+  readonly lignesSuivi = [
+    { code: 'confirmee', libelle: 'Commande confirmée', detail: 'À la commande', icone: 'ri-check-line' },
+    { code: 'preparation', libelle: 'En préparation', detail: 'Bouton « Préparation » du prestataire', icone: 'ri-fire-line' },
+    { code: 'en_route', libelle: 'En route vers l\'agence', detail: 'Bouton « Livraison partie »', icone: 'ri-truck-line' },
+    { code: 'arrive', libelle: 'Arrivé, retrait ouvert', detail: 'Bouton « Arrivé au comptoir »', icone: 'ri-store-2-line' },
+    { code: 'retire', libelle: 'Repas retiré', detail: 'Au scan du badge · notification toujours envoyée', icone: 'ri-hand-heart-line' },
+  ];
+
   ngOnInit(): void {
     this.form = this.fb.group({
       nom:                ['', [Validators.maxLength(255)]],
@@ -71,6 +85,11 @@ export class SocieteComponent implements OnInit {
       planning_saisie_gestionnaire:    [true],
       planning_commande_tardive:       [false],
       planning_commande_tardive_heures: [12, [Validators.required, Validators.min(0), Validators.max(72), Validators.pattern(/^\d+$/)]],
+      // Suivi des repas (les étapes sont dans `etapesSuivi`, envoyées en JSON)
+      suivi_rappel_actif:        [true],
+      suivi_rappel_minutes:      [30, [Validators.required, Validators.min(0), Validators.max(240), Validators.pattern(/^\d+$/)]],
+      suivi_incidents_actif:     [true],
+      suivi_preferences_employe: [true],
     });
     this.http.get<any>(this.url)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -100,6 +119,7 @@ export class SocieteComponent implements OnInit {
 
   private _appliquer(data: any): void {
     this.form.patchValue(data);
+    if (data.suivi_etapes) this.etapesSuivi = JSON.parse(JSON.stringify(data.suivi_etapes));
     this.logoUrl = data.logo_url ? `${environment.apiUrl}${data.logo_url}` : null;
     this.derniereModification = data.updated_at;
     this.nouveauLogo = null;
@@ -157,6 +177,7 @@ export class SocieteComponent implements OnInit {
     }
     const donnees = new FormData();
     Object.entries(this.form.value).forEach(([cle, valeur]) => donnees.append(cle, (valeur as string) ?? ''));
+    donnees.append('suivi_etapes', JSON.stringify(this.etapesSuivi));
     if (this.nouveauLogo) donnees.append('logo', this.nouveauLogo);
     if (this.supprimerLogo) donnees.append('supprimer_logo', 'true');
 

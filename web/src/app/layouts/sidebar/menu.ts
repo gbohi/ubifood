@@ -95,6 +95,15 @@ export const MENU: MenuItem[] = [
                 parentId: 210
             },
             {
+                // Préparation, livraison, arrivée au comptoir ; ponctualité des prestataires
+                id: 2116,
+                label: 'Suivi des livraisons',
+                link: '/cantines/suivi-livraisons',
+                roles: GESTIONNAIRES,
+                isNew: true,
+                parentId: 210
+            },
+            {
                 // Équipes réservées aux employés programmés (ex. Nuit)
                 id: 2115,
                 label: 'Planning des équipes',

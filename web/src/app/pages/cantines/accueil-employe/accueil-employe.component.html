@@ -45,6 +45,14 @@
           <a class="acc-badge" routerLink="/cantines/mes-commandes" title="Voir ma commande et mon badge">
             <i class="ri-qr-code-line"></i>Mon badge
           </a>
+          <!-- Suivi du repas : préparation, livraison, arrivée au comptoir -->
+          @if (d.suivi; as s) {
+            <div class="acc-suivi" [class.acc-suivi-retard]="s.statut === 'retard'">
+              <app-frise-suivi [etapes]="s.etapes" [retard]="s.statut === 'retard'"></app-frise-suivi>
+              <p class="acc-suivi-msg"><i [class]="s.statut === 'retard' ? 'ri-time-line' : 'ri-information-line'"></i>{{ s.message }}
+                @if (s.incident?.message) { <span class="acc-suivi-inc">« {{ s.incident?.message }} »</span> }</p>
+            </div>
+          }
         </div>
       } @else {
         <div class="acc-carte acc-repas acc-repas-vide">

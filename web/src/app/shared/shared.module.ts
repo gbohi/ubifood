@@ -12,6 +12,7 @@ import { ListePiedComponent } from './liste-pied/liste-pied.component';
 import { ProfilPrestataireEditeurComponent } from './profil-prestataire/profil-prestataire-editeur.component';
 import { SuiviEtapesComponent } from './suivi-releve/suivi-etapes.component';
 import { SuiviReleveDetailComponent } from './suivi-releve/suivi-releve-detail.component';
+import { FriseSuiviComponent } from './suivi-repas/frise-suivi.component';
 
 @NgModule({
   declarations: [
@@ -21,6 +22,7 @@ import { SuiviReleveDetailComponent } from './suivi-releve/suivi-releve-detail.c
     ProfilPrestataireEditeurComponent,
     SuiviEtapesComponent,
     SuiviReleveDetailComponent,
+    FriseSuiviComponent,
   ],
   imports: [
     CommonModule,
@@ -32,6 +34,6 @@ import { SuiviReleveDetailComponent } from './suivi-releve/suivi-releve-detail.c
   // BsDropdownModule : menu « ⋮ » des actions de ligne (gabarit commun des listes)
   // SuiviEtapes / SuiviReleveDetail : suivi des factures prestataires (espace prestataire et comptabilité)
   exports: [BreadcrumbsComponent, PageEnteteComponent, ListePiedComponent, ProfilPrestataireEditeurComponent,
-            SuiviEtapesComponent, SuiviReleveDetailComponent, BsDropdownModule, RouterModule]
+            SuiviEtapesComponent, SuiviReleveDetailComponent, FriseSuiviComponent, BsDropdownModule, RouterModule]
 })
 export class SharedModule { }

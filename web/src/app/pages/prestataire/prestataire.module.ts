@@ -22,6 +22,8 @@ import { ProfilPrestataireComponent } from './profil/profil-prestataire.componen
  * et « agent_comptoir ». Styles : assets/scss/pages/_espace-prestataire.scss
  * (+ gabarits communs _listes.scss et _cantine-ecrans.scss).
  */
+import { SuiviServicesComponent } from './suivi-services/suivi-services.component';
+
 @NgModule({
   declarations: [
     AccueilPrestataireComponent,
@@ -34,6 +36,7 @@ import { ProfilPrestataireComponent } from './profil/profil-prestataire.componen
     StatistiquesPrestataireComponent,
     EquipeComponent,
     ProfilPrestataireComponent,
+    SuiviServicesComponent,
   ],
   imports: [
     CommonModule,

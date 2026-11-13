@@ -1,0 +1,81 @@
+// Suivi des repas : frise (app-frise-suivi), accueil de l'employé, comptoir du
+// prestataire (.sr-*), suivi des livraisons du gestionnaire, réglages.
+
+// ── Frise ──────────────────────────────────────────────────────
+.fs {
+  --fs-fait: #3EC970; --fs-cur: #092440; --fs-vide: #E2EAF4; --fs-txt: #092440; --fs-gris: #5A7090;
+  display: flex; list-style: none; margin: 0; padding: 0; width: 100%;
+  .fs-e {
+    flex: 1; text-align: center; position: relative; font-size: 11.5px; color: var(--fs-gris); min-width: 0;
+    b { display: block; font-weight: 600; color: var(--fs-txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    small { display: block; font-size: 10.5px; white-space: nowrap; }
+    &:not(:last-child)::after {
+      content: ""; position: absolute; top: 12px; left: calc(50% + 13px); right: calc(-50% + 13px); height: 2px; background: var(--fs-vide);
+    }
+    &[data-statut="fait"]:not(:last-child)::after { background: var(--fs-fait); }
+    &[data-statut="a_venir"] b { color: var(--fs-gris); font-weight: 500; }
+  }
+  .fs-d {
+    width: 26px; height: 26px; border-radius: 50%; margin: 0 auto 4px; display: flex; align-items: center; justify-content: center;
+    background: var(--fs-vide); color: var(--fs-gris); font-size: 13px; position: relative; z-index: 1;
+  }
+  [data-statut="fait"] .fs-d { background: var(--fs-fait); color: #fff; }
+  [data-statut="en_cours"] .fs-d { background: var(--fs-cur); color: #fff; box-shadow: 0 0 0 4px rgba(15, 58, 110, .15); }
+  &.fs-retard [data-statut="en_cours"] .fs-d { background: #E08A1E; box-shadow: 0 0 0 4px rgba(224, 138, 30, .2); }
+  &.fs-compact { .fs-e { font-size: 10.5px; } .fs-d { width: 20px; height: 20px; font-size: 11px; } .fs-e:not(:last-child)::after { top: 9px; left: calc(50% + 10px); right: calc(-50% + 10px); } }
+}
+
+// ── Accueil de l'employé (carte verte) ─────────────────────────
+.acc .acc-repas { flex-wrap: wrap; }
+.acc-suivi {
+  flex: 1 1 100%; background: rgba(255, 255, 255, .14); border-radius: 14px; padding: 12px 12px 8px;
+  .fs { --fs-fait: #fff; --fs-cur: #fff; --fs-vide: rgba(255, 255, 255, .28); --fs-txt: #fff; --fs-gris: rgba(255, 255, 255, .78); }
+  .fs [data-statut="fait"] .fs-d { color: #1C7F45; }
+  .fs [data-statut="en_cours"] .fs-d { color: #1C7F45; box-shadow: 0 0 0 4px rgba(255, 255, 255, .3); }
+  .fs.fs-retard [data-statut="en_cours"] .fs-d { background: #fff; color: #B45309; }
+}
+.acc-suivi-msg { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, .22); font-size: 12.5px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; i { font-size: 14px; } }
+.acc-suivi-inc { opacity: .9; font-style: italic; }
+.acc-suivi-retard { background: rgba(120, 53, 15, .28); }
+
+// ── Comptoir du prestataire : un bloc par service ──────────────
+.sr { display: grid; gap: 12px; margin-bottom: 18px; }
+.sr-titre { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--ubi-navy, #092440); i { color: #3EC970; } }
+.sr-bloc { background: #fff; border: 1px solid #E2EAF4; border-radius: 14px; padding: 14px 16px; }
+.sr-tete { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
+  b { font-size: 14px; font-weight: 600; } small { color: #5A7090; font-size: 12px; display: block; }
+  .sr-statut { margin-left: auto; } }
+.sr-etapes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.sr-e {
+  border: 1.5px solid #E2EAF4; border-radius: 11px; padding: 10px 12px; font-size: 12.5px; display: flex; gap: 8px; align-items: center;
+  background: #fff; color: #092440; text-align: left; min-height: 54px;
+  i { font-size: 19px; flex-shrink: 0; } small { display: block; color: #5A7090; font-size: 11px; }
+  &.fait { background: #F0FBF4; border-color: #BFECCF; color: #145E35; i { color: #3EC970; } }
+  &.go { background: linear-gradient(90deg, #5BD988, #3EC970); border-color: transparent; color: #fff; font-weight: 600; font-size: 13.5px;
+         justify-content: center; cursor: pointer; box-shadow: 0 6px 16px rgba(62, 201, 112, .3); small { color: #E8FFF0; font-weight: 500; }
+         &:disabled { opacity: .6; cursor: wait; } }
+  &.attente { color: #8E9CB0; border-style: dashed; }
+  &.inc { background: #FFF8EC; border-color: #F6D9A8; color: #8A5600; justify-content: center; font-weight: 600; cursor: pointer; }
+}
+.sr-incident { margin-top: 10px; font-size: 12px; color: #8A5600; background: #FFF8EC; border-radius: 10px; padding: 7px 10px; display: flex; gap: 6px; }
+.sr-type { display: flex; gap: 12px; align-items: flex-start; border: 1.5px solid #E2EAF4; border-radius: 12px; padding: 11px 13px; margin-bottom: 10px; cursor: pointer;
+  &.on { border-color: #3EC970; background: #F0FBF4; } b { display: block; font-weight: 600; } small { color: #5A7090; font-size: 12px; }
+  .form-check-input { margin-top: 3px; } }
+
+// ── Suivi des livraisons (gestionnaire) ────────────────────────
+.sl-table td { vertical-align: middle; }
+.sl-frise { min-width: 360px; }
+.sl-pt { font-weight: 600; &.v { color: #1C7F45; } &.o { color: #B45309; } &.g { color: #5A7090; font-weight: 500; } }
+
+// ── Paramètres → Société : « Suivi des repas » ─────────────────
+.soc-suivi { width: 100%; font-size: 13px; border-collapse: collapse;
+  th { font-size: 11.5px; color: #5A7090; font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #E2EAF4; }
+  td { padding: 9px 8px; border-bottom: 1px solid #EEF2F7; vertical-align: middle; }
+  td small { display: block; color: #5A7090; font-size: 11.5px; } }
+.soc-seg { display: inline-flex; border: 1px solid #CFDCEC; border-radius: 8px; overflow: hidden;
+  button { border: 0; background: #fff; padding: 4px 10px; font-size: 12px; color: #092440; &.on { background: #092440; color: #fff; } &:disabled { opacity: .45; } } }
+
+@media (max-width: 575.98px) {
+  .sr-etapes { grid-template-columns: 1fr 1fr; }
+  .fs .fs-e b { font-size: 10px; }
+}

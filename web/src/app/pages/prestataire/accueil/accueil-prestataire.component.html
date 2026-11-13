@@ -26,7 +26,10 @@
 
   @if (donnees; as d) {
 
-    <!-- ── Service en cours, par agence ──────────────────────── -->
+    <!-- Suivi des livraisons du jour (étapes, incidents) -->
+  <app-suivi-services></app-suivi-services>
+
+  <!-- ── Service en cours, par agence ──────────────────────── -->
     <div class="ep-grille ep-g2">
       @for (s of d.service_du_jour; track s.agence_id) {
         <section class="ep-carte">

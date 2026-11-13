@@ -1,0 +1,59 @@
+<div class="lst ep">
+  <app-page-entete titre="Suivi des livraisons" icone="ri-route-line" [fil]="[{label: 'Cantine'}]"
+                   sousTitre="Préparation, livraison et arrivée au comptoir déclarées par les prestataires">
+    <input type="date" class="form-control ep-select" [(ngModel)]="date" (change)="charger()" aria-label="Jour">
+    <select class="form-select ep-select" [(ngModel)]="agence" (change)="changerAgence()" aria-label="Agence">
+      <option value="">{{ agences.length > 1 ? 'Toutes mes agences' : 'Mon agence' }}</option>
+      @for (a of agences; track a.id) { <option [ngValue]="a.id">{{ a.nom_agence }}</option> }
+    </select>
+  </app-page-entete>
+
+  @if (erreur) { <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+
+  <div class="lst-carte" [class.ep-attente]="chargement">
+    <div class="lst-barre bord"><b class="ep-titre-carte"><i class="ri-route-line"></i>Services du jour</b></div>
+    <div class="lst-table-wrap">
+      <table class="lst-table sl-table">
+        <thead><tr><th>Agence · équipe</th><th>Prestataire</th><th>Suivi</th><th>Arrivée</th></tr></thead>
+        <tbody>
+          @for (s of services; track s.menu_id) {
+            <tr>
+              <td><b>{{ s.agence }}</b>@if (s.equipe) { · {{ s.equipe }} }
+                <small class="d-block ep-muted">{{ s.nb_repas }} repas · {{ s.nb_retires }} retirés · retrait {{ s.heure_debut }} – {{ s.heure_fin }}@if (s.retrait_lendemain) { (lendemain) }</small></td>
+              <td>{{ s.prestataire }}</td>
+              <td class="sl-frise"><app-frise-suivi [etapes]="s.etapes" [compact]="true" [retard]="s.statut === 'retard'"></app-frise-suivi>
+                @if (s.incident; as i) { <small class="d-block mt-1" style="color:#8A5600"><i class="ri-alarm-warning-line"></i> {{ i.type_libelle }} à {{ i.heure }}@if (i.heure_prevue) { · arrivée prévue vers {{ i.heure_prevue }} }@if (i.message) { · {{ i.message }} }</small> }</td>
+              <td>@if (libellePonctualite(s); as p) { <span class="sl-pt" [ngClass]="p.classe">{{ p.texte }}</span> }</td>
+            </tr>
+          } @empty {
+            <tr><td colspan="4" class="lst-vide"><i class="ri-route-line"></i><b>Aucun service avec des commandes ce jour-là.</b></td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="lst-carte">
+    <div class="lst-barre bord">
+      <b class="ep-titre-carte"><i class="ri-timer-line"></i>Ponctualité des prestataires · {{ libelleMois }}</b>
+      <div class="d-flex gap-1">
+        <button type="button" class="btn-ubi sm ic" (click)="changerMois(-1)" aria-label="Mois précédent"><i class="ri-arrow-left-s-line"></i></button>
+        <button type="button" class="btn-ubi sm ic" (click)="changerMois(1)" [disabled]="moisCourant" aria-label="Mois suivant"><i class="ri-arrow-right-s-line"></i></button>
+      </div>
+    </div>
+    <div class="lst-table-wrap">
+      <table class="lst-table">
+        <thead><tr><th>Prestataire</th><th class="text-end">Services</th><th class="text-end">À l'heure</th><th class="text-end">Retard moyen</th><th class="text-end">Incidents</th><th class="text-end">Arrivée non signalée</th></tr></thead>
+        <tbody>
+          @for (l of ponctualite; track l.prestataire) {
+            <tr><td><b>{{ l.prestataire }}</b></td><td class="text-end">{{ l.services }}</td>
+              <td class="text-end"><span class="sl-pt" [ngClass]="l.taux_a_l_heure === null ? 'g' : (l.taux_a_l_heure >= 80 ? 'v' : 'o')">{{ l.taux_a_l_heure === null ? '—' : l.taux_a_l_heure + ' %' }}</span></td>
+              <td class="text-end">{{ l.retard_moyen_minutes === null ? '—' : l.retard_moyen_minutes + ' min' }}</td>
+              <td class="text-end">{{ l.incidents }}</td><td class="text-end">{{ l.arrivees_non_signalees }}</td></tr>
+          } @empty { <tr><td colspan="6" class="lst-vide"><small>Aucun service ce mois-ci.</small></td></tr> }
+        </tbody>
+      </table>
+    </div>
+    <div class="ep-carte-pied"><span><i class="ri-information-line"></i>Information seulement, aucune pénalité. « À l'heure » : arrivée déclarée au plus tard au début du retrait ; « À l'heure » est calculé sur les arrivées déclarées.</span></div>
+  </div>
+</div>
