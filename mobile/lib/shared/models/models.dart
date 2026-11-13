@@ -2,6 +2,7 @@
 
 import 'package:intl/intl.dart';
 import '../../core/config.dart';
+import 'suivi_models.dart';
 
 /// Date limite lisible en heure locale : « dimanche 4 janvier à minuit »,
 /// « lundi 5 janvier à 10:00 » (00:00 se lit « minuit » du jour précédent).
@@ -1008,6 +1009,9 @@ class Accueil {
   /// Gestionnaire / administrateur seulement
   final AccueilGestion? gestion;
 
+  /// Suivi du repas du jour (ou de nuit de la veille en cours)
+  final SuiviRepas? suivi;
+
   const Accueil({
     this.date,
     this.repasDuJour,
@@ -1016,6 +1020,7 @@ class Accueil {
     this.mois = const ChiffresMois(),
     this.recentes = const [],
     this.gestion,
+    this.suivi,
   });
 
   factory Accueil.fromJson(Map<String, dynamic> j) {
@@ -1034,6 +1039,7 @@ class Accueil {
       mois: mois == null ? const ChiffresMois() : ChiffresMois.fromJson(mois),
       recentes: _maps(j['recentes']).map(AccueilCommande.fromJson).toList(),
       gestion: gestion == null ? null : AccueilGestion.fromJson(gestion),
+      suivi: SuiviRepas.fromJsonOuNull(j['suivi']),
     );
   }
 }

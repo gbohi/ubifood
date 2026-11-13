@@ -757,6 +757,14 @@ class _NotificationTile extends StatelessWidget {
       return titre.toLowerCase().contains('annul')
           ? (Icons.account_balance_wallet_outlined, TonPastille.or)
           : (Icons.account_balance_wallet_outlined, TonPastille.vert);
+    case 'suivi_repas':
+      // Suivi du repas : arrivé (vert), retard / rappel (orange), étape (bleu)
+      final t = titre.toLowerCase();
+      if (t.contains('arrivé')) return (Icons.storefront_outlined, TonPastille.vert);
+      if (t.contains('retard') || t.contains('attend') || t.contains('information')) {
+        return (Icons.schedule_rounded, TonPastille.or);
+      }
+      return (Icons.local_shipping_outlined, TonPastille.bleu);
     case 'planning_equipe':
       // Planning des équipes : programmation (bleu), annulation (rouge),
       // commande maintenue ou repas à vérifier (orange)

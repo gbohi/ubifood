@@ -16,6 +16,7 @@ import '../../shared/theme/app_theme.dart';
 import '../dashboard/dashboard_screen.dart' show MainShellNavigator;
 import '../retrait/scanner_badge.dart';
 import 'prestataire_widgets.dart';
+import '../suivi/suivi_widgets.dart' show SuiviServicesPresta;
 
 class ComptoirScreen extends StatefulWidget {
   /// Onglet de la liste du jour dans MainShell (lien « Voir la liste »)
@@ -212,6 +213,9 @@ class _ComptoirScreenState extends State<ComptoirScreen> {
               ),
               const SizedBox(height: 12),
             ],
+            // Suivi des livraisons : Préparation, Livraison partie, Arrivé au comptoir
+            SuiviServicesPresta(
+                key: ValueKey('suivi-${agence?.id}'), agenceId: agence?.id),
             _carteScan(comptoir),
             const SizedBox(height: 12),
             ResultatComptoir(

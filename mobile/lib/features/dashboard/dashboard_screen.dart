@@ -3,6 +3,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../shared/models/suivi_models.dart';
+import '../suivi/suivi_widgets.dart' show FriseSuivi;
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../shared/theme/app_theme.dart';
@@ -98,6 +100,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           (c.menuDetail?.retraitEnCours ?? false));
       return _RepasDuJourCard(
           commande: duJour.firstOrNull,
+          suivi: context.watch<AccueilProvider>().accueil?.suivi,
           etiquette: isGestionnaire ? 'Mon repas' : null);
     });
 
@@ -668,10 +671,15 @@ class _BannerSliderState extends State<_BannerSlider> {
 class _RepasDuJourCard extends StatelessWidget {
   final Commande? commande;
   final String? etiquette;
-  const _RepasDuJourCard({this.commande, this.etiquette});
+
+  /// Suivi du repas (GET /accueil/) : frise des étapes, retard, arrivée
+  final SuiviRepas? suivi;
+  const _RepasDuJourCard({this.commande, this.etiquette, this.suivi});
 
   static const _vertFonce = Color(0xFF15803D);
   static const _vert = Color(0xFF22A55A);
+  static const _orangeFonce = Color(0xFFB45309);
+  static const _orange = Color(0xFFE08A1E);
 
   @override
   Widget build(BuildContext context) {
@@ -679,6 +687,9 @@ class _RepasDuJourCard extends StatelessWidget {
     final retire = c?.statut == StatutCommande.retiree;
     final plat = c?.platDetail;
     final menu = c?.menuDetail;
+    final s = c != null && suivi?.commandeId == c.id ? suivi : null;
+    final retard = s?.enRetard ?? false;
+    final fonce = retard ? _orangeFonce : _vertFonce;
 
     return GestureDetector(
       // Sans commande : les menus ; avec commande : le QR code à présenter
@@ -689,14 +700,14 @@ class _RepasDuJourCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-              colors: [_vertFonce, _vert],
+          gradient: LinearGradient(
+              colors: retard ? const [_orangeFonce, _orange] : const [_vertFonce, _vert],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-                color: _vert.withOpacity(0.35),
+                color: (retard ? _orange : _vert).withOpacity(0.35),
                 blurRadius: 20,
                 offset: const Offset(0, 8))
           ],
@@ -725,9 +736,13 @@ class _RepasDuJourCard extends StatelessWidget {
                   decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20)),
-                  child: Text(retire ? 'Retiré' : 'À retirer',
-                      style: const TextStyle(
-                          color: _vertFonce,
+                  child: Text(
+                      retire
+                          ? 'Retiré'
+                          : (s != null && s.statutLibelle.isNotEmpty ? s.statutLibelle : 'À retirer'),
+                      key: const Key('statut-repas-du-jour'),
+                      style: TextStyle(
+                          color: fonce,
                           fontSize: 11,
                           fontWeight: FontWeight.w700)),
                 ),
@@ -803,6 +818,36 @@ class _RepasDuJourCard extends StatelessWidget {
                     ]),
               ),
             ]),
+            // ── Suivi : préparation, livraison, arrivée au comptoir ──
+            if (s != null && !retire) ...[
+              const SizedBox(height: 14),
+              Container(
+                key: const Key('suivi-repas-du-jour'),
+                padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+                decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(14)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  FriseSuivi(etapes: s.etapes, surFondColore: true, couleurFond: fonce),
+                  if (s.message.isNotEmpty) ...[
+                    Divider(color: Colors.white.withOpacity(0.25), height: 16),
+                    Row(children: [
+                      Icon(retard ? Icons.schedule_rounded : Icons.info_outline_rounded,
+                          color: Colors.white, size: 15),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                            [
+                              s.message,
+                              if (s.incident?.message.isNotEmpty ?? false) '« ${s.incident!.message} »',
+                            ].join(' '),
+                            style: const TextStyle(color: Colors.white, fontSize: 11.5)),
+                      ),
+                    ]),
+                  ],
+                ]),
+              ),
+            ],
             const SizedBox(height: 14),
             Row(children: [
               Icon(retire ? Icons.check_circle_rounded : Icons.qr_code_rounded,

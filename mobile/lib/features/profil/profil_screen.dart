@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import '../suivi/suivi_widgets.dart' show NotificationsSuiviScreen;
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../core/widgets/common_widgets.dart';
@@ -216,6 +217,17 @@ class _ProfilScreenState extends State<ProfilScreen> {
                             context,
                             MaterialPageRoute(
                                 builder: (_) => const QrCodeScreen())),
+                      ),
+                      _Ligne(
+                        key: const Key('ligne-notifications-suivi'),
+                        icone: Icons.notifications_active_outlined,
+                        titre: 'Notifications du suivi',
+                        sousTitre: 'Préparation, livraison, rappel, retards',
+                        onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    const NotificationsSuiviScreen())),
                       ),
                       _Ligne(
                         key: const Key('ligne-paiement-prefere'),

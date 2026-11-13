@@ -14,6 +14,7 @@ import '../../shared/providers/prestataire_provider.dart';
 import '../../shared/theme/app_theme.dart';
 import '../dashboard/dashboard_screen.dart' show MainShellNavigator;
 import 'prestataire_widgets.dart';
+import '../suivi/suivi_widgets.dart' show SuiviServicesPresta;
 
 class AccueilPrestataireScreen extends StatefulWidget {
   /// Onglet du comptoir dans MainShell
@@ -128,6 +129,8 @@ class AccueilPrestataireCorps extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 100),
       children: [
+        // Suivi des livraisons du jour (étapes, incidents)
+        const SuiviServicesPresta(),
         if (erreur != null) ...[
           BandeauInfo(
               icone: Icons.cloud_off_rounded,
