@@ -6,6 +6,10 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import *
 from .accueil import AccueilView
 from .planning import PlanningView
+from .suivi_repas import (
+    PonctualiteView, PreferencesSuiviView, PrestataireIncidentView, PrestataireSuiviEtapeView, PrestataireSuiviView,
+    SuiviLivraisonsView,
+)
 from .planning_equipes import (
     CopierSemaineView, ImporterView, PlanningEmployesView, PlanningEquipesView, PlanningHistoriqueView,
     ProgrammationDetailView, ProgrammerView, RetirerView,
@@ -109,6 +113,14 @@ urlpatterns = [
     path('api/dashboard-cantine/', DashboardCantineView.as_view(), name='dashboard-cantine'),
     path('api/accueil/', AccueilView.as_view(), name='accueil'),
     path('api/planning/', PlanningView.as_view(), name='planning'),
+    # Suivi des repas (préparation, livraison, arrivée au comptoir)
+    path('api/prestataire/suivi/', PrestataireSuiviView.as_view(), name='prestataire-suivi'),
+    path('api/prestataire/suivi/<int:pk>/', PrestataireSuiviEtapeView.as_view(), name='prestataire-suivi-etape'),
+    path('api/prestataire/suivi/<int:pk>/incident/', PrestataireIncidentView.as_view(),
+         name='prestataire-suivi-incident'),
+    path('api/suivi-livraisons/', SuiviLivraisonsView.as_view(), name='suivi-livraisons'),
+    path('api/suivi-livraisons/ponctualite/', PonctualiteView.as_view(), name='suivi-ponctualite'),
+    path('api/suivi/preferences/', PreferencesSuiviView.as_view(), name='suivi-preferences'),
     # Planning des équipes (équipes « sur planning », ex. Nuit)
     path('api/planning-equipes/', PlanningEquipesView.as_view(), name='planning-equipes'),
     path('api/planning-equipes/employes/', PlanningEmployesView.as_view(), name='planning-equipes-employes'),

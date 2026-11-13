@@ -53,6 +53,9 @@ class User(AbstractUser):
     # présélectionnée dans le parcours de commande (il peut en choisir une autre)
     typeequipe = models.ForeignKey('TypeEquipe', on_delete=models.SET_NULL, null=True, blank=True,
                                    related_name='membres', verbose_name='Équipe')
+    # Notifications du suivi des repas que l'employé a coupées (suivi_repas.py) :
+    # {"preparation": false, "en_route": false, "rappel": true, "incidents": true}
+    preferences_suivi = models.JSONField(default=dict, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -352,6 +355,55 @@ class Commande(BaseModel):
         return f"{self.user} — {self.menu.date_menu} — {self.plat.nom} [{self.statut}]"
 
 
+def etapes_suivi_defaut():
+    """Étapes du suivi des repas : active, notification push, déclenchement automatique."""
+    return {
+        'confirmee':   {'actif': True, 'push': True},
+        'preparation': {'actif': True, 'push': False, 'auto_heures': 2},
+        'en_route':    {'actif': True, 'push': False},
+        'arrive':      {'actif': True, 'push': True, 'auto': True},
+        'retire':      {'actif': True, 'push': True},
+    }
+
+
+class SuiviRepas(models.Model):
+    """
+    Suivi d'un service (un menu : jour, agence, équipe, prestataire) déclaré par
+    le prestataire : préparation, départ de la livraison, arrivée au comptoir.
+    Étapes automatiques (`*_auto`) si le prestataire ne les a pas déclarées.
+    """
+    menu             = models.OneToOneField('Menu', on_delete=models.CASCADE, related_name='suivi')
+    preparation_le   = models.DateTimeField(null=True, blank=True)
+    preparation_par  = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    preparation_auto = models.BooleanField(default=False)
+    en_route_le      = models.DateTimeField(null=True, blank=True)
+    en_route_par     = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    arrive_le        = models.DateTimeField(null=True, blank=True)
+    arrive_par       = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    arrive_auto      = models.BooleanField(default=False)
+    rappel_envoye_le = models.DateTimeField(null=True, blank=True)
+    created_at       = models.DateTimeField(auto_now_add=True)
+    updated_at       = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'suivis_repas'
+
+
+class IncidentRepas(models.Model):
+    """Incident signalé par le prestataire sur un service : retard (nouvelle heure) ou message."""
+    TYPE_CHOICES = [('retard', 'Retard'), ('autre', 'Autre')]
+    menu         = models.ForeignKey('Menu', on_delete=models.CASCADE, related_name='incidents_suivi')
+    type         = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    heure_prevue = models.TimeField(null=True, blank=True)
+    message      = models.CharField(max_length=300, blank=True)
+    par          = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'incidents_repas'
+        ordering = ['-created_at', '-id']
+
+
 class Retrait(BaseModel):
     """
     Un retrait = un agent qui vient physiquement récupérer sa commande.
@@ -515,6 +567,7 @@ class Notification(models.Model):
         ('agence_fermee',    "Agence fermée aux autres agences"),
         ('facture_prestataire', 'Suivi des factures prestataires'),
         ('planning_equipe',  'Planning des équipes'),
+        ('suivi_repas',      'Suivi du repas'),
         ('info',             'Information'),
     ]
 
@@ -857,6 +910,14 @@ class ParametresSociete(models.Model):
         "Autoriser une commande tardive pour une programmation tardive", default=False)
     planning_commande_tardive_heures = models.PositiveIntegerField(
         "Commande tardive : heures avant le début du retrait", default=12, validators=[MaxValueValidator(72)])
+    # Suivi des repas (suivi_repas.py) : étapes, rappel avant la fin du retrait, incidents
+    suivi_etapes              = models.JSONField(default=etapes_suivi_defaut, blank=True)
+    suivi_rappel_actif        = models.BooleanField("Rappel avant la fin du retrait", default=True)
+    suivi_rappel_minutes      = models.PositiveIntegerField(
+        "Rappel : minutes avant la fin du retrait", default=30, validators=[MaxValueValidator(240)])
+    suivi_incidents_actif     = models.BooleanField("Incidents signalés par le prestataire", default=True)
+    suivi_preferences_employe = models.BooleanField(
+        "Les employés peuvent couper les notifications du suivi", default=True)
     updated_at         = models.DateTimeField(auto_now=True)
     user_updated       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                            related_name='+')

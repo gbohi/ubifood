@@ -10,5 +10,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         from api.planning_equipes import envoyer_rappels
+        from api.suivi_repas import taches_suivi
         n = envoyer_rappels()
         self.stdout.write(f"Rappels de réservation envoyés : {n}")
+        self.stdout.write(f"Suivi des repas : {taches_suivi()}")

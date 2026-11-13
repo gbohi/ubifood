@@ -91,6 +91,10 @@ def _notifier_commande(commande_id, statut):
         return
     date_str = commande.menu.date_menu.strftime("%d/%m/%Y")
     if statut == 'en_attente':
+        # Suivi des repas : notification « Commande confirmée » désactivable
+        from .suivi_repas import config
+        if not config()['confirmee']['push']:
+            return
         envoyer_notification_user(
             user=commande.user,
             titre='✅ Commande confirmée',

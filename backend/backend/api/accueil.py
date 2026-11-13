@@ -22,6 +22,7 @@ from .permissions import (
     GESTIONNAIRE_ROLES, ROLE_EMPLOYE, IsAuthenticated, agences_gerees, is_admin, is_gestionnaire,
 )
 from .serializers import agence_actuelle, date_limite_commande, libelle_date_limite
+from .suivi_repas import suivi_employe
 
 JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
 ACTIVES = ('en_attente', 'retiree')
@@ -152,6 +153,8 @@ class AccueilView(APIView):
         donnees = {
             'date': aujourdhui,
             'repas_du_jour': _commande_json(du_jour, images) if du_jour else None,
+            # Suivi du repas du jour (ou de nuit de la veille en cours) : frise des étapes
+            'suivi': suivi_employe(user, maintenant),
             'semaine': semaine,
             'prochain_a_reserver': prochain,
             'mois': compte,

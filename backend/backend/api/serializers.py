@@ -1539,7 +1539,10 @@ class ParametresSocieteSerializer(serializers.ModelSerializer):
                   'planning_notif_comptable', 'planning_notif_prestataire',
                   'planning_notifier_programmation', 'planning_rappel_actif', 'planning_rappel_jours',
                   'planning_saisie_gestionnaire', 'planning_commande_tardive',
-                  'planning_commande_tardive_heures', 'updated_at']
+                  'planning_commande_tardive_heures',
+                  # Suivi des repas (suivi_repas.py)
+                  'suivi_etapes', 'suivi_rappel_actif', 'suivi_rappel_minutes', 'suivi_incidents_actif',
+                  'suivi_preferences_employe', 'updated_at']
         read_only_fields = ['updated_at']
         extra_kwargs = {'logo': {'write_only': True, 'required': False}}
 
@@ -1548,6 +1551,17 @@ class ParametresSocieteSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         return verifier_horaires_service(self, super().validate(attrs))
+
+    def validate_suivi_etapes(self, valeur):
+        # Formulaire multipart : le JSON arrive en texte
+        if isinstance(valeur, str):
+            import json
+            try:
+                valeur = json.loads(valeur)
+            except ValueError:
+                raise serializers.ValidationError("Format invalide.")
+        from .suivi_repas import valider_config
+        return valider_config(valeur)
 
     def validate_logo(self, logo):
         if logo and logo.size > 2 * 1024 * 1024:
