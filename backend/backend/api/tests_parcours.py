@@ -539,8 +539,11 @@ class FinitionsParcoursTests(_ParcoursBase):
         r = client.patch(url, {'heure_debut_retrait': '18:00'}, format='json')
         self.assertEqual(r.status_code, 400)
         self.assertIn('heure_fin_retrait', r.data)
-        r = client.patch(url, {'heure_debut_retrait': '20:00', 'heure_fin_retrait': '18:00'}, format='json')
+        r = client.patch(url, {'heure_debut_retrait': '20:00', 'heure_fin_retrait': '20:00'}, format='json')
         self.assertEqual(r.status_code, 400)
+        # Fin avant le début : retrait jusqu'au lendemain (équipe de nuit)
+        r = client.patch(url, {'heure_debut_retrait': '22:00', 'heure_fin_retrait': '01:00'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
         r = client.patch(url, {'heure_debut_retrait': '18:00', 'heure_fin_retrait': '20:30'}, format='json')
         self.assertEqual((r.status_code, r.data['heure_debut_retrait'], r.data['heure_fin_retrait']),
                          (200, '18:00:00', '20:30:00'))
@@ -605,7 +608,7 @@ class FinitionsParcoursTests(_ParcoursBase):
         self.assertEqual((s['heure_debut_service'], s['heure_fin_service'], s['commandees'], s['externes']),
                          ('18:00', '20:30', 2, 1))
         self.assertEqual(s['equipes'], [{'id': self.soir.id, 'libelle': 'Soir', 'heure_debut_service': '18:00',
-                                         'heure_fin_service': '20:30'}])
+                                         'heure_fin_service': '20:30', 'retrait_lendemain': False}])
         # Comptoir : horaires de l'équipe du menu
         r = self.client_pour(self.agent_a).get(f'{API}/prestataire/comptoir/service/', {'agence': self.agence.id})
         self.assertEqual((r.data['agence']['heure_debut_service'], r.data['menus'][0]['heure_fin_service']),
@@ -748,3 +751,64 @@ class FinitionsParcoursTests(_ParcoursBase):
         r = self.client_pour(self.admin).patch(f'{API}/prestataires/{self.presta_b.id}/',
                                                {'tags': 'Maquis,Grillades', 'logo': _png()}, format='multipart')
         self.assertEqual((r.status_code, r.data['tags']), (200, ['Maquis', 'Grillades']))
+
+
+class RetraitApresMinuitTests(_ParcoursBase):
+    """Équipe de nuit 22:00 → 01:00 : retrait possible le lendemain jusqu'à 01:00."""
+
+    def setUp(self):
+        super().setUp()
+        from datetime import time as dtime
+        self.soir.heure_debut_retrait, self.soir.heure_fin_retrait = dtime(22, 0), dtime(1, 0)
+        self.soir.save()
+        self.hier = timezone.localdate() - timedelta(days=1)
+        self.m_nuit = Menu.objects.create(date_menu=self.hier, agence=self.agence, typeequipe=self.soir,
+                                          prestataire=self.presta_a)
+        MenuPlat.objects.create(menu=self.m_nuit, plat=self.plat_a)
+        self.m_jour = Menu.objects.create(date_menu=self.hier, agence=self.agence, typeequipe=self.typeequipe,
+                                          prestataire=self.presta_a)
+        MenuPlat.objects.create(menu=self.m_jour, plat=self.plat_a)
+        Commande.objects.create(user=self.employe, menu=self.m_nuit, plat=self.plat_a)
+        Commande.objects.create(user=self.employe2, menu=self.m_jour, plat=self.plat_a)
+
+    def a(self, h, m=0):
+        from datetime import datetime, time as dtime
+        return datetime.combine(timezone.localdate(), dtime(h, m), tzinfo=timezone.get_current_timezone())
+
+    def test_comptoir_a_0h30_puis_refus_apres_1h(self):
+        agent = self.client_pour(self.agent_a)
+        with patch('django.utils.timezone.now', return_value=self.a(0, 30)):
+            r = agent.get(f'{API}/prestataire/comptoir/recherche/?badge=EMP1')
+            self.assertTrue(r.data['a_retirer'], r.data)
+            self.assertEqual(r.data['menu_id'], self.m_nuit.id)
+            # L'équipe de jour de la veille n'est plus servie
+            r = agent.get(f'{API}/prestataire/comptoir/recherche/?badge=EMP2')
+            self.assertFalse(r.data['a_retirer'])
+            with patch('api.signals._en_arriere_plan', _synchrone):
+                r = agent.post(f'{API}/prestataire/comptoir/valider/',
+                               {'menu_id': self.m_nuit.id, 'user_id': self.employe.id, 'mode': 'scan'},
+                               format='json')
+            self.assertEqual(r.status_code, 201, r.data)
+            from .models import Retrait
+            Retrait.objects.filter(pk=r.data['id']).update(date_retrait=self.a(0, 30))
+            r = agent.post(f'{API}/prestataire/comptoir/valider/',
+                           {'menu_id': self.m_jour.id, 'user_id': self.employe2.id, 'mode': 'scan'}, format='json')
+            self.assertEqual(r.status_code, 400)
+        # Contrôle : 00:30 est dans les horaires de l'équipe de nuit
+        r = self.client_pour(self.gestionnaire).get(f'{API}/controle-retraits/', {'date': self.hier.isoformat()})
+        self.assertNotIn('hors_horaires', [a['type'] for a in r.data['anomalies']], r.data['anomalies'])
+        # Après 01:00 : plus de retrait au comptoir
+        Commande.objects.create(user=self.emp_yop, menu=self.m_nuit, plat=self.plat_a)
+        with patch('django.utils.timezone.now', return_value=self.a(1, 30)):
+            r = agent.post(f'{API}/prestataire/comptoir/valider/',
+                           {'menu_id': self.m_nuit.id, 'user_id': self.emp_yop.id, 'mode': 'scan'}, format='json')
+            self.assertEqual(r.status_code, 400)
+
+    def test_horaires_affiches_lendemain(self):
+        from .prestataires import horaires_json, horaires_menus
+        h = horaires_json(self.agence, self.soir)
+        self.assertEqual((h['heure_debut_service'], h['heure_fin_service'], h['retrait_lendemain']),
+                         ('22:00', '01:00', True))
+        self.assertFalse(horaires_json(self.agence, self.typeequipe)['retrait_lendemain'])
+        debut, fin = horaires_menus(self.agence, [self.m_jour, self.m_nuit])
+        self.assertEqual((debut.strftime('%H:%M'), fin.strftime('%H:%M')), ('11:30', '01:00'))

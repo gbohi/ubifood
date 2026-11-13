@@ -10,7 +10,7 @@
       @for (ag of donnees?.agences ?? []; track ag.id) {
         <div class="ep-ag-chip">
           <span class="ep-ag-chip-ic"><i class="ri-building-line"></i></span>
-          <span><b>{{ ag.nom }}</b><small>{{ nombreFr(ag.nb_employes) }} employé{{ ag.nb_employes > 1 ? 's' : '' }} · {{ ag.heure_debut_service }} – {{ ag.heure_fin_service }}</small></span>
+          <span><b>{{ ag.nom }}</b><small>{{ nombreFr(ag.nb_employes) }} employé{{ ag.nb_employes > 1 ? 's' : '' }} · {{ ag.heure_debut_service }} – {{ ag.heure_fin_service }}@if (ag.heure_fin_service < ag.heure_debut_service) { (lendemain) }</small></span>
         </div>
       }
       <a class="btn-ubi" routerLink="/prestataire/comptoir"><i class="ri-qr-scan-2-line"></i>Ouvrir le comptoir</a>
@@ -33,7 +33,7 @@
           <div class="ep-carte-hd">
             <span class="ep-ag"><i class="ri-building-line"></i>{{ s.agence_nom }}</span>
             <b>Service du jour</b>
-            <small [title]="horairesEquipes(s)">{{ s.heure_debut_service }} – {{ s.heure_fin_service }}</small>
+            <small [title]="horairesEquipes(s)">{{ s.heure_debut_service }} – {{ s.heure_fin_service }}@if (s.heure_fin_service < s.heure_debut_service) { (lendemain) }</small>
             <span class="lst-tag t-ve ms-auto"><i class="ri-checkbox-blank-circle-fill"></i>{{ s.pct_servis }} % servis</span>
           </div>
           <div class="ep-kpis3">

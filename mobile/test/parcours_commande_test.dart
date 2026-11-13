@@ -406,6 +406,8 @@ class _FauxPlanning extends _FauxParcours {
     final equipes = (j['equipes'] as List).cast<Map<String, dynamic>>();
     equipes[1] = {
       ...equipes[1],
+      'heure_debut_service': '22:00',
+      'heure_fin_service': '01:00',
       'sur_planning': true,
       'programmation': {
         'du': _iso(0),
@@ -803,6 +805,28 @@ void main() {
       expect(d.jours[4].motifIndisponible, contains('pas programmé(e)'));
     });
 
+    test(
+        'repas de nuit de la veille : encore « du jour » avant la fin du retrait',
+        () {
+      final hier = DateTime.now().toUtc().subtract(const Duration(days: 1));
+      Menu menu(DateTime? fin) => Menu.fromJson({
+            'id': 1,
+            'date_menu': isoJour(hier),
+            'agence_id': 1,
+            'agence_nom': 'Siège',
+            'typeequipe_id': 2,
+            'typeequipe_libelle': 'Nuit',
+            'menu_plats': [],
+            if (fin != null) 'fin_retrait': fin.toIso8601String(),
+          });
+      final dansUneHeure = DateTime.now().toUtc().add(const Duration(hours: 1));
+      final ilYAUneHeure =
+          DateTime.now().toUtc().subtract(const Duration(hours: 1));
+      expect(menu(dansUneHeure).retraitEnCours, isTrue);
+      expect(menu(ilYAUneHeure).retraitEnCours, isFalse);
+      expect(menu(null).retraitEnCours, isFalse);
+    });
+
     testWidgets('badge de programmation et jour « Non programmé »',
         (tester) async {
       await _ouvrir(tester, service: _FauxPlanning());
@@ -810,6 +834,9 @@ void main() {
       expect(find.byKey(const Key('programmation-2')), findsOneWidget);
       expect(find.text('Programmé(e) du 09/11 au 13/11/2099'), findsOneWidget);
       expect(find.byKey(const Key('programmation-1')), findsNothing);
+      // Retrait passant minuit
+      expect(find.textContaining('Retrait 22 h – 1 h (lendemain)'),
+          findsOneWidget);
       await _tap(tester, find.byKey(const Key('equipe-2')));
       await _tap(tester, find.byKey(Key('jour-${_iso(4)}')));
       expect(find.text('Non prog.'), findsOneWidget);

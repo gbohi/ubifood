@@ -200,10 +200,11 @@ class CarteServiceAgence extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final gris =
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
-    final horaires =
-        service.heureDebutService == null || service.heureFinService == null
-            ? ''
-            : '${service.heureDebutService} – ${service.heureFinService}';
+    final horaires = service.heureDebutService == null ||
+            service.heureFinService == null
+        ? ''
+        : '${service.heureDebutService} – ${service.heureFinService}'
+            '${service.heureFinService!.compareTo(service.heureDebutService!) < 0 ? ' (lendemain)' : ''}';
     return CartePresta(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [

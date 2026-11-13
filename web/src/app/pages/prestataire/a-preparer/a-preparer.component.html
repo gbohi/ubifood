@@ -158,7 +158,7 @@
     </table>
 
     @for (a of agencesFiche(j); track a.id) {
-      <h2>Agence {{ a.nom }} · service {{ a.heure_debut_service }} – {{ a.heure_fin_service }}</h2>
+      <h2>Agence {{ a.nom }} · service {{ a.heure_debut_service }} – {{ a.heure_fin_service }}@if (a.heure_fin_service < a.heure_debut_service) { (lendemain) }</h2>
       <table class="ep-fp-table">
         <thead><tr><th>Plat</th><th class="n">Portions</th><th class="c">Prêt</th></tr></thead>
         <tbody>

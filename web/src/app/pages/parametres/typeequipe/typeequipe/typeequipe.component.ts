@@ -21,13 +21,13 @@ import {
 import { selecttypeequipeData, selectTotalItems, selectLoading, selectCurrentPage } from 'src/app/store/Typeequipe/typeequipe-selector';
 import { TriServeur } from 'src/app/shared/tri-serveur';
 
-/** Horaires de retrait : les deux heures ou aucune, et la fin après le début */
+/** Horaires de retrait : les deux heures ou aucune ; fin avant le début = le lendemain (équipe de nuit) */
 export const horairesRetraitValidator: ValidatorFn = (g: AbstractControl): ValidationErrors | null => {
   const debut = g.get('heure_debut_retrait')?.value || '';
   const fin = g.get('heure_fin_retrait')?.value || '';
   if (!debut && !fin) return null;
   if (!debut || !fin) return { horairesIncomplets: true };
-  return fin <= debut ? { horairesOrdre: true } : null;
+  return fin === debut ? { horairesOrdre: true } : null;
 };
 
 @Component({
@@ -265,7 +265,8 @@ export class TypeequipeComponent implements OnInit, AfterViewInit {
   /** Horaires de retrait affichés dans la liste : « 18 h – 20 h 30 » */
   horairesRetrait(t: { heure_debut_retrait?: string | null; heure_fin_retrait?: string | null }): string {
     const h = (v: string) => v.slice(0, 5).replace(':', ' h ').replace(' h 00', ' h');
-    return t.heure_debut_retrait && t.heure_fin_retrait ? `${h(t.heure_debut_retrait)} – ${h(t.heure_fin_retrait)}` : '';
+    return t.heure_debut_retrait && t.heure_fin_retrait
+      ? `${h(t.heure_debut_retrait)} – ${h(t.heure_fin_retrait)}${t.heure_fin_retrait < t.heure_debut_retrait ? ' (lendemain)' : ''}` : '';
   }
 
   // Suppression d'une ligne

@@ -27,7 +27,7 @@
       <i class="ri-calendar-check-line ce-bandeau-ic"></i>
       <span class="ce-bandeau-sel-txt">
         <b>{{ titreJour || 'Aujourd\'hui' }} · {{ agenceNom }}</b>
-        <small>@if (service?.agence; as a) { Service {{ a.heure_debut_service }} – {{ a.heure_fin_service }} · }{{ service?.menus?.length ? 'menu du jour' : 'aucun menu aujourd\'hui' }}</small>
+        <small>@if (service?.agence; as a) { Service {{ a.heure_debut_service }} – {{ a.heure_fin_service }}@if (a.heure_fin_service < a.heure_debut_service) { (lendemain) } · }{{ service?.menus?.length ? 'menu du jour' : 'aucun menu aujourd\'hui' }}</small>
       </span>
     </div>
     <div class="ce-bandeau-prog">

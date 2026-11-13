@@ -230,6 +230,9 @@ class Menu {
   final int? prestataireId;
   final String? prestataireNom;
 
+  /// Fin du retrait (le lendemain pour une équipe de nuit, ex. 22:00 → 01:00)
+  final DateTime? finRetrait;
+
   const Menu({
     required this.id,
     required this.dateMenu,
@@ -242,6 +245,7 @@ class Menu {
     this.dateLimiteAnnulation,
     this.prestataireId,
     this.prestataireNom,
+    this.finRetrait,
   });
 
   bool get commandeFermee =>
@@ -250,6 +254,21 @@ class Menu {
   bool get annulationFermee =>
       dateLimiteAnnulation != null &&
       DateTime.now().isAfter(dateLimiteAnnulation!);
+
+  /// Repas du jour en cours de retrait : aujourd'hui, ou la veille pour une
+  /// équipe dont le retrait passe minuit (nuit) tant qu'il n'est pas terminé
+  bool get retraitEnCours {
+    if (isToday) return true;
+    final fin = finRetrait;
+    final d = DateTime.tryParse(dateMenu);
+    if (fin == null || d == null) return false;
+    final maintenant = DateTime.now().toUtc();
+    final hier = maintenant.subtract(const Duration(days: 1));
+    return d.year == hier.year &&
+        d.month == hier.month &&
+        d.day == hier.day &&
+        maintenant.isBefore(fin);
+  }
 
   /// « Aujourd'hui » au sens du serveur (Africa/Abidjan = UTC+0)
   bool get isToday {
@@ -273,6 +292,7 @@ class Menu {
             DateTime.tryParse(j['date_limite_commande'] ?? '')?.toUtc(),
         dateLimiteAnnulation:
             DateTime.tryParse(j['date_limite_annulation'] ?? '')?.toUtc(),
+        finRetrait: DateTime.tryParse(j['fin_retrait'] ?? '')?.toUtc(),
         prestataireId:
             j['prestataire'] is num ? (j['prestataire'] as num).toInt() : null,
         prestataireNom: j['prestataire_nom'] is String &&

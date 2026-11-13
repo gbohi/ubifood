@@ -400,7 +400,8 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
 
   horaires(e: { heure_debut_service?: string | null; heure_fin_service?: string | null }): string {
     const h = (v?: string | null) => (v ?? '').slice(0, 5).replace(':', ' h ').replace(' h 00', ' h');
-    return e.heure_debut_service && e.heure_fin_service ? `${h(e.heure_debut_service)} – ${h(e.heure_fin_service)}` : '';
+    return e.heure_debut_service && e.heure_fin_service
+      ? `${h(e.heure_debut_service)} – ${h(e.heure_fin_service)}${e.heure_fin_service < e.heure_debut_service ? ' (lendemain)' : ''}` : '';
   }
 
   /** Plage de jours d'une équipe : « lun. → ven. » */

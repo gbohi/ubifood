@@ -30,7 +30,7 @@ from .models import (
     Agence, ClotureMensuelle, Commande, ContestationRetrait, Menu, ParametresSociete, Retrait, User,
 )
 from .permissions import IsAuthenticated, IsGestionnaireRole, agences_gerees, is_gestionnaire
-from .prestataires import horaires_retrait
+from .prestataires import fenetre_retrait, horaires_retrait
 from .serializers import nom_complet
 
 DELAI_CONTESTATION_JOURS = 31
@@ -444,7 +444,8 @@ class ControleRetraitsView(APIView):
                      'retrait_ids': [x.id for x in rafale]}
                 anomalies.append(a)
                 anomalies_agent[agent_id].append(a)
-        # Horaires de retrait de l'équipe du menu, sinon de l'agence, sinon par défaut
+        # Horaires de retrait de l'équipe du menu, sinon de l'agence, sinon par défaut ;
+        # retrait passant minuit (équipe de nuit) : jusqu'à l'heure de fin le lendemain
         horaires = {}
         for r in retraits:
             ag = r.menu.agence
@@ -452,8 +453,8 @@ class ControleRetraitsView(APIView):
             if cle_h not in horaires:
                 horaires[cle_h] = horaires_retrait(ag, r.menu.typeequipe, parametres)
             debut, fin = horaires[cle_h]
-            heure = timezone.localtime(r.date_retrait).time()
-            if not (debut <= heure <= fin):
+            ouverture, fermeture = fenetre_retrait(r.menu.date_menu, ag, r.menu.typeequipe, parametres)
+            if not (ouverture <= r.date_retrait <= fermeture):
                 a = {'type': 'hors_horaires', 'libelle': 'Retrait hors horaires de service',
                      'agent_id': r.valide_par_id,
                      'agent_nom': nom_complet(r.valide_par) if r.valide_par_id else None,

@@ -841,9 +841,10 @@ class TypeEquipeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {champ: "Renseignez les deux heures de retrait, ou laissez-les vides "
                         "(horaires de l'agence)."})
-        if debut and fin and fin <= debut:
+        # Fin avant le début : retrait jusqu'au lendemain (équipe de nuit, ex. 22:00 → 01:00)
+        if debut and fin and fin == debut:
             raise serializers.ValidationError(
-                {'heure_fin_retrait': "L'heure de fin du retrait doit être après l'heure de début."})
+                {'heure_fin_retrait': "L'heure de fin du retrait doit être différente de l'heure de début."})
         return attrs
 
 
@@ -1000,6 +1001,9 @@ class MenuSerializer(serializers.ModelSerializer):
     # le web et le mobile les affichent sans recalculer.
     date_limite_commande   = serializers.SerializerMethodField()
     date_limite_annulation = serializers.SerializerMethodField()
+    # Fin du retrait (date et heure) : le lendemain pour une équipe de nuit
+    # (ex. 22:00 → 01:00) — le repas reste « du jour » jusque-là
+    fin_retrait            = serializers.SerializerMethodField()
 
     def _parametres(self):
         # Une seule lecture des paramètres par requête (listes, menus imbriqués)
@@ -1016,6 +1020,10 @@ class MenuSerializer(serializers.ModelSerializer):
 
     def get_date_limite_annulation(self, obj):
         return date_limite_annulation(obj.date_menu, self._parametres()).isoformat()
+
+    def get_fin_retrait(self, obj):
+        from .prestataires import fenetre_retrait
+        return fenetre_retrait(obj.date_menu, obj.agence, obj.typeequipe, self._parametres())[1].isoformat()
 
     def validate(self, attrs):
         from .facturation import ligne_active

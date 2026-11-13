@@ -129,10 +129,11 @@
                     @if (typeequipeForm.errors?.['horairesIncomplets']) {
                         <div class="text-danger mt-1"><small>Renseignez les deux heures, ou laissez-les vides.</small></div>
                     } @else if (typeequipeForm.errors?.['horairesOrdre']) {
-                        <div class="text-danger mt-1"><small>L'heure de fin doit être après l'heure de début.</small></div>
+                        <div class="text-danger mt-1"><small>L'heure de fin doit être différente de l'heure de début.</small></div>
                     }
                     <div class="form-text">Vides : horaires de service de chaque agence (sinon ceux par défaut de Paramètres → Société).
-                        Utilisés pour le retrait des repas de cette équipe et le contrôle « retrait hors horaires ».</div>
+                        Utilisés pour le retrait des repas de cette équipe et le contrôle « retrait hors horaires ».
+                        Fin avant le début (ex. 22:00 → 01:00) : retrait jusqu'au lendemain, pour une équipe de nuit.</div>
 
                     <div class="form-check form-switch mt-4">
                         <input class="form-check-input" type="checkbox" role="switch" id="sur-planning-input" formControlName="sur_planning">

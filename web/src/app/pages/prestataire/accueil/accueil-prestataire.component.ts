@@ -50,7 +50,8 @@ export class AccueilPrestataireComponent implements OnInit {
 
   /** Horaires de retrait par équipe (info-bulle) : « Jour 11:30 – 14:30 · Nuit 19:00 – 21:00 » */
   horairesEquipes(s: { equipes?: { libelle: string; heure_debut_service: string; heure_fin_service: string }[] }): string {
-    return (s.equipes ?? []).map(e => `${e.libelle} ${e.heure_debut_service} – ${e.heure_fin_service}`).join(' · ');
+    return (s.equipes ?? []).map(e => `${e.libelle} ${e.heure_debut_service} – ${e.heure_fin_service}`
+      + (e.heure_fin_service < e.heure_debut_service ? ' (lendemain)' : '')).join(' · ');
   }
 
     pct(n: number, total: number): number {

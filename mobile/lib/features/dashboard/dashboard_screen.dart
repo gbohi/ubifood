@@ -95,7 +95,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       final duJour = cmdProv.mesCommandes.where((c) =>
           c.statut != StatutCommande.annulee &&
-          (c.menuDetail?.isToday ?? false));
+          (c.menuDetail?.retraitEnCours ?? false));
       return _RepasDuJourCard(
           commande: duJour.firstOrNull,
           etiquette: isGestionnaire ? 'Mon repas' : null);

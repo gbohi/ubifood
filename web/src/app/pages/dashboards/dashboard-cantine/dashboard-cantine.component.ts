@@ -144,7 +144,7 @@ export class DashboardCantineComponent implements OnInit, OnDestroy {
 
   detailAgence(a: AccueilServiceAgence): string {
     const equipes = a.equipes?.length ? a.equipes.join(', ') : 'Menu du jour';
-    const horaires = a.heure_debut_service && a.heure_fin_service ? ` · ${a.heure_debut_service} – ${a.heure_fin_service}` : '';
+    const horaires = a.heure_debut_service && a.heure_fin_service ? ` · ${a.heure_debut_service} – ${a.heure_fin_service}${a.heure_fin_service < a.heure_debut_service ? ' (lendemain)' : ''}` : '';
     return `${equipes}${horaires} · ${a.nb_plats} plat${a.nb_plats > 1 ? 's' : ''}`;
   }
 

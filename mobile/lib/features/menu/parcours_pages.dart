@@ -346,7 +346,9 @@ String _heure(String? h) {
 
 String? _horaires(String? debut, String? fin) {
   if ((debut ?? '').isEmpty || (fin ?? '').isEmpty) return null;
-  return '${_heure(debut)} – ${_heure(fin)}';
+  // Fin avant le début : retrait jusqu'au lendemain (équipe de nuit)
+  final lendemain = fin!.compareTo(debut!) < 0 ? ' (lendemain)' : '';
+  return '${_heure(debut)} – ${_heure(fin)}$lendemain';
 }
 
 const _joursAbreges = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];

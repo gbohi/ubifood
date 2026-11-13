@@ -906,9 +906,15 @@ def _agence_comptoir(request, valeur=None):
 
 
 def _menus_du_jour(request, agence, d=None):
-    return list(menus_du_prestataire(request.user.prestataire_id)
-                .filter(agence_id=agence, date_menu=d or timezone.localdate())
-                .select_related('agence', 'typeequipe'))
+    """
+    Menus servis au comptoir : ceux du jour, plus ceux de la veille dont le
+    retrait passe minuit et n'est pas terminé (équipe de nuit, ex. 22:00 → 01:00).
+    """
+    qs = menus_du_prestataire(request.user.prestataire_id).filter(agence_id=agence)
+    if d is not None:
+        return list(qs.filter(date_menu=d).select_related('agence', 'typeequipe'))
+    from .prestataires import menus_retirables
+    return menus_retirables(qs)
 
 
 class ComptoirServiceView(APIView):
@@ -989,14 +995,19 @@ class ComptoirRechercheView(APIView):
             return Response({'detail': f"Aucun employé trouvé avec le matricule « {badge} »."},
                             status=status.HTTP_404_NOT_FOUND)
         menus = _menus_du_jour(request, agence)
-        commandes = list(Commande.objects.filter(user=employe, menu__in=menus, statut__in=ACTIVES)
-                         .select_related('plat', 'menu__agence'))
+        ordre = {m.id: i for i, m in enumerate(menus)}
+        commandes = sorted(Commande.objects.filter(user=employe, menu__in=menus, statut__in=ACTIVES)
+                           .select_related('plat', 'menu__agence'), key=lambda c: ordre.get(c.menu_id, 0))
         images = _images({c.plat_id for c in commandes})
-        retrait = (Retrait.objects.filter(user=employe, menu__in=menus)
-                   .select_related('user', 'valide_par__prestataire').first())
+        retraits = list(Retrait.objects.filter(user=employe, menu__in=menus)
+                        .select_related('user', 'valide_par__prestataire'))
         from .serializers import agence_actuelle
         ag = agence_actuelle(employe)
-        a_retirer = [c for c in commandes if c.statut == 'en_attente']
+        # Repas encore à retirer (menu sans retrait) : le service de nuit de la
+        # veille d'abord ; « déjà retiré » seulement s'il ne reste rien à retirer
+        deja = {r.menu_id for r in retraits}
+        a_retirer = [c for c in commandes if c.statut == 'en_attente' and c.menu_id not in deja]
+        retrait = None if a_retirer else (retraits[0] if retraits else None)
         if retrait is not None:
             message = (f"{nom_complet(employe)} a déjà retiré son repas à {_heure(retrait.date_retrait)}"
                        + (f" (validé par {nom_complet(retrait.valide_par)})" if retrait.valide_par_id else '')
@@ -1043,8 +1054,9 @@ class ComptoirValiderView(APIView):
         menu = menus_du_prestataire(request.user.prestataire_id).filter(pk=menu_id).first()
         if menu is None:
             raise PermissionDenied("Ce menu n'est pas servi par votre prestataire.")
-        if menu.date_menu != timezone.localdate():
-            raise ValidationError("Le retrait n'est possible que le jour du menu.")
+        if menu.id not in {m.id for m in _menus_du_jour(request, menu.agence_id)}:
+            raise ValidationError("Le retrait n'est possible que le jour du menu "
+                                  "(jusqu'à la fin du retrait le lendemain pour une équipe de nuit).")
         employe = get_object_or_404(User, pk=user_id)
         deja = Retrait.objects.filter(user=employe, menu=menu).select_related('user', 'valide_par__prestataire').first()
         if deja is not None:

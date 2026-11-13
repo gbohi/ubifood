@@ -82,15 +82,59 @@ def horaires_retrait(agence, typeequipe=None, parametres=None):
     return horaires_service(agence, parametres)
 
 
+def passe_minuit(debut, fin):
+    """Retrait qui se termine le lendemain (ex. équipe de nuit 22:00 → 01:00)."""
+    return bool(debut and fin and fin < debut)
+
+
+def fenetre_retrait(date_menu, agence, typeequipe=None, parametres=None):
+    """
+    (début, fin) du retrait d'un menu, en dates et heures locales : la fin est le
+    lendemain du jour du menu quand les horaires passent minuit.
+    """
+    from datetime import datetime, timedelta
+    from django.utils import timezone
+    debut, fin = horaires_retrait(agence, typeequipe, parametres)
+    jour_fin = date_menu + timedelta(days=1) if passe_minuit(debut, fin) else date_menu
+    return (timezone.make_aware(datetime.combine(date_menu, debut)),
+            timezone.make_aware(datetime.combine(jour_fin, fin)))
+
+
+def menus_retirables(qs, maintenant=None, parametres=None):
+    """
+    Menus dont le repas peut être retiré au comptoir maintenant : ceux du jour,
+    plus ceux de la veille dont le retrait passe minuit et n'est pas terminé
+    (équipe de nuit). `qs` : menus déjà filtrés (prestataire, agence).
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    maintenant = maintenant or timezone.now()
+    aujourdhui = timezone.localdate(maintenant)
+    menus = list(qs.filter(date_menu__in=[aujourdhui, aujourdhui - timedelta(days=1)])
+                 .select_related('agence', 'typeequipe'))
+    p = parametres or ParametresSociete.charger()
+    garder = []
+    for m in menus:
+        if m.date_menu == aujourdhui:
+            garder.append(m)
+        elif maintenant <= fenetre_retrait(m.date_menu, m.agence, m.typeequipe, p)[1]:
+            garder.append(m)
+    # Service de la veille (nuit) d'abord : c'est celui en cours
+    return sorted(garder, key=lambda m: (m.date_menu, m.id))
+
+
 def horaires_menus(agence, menus, parametres=None):
     """
     (début, fin) du service pour des menus d'une agence : du plus tôt au plus
     tard des horaires de retrait de leurs équipes (horaires de l'agence sans menu).
+    Une équipe dont le retrait passe minuit donne la fin (le lendemain).
     """
     plages = {horaires_retrait(agence, m.typeequipe, parametres) for m in menus}
     if not plages:
         return horaires_service(agence, parametres)
-    return min(d for d, _ in plages), max(f for _, f in plages)
+    fins_lendemain = [f for d, f in plages if passe_minuit(d, f)]
+    fin = max(fins_lendemain) if fins_lendemain else max(f for _, f in plages)
+    return min(d for d, _ in plages), fin
 
 
 def equipes_horaires_json(agence, menus, parametres=None):
@@ -103,7 +147,9 @@ def equipes_horaires_json(agence, menus, parametres=None):
 def horaires_json(agence, typeequipe=None, parametres=None):
     """{'heure_debut_service': 'HH:MM', 'heure_fin_service': 'HH:MM'} (horaires effectifs)."""
     debut, fin = horaires_retrait(agence, typeequipe, parametres)
-    return {'heure_debut_service': debut.strftime('%H:%M'), 'heure_fin_service': fin.strftime('%H:%M')}
+    return {'heure_debut_service': debut.strftime('%H:%M'), 'heure_fin_service': fin.strftime('%H:%M'),
+            # Retrait qui se termine le lendemain (équipe de nuit, ex. 22:00 → 01:00)
+            'retrait_lendemain': passe_minuit(debut, fin)}
 
 
 def historique_json(h):
