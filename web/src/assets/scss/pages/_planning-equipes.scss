@@ -1,0 +1,110 @@
+// Planning des équipes (maquettes « planning-1 / planning-2 ») —
+// pages/cantines/planning-equipes. S'appuie sur _listes et _espace-prestataire.
+
+.pq-filtres {
+  display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px;
+  .pq-sel { display: flex; flex-direction: column; gap: 4px; margin: 0;
+    small { font-size: 11.5px; color: var(--ubi-gris); font-weight: 500; } }
+}
+.pq-semaine {
+  display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--ubi-bord);
+  border-radius: 12px; padding: 4px 8px; min-height: 40px;
+  > span { font-weight: 600; font-size: 13px; white-space: nowrap; }
+  .btn-ubi.ic { padding: 5px 7px; border: 0; }
+}
+.pq-recherche {
+  position: relative; flex: 1; min-width: 200px; max-width: 320px;
+  > i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--ubi-gris); }
+  .form-control { padding-left: 32px; border-radius: 10px; min-height: 38px; font-size: 13px; }
+}
+.pq-modal .pq-recherche { max-width: none; }
+.pq-kpi-or { border-color: #F7D592; background: #FFFAF0; }
+
+// ── Grille ─────────────────────────────────────────────────────
+.pq-grille {
+  th.pq-c-j, td.pq-c-j { text-align: center; padding-left: 0; padding-right: 0; min-width: 70px; }
+  th.pq-auj { color: var(--ubi-vert2); }
+  .pq-c-emp { min-width: 210px; }
+}
+.pq-case {
+  height: 26px; margin: 0 4px; border-radius: 6px; background: #EEF2F7;
+  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px;
+  &.on { background: var(--ubi-navy); }
+  &.on.cmd { background: var(--ubi-vert2); }
+  &.on.g { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+  &.on.d { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+}
+.pq-periode { min-width: 190px; }
+.pq-per {
+  display: flex; align-items: center; gap: 5px; border: 0; background: none; padding: 2px 0; color: var(--ubi-navy);
+  font-size: 12px; text-align: left; white-space: nowrap;
+  small { color: var(--ubi-gris); }
+  i { color: var(--ubi-gris); opacity: 0; transition: opacity .15s; }
+  &:hover i, &:focus-visible i { opacity: 1; }
+  &:hover { color: var(--ubi-navy2); text-decoration: underline; }
+}
+.pq-par { font-size: 12px; max-width: 160px; }
+.pq-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.pq-legende {
+  display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--ubi-bord);
+  font-size: 12px; color: var(--ubi-gris);
+  > span { display: inline-flex; gap: 7px; align-items: center; }
+}
+.pq-l { width: 18px; height: 12px; border-radius: 3px; display: inline-block; background: #EEF2F7;
+  &.on { background: var(--ubi-navy); } &.cmd { background: var(--ubi-vert2); } }
+
+// ── Fenêtres ───────────────────────────────────────────────────
+.pq-modal {
+  color: var(--ubi-navy);
+  .ep-cause { margin-bottom: 8px; &.actif { border-color: var(--ubi-vert2); background: #F0FBF4; } }
+}
+.pq-mtitre { display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  h5 { margin: 0; font-size: 17px; font-weight: 600; } }
+.pq-mic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 17px; flex-shrink: 0;
+  background: #EAFBF1; color: #1C7F45; &.rouge { background: #FDE8E4; color: #C4381F; } }
+.pq-jours { display: flex; gap: 6px; flex-wrap: wrap; }
+.pq-jour {
+  width: 42px; height: 36px; border-radius: 9px; border: 1px solid var(--ubi-bord); background: #fff; font-weight: 600; font-size: 12.5px;
+  color: var(--ubi-navy);
+  &.on { background: var(--ubi-navy); border-color: var(--ubi-navy); color: #fff; }
+}
+.pq-liste { border: 1px solid var(--ubi-bord); border-radius: 10px; max-height: 220px; overflow: auto; padding: 0 10px; }
+.pq-emp {
+  display: flex; gap: 10px; align-items: center; padding: 8px 2px; border-bottom: 1px solid #EEF2F7; margin: 0; cursor: pointer; font-size: 13px;
+  &:last-child { border-bottom: 0; }
+  small { margin-left: auto; color: var(--ubi-gris); font-size: 11.5px; }
+  .form-check-input { margin: 0; }
+}
+.pq-x { border: 0; background: none; color: inherit; padding: 0 0 0 2px; line-height: 1; }
+.pq-date { max-width: 170px; }
+.pq-impact { font-size: 12.5px; border: 1px solid var(--ubi-bord); border-radius: 10px; overflow: hidden; }
+.pq-depot {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; border: 2px dashed #CFDCEC; border-radius: 12px;
+  padding: 18px; background: #FAFCFE; cursor: pointer; text-align: center; margin: 0; font-size: 12.5px;
+  > i { font-size: 28px; color: var(--ubi-vert2); }
+  span { color: var(--ubi-gris); font-size: 12px; }
+  &.ok { border-color: #BFECCF; background: #F0FBF4; }
+}
+.pq-import { max-height: 300px; overflow: auto; border: 1px solid var(--ubi-bord); border-radius: 10px; }
+
+@media (max-width: 767.98px) {
+  .pq-filtres { align-items: stretch; .pq-sel, .pq-semaine, .pq-recherche { width: 100%; max-width: none; } }
+  .pq-semaine { justify-content: space-between; > span { white-space: normal; text-align: center; } }
+}
+
+// ── Paramètres → Société : section « Planning des équipes » ────
+.soc-planning {
+  border: 1px solid var(--ubi-bord, #E2EAF4); border-radius: 12px; padding: 6px 16px;
+  > .form-check, > .soc-pl-bloc { padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid #EEF2F7; margin: 0; }
+  > .form-check { padding-left: 3.2em; }
+  > :last-child { border-bottom: 0; }
+  label b, .soc-pl-bloc > b { display: block; font-weight: 600; font-size: 13px; }
+  label small { display: block; color: #5A7090; font-size: 12px; margin-top: 2px; line-height: 1.5; }
+}
+.soc-num { width: 64px; padding: 1px 6px; margin: 0 4px; }
+
+// ── Parcours de commande : équipe où l'employé est programmé ────
+.pc-prog {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 5px; background: var(--ubi-navy, #092440); color: #fff;
+  font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 9px; width: fit-content;
+}

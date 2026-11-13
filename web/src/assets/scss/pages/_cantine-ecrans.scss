@@ -695,10 +695,10 @@ app-liste-commandes {
     b { font-size: 20px; line-height: 1.1; }
     em { position: absolute; top: 6px; right: 8px; font-style: normal; font-size: 10px; color: var(--ce-vert-f); font-weight: 700; }
     &:hover { border-color: #c9d6e6; }
-    &[data-etat="pas_de_menu"], &[data-etat="ferme"] { background: #F7F9FC; color: #9AA9BE; .pc-jour-etat { color: #9AA9BE; } }
+    &[data-etat="pas_de_menu"], &[data-etat="ferme"], &[data-etat="non_programme"] { background: #F7F9FC; color: #9AA9BE; .pc-jour-etat { color: #9AA9BE; } }
     &.pc-on { background: var(--ce-navy); border-color: var(--ce-navy); color: #fff; small { color: #c9d6e6; } em { color: #fff; } }
     &.pc-on .pc-jour-etat { background: var(--ce-vert2); color: #fff; }
-    &.pc-on[data-etat="pas_de_menu"] .pc-jour-etat, &.pc-on[data-etat="ferme"] .pc-jour-etat { background: rgba(255, 255, 255, .2); color: #fff; }
+    &.pc-on[data-etat="pas_de_menu"] .pc-jour-etat, &.pc-on[data-etat="ferme"] .pc-jour-etat, &.pc-on[data-etat="non_programme"] .pc-jour-etat { background: rgba(255, 255, 255, .2); color: #fff; }
   }
   .pc-jour-etat {
     font-size: 10.5px; font-weight: 700; border-radius: 20px; padding: 1px 8px; white-space: nowrap; color: var(--ce-navy2);

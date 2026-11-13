@@ -57,6 +57,20 @@ export class SocieteComponent implements OnInit {
       delai_annulation_heures: [48, [Validators.required, Validators.min(0), Validators.max(720), Validators.pattern(/^\d+$/)]],
       // Note d'un prestataire / d'un plat affichée à partir de ce nombre d'avis (sinon « Nouveau »)
       seuil_avis_note:         [5, [Validators.required, Validators.min(0), Validators.max(1000), Validators.pattern(/^\d+$/)]],
+      // Planning des équipes (équipes réservées aux employés programmés, ex. Nuit)
+      planning_annulation_auto:        [true],
+      planning_remboursement_auto:     [true],
+      planning_notif_employe:          [true],
+      planning_notif_admin:            [true],
+      planning_notif_gestionnaire:     [true],
+      planning_notif_comptable:        [true],
+      planning_notif_prestataire:      [true],
+      planning_notifier_programmation: [true],
+      planning_rappel_actif:           [true],
+      planning_rappel_jours:           [1, [Validators.required, Validators.min(0), Validators.max(14), Validators.pattern(/^\d+$/)]],
+      planning_saisie_gestionnaire:    [true],
+      planning_commande_tardive:       [false],
+      planning_commande_tardive_heures: [12, [Validators.required, Validators.min(0), Validators.max(72), Validators.pattern(/^\d+$/)]],
     });
     this.http.get<any>(this.url)
       .pipe(takeUntilDestroyed(this.destroyRef))

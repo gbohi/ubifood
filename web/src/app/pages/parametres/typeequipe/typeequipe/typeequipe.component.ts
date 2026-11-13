@@ -90,6 +90,9 @@ export class TypeequipeComponent implements OnInit, AfterViewInit {
       libelle: ['', [Validators.required]],
       heure_debut_retrait: [''],
       heure_fin_retrait: [''],
+      // Planning des équipes : équipe réservée aux employés programmés (ex. Nuit)
+      sur_planning: [false],
+      exclusive_planning: [true],
     }, { validators: horairesRetraitValidator });
 
     this.store.select(selectLoading)
@@ -227,6 +230,8 @@ export class TypeequipeComponent implements OnInit, AfterViewInit {
       id: editData.id, libelle: editData.libelle,
       heure_debut_retrait: this.heureCourte(editData.heure_debut_retrait),
       heure_fin_retrait: this.heureCourte(editData.heure_fin_retrait),
+      sur_planning: !!editData.sur_planning,
+      exclusive_planning: editData.exclusive_planning !== false,
     });
     this.addTypeequipe?.show();
   }

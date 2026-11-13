@@ -305,6 +305,14 @@ class ProgrammationTests(_PlanningBase):
         self.assertFalse(ProgrammationEquipe.objects.filter(user=self.employe2).exists())
         self.assertEqual(ProgrammationEquipe.objects.filter(user=self.employe).count(), 1)
 
+    def test_import_matricule_sans_zero_de_tete(self):
+        self.employe.username = '01427'
+        self.employe.save()
+        r = self.client_pour(self.admin).post(f'{API}/planning-equipes/importer/', {'lignes': [
+            {'matricule': '1427', 'equipe': 'nuit', 'date_debut': self.aujourdhui.isoformat()}]}, format='json')
+        self.assertEqual((r.data['nb_valides'], r.data['lignes'][0]['matricule']), (1, '01427'))
+        self.assertTrue(ProgrammationEquipe.objects.filter(user=self.employe).exists())
+
     def test_copier_semaine_precedente(self):
         lundi = self.aujourdhui - timedelta(days=self.aujourdhui.weekday())
         ProgrammationEquipe.objects.create(user=self.employe, typeequipe=self.nuit,

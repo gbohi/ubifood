@@ -417,6 +417,7 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
       case 'reserve':    return j.commande?.statut === 'retiree' ? 'Servi' : 'Réservé';
       case 'a_reserver': return 'À réserver';
       case 'ferme':      return 'Fermé';
+      case 'non_programme': return 'Non programmé';
       default:           return 'Pas de menu';
     }
   }

@@ -95,6 +95,15 @@ export const MENU: MenuItem[] = [
                 parentId: 210
             },
             {
+                // Équipes réservées aux employés programmés (ex. Nuit)
+                id: 2115,
+                label: 'Planning des équipes',
+                link: '/cantines/planning-equipes',
+                roles: GESTIONNAIRES,
+                isNew: true,
+                parentId: 210
+            },
+            {
                 id: 215,
                 label: 'MENUITEMS.CANTINES.LIST.MESCOMMANDES',
                 link: '/cantines/mes-commandes',

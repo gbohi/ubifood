@@ -192,6 +192,7 @@
             <span class="pc-equipe-txt">
               <b>{{ e.libelle }}@if (e.mon_equipe) { <span class="ce-tag ce-tag-ve">Mon équipe</span> }</b>
               <small>Retrait {{ horaires(e) }}@if (plageJours(e)) { · {{ plageJours(e) }} } · {{ e.nb_jours }} jour{{ e.nb_jours > 1 ? 's' : '' }} au menu</small>
+              @if (e.programmation) { <span class="pc-prog"><i class="ri-calendar-check-line"></i>{{ e.programmation.libelle }}</span> }
             </span>
             <i class="ri-arrow-right-s-line"></i>
           </button>
@@ -251,7 +252,7 @@
                   (click)="choisirJour(j)">
             <small>{{ jourCourt(j.date) }}</small>
             <b>{{ numeroJour(j.date) }}</b>
-            <span class="pc-jour-etat">@if (j.etat === 'ferme') { <i class="ri-lock-line"></i> }{{ etatLibelle(j) }}</span>
+            <span class="pc-jour-etat">@if (j.etat === 'ferme' || j.etat === 'non_programme') { <i class="ri-lock-line"></i> }{{ etatLibelle(j) }}</span>
             @if (estAujourdhui(j.date)) { <em>auj.</em> }
           </button>
         }
@@ -259,7 +260,7 @@
       <div class="pc-legende">
         <span><i class="pc-pt pc-pt-ve"></i>réservé</span>
         <span><i class="pc-pt pc-pt-navy"></i>à réserver</span>
-        <span><i class="pc-pt pc-pt-gr"></i>fermé (délai passé ou pas de menu)</span>
+        <span><i class="pc-pt pc-pt-gr"></i>fermé (délai passé, pas de menu ou non programmé)</span>
       </div>
     }
 
@@ -280,6 +281,9 @@
           </div>
         } @else if (j.etat === 'ferme') {
           <div class="ce-delai ce-c-gris"><i class="ri-lock-line"></i>Commandes fermées@if (j.libelle_limite) { depuis le {{ j.libelle_limite }} }</div>
+        } @else if (j.etat === 'non_programme') {
+          <div class="ce-alerte ce-alerte-bl ce-alerte-fine"><i class="ri-calendar-close-line"></i>
+            <div><b>Non programmé(e)</b> — {{ j.motif_indisponible }}</div></div>
         }
 
         @if (j.commande && !j.commande.ici) {
@@ -373,11 +377,13 @@
               </div>
             </div>
           } @empty {
+            @if (j.etat !== 'non_programme') {
             <div class="ce-vide-page pc-plein">
               <i class="ri-calendar-todo-line"></i>
               <b>Pas de menu ce jour</b>
               <span>{{ p.nom_affiche }} ne propose pas de menu{{ equipe ? ' pour l\'équipe ' + equipe.libelle : '' }} ce jour-là.</span>
             </div>
+            }
           }
         </div>
       </div>

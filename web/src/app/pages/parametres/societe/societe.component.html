@@ -94,6 +94,46 @@
                 <small class="text-muted">En dessous, les employés voient « Nouveau » à la place de la note du prestataire ou du plat.</small>
               </div>
 
+              <!-- Planning des équipes -->
+              <div class="col-12">
+                <h6 class="mt-3 mb-1 fw-semibold"><i class="ri-calendar-2-line me-1"></i>Planning des équipes</h6>
+                <small class="text-muted d-block mb-2">Équipes réservées aux employés programmés (ex. Nuit) :
+                  <a routerLink="/cantines/planning-equipes">Cantine → Planning des équipes</a> · cases à cocher dans Paramètres → Types d'équipe.</small>
+                <div class="soc-planning">
+                  <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="pl-annul" formControlName="planning_annulation_auto">
+                    <label class="form-check-label" for="pl-annul"><b>Annuler automatiquement les commandes</b>
+                      <small>Employé retiré du planning (à l'écran ou par import) et délai d'annulation non passé. Délai passé : la commande est toujours maintenue.</small></label></div>
+                  <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="pl-remb" formControlName="planning_remboursement_auto">
+                    <label class="form-check-label" for="pl-remb"><b>Rembourser automatiquement</b>
+                      <small>Repas payé par le compte repas : recrédité. Retenue sur salaire : le repas annulé sort de la retenue.</small></label></div>
+                  <div class="soc-pl-bloc"><b>Notifier lors d'une annulation pour retrait du planning</b>
+                    <div class="d-flex flex-wrap gap-3 mt-1">
+                      <div class="form-check"><input class="form-check-input" type="checkbox" id="pl-n-emp" formControlName="planning_notif_employe"><label class="form-check-label" for="pl-n-emp">Employé</label></div>
+                      <div class="form-check"><input class="form-check-input" type="checkbox" id="pl-n-adm" formControlName="planning_notif_admin"><label class="form-check-label" for="pl-n-adm">Administrateurs</label></div>
+                      <div class="form-check"><input class="form-check-input" type="checkbox" id="pl-n-ges" formControlName="planning_notif_gestionnaire"><label class="form-check-label" for="pl-n-ges">Gestionnaires de l'agence</label></div>
+                      <div class="form-check"><input class="form-check-input" type="checkbox" id="pl-n-cpt" formControlName="planning_notif_comptable"><label class="form-check-label" for="pl-n-cpt">Comptabilité</label></div>
+                      <div class="form-check"><input class="form-check-input" type="checkbox" id="pl-n-pre" formControlName="planning_notif_prestataire"><label class="form-check-label" for="pl-n-pre">Prestataire</label></div>
+                    </div></div>
+                  <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="pl-prog" formControlName="planning_notifier_programmation">
+                    <label class="form-check-label" for="pl-prog"><b>Prévenir l'employé quand il est programmé</b>
+                      <small>« Vous êtes programmé(e) dans l'équipe Nuit du 16/11 au 22/11 » (et quand sa période change).</small></label></div>
+                  <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="pl-rap" formControlName="planning_rappel_actif">
+                    <label class="form-check-label" for="pl-rap"><b>Rappel de réservation</b>
+                      <small>Si l'employé programmé n'a pas encore commandé, rappel
+                        <input type="number" min="0" max="14" class="form-control form-control-sm d-inline-block soc-num" formControlName="planning_rappel_jours"
+                               [class.is-invalid]="form.get('planning_rappel_jours')?.invalid" aria-label="Jours avant la date limite"> jour(s) avant la date limite de commande.</small></label></div>
+                  <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="pl-ges" formControlName="planning_saisie_gestionnaire">
+                    <label class="form-check-label" for="pl-ges"><b>Les gestionnaires saisissent le planning</b>
+                      <small>Pour les employés de leurs agences. Les administrateurs le peuvent toujours.</small></label></div>
+                  <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="pl-tard" formControlName="planning_commande_tardive">
+                    <label class="form-check-label" for="pl-tard"><b>Autoriser une commande tardive pour une programmation tardive</b>
+                      <small>Un jour programmé après la clôture des commandes reste commandable jusqu'à
+                        <input type="number" min="0" max="72" class="form-control form-control-sm d-inline-block soc-num" formControlName="planning_commande_tardive_heures"
+                               [class.is-invalid]="form.get('planning_commande_tardive_heures')?.invalid" aria-label="Heures avant le retrait"> heure(s) avant le début du retrait de l'équipe.
+                        À n'activer qu'avec l'accord des prestataires.</small></label></div>
+                </div>
+              </div>
+
               <div class="col-12">
                 <label class="form-label">Logo (PNG ou JPEG, 2 Mo maximum)</label>
                 <div class="d-flex align-items-center gap-3 flex-wrap">

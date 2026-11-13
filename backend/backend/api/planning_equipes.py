@@ -972,6 +972,15 @@ class ImporterView(APIView):
         gerables = set(_employes_geres(request.user).values_list('id', flat=True))
         matricules = {str(l.get('matricule') or '').strip() for l in lignes if isinstance(l, dict)}
         users = {u.username: u for u in User.objects.filter(username__in=matricules)}
+        # Excel enregistre souvent « 01427 » comme le nombre 1427 : matricules
+        # numériques comparés sans les zéros de tête (si un seul compte correspond)
+        sans_zeros = defaultdict(list)
+        if any(m.isdigit() and m not in users for m in matricules):
+            for u in User.objects.filter(username__regex=r'^0+[0-9]+$'):
+                sans_zeros[u.username.lstrip('0')].append(u)
+        for m in matricules:
+            if m not in users and m.isdigit() and len(sans_zeros.get(m.lstrip('0'), [])) == 1:
+                users[m] = sans_zeros[m.lstrip('0')][0]
         controles, valides = [], []
         for i, l in enumerate(lignes):
             if not isinstance(l, dict):
@@ -986,6 +995,7 @@ class ImporterView(APIView):
                 if u is None:
                     raise ValidationError("Matricule inconnu")
                 res['employe'] = nom(u)
+                res['matricule'] = u.username
                 if u.id not in gerables:
                     raise ValidationError("Employé hors de vos agences")
                 e = equipes.get(res['equipe'].lower())

@@ -20,6 +20,9 @@ export interface EquipeResume {
   id: number; libelle: string; heure_debut_service?: string | null; heure_fin_service?: string | null;
   /** Équipe de l'utilisateur (null : aucune équipe ne lui est attribuée) */
   mon_equipe?: boolean | null;
+  /** Équipe réservée aux employés programmés (ex. Nuit) et période de l'utilisateur */
+  sur_planning?: boolean;
+  programmation?: { du: string; au: string | null; jours: number[]; libelle: string } | null;
 }
 
 /** Équipe de l'utilisateur (Paramètres → Utilisateurs), null s'il n'en a pas */
@@ -44,7 +47,8 @@ export interface EquipeCommande extends EquipeResume {
   mon_equipe: boolean | null; jours: string[]; nb_jours: number; prochain_menu: string | null;
 }
 
-export type EtatJourCommande = 'pas_de_menu' | 'reserve' | 'a_reserver' | 'ferme';
+/** non_programme : équipe sur planning, l'employé n'y est pas programmé ce jour-là (motif_indisponible) */
+export type EtatJourCommande = 'pas_de_menu' | 'reserve' | 'a_reserver' | 'ferme' | 'non_programme';
 export type StatutPlat = 'commande' | 'autre_plat_commande' | 'ferme' | 'disponible';
 
 export interface PlatCommande {
@@ -71,6 +75,7 @@ export interface JourCommande {
   date: string; libelle: string; etat: EtatJourCommande;
   date_limite_commande?: string; libelle_limite?: string;
   date_limite_annulation?: string; libelle_annulation?: string; annulable?: boolean;
+  motif_indisponible?: string | null;
   menus: { id: number; typeequipe_id: number; typeequipe: string; mon_equipe?: boolean | null }[];
   commande: CommandeJour | null;
   plats: PlatCommande[];
@@ -79,7 +84,8 @@ export interface JourCommande {
 export interface JoursCommande {
   agence: { id: number; nom: string };
   prestataire: ProfilPublic;
-  equipe: { id: number; libelle: string; mon_equipe?: boolean | null } | null;
+  equipe: { id: number; libelle: string; mon_equipe?: boolean | null; sur_planning?: boolean;
+            programmation?: { du: string; au: string | null; jours: number[]; libelle: string } | null } | null;
   equipe_utilisateur?: EquipeUtilisateur;
   semaine: { debut: string; fin: string; precedente: string; suivante: string };
   aujourdhui: string;

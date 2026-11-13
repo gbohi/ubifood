@@ -28,6 +28,7 @@
             </th>
             <th class="tri" [class.actif]="tri.estActif('libelle')" (click)="onSort('libelle')">Libellé<i class="ms-1" [ngClass]="tri.icone('libelle')"></i></th>
             <th>Horaires de retrait</th>
+            <th>Accès</th>
             <th class="lst-c-act"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -43,6 +44,11 @@
               <td data-label="Retrait">
                 @if (horairesRetrait(data); as h) { <span class="lst-tag t-bl"><i class="ri-time-line"></i>{{ h }}</span> }
                 @else { <span class="muted" title="Horaires de service de chaque agence (sinon ceux par défaut)">Horaires de l'agence</span> }
+              </td>
+              <td data-label="Accès">
+                @if (data.sur_planning) {
+                  <span class="lst-tag t-na" [title]="data.exclusive_planning ? 'Exclusive pendant la période programmée' : 'Les autres équipes restent visibles'"><i class="ri-calendar-2-line"></i>Sur planning</span>
+                } @else { <span class="lst-tag t-ve"><i class="ri-door-open-line"></i>Tous les employés</span> }
               </td>
               <td class="lst-c-act">
                 <div class="lst-act">
@@ -62,7 +68,7 @@
           }
           @if (typeequipes.length === 0 && !isLoading) {
             <tr class="lst-l-vide">
-              <td colspan="4" class="lst-c-plein">
+              <td colspan="5" class="lst-c-plein">
                 <div class="lst-vide">
                   @if (term) {
                     <i class="ri-search-line"></i>
@@ -127,6 +133,21 @@
                     }
                     <div class="form-text">Vides : horaires de service de chaque agence (sinon ceux par défaut de Paramètres → Société).
                         Utilisés pour le retrait des repas de cette équipe et le contrôle « retrait hors horaires ».</div>
+
+                    <div class="form-check form-switch mt-4">
+                        <input class="form-check-input" type="checkbox" role="switch" id="sur-planning-input" formControlName="sur_planning">
+                        <label class="form-check-label fw-semibold" for="sur-planning-input">Réservée aux employés programmés</label>
+                    </div>
+                    <div class="form-text">Seuls les employés inscrits au <a routerLink="/cantines/planning-equipes" (click)="closeAddModal()">Planning des équipes</a>
+                        voient cette équipe et ses menus, et seulement les jours où ils sont programmés (ex. équipe de nuit).</div>
+                    @if (typeequipeForm.get('sur_planning')?.value) {
+                        <div class="form-check form-switch mt-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="exclusive-input" formControlName="exclusive_planning">
+                            <label class="form-check-label fw-semibold" for="exclusive-input">Exclusive pendant la période programmée</label>
+                        </div>
+                        <div class="form-text">Activé : les jours où il est programmé, l'employé ne voit et ne commande que cette équipe.
+                            Désactivé : il peut aussi choisir une autre équipe (toujours un seul repas par jour).</div>
+                    }
                 </div>
                 <div class="modal-footer">
                     <div class="hstack gap-2 justify-content-end">

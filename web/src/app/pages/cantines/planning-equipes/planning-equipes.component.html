@@ -1,0 +1,384 @@
+<div class="lst ep pq">
+  <app-page-entete titre="Planning des équipes" icone="ri-calendar-2-line" [fil]="[{label: 'Cantine'}]"
+                   sousTitre="Seules les personnes programmées voient et choisissent ces équipes, uniquement les jours programmés">
+    <button type="button" class="btn-ubi" (click)="copierModal.show()" [disabled]="!equipe"><i class="ri-file-copy-line"></i><span class="pe-lib">Copier la semaine précédente</span></button>
+    <button type="button" class="btn-ubi" (click)="ouvrirImport()" [disabled]="!equipe"><i class="ri-file-excel-2-line"></i><span class="pe-lib">Importer Excel</span></button>
+    <button type="button" class="btn-ubi" (click)="exporter()" [disabled]="!donnees?.lignes?.length"><i class="ri-download-2-line"></i><span class="pe-lib">Exporter</span></button>
+    <button type="button" class="btn-ubi vert" (click)="ouvrirProgrammer()" [disabled]="!equipe"><i class="ri-user-add-line"></i>Programmer des employés</button>
+  </app-page-entete>
+
+  @if (erreur) { <div class="ep-alerte a-ro mb-3"><i class="ri-error-warning-line"></i><div><b>{{ erreur }}</b></div></div> }
+  @if (chargement && !donnees) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+
+  @if (donnees; as d) {
+    @if (!d.equipes.length) {
+      <div class="ep-alerte a-bl"><i class="ri-information-line"></i>
+        <div><b>Aucune équipe n'est réservée aux employés programmés.</b>
+          <small>Dans Paramètres → Types d'équipe, ouvrez l'équipe concernée (ex. Nuit) et cochez « Réservée aux employés programmés ».</small></div>
+        <a class="btn-ubi sm" routerLink="/parametres/type-equipe">Types d'équipe</a>
+      </div>
+    } @else {
+      <div class="pq-filtres">
+        <label class="pq-sel"><small>Équipe</small>
+          <select class="form-select ep-select" [(ngModel)]="equipe" (change)="charger()" aria-label="Équipe">
+            @for (e of d.equipes; track e.id) { <option [ngValue]="e.id">{{ e.libelle }}</option> }
+          </select>
+        </label>
+        <label class="pq-sel"><small>Agence</small>
+          <select class="form-select ep-select" [(ngModel)]="agence" (change)="charger()" aria-label="Agence">
+            <option value="">{{ d.agences.length > 1 ? 'Toutes mes agences' : 'Mon agence' }}</option>
+            @for (a of d.agences; track a.id) { <option [ngValue]="a.id">{{ a.nom }}</option> }
+          </select>
+        </label>
+        <div class="pq-semaine" role="group" aria-label="Semaine">
+          <button type="button" class="btn-ubi ic" (click)="changerSemaine(d.semaine.precedente)" aria-label="Semaine précédente"><i class="ri-arrow-left-s-line"></i></button>
+          <span>{{ titreSemaine }}</span>
+          <button type="button" class="btn-ubi ic" (click)="changerSemaine(d.semaine.suivante)" aria-label="Semaine suivante"><i class="ri-arrow-right-s-line"></i></button>
+          <button type="button" class="ep-lien" (click)="cetteSemaine()">Cette semaine</button>
+        </div>
+        <div class="pq-recherche"><i class="ri-search-line"></i>
+          <input type="search" class="form-control" [(ngModel)]="recherche" placeholder="Rechercher un employé…" aria-label="Rechercher un employé">
+        </div>
+      </div>
+
+      <div class="ep-kpis-ligne ep-kpis-4 mb-3" [class.ep-attente]="chargement">
+        <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-team-line"></i></span>
+          <div><small>Employés programmés</small><b>{{ d.kpi.employes }}</b><span>équipe {{ libelleEquipe }}, cette semaine</span></div></div>
+        <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-restaurant-2-line"></i></span>
+          <div><small>Repas commandés</small><b>{{ d.kpi.repas_commandes }}</b><span>équipe {{ libelleEquipe }}, cette semaine</span></div></div>
+        <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-calendar-check-line"></i></span>
+          <div><small>Jours programmés</small><b>{{ d.kpi.employes_jours }}</b><span>employé × jour</span></div></div>
+        <div class="ep-carte ep-kpi" [class.pq-kpi-or]="d.kpi.changements"><span class="ep-kpi-ic or"><i class="ri-arrow-go-back-line"></i></span>
+          <div><small>Commandes annulées</small><b>{{ d.kpi.changements }}</b><span>par un retrait du planning, cette semaine</span></div></div>
+      </div>
+
+      <div class="lst-carte">
+        <div class="lst-table-wrap">
+          <table class="lst-table pq-grille">
+            <thead><tr>
+              <th class="pq-c-emp">Employé</th>
+              @for (j of d.jours; track j.date) { <th class="pq-c-j" [class.pq-auj]="j.date === d.aujourdhui">{{ j.libelle }}</th> }
+              <th>Période</th><th>Saisi par</th><th class="lst-c-act"></th>
+            </tr></thead>
+            <tbody>
+              @for (l of lignesFiltrees; track l.employe.id) {
+                <tr>
+                  <td class="pq-c-emp"><div class="lst-qui"><span class="lst-av">{{ initiales(l.employe.nom) }}</span>
+                    <div><b>{{ l.employe.nom }}</b><small class="d-block ep-muted">Mat. {{ l.employe.matricule }}@if (l.employe.agence) { · {{ l.employe.agence }} }</small></div></div></td>
+                  @for (c of l.jours; track c.date; let i = $index) {
+                    <td class="pq-c-j">
+                      <div [class]="classeCase(l, i)" [title]="c.commande ? 'Programmé(e) · repas commandé : ' + c.commande.plat : (c.programme ? 'Programmé(e)' : 'Non programmé(e) : ne voit pas l\'équipe ce jour-là')">
+                        @if (c.commande) { <i class="ri-check-line"></i> }
+                      </div>
+                    </td>
+                  }
+                  <td class="pq-periode">
+                    @for (p of l.programmations; track p.id) {
+                      <button type="button" class="pq-per" (click)="ouvrirModifier(l, p)" title="Modifier cette période">
+                        {{ p.libelle }}@if (p.jours.length < 7) { <small>· {{ p.jours_libelle }}</small> }<i class="ri-pencil-line"></i>
+                      </button>
+                    }
+                  </td>
+                  <td class="ep-muted pq-par">{{ saisiPar(l) }}</td>
+                  <td class="lst-c-act">
+                    <div class="pq-actions">
+                      <button type="button" class="btn-ubi sm ic" (click)="ouvrirProgrammer(l)" title="Ajouter une période" aria-label="Ajouter une période"><i class="ri-calendar-event-line"></i></button>
+                      <button type="button" class="btn-ubi sm ic rouge" (click)="ouvrirRetirer(l)" title="Retirer du planning" aria-label="Retirer du planning"><i class="ri-user-unfollow-line"></i></button>
+                    </div>
+                  </td>
+                </tr>
+              } @empty {
+                <tr><td [attr.colspan]="d.jours.length + 4" class="lst-vide">
+                  <i class="ri-calendar-2-line"></i>
+                  <b>{{ recherche ? 'Aucun employé ne correspond à la recherche.' : 'Personne n\'est programmé dans l\'équipe ' + libelleEquipe + ' cette semaine.' }}</b>
+                  @if (!recherche) { <small>Programmez des employés, importez un fichier Excel ou copiez la semaine précédente.</small> }
+                </td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <div class="pq-legende">
+          <span><i class="pq-l on"></i>Programmé(e)</span>
+          <span><i class="pq-l cmd"></i>Programmé(e) et repas commandé</span>
+          <span><i class="pq-l"></i>Non programmé(e) : ne voit pas l'équipe {{ libelleEquipe }} ce jour-là</span>
+          <button type="button" class="ep-lien ms-auto" (click)="basculerJournal()"><i class="ri-history-line"></i>{{ journalOuvert ? 'Masquer le journal' : 'Journal des changements' }}</button>
+        </div>
+      </div>
+
+      @if (journalOuvert) {
+        <div class="lst-carte">
+          <div class="lst-barre bord"><b class="ep-titre-carte"><i class="ri-history-line"></i>Journal · équipe {{ libelleEquipe }}</b></div>
+          <div class="lst-table-wrap">
+            <table class="lst-table">
+              <thead><tr><th>Date</th><th>Employé</th><th>Action</th><th>Détail</th><th>Motif</th><th>Par</th></tr></thead>
+              <tbody>
+                @for (h of journal ?? []; track h.id) {
+                  <tr><td class="lst-nowrap">{{ dateHeure(h.date) }}</td><td>{{ h.employe }} <small class="ep-muted">{{ h.matricule }}</small></td>
+                    <td><span class="lst-tag" [ngClass]="h.action === 'retrait' ? 't-ro' : h.action === 'import' ? 't-bl' : 't-ve'">{{ h.action_libelle }}</span></td>
+                    <td>{{ h.description }}</td><td class="ep-muted">{{ h.motif || '—' }}</td><td>{{ h.par || '—' }}</td></tr>
+                } @empty { <tr><td colspan="6" class="lst-vide"><small>Aucun changement enregistré.</small></td></tr> }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
+    }
+  }
+</div>
+
+<!-- ═══ Programmer ═══ -->
+<div bsModal #programmerModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-body p-4 pq-modal">
+        <div class="pq-mtitre"><span class="pq-mic"><i class="ri-user-add-line"></i></span><h5>Programmer des employés · équipe {{ libelleEquipe }}</h5>
+          <button type="button" class="btn-close ms-auto" (click)="programmerModal.hide()" aria-label="Fermer"></button></div>
+        <div class="row g-3">
+          <div class="col-sm-6"><label class="ep-lab" for="pg-du">Du</label>
+            <input id="pg-du" type="date" class="form-control" [(ngModel)]="prog.date_debut" [min]="donnees?.aujourdhui ?? ''"></div>
+          <div class="col-sm-6"><label class="ep-lab" for="pg-au">Au <span class="ep-muted">(vide : jusqu'à nouvel ordre)</span></label>
+            <input id="pg-au" type="date" class="form-control" [(ngModel)]="prog.date_fin" [min]="prog.date_debut"></div>
+        </div>
+        <label class="ep-lab mt-3">Jours concernés</label>
+        <div class="pq-jours" role="group" aria-label="Jours concernés">
+          @for (s of sigles; track $index) {
+            <button type="button" class="pq-jour" [class.on]="prog.jours.includes($index)" [attr.aria-pressed]="prog.jours.includes($index)" (click)="basculerJour(prog.jours, $index)">{{ s }}</button>
+          }
+        </div>
+        <label class="ep-lab mt-3" for="pg-q">Employés <span class="ep-muted">· {{ selection.size }} sélectionné{{ selection.size > 1 ? 's' : '' }}</span></label>
+        @if (selection.size) {
+          <div class="lst-tags mb-2">
+            @for (e of selectionListe; track e.id) { <span class="lst-tag t-na">{{ e.nom }}<button type="button" class="pq-x" (click)="basculerEmploye(e)" [attr.aria-label]="'Retirer ' + e.nom"><i class="ri-close-line"></i></button></span> }
+          </div>
+        }
+        <div class="pq-recherche mb-2"><i class="ri-search-line"></i>
+          <input id="pg-q" type="search" class="form-control" [(ngModel)]="rechercheEmploye" (ngModelChange)="chercherEmployes()" placeholder="Nom ou matricule…"></div>
+        <div class="pq-liste">
+          @for (e of employesTrouves; track e.id) {
+            <label class="pq-emp"><input type="checkbox" class="form-check-input" [checked]="selection.has(e.id)" (change)="basculerEmploye(e)">
+              <span>{{ e.nom }}</span><small>{{ e.matricule }}@if (e.agence) { · {{ e.agence }} }</small></label>
+          } @empty { <div class="ep-muted p-2">Aucun employé trouvé.</div> }
+        </div>
+        <label class="ep-lab mt-3" for="pg-motif">Motif <span class="ep-muted">(facultatif)</span></label>
+        <input id="pg-motif" class="form-control" [(ngModel)]="prog.motif" maxlength="255" placeholder="Rotation de novembre…">
+        <div class="ep-alerte a-bl mt-3"><i class="ri-information-line"></i>
+          <div><b>Ces employés verront l'équipe {{ libelleEquipe }} uniquement les jours cochés de cette période.</b>
+            <small>Ils reçoivent une notification (réglable dans Paramètres → Société). Les jours dont les commandes sont déjà closes vous seront signalés.</small></div></div>
+        <div class="d-flex gap-2 justify-content-end mt-3">
+          <button type="button" class="btn-ubi" (click)="programmerModal.hide()">Annuler</button>
+          <button type="button" class="btn-ubi vert" [disabled]="envoi || !selection.size || !prog.date_debut" (click)="programmer()">
+            Programmer {{ selection.size || '' }} employé{{ selection.size > 1 ? 's' : '' }}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Retirer ═══ -->
+<div bsModal #retirerModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-body p-4 pq-modal">
+        <div class="pq-mtitre"><span class="pq-mic rouge"><i class="ri-user-unfollow-line"></i></span><h5>Retirer du planning · équipe {{ libelleEquipe }}</h5>
+          <button type="button" class="btn-close ms-auto" (click)="retirerModal.hide()" aria-label="Fermer"></button></div>
+        @if (aRetirer; as r) {
+          <div class="lst-qui mb-3"><span class="lst-av">{{ initiales(r.employe.nom) }}</span>
+            <div><b>{{ r.employe.nom }}</b><small class="d-block ep-muted">Mat. {{ r.employe.matricule }}@if (r.employe.agence) { · {{ r.employe.agence }} }</small></div></div>
+          <label class="ep-cause" [class.actif]="retraitMode === 'tout'">
+            <input type="radio" class="form-check-input" name="rmode" value="tout" [(ngModel)]="retraitMode" (change)="apercuRetrait()">
+            <span><b>Retirer toute la programmation</b><small>{{ finPlanning ? 'du ' + fr(debutPlanning) + ' au ' + fr(finPlanning) : 'à partir du ' + fr(debutPlanning) }}</small></span>
+          </label>
+          <label class="ep-cause" [class.actif]="retraitMode === 'date'">
+            <input type="radio" class="form-check-input" name="rmode" value="date" [(ngModel)]="retraitMode" (change)="apercuRetrait()">
+            <span><b>Retirer à partir d'une date</b>
+              <input type="date" class="form-control form-control-sm mt-1 pq-date" [(ngModel)]="retraitDate" (change)="retraitMode = 'date'; apercuRetrait()"></span>
+          </label>
+          <label class="ep-lab mt-2">Conséquences sur ses commandes</label>
+          @if (apercuChargement) { <div class="ep-muted p-2"><span class="spinner-border spinner-border-sm me-2"></span>Calcul…</div> }
+          @if (!apercuChargement && apercu) { @if (apercu; as a) {
+            @if (!a.nb_annulees && !a.nb_maintenues) {
+              <div class="ep-alerte a-ve"><i class="ri-checkbox-circle-line"></i><div><b>Aucune commande concernée.</b></div></div>
+            } @else {
+              <table class="lst-table pq-impact">
+                <thead><tr><th>Repas</th><th>Délai d'annulation</th><th>Effet</th></tr></thead>
+                <tbody>
+                  @for (x of a.annulees; track x.commande_id) {
+                    <tr><td>{{ x.jour }} · {{ x.plat }}</td><td><span class="lst-tag t-ve">Encore ouvert</span></td>
+                      <td><b class="text-danger">Annulée</b>@if (x.rembourse && x.prix != null) { · remboursée {{ fcfa(x.prix) }} au compte repas } @else if (x.mode_paiement === 'retenue') { · retirée de la retenue }</td></tr>
+                  }
+                  @for (x of a.maintenues; track x.commande_id) {
+                    <tr><td>{{ x.jour }} · {{ x.plat }}</td><td><span class="lst-tag t-gr">{{ x.raison === 'Délai d\'annulation dépassé' ? 'Dépassé' : 'Ouvert' }}</span></td>
+                      <td><b>Maintenue</b> <small class="ep-muted">({{ x.raison }})</small></td></tr>
+                  }
+                </tbody>
+              </table>
+            }
+          } }
+          <label class="ep-lab mt-3">Seront notifiés <span class="ep-muted">(réglable dans Paramètres → Société)</span></label>
+          <div class="lst-tags mb-2">
+            <span class="lst-tag t-gr"><i class="ri-user-line"></i>L'employé</span>
+            <span class="lst-tag t-gr"><i class="ri-shield-user-line"></i>Administrateurs</span>
+            <span class="lst-tag t-gr"><i class="ri-team-line"></i>Gestionnaires de l'agence</span>
+            <span class="lst-tag t-gr"><i class="ri-calculator-line"></i>Comptabilité</span>
+            <span class="lst-tag t-gr"><i class="ri-store-2-line"></i>Prestataire</span>
+          </div>
+          <label class="ep-lab" for="rt-motif">Motif <span class="ep-muted">(facultatif, envoyé avec la notification)</span></label>
+          <input id="rt-motif" class="form-control" [(ngModel)]="retraitMotif" maxlength="255" placeholder="Changement de rotation">
+          <div class="d-flex gap-2 justify-content-end mt-3">
+            <button type="button" class="btn-ubi" (click)="retirerModal.hide()">Annuler</button>
+            <button type="button" class="btn-ubi ep-btn-rouge-plein" [disabled]="envoi || apercuChargement || (retraitMode === 'date' && !retraitDate)" (click)="retirer()">{{ libelleBoutonRetrait }}</button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modifier une période ═══ -->
+<div bsModal #modifierModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4 pq-modal">
+        <div class="pq-mtitre"><span class="pq-mic"><i class="ri-pencil-line"></i></span><h5>Modifier la période</h5>
+          <button type="button" class="btn-close ms-auto" (click)="modifierModal.hide()" aria-label="Fermer"></button></div>
+        @if (aModifier; as m) {
+          <p class="ep-muted mb-3">{{ m.ligne.employe.nom }} · équipe {{ libelleEquipe }}</p>
+          <div class="row g-3">
+            <div class="col-6"><label class="ep-lab" for="md-du">Du</label>
+              <input id="md-du" type="date" class="form-control" [(ngModel)]="modif.date_debut" (change)="apercuModif = null"></div>
+            <div class="col-6"><label class="ep-lab" for="md-au">Au</label>
+              <input id="md-au" type="date" class="form-control" [(ngModel)]="modif.date_fin" [min]="modif.date_debut" (change)="apercuModif = null"></div>
+          </div>
+          <label class="ep-lab mt-3">Jours concernés</label>
+          <div class="pq-jours">
+            @for (s of sigles; track $index) {
+              <button type="button" class="pq-jour" [class.on]="modif.jours.includes($index)" (click)="basculerJour(modif.jours, $index); apercuModif = null">{{ s }}</button>
+            }
+          </div>
+          <label class="ep-lab mt-3" for="md-motif">Motif <span class="ep-muted">(facultatif)</span></label>
+          <input id="md-motif" class="form-control" [(ngModel)]="modif.motif" maxlength="255">
+          @if (apercuModif; as a) {
+            <div class="ep-alerte mt-3" [ngClass]="a.nb_annulees ? 'a-or' : 'a-ve'"><i [class]="a.nb_annulees ? 'ri-error-warning-line' : 'ri-checkbox-circle-line'"></i>
+              <div><b>{{ a.nb_annulees ? a.nb_annulees + ' commande(s) seront annulées et remboursées' : 'Aucune commande annulée' }}@if (a.nb_maintenues) { · {{ a.nb_maintenues }} maintenue(s) (délai dépassé) }</b>
+                @for (x of a.annulees; track x.commande_id) { <small>{{ x.jour }} · {{ x.plat }}</small> }</div></div>
+          }
+          <div class="d-flex gap-2 justify-content-between mt-3 flex-wrap">
+            <button type="button" class="btn-ubi rouge" [disabled]="envoi" (click)="supprimerPeriode()"><i class="ri-delete-bin-line"></i>Supprimer la période</button>
+            <div class="d-flex gap-2">
+              @if (!apercuModif) {
+                <button type="button" class="btn-ubi navy" [disabled]="apercuChargement || !modif.date_debut" (click)="verifierModif()">Vérifier l'effet</button>
+              } @else {
+                <button type="button" class="btn-ubi vert" [disabled]="envoi" (click)="enregistrerModif()">Enregistrer</button>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Import Excel ═══ -->
+<div bsModal #importModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-body p-4 pq-modal">
+        <div class="pq-mtitre"><span class="pq-mic"><i class="ri-file-excel-2-line"></i></span><h5>Importer un planning Excel</h5>
+          <button type="button" class="btn-close ms-auto" (click)="importModal.hide()" aria-label="Fermer"></button></div>
+        <div class="d-flex gap-3 align-items-center flex-wrap mb-3">
+          <button type="button" class="btn-ubi" (click)="telechargerModele()"><i class="ri-download-2-line"></i>Télécharger le modèle</button>
+          <small class="ep-muted">Colonnes : <b>Matricule · Équipe · Date début · Date fin · Jours</b> <i>(Date fin et Jours facultatifs, ex. « Lu-Ve »)</i></small>
+        </div>
+        <label class="pq-depot" [class.ok]="fichierNom">
+          <input type="file" accept=".xlsx,.xls,.csv" (change)="lireFichier($event)" class="visually-hidden">
+          @if (fichierNom) { <i class="ri-checkbox-circle-line"></i><b>{{ fichierNom }}</b><span>{{ lignesFichier.length }} ligne{{ lignesFichier.length > 1 ? 's' : '' }} lue{{ lignesFichier.length > 1 ? 's' : '' }} · cliquez pour changer de fichier</span> }
+          @else { <i class="ri-upload-cloud-2-line"></i><b>Choisissez un fichier Excel</b><span>.xlsx, .xls ou .csv</span> }
+        </label>
+        @if (envoi && !controle) { <div class="ep-muted p-2"><span class="spinner-border spinner-border-sm me-2"></span>Contrôle des lignes…</div> }
+        @if (controle; as c) {
+          <div class="lst-table-wrap pq-import mt-3">
+            <table class="lst-table">
+              <thead><tr><th>Ligne</th><th>Employé</th><th>Équipe</th><th>Période</th><th>Contrôle</th></tr></thead>
+              <tbody>
+                @for (l of c.lignes; track l.ligne) {
+                  <tr><td>{{ l.ligne }}</td><td>{{ l.matricule }}@if (l.employe) { · {{ l.employe }} }</td><td>{{ l.equipe }}</td>
+                    <td>{{ l.periode || ((l.date_debut || '?') + ' → ' + (l.date_fin || '…')) }}</td>
+                    <td><span class="lst-tag" [ngClass]="l.statut === 'ok' ? 't-ve' : l.statut === 'erreur' ? 't-ro' : 't-or'">
+                      @if (l.statut === 'ok') { <i class="ri-check-line"></i>OK } @else { {{ l.message }} }</span></td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="ep-alerte mt-3" [ngClass]="c.nb_erreurs ? 'a-or' : 'a-ve'"><i [class]="c.nb_erreurs ? 'ri-error-warning-line' : 'ri-checkbox-circle-line'"></i>
+            <div><b>{{ c.nb_valides }} ligne{{ c.nb_valides > 1 ? 's' : '' }} valide{{ c.nb_valides > 1 ? 's' : '' }}@if (c.nb_erreurs) { · {{ c.nb_erreurs }} en erreur, ignorée{{ c.nb_erreurs > 1 ? 's' : '' }} }</b>
+              @if (c.nb_annulees) { <small>{{ c.nb_annulees }} commande(s) seront annulées et remboursées (délai d'annulation ouvert), {{ c.nb_maintenues }} maintenue(s).</small> }
+              @if (c.nb_conflits) { <small>{{ c.nb_conflits }} repas d'une autre équipe un jour programmé : les employés seront prévenus.</small> }</div>
+            @if (c.nb_erreurs) { <button type="button" class="btn-ubi sm" (click)="telechargerRapport()"><i class="ri-download-2-line"></i>Rapport</button> }
+          </div>
+          <label class="ep-cause mt-3" [class.actif]="modeImport === 'ajouter'">
+            <input type="radio" class="form-check-input" name="imode" value="ajouter" [(ngModel)]="modeImport" (change)="controler()">
+            <span><b>Ajouter au planning existant</b><small>Les périodes qui se chevauchent sont fusionnées.</small></span></label>
+          <label class="ep-cause" [class.actif]="modeImport === 'remplacer'">
+            <input type="radio" class="form-check-input" name="imode" value="remplacer" [(ngModel)]="modeImport" (change)="controler()">
+            <span><b>Remplacer le planning {{ perimetreRemplacement }}</b>
+              <small>Les employés de vos agences absents du fichier sont retirés de l'équipe sur cette période (mêmes règles d'annulation et de notification).</small></span></label>
+        }
+        <div class="d-flex gap-2 justify-content-end mt-3">
+          <button type="button" class="btn-ubi" (click)="importModal.hide()">Annuler</button>
+          <button type="button" class="btn-ubi vert" [disabled]="envoi || !controle?.nb_valides" (click)="importer()">
+            @if (controle?.nb_valides) { Importer {{ controle?.nb_valides }} ligne{{ (controle?.nb_valides ?? 0) > 1 ? 's' : '' }} } @else { Importer }</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Copier la semaine précédente ═══ -->
+<div bsModal #copierModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4 text-center">
+        <i class="ri-file-copy-line text-primary display-5"></i>
+        <h5 class="mt-3">Copier la semaine précédente ?</h5>
+        <p class="text-muted mb-4">Les employés programmés dans l'équipe {{ libelleEquipe }} la semaine précédente le seront aux mêmes jours de la {{ titreSemaine.toLowerCase() }}. Les employés déjà programmés cette semaine ne sont pas modifiés.</p>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn-ubi" (click)="copierModal.hide()">Annuler</button>
+          <button type="button" class="btn-ubi vert" [disabled]="envoi" (click)="copierSemaine()">Copier</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Résultat (commandes annulées, maintenues, à vérifier, jours clos) ═══ -->
+<div bsModal #resultatModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-body p-4 pq-modal">
+        <div class="pq-mtitre"><span class="pq-mic"><i class="ri-information-line"></i></span><h5>{{ resultatTitre }}</h5>
+          <button type="button" class="btn-close ms-auto" (click)="resultatModal.hide()" aria-label="Fermer"></button></div>
+        @if (resultat; as r) {
+          <div class="ep-alertes">
+            @if (r.nb_annulees) {
+              <div class="ep-alerte a-ro"><i class="ri-close-circle-line"></i><div><b>{{ r.nb_annulees }} commande(s) annulée(s) et remboursée(s)</b>
+                @for (x of r.annulees; track x.commande_id) { <small>{{ x.employe }} · {{ x.jour }} · {{ x.plat }}</small> }</div></div>
+            }
+            @if (r.nb_maintenues) {
+              <div class="ep-alerte a-bl"><i class="ri-information-line"></i><div><b>{{ r.nb_maintenues }} commande(s) maintenue(s) : délai d'annulation dépassé</b>
+                @for (x of r.maintenues; track x.commande_id) { <small>{{ x.employe }} · {{ x.jour }} · {{ x.plat }}</small> }</div></div>
+            }
+            @if (r.nb_conflits) {
+              <div class="ep-alerte a-or"><i class="ri-error-warning-line"></i><div><b>{{ r.nb_conflits }} repas d'une autre équipe un jour programmé</b>
+                @for (x of r.conflits; track x.commande_id) { <small>{{ x.employe }} · {{ x.jour }} · {{ x.equipe }} · {{ x.plat }} — {{ x.annulable ? 'annulable jusqu\'au ' + x.libelle_annulation + ' (l\'employé est prévenu)' : 'maintenu : il ne pourra pas commander dans l\'équipe ' + libelleEquipe + ' ce jour-là' }}</small> }</div></div>
+            }
+            @if (r.closes.length) {
+              <div class="ep-alerte a-or"><i class="ri-time-line"></i><div><b>{{ r.closes.length }} jour(s) programmé(s) dont les commandes sont déjà closes</b>
+                @for (x of r.closes; track $index) { <small>{{ x.employe }} · {{ x.jour }}@if (x.commande_tardive_jusqua) { — commande tardive possible jusqu'au {{ x.commande_tardive_jusqua }} } @else { — plus commandable } </small> }</div></div>
+            }
+          </div>
+          <div class="d-flex justify-content-end mt-3"><button type="button" class="btn-ubi navy" (click)="resultatModal.hide()">Compris</button></div>
+        }
+      </div>
+    </div>
+  </div>
+</div>
