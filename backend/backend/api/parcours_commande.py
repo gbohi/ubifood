@@ -40,6 +40,7 @@ from .models import (
     Prestataire, TypeEquipe, UserAgence,
 )
 from .permissions import IsAuthenticated, agences_gerees, is_admin, is_gestionnaire
+from .planning_equipes import AccesEquipes, filtrer_menus
 
 ACTIVES = ('en_attente', 'retiree')
 JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
@@ -312,8 +313,9 @@ def equipe_utilisateur_json(user):
 
 
 def tri_equipes(user, equipes, cle='libelle'):
-    """Équipe de l'utilisateur d'abord, puis ordre alphabétique."""
-    return sorted(equipes, key=lambda e: (user.typeequipe_id is None or e['id'] != user.typeequipe_id,
+    """Équipe où l'utilisateur est programmé, puis la sienne, puis ordre alphabétique."""
+    return sorted(equipes, key=lambda e: (not e.get('programmation'),
+                                          user.typeequipe_id is None or e['id'] != user.typeequipe_id,
                                           (e[cle] or '').upper()))
 
 
@@ -353,8 +355,11 @@ class CommanderAgencesView(APIView):
         parametres = ParametresSociete.charger()
         aujourd = defaultdict(set)
         semaine = defaultdict(set)
-        for agence_id, prest_id, d in (menus_visibles().filter(date_menu__gte=lundi, date_menu__lte=dimanche)
-                                       .values_list('agence_id', 'prestataire_id', 'date_menu')):
+        acces_eq = AccesEquipes(user, lundi, dimanche, parametres)
+        for agence_id, prest_id, d, eq in (menus_visibles().filter(date_menu__gte=lundi, date_menu__lte=dimanche)
+                                           .values_list('agence_id', 'prestataire_id', 'date_menu', 'typeequipe_id')):
+            if not acces_eq.visible(eq, d):
+                continue
             cle = prest_id or CANTINE_UBIPHARM_ID
             semaine[agence_id].add(cle)
             if d == aujourdhui:
@@ -398,6 +403,9 @@ class CommanderPrestatairesView(APIView):
         debut, fin = min(d, aujourdhui), max(d, aujourdhui) + timedelta(days=HORIZON_JOURS)
         menus = list(menus_visibles().filter(agence=agence, date_menu__gte=debut, date_menu__lte=fin)
                      .select_related('typeequipe').prefetch_related('menu_plats'))
+        # Équipes « sur planning » (ex. Nuit) : seulement les jours où l'employé est programmé
+        acces_eq = AccesEquipes(user, debut, fin, parametres)
+        menus = filtrer_menus(acces_eq, menus)
         prestataires = _prestataires_de_l_agence(agence, d, menus)
         par_cle = defaultdict(list)
         for m in menus:
@@ -435,7 +443,7 @@ class CommanderPrestatairesView(APIView):
                 if m.date_menu < aujourdhui:
                     continue
                 equipes.setdefault(m.typeequipe_id, m.typeequipe)
-                limite = date_limite_commande(m.date_menu, parametres)
+                limite = acces_eq.limite_commande(m.date_menu, m.typeequipe, agence, parametres)
                 if prochain is None and maintenant < limite and m.date_menu not in jours_pris:
                     prochain = {'date': m.date_menu.isoformat(), 'libelle': _jour_libelle(m.date_menu),
                                 'date_limite_commande': limite.isoformat(),
@@ -446,6 +454,7 @@ class CommanderPrestatairesView(APIView):
                 'nb_plats_jour': len({mp.plat_id for m in ms if m.date_menu == d for mp in m.menu_plats.all()}),
                 'equipes': tri_equipes(user, [{'id': e.id, 'libelle': e.libelle,
                                                'mon_equipe': mon_equipe(user, e.id),
+                                               **acces_eq.equipe_json(e.id),
                                                **_horaires(agence, parametres, e)}
                                               for e in equipes.values()]),
                 'commande_aujourdhui': any(c.menu.date_menu == aujourdhui and cle_prestataire(c.menu) == cle
@@ -477,12 +486,18 @@ class CommanderEquipesView(APIView):
         menus = (menus_visibles().filter(filtre_prestataire(pk), agence=agence, date_menu__gte=aujourdhui,
                                          date_menu__lte=aujourdhui + timedelta(days=HORIZON_JOURS))
                  .select_related('typeequipe').order_by('date_menu'))
+        # Équipes « sur planning » : visibles des seuls employés programmés, ces jours-là ;
+        # équipe exclusive : les autres équipes sont masquées ses jours programmés
+        acces_eq = AccesEquipes(user, aujourdhui, aujourdhui + timedelta(days=HORIZON_JOURS), parametres)
+        menus = filtrer_menus(acces_eq, menus)
         equipes = {}
         for m in menus:
             e = equipes.setdefault(m.typeequipe_id, {
                 'id': m.typeequipe_id, 'libelle': m.typeequipe.libelle,
                 # Équipe de l'utilisateur (User.typeequipe) ; null s'il n'en a pas
                 'mon_equipe': mon_equipe(user, m.typeequipe_id),
+                # sur_planning, programmation {du, au, jours, libelle} (« Programmé(e) du … au … »)
+                **acces_eq.equipe_json(m.typeequipe_id),
                 **_horaires(agence, parametres, m.typeequipe), 'jours': []})
             if m.date_menu.isoformat() not in e['jours']:
                 e['jours'].append(m.date_menu.isoformat())
@@ -530,6 +545,13 @@ class CommanderJoursView(APIView):
         selection = menus_visibles().filter(filtre_prestataire(cle), agence=agence)
         if equipe is not None:
             selection = selection.filter(typeequipe=equipe)
+        acces_eq = AccesEquipes(user, aujourdhui - timedelta(days=HORIZON_JOURS),
+                                aujourdhui + timedelta(days=2 * HORIZON_JOURS), parametres)
+
+        def limite_jour(d, ms):
+            """Date limite de commande du jour (commande tardive possible pour une équipe sur planning)."""
+            return max([acces_eq.limite_commande(d, m.typeequipe, agence, parametres) for m in ms]
+                       or [date_limite_commande(d, parametres)])
 
         reference = _date(p.get('semaine'), None)
         if reference is None:
@@ -538,10 +560,14 @@ class CommanderJoursView(APIView):
             lundi = aujourdhui - timedelta(days=aujourdhui.weekday())
             pris = {c.menu.date_menu for c in _commandes_actives(
                 user, aujourdhui, aujourdhui + timedelta(days=HORIZON_JOURS))}
-            for d in sorted(set(selection.filter(date_menu__gte=aujourdhui,
-                                                 date_menu__lte=aujourdhui + timedelta(days=HORIZON_JOURS))
-                                .values_list('date_menu', flat=True))):
-                if d not in pris and maintenant < date_limite_commande(d, parametres):
+            a_venir = filtrer_menus(acces_eq, selection.filter(
+                date_menu__gte=aujourdhui, date_menu__lte=aujourdhui + timedelta(days=HORIZON_JOURS))
+                .select_related('typeequipe'))
+            par_date = defaultdict(list)
+            for m in a_venir:
+                par_date[m.date_menu].append(m)
+            for d in sorted(par_date):
+                if d not in pris and maintenant < limite_jour(d, par_date[d]):
                     if d > lundi + timedelta(days=6):
                         reference = d
                     break
@@ -565,12 +591,20 @@ class CommanderJoursView(APIView):
         resultat = []
         for d in jours:
             menus_jour = [m for m in menus if m.date_menu == d]
-            limite = date_limite_commande(d, parametres)
+            # Équipe sur planning non accessible ce jour-là (non programmé, ou programmé
+            # dans une équipe exclusive) : jour « non_programme », sans plats
+            motif_indispo = None
+            if equipe is not None and menus_jour:
+                motif_indispo = acces_eq.motif(equipe.id, d)
+            menus_jour = [] if motif_indispo else filtrer_menus(acces_eq, menus_jour)
+            limite = limite_jour(d, menus_jour)
             # Annulation possible jusqu'à cette date (affichée avant de commander)
             limite_annul = date_limite_annulation(d, parametres)
             ouvert = d >= aujourdhui and maintenant < limite
             commande = par_jour_cmd.get(d)
-            if not menus_jour:
+            if motif_indispo and commande is None:
+                etat = 'non_programme'
+            elif not menus_jour:
                 etat = 'pas_de_menu'
             elif commande is not None:
                 etat = 'reserve'
@@ -614,6 +648,7 @@ class CommanderJoursView(APIView):
                 'date_limite_annulation': limite_annul.isoformat(),
                 'libelle_annulation': libelle_date_limite(limite_annul),
                 'annulable': maintenant < limite_annul,
+                'motif_indisponible': motif_indispo,
                 'menus': [{'id': m.id, 'typeequipe_id': m.typeequipe_id, 'typeequipe': m.typeequipe.libelle,
                            'mon_equipe': mon_equipe(user, m.typeequipe_id)}
                           for m in menus_jour],
@@ -630,7 +665,8 @@ class CommanderJoursView(APIView):
         return Response({
             'agence': {'id': agence.id, 'nom': agence.nom_agence},
             'prestataire': prestataire_json(cle, prestataire, notes_prestataires(), seuil),
-            'equipe': ({'id': equipe.id, 'libelle': equipe.libelle, 'mon_equipe': mon_equipe(user, equipe.id)}
+            'equipe': ({'id': equipe.id, 'libelle': equipe.libelle, 'mon_equipe': mon_equipe(user, equipe.id),
+                        **acces_eq.equipe_json(equipe.id)}
                        if equipe else None),
             'equipe_utilisateur': equipe_utilisateur_json(user),
             'semaine': {'debut': jours[0].isoformat(), 'fin': jours[-1].isoformat(),

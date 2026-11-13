@@ -117,6 +117,8 @@ def _notifier_commande(commande_id, statut):
 @receiver(post_save, sender='api.Commande')
 def notifier_commande(sender, instance, created, **kwargs):
     ancien = getattr(instance, '_ancien_statut', None)
+    if getattr(instance, '_sans_notification', False):
+        return  # notification dédiée envoyée par l'appelant (planning des équipes)
     if created or ancien != instance.statut:
         if instance.statut in ('en_attente', 'annulee'):
             _en_arriere_plan(_notifier_commande, instance.pk, instance.statut)

@@ -1292,7 +1292,14 @@ class CommandeSerializer(serializers.ModelSerializer):
         if menu and self.instance is None:
             if not menu.publie or menu.masque:
                 raise serializers.ValidationError("Ce menu n'est pas disponible à la commande.")
+            request = self.context.get('request')
             limite = date_limite_commande(menu.date_menu)
+            if request is not None:
+                # Équipes « sur planning » (ex. Nuit) : seuls les employés programmés
+                # ce jour-là commandent ; commande tardive éventuelle (planning_equipes.py)
+                from .planning_equipes import verifier_commande_equipe
+                acces = verifier_commande_equipe(request.user, menu)
+                limite = acces.limite_commande(menu.date_menu, menu.typeequipe, menu.agence)
             if timezone.now() > limite:
                 raise serializers.ValidationError(
                     "Impossible de commander : les commandes pour ce menu étaient "
@@ -1517,7 +1524,14 @@ class ParametresSocieteSerializer(serializers.ModelSerializer):
                   'identifiant_fiscal', 'registre_commerce', 'pied_de_page',
                   'logo', 'logo_url', 'supprimer_logo',
                   'delai_commande_heures', 'delai_annulation_heures',
-                  'heure_debut_service', 'heure_fin_service', 'seuil_avis_note', 'updated_at']
+                  'heure_debut_service', 'heure_fin_service', 'seuil_avis_note',
+                  # Planning des équipes (planning_equipes.py)
+                  'planning_annulation_auto', 'planning_remboursement_auto',
+                  'planning_notif_employe', 'planning_notif_admin', 'planning_notif_gestionnaire',
+                  'planning_notif_comptable', 'planning_notif_prestataire',
+                  'planning_notifier_programmation', 'planning_rappel_actif', 'planning_rappel_jours',
+                  'planning_saisie_gestionnaire', 'planning_commande_tardive',
+                  'planning_commande_tardive_heures', 'updated_at']
         read_only_fields = ['updated_at']
         extra_kwargs = {'logo': {'write_only': True, 'required': False}}
 

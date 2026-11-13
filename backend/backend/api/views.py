@@ -1523,6 +1523,9 @@ class MenuViewSet(BaseViewSet):
             # et des agences ouvertes aux autres agences (les autres sont masquées)
             from .parcours_commande import filtrer_menus_accessibles
             qs = filtrer_menus_accessibles(self.request.user, qs.filter(publie=True, masque=False))
+            # Équipes « sur planning » : seulement les jours où l'employé est programmé
+            from .planning_equipes import exclure_menus_invisibles
+            qs = exclure_menus_invisibles(self.request.user, qs)
         return qs
 
     def _prevenir_prestataire(self, menu, titre, message):

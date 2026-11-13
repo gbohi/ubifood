@@ -6,6 +6,10 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import *
 from .accueil import AccueilView
 from .planning import PlanningView
+from .planning_equipes import (
+    CopierSemaineView, ImporterView, PlanningEmployesView, PlanningEquipesView, PlanningHistoriqueView,
+    ProgrammationDetailView, ProgrammerView, RetirerView,
+)
 from .statistiques import DetailServiceView, RepasCategoriesView, StatistiquesView
 from .controle import ContestationRetraitViewSet, ControleRetraitsView
 from . import espace_prestataire as presta
@@ -105,6 +109,15 @@ urlpatterns = [
     path('api/dashboard-cantine/', DashboardCantineView.as_view(), name='dashboard-cantine'),
     path('api/accueil/', AccueilView.as_view(), name='accueil'),
     path('api/planning/', PlanningView.as_view(), name='planning'),
+    # Planning des équipes (équipes « sur planning », ex. Nuit)
+    path('api/planning-equipes/', PlanningEquipesView.as_view(), name='planning-equipes'),
+    path('api/planning-equipes/employes/', PlanningEmployesView.as_view(), name='planning-equipes-employes'),
+    path('api/planning-equipes/historique/', PlanningHistoriqueView.as_view(), name='planning-equipes-historique'),
+    path('api/planning-equipes/programmer/', ProgrammerView.as_view(), name='planning-equipes-programmer'),
+    path('api/planning-equipes/retirer/', RetirerView.as_view(), name='planning-equipes-retirer'),
+    path('api/planning-equipes/importer/', ImporterView.as_view(), name='planning-equipes-importer'),
+    path('api/planning-equipes/copier-semaine/', CopierSemaineView.as_view(), name='planning-equipes-copier'),
+    path('api/planning-equipes/<int:pk>/', ProgrammationDetailView.as_view(), name='planning-equipes-detail'),
     path('api/statistiques/', StatistiquesView.as_view(), name='statistiques'),
     path('api/statistiques/repas-categories/', RepasCategoriesView.as_view(), name='statistiques-repas-categories'),
     path('api/statistiques/detail/', DetailServiceView.as_view(), name='statistiques-detail'),

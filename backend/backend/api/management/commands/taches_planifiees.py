@@ -1,0 +1,14 @@
+"""
+Tâches périodiques d'UbiFood (lancées toutes les heures par le service « taches »
+de docker-compose) : rappels de réservation aux employés programmés.
+"""
+from django.core.management.base import BaseCommand
+
+
+class Command(BaseCommand):
+    help = "Tâches périodiques : rappels de réservation du planning des équipes."
+
+    def handle(self, *args, **options):
+        from api.planning_equipes import envoyer_rappels
+        n = envoyer_rappels()
+        self.stdout.write(f"Rappels de réservation envoyés : {n}")

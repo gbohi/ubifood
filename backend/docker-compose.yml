@@ -43,6 +43,22 @@ services:
       # Docker créerait à sa place un dossier vide portant son nom.
       - ./secrets:/app/secrets:ro
 
+  # Tâches périodiques (toutes les heures) : rappels de réservation aux
+  # employés programmés (planning des équipes). Même image que le backend ;
+  # les migrations sont appliquées par le service backend.
+  taches:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+    depends_on:
+      - backend
+    volumes:
+      - ./secrets:/app/secrets:ro
+    entrypoint: ["sh", "-c", "sleep 120; while true; do python manage.py taches_planifiees; sleep 3600; done"]
+
   nginx:
     # Image Nginx contenant le site Angular compilé (web/Dockerfile)
     build: ../web

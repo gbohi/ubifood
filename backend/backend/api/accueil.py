@@ -94,6 +94,13 @@ class AccueilView(APIView):
                                           date_menu__gte=jours[0], date_menu__lte=horizon)
                       .annotate(nb_plats=Count('menu_plats'))):
                 menus_agence.setdefault(m.date_menu, []).append(m)
+            # Équipes « sur planning » (ex. Nuit) : seulement les jours programmés
+            from .planning_equipes import AccesEquipes
+            acces = AccesEquipes(user, jours[0], horizon, parametres)
+            if acces.actif:
+                menus_agence = {d: ms for d, ms in
+                                ((d, [m for m in ms if acces.visible(m.typeequipe_id, d)])
+                                 for d, ms in menus_agence.items()) if ms}
 
         def etat_jour(d):
             c = actives_par_jour.get(d)

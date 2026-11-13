@@ -169,6 +169,67 @@ class TypeEquipe(BaseModel):
     # heures sont renseignées ensemble ou laissées vides.
     heure_debut_retrait = models.TimeField('Début du retrait', null=True, blank=True)
     heure_fin_retrait   = models.TimeField('Fin du retrait', null=True, blank=True)
+    # Équipe réservée aux employés inscrits au planning des équipes (ex. Nuit) :
+    # les autres ne voient ni l'équipe ni ses menus et ne peuvent pas y commander.
+    sur_planning = models.BooleanField('Réservée aux employés programmés', default=False)
+    # Pendant ses jours programmés, l'employé ne voit et ne commande que cette équipe
+    exclusive_planning = models.BooleanField('Exclusive pendant la période programmée', default=True)
+
+
+class ProgrammationEquipe(BaseModel):
+    """
+    Planning des équipes : l'employé est programmé dans une équipe « sur planning »
+    du `date_debut` au `date_fin` (vide : jusqu'à nouvel ordre), les jours de la
+    semaine listés dans `jours` (0 = lundi … 6 = dimanche). Voir planning_equipes.py.
+    """
+    user       = models.ForeignKey('User', on_delete=models.CASCADE, related_name='programmations_equipe')
+    typeequipe = models.ForeignKey(TypeEquipe, on_delete=models.CASCADE, related_name='programmations')
+    date_debut = models.DateField()
+    date_fin   = models.DateField(null=True, blank=True)
+    jours      = models.JSONField(default=list, blank=True)
+    motif      = models.CharField(max_length=255, blank=True)
+    importee   = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'programmations_equipe'
+        indexes = [models.Index(fields=['typeequipe', 'date_debut', 'date_fin']),
+                   models.Index(fields=['user', 'typeequipe'])]
+
+
+class HistoriqueProgrammation(models.Model):
+    """Journal du planning des équipes : qui a programmé, modifié ou retiré qui, quand et pourquoi."""
+    ACTION_CHOICES = [
+        ('programmation', 'Programmation'),
+        ('modification',  'Modification'),
+        ('retrait',       'Retrait'),
+        ('import',        'Import Excel'),
+        ('copie',         'Copie de la semaine précédente'),
+    ]
+    user        = models.ForeignKey('User', on_delete=models.CASCADE, related_name='historique_programmations')
+    typeequipe  = models.ForeignKey(TypeEquipe, on_delete=models.CASCADE, related_name='+')
+    action      = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    description = models.TextField(blank=True)
+    motif       = models.CharField(max_length=255, blank=True)
+    par         = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'historique_programmations'
+        ordering = ['-created_at', '-id']
+
+
+class RappelPlanning(models.Model):
+    """Rappel de réservation déjà envoyé (un par employé, équipe et jour)."""
+    user       = models.ForeignKey('User', on_delete=models.CASCADE, related_name='+')
+    typeequipe = models.ForeignKey(TypeEquipe, on_delete=models.CASCADE, related_name='+')
+    date_menu  = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'rappels_planning'
+        constraints = [models.UniqueConstraint(fields=['user', 'typeequipe', 'date_menu'],
+                                               name='rappel_planning_unique')]
+
 
 class Plat(BaseModel):
     nom = models.CharField(max_length=255)
@@ -268,6 +329,7 @@ class Commande(BaseModel):
     # au comptoir (repas facturé ni à l'employé, ni au prestataire)
     MOTIF_ANNULATION_CHOICES = [
         ('contestation', 'Contestation acceptée — erreur au comptoir'),
+        ('planning',     "Retrait du planning des équipes"),
     ]
     motif_annulation = models.CharField(max_length=20, choices=MOTIF_ANNULATION_CHOICES, blank=True)
     # Mode de paiement choisi par l'employé à la commande (comptes_repas.py) :
@@ -452,6 +514,7 @@ class Notification(models.Model):
         ('compte_repas',     'Compte repas'),
         ('agence_fermee',    "Agence fermée aux autres agences"),
         ('facture_prestataire', 'Suivi des factures prestataires'),
+        ('planning_equipe',  'Planning des équipes'),
         ('info',             'Information'),
     ]
 
@@ -774,6 +837,26 @@ class ParametresSociete(models.Model):
     # (en dessous : « Nouveau », sans note)
     seuil_avis_note     = models.PositiveIntegerField("Avis nécessaires pour afficher une note", default=5,
                                                       validators=[MaxValueValidator(1000)])
+    # Planning des équipes (équipes « sur planning », ex. Nuit) — planning_equipes.py
+    planning_annulation_auto     = models.BooleanField(
+        "Annuler les commandes d'un employé retiré du planning (délai d'annulation ouvert)", default=True)
+    planning_remboursement_auto  = models.BooleanField("Rembourser les commandes annulées", default=True)
+    planning_notif_employe       = models.BooleanField("Notifier l'employé", default=True)
+    planning_notif_admin         = models.BooleanField("Notifier les administrateurs", default=True)
+    planning_notif_gestionnaire  = models.BooleanField("Notifier les gestionnaires de l'agence", default=True)
+    planning_notif_comptable     = models.BooleanField("Notifier la comptabilité", default=True)
+    planning_notif_prestataire   = models.BooleanField("Notifier le prestataire", default=True)
+    planning_notifier_programmation = models.BooleanField(
+        "Prévenir l'employé quand il est programmé", default=True)
+    planning_rappel_actif        = models.BooleanField("Rappel de réservation aux employés programmés", default=True)
+    planning_rappel_jours        = models.PositiveIntegerField(
+        "Rappel : jours avant la date limite", default=1, validators=[MaxValueValidator(14)])
+    planning_saisie_gestionnaire = models.BooleanField(
+        "Les gestionnaires saisissent le planning (leurs agences)", default=True)
+    planning_commande_tardive    = models.BooleanField(
+        "Autoriser une commande tardive pour une programmation tardive", default=False)
+    planning_commande_tardive_heures = models.PositiveIntegerField(
+        "Commande tardive : heures avant le début du retrait", default=12, validators=[MaxValueValidator(72)])
     updated_at         = models.DateTimeField(auto_now=True)
     user_updated       = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                            related_name='+')
