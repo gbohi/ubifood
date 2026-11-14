@@ -11,6 +11,7 @@ import '../../core/widgets/common_widgets.dart';
 import '../../shared/providers/app_provider.dart';
 import '../contestation/retrait_detail_screen.dart';
 import '../paiements/mes_paiements_screen.dart';
+import '../jeux/jeux_screen.dart' show JeuDetailScreen;
 
 // ══════════════════════════════════════════════════════════════
 // NAVIGATION DEPUIS UNE NOTIFICATION
@@ -506,6 +507,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
                             MesPaiementsScreen.ouvrir(context);
                             return;
                           }
+                          // Jeux : présentation du jeu
+                          final jeuId = jeuAOuvrir(
+                              {'type': notif.type, ...notif.donnees});
+                          if (jeuId != null &&
+                              !(user?.isComptePrestataire ?? false)) {
+                            Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => JeuDetailScreen(jeuId: jeuId)));
+                            return;
+                          }
                           // Retour à l'écran principal sur l'onglet utile :
                           // commandes (passée, annulée, retirée → avis) ou
                           // menus (nouveau menu, rappel)
@@ -778,6 +788,17 @@ class _NotificationTile extends StatelessWidget {
         return (Icons.event_note_rounded, TonPastille.or);
       }
       return (Icons.event_available_rounded, TonPastille.bleu);
+    case 'jeu':
+      // Jeux : gagné / lot retiré (vert), annulé (rouge), autres (bleu)
+      final t = titre.toLowerCase();
+      if (t.contains('gagné') || donnees['lot_retire'] == true || donnees['lot_retire'] == 'True') {
+        return (Icons.emoji_events_outlined, TonPastille.vert);
+      }
+      if (t.contains('annulé')) return (Icons.sports_esports_outlined, TonPastille.rouge);
+      if (t.contains('dernier jour') || t.contains('commence')) {
+        return (Icons.sports_esports_outlined, TonPastille.or);
+      }
+      return (Icons.sports_esports_outlined, TonPastille.bleu);
     case 'facture_prestataire':
       // Suivi des factures prestataires (comptes prestataires, comptabilité)
       final statut = donnees['statut']?.toString() ?? '';

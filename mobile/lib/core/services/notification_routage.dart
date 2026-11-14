@@ -30,6 +30,14 @@ int? commandeRetraitAOuvrir(Map<String, dynamic> data) {
   return id != null && id > 0 ? id : null;
 }
 
+/// Jeux (programmation, ouverture, résultats, lot retiré) : le jeu
+/// s'ouvre (`jeu_id` dans les données). null : pas une notification de jeu.
+int? jeuAOuvrir(Map<String, dynamic> data) {
+  if (data['type']?.toString() != 'jeu') return null;
+  final id = int.tryParse(data['jeu_id']?.toString() ?? '');
+  return id != null && id > 0 ? id : null;
+}
+
 /// Compte repas (recharge, régularisation, remboursement, reçu annulé ;
 /// `recu_id` dans les données) : « Mes paiements » s'ouvre.
 bool ouvreMesPaiements(Map<String, dynamic> data) =>

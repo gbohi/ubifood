@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../suivi/suivi_widgets.dart' show NotificationsSuiviScreen;
 import '../tarifs/mes_tarifs_screen.dart';
+import '../jeux/jeux_screen.dart' show JeuxScreen;
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../core/widgets/common_widgets.dart';
@@ -229,6 +230,16 @@ class _ProfilScreenState extends State<ProfilScreen> {
                             MaterialPageRoute(
                                 builder: (_) =>
                                     const NotificationsSuiviScreen())),
+                      ),
+                      _Ligne(
+                        key: const Key('ligne-jeux'),
+                        icone: Icons.sports_esports_outlined,
+                        titre: 'Jeux',
+                        sousTitre: 'Quiz à lots, classement, mes gains',
+                        onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const JeuxScreen())),
                       ),
                       _Ligne(
                         key: const Key('ligne-mes-tarifs'),

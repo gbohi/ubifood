@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../shared/models/suivi_models.dart';
 import '../suivi/suivi_widgets.dart' show FriseSuivi;
+import '../jeux/jeux_screen.dart' show BandeauJeuAccueil, BandeauJeuAccueilState;
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../shared/theme/app_theme.dart';
@@ -44,6 +45,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _bannerKey = GlobalKey<_BannerSliderState>();
+  final _jeuKey = GlobalKey<BandeauJeuAccueilState>();
 
   @override
   void initState() {
@@ -148,6 +150,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 8),
             marges(repasDuJour),
             const SizedBox(height: 12),
+            marges(BandeauJeuAccueil(key: _jeuKey)),
             marges(_ChiffresMois(
               gestionnaire: true,
               onCommandes: () => _goCommandes(context),
@@ -170,6 +173,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 8),
             marges(repasDuJour),
             const SizedBox(height: 12),
+            marges(BandeauJeuAccueil(key: _jeuKey)),
             marges(_BlocEmploye(
               onMenu: ({int? menuId, DateTime? date}) =>
                   _goMenu(context, menuId: menuId, date: date),
@@ -191,6 +195,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             context.read<CommandeProvider>().loadMesCommandes(),
             context.read<AccueilProvider>().charger(),
             _bannerKey.currentState?.charger() ?? Future.value(),
+            _jeuKey.currentState?.charger() ?? Future.value(),
           ]);
         },
         child: CustomScrollView(slivers: [

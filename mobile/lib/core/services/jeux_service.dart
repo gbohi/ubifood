@@ -1,0 +1,58 @@
+// lib/core/services/jeux_service.dart
+//
+// Jeux (quiz à lots) : liste, présentation, partie (le serveur tient le
+// temps), réponse, résultats, classement. API : jeux/.
+
+import 'package:dio/dio.dart';
+
+import '../api/api_client.dart';
+import '../../shared/models/jeux_models.dart';
+
+Map<String, dynamic> _objet(dynamic data) =>
+    data is Map ? Map<String, dynamic>.from(data) : const {};
+
+/// Réponse refusée (temps écoulé…) : message et état à jour de la partie
+class ReponseRefusee implements Exception {
+  final String message;
+  final EtatPartie etat;
+  const ReponseRefusee(this.message, this.etat);
+  @override
+  String toString() => message;
+}
+
+class JeuxService {
+  Future<ListeJeux> liste() async =>
+      ListeJeux.fromJson(_objet((await apiClient.get('/jeux/')).data));
+
+  Future<Jeu> jeu(int id) async =>
+      Jeu.fromJson(_objet((await apiClient.get('/jeux/$id/')).data));
+
+  Future<EtatPartie> commencer(int id) async => EtatPartie.fromJson(
+      _objet((await apiClient.post('/jeux/$id/commencer/')).data));
+
+  Future<EtatPartie> partie(int id) async => EtatPartie.fromJson(
+      _objet((await apiClient.get('/jeux/$id/partie/')).data));
+
+  Future<EtatPartie> repondre(int id, int index, int reponseId) async {
+    try {
+      final res = await apiClient.post('/jeux/$id/repondre/',
+          data: {'index': index, 'reponse_id': reponseId});
+      return EtatPartie.fromJson(_objet(res.data));
+    } on DioException catch (e) {
+      final d = _objet(e.response?.data);
+      if (d['etat'] is Map) {
+        throw ReponseRefusee(d['detail']?.toString() ?? 'Temps écoulé.',
+            EtatPartie.fromJson(_objet(d['etat'])));
+      }
+      rethrow;
+    }
+  }
+
+  Future<ResultatsJeu> resultats(int id) async => ResultatsJeu.fromJson(
+      _objet((await apiClient.get('/jeux/$id/resultats/')).data));
+
+  Future<ClassementJeu> classement(int id) async => ClassementJeu.fromJson(
+      _objet((await apiClient.get('/jeux/$id/classement/')).data));
+}
+
+final jeuxService = JeuxService();
