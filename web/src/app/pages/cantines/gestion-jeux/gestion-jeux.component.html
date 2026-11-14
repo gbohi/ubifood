@@ -1,0 +1,262 @@
+<div class="lst ep gj">
+  @switch (vue) {
+    <!-- ═══════════ LISTE ═══════════ -->
+    @case ('liste') {
+      <app-page-entete titre="Jeux" icone="ri-gamepad-line" [fil]="[{label: 'Cantine'}]"
+                       sousTitre="Quiz à lots pour inciter les employés à commander sur UbiFood">
+        @if (admin) { <button type="button" class="btn-ubi vert" (click)="nouveau()"><i class="ri-add-line"></i>Nouveau jeu</button> }
+      </app-page-entete>
+
+      <div class="lst-carte" [class.ep-attente]="chargement">
+        <div class="lst-table-wrap">
+          <table class="lst-table">
+            <thead><tr><th>Jeu</th><th>Mode</th><th>Période</th><th>État</th><th class="text-end">Participants</th><th></th></tr></thead>
+            <tbody>
+              @for (j of jeux; track j.id) {
+                <tr>
+                  <td><b>{{ j.titre }}</b><small class="d-block ep-muted">{{ j.nb_questions }} questions par partie · {{ j.nb_gagnants }} lot(s)
+                    @if (j.agences?.length) { · {{ j.agences.length }} agence(s) }</small></td>
+                  <td>@if (j.mode === 'direct') { <span class="lst-tag t-or"><i class="ri-live-line"></i>En direct</span> } @else { <span class="lst-tag t-gr">Libre</span> }</td>
+                  <td class="lst-nowrap">{{ dateHeure(j.debut) }}<small class="d-block ep-muted">→ {{ dateHeure(j.fin) }}</small></td>
+                  <td><span class="lst-tag" [ngClass]="classeEtat(j.etat)">{{ j.etat_libelle }}</span></td>
+                  <td class="text-end">{{ j.nb_participants }}</td>
+                  <td class="text-end lst-nowrap">
+                    <button type="button" class="btn-ubi sm" (click)="ouvrir(j)"><i [class]="admin && j.modifiable ? 'ri-edit-line' : 'ri-eye-line'"></i>{{ admin && j.modifiable ? 'Modifier' : 'Voir' }}</button>
+                    @if (j.etat !== 'brouillon' && j.etat !== 'a_venir') {
+                      <button type="button" class="btn-ubi sm navy ms-1" (click)="voirClassement(j)"><i class="ri-bar-chart-horizontal-line"></i>Classement</button>
+                    }
+                    @if (admin && j.etat !== 'annule' && j.etat !== 'resultats' && j.publie_le) {
+                      <button type="button" class="btn-ubi sm rouge ms-1" (click)="annuler(j)" title="Annuler le jeu"><i class="ri-close-circle-line"></i></button>
+                    }
+                    @if (admin && !j.nb_participants && (!j.publie_le || j.etat === 'annule')) {
+                      <button type="button" class="btn-ubi sm rouge ms-1" (click)="supprimer(j)" title="Supprimer"><i class="ri-delete-bin-line"></i></button>
+                    }
+                  </td>
+                </tr>
+              } @empty {
+                <tr><td colspan="6" class="lst-vide"><i class="ri-gamepad-line"></i><b>Aucun jeu pour l'instant.</b>
+                  @if (admin) { <span>Créez un quiz : questions chronométrées, lots, date et heure de début et de fin.</span> }</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    }
+
+    <!-- ═══════════ ÉDITION ═══════════ -->
+    @case ('edition') {
+      <app-page-entete [titre]="jeuId ? form.titre || 'Jeu' : 'Nouveau jeu'" icone="ri-gamepad-line"
+                       [fil]="[{label: 'Cantine'}, {label: 'Jeux'}]"
+                       [sousTitre]="jeuCourant ? jeuCourant.etat_libelle + (jeuCourant.publie_le ? ' · programmé le ' + dateHeure(jeuCourant.publie_le) : '') : 'Brouillon'">
+        <button type="button" class="btn-ubi" (click)="retour()"><i class="ri-arrow-left-line"></i>Retour</button>
+        @if (!lectureSeule) {
+          <button type="button" class="btn-ubi navy" [disabled]="envoi" (click)="enregistrer()"><i class="ri-save-line"></i>Enregistrer</button>
+          @if (!jeuCourant?.publie_le) {
+            <button type="button" class="btn-ubi vert" [disabled]="envoi" (click)="enregistrer(true)"><i class="ri-send-plane-line"></i>Enregistrer et programmer</button>
+          }
+        }
+      </app-page-entete>
+
+      @if (lectureSeule && jeuCourant) {
+        <div class="ep-alerte a-bl mb-3"><i class="ri-lock-line"></i><div>
+          @if (!admin) { <b>Lecture seule</b> : seuls les administrateurs créent et modifient les jeux. }
+          @else { <b>Ce jeu n'est plus modifiable</b> : il a commencé (ou des employés ont déjà rejoint la salle d'attente). }
+        </div></div>
+      }
+
+      <fieldset [disabled]="lectureSeule" class="gj-form">
+        <div class="ep-carte mb-3">
+          <b class="ep-titre-carte d-flex mb-3"><i class="ri-settings-3-line"></i>Le jeu</b>
+          <div class="row g-3">
+            <div class="col-md-6"><label class="ep-lab">Titre</label>
+              <input class="form-control" [(ngModel)]="form.titre" maxlength="150" placeholder="Quiz de novembre"></div>
+            <div class="col-md-6"><label class="ep-lab">Mode</label>
+              <div class="gj-modes">
+                <button type="button" [class.on]="form.mode === 'libre'" (click)="form.mode = 'libre'"><i class="ri-time-line"></i><b>Libre</b><small>Chacun joue quand il veut pendant la période</small></button>
+                <button type="button" [class.on]="form.mode === 'direct'" (click)="form.mode = 'direct'"><i class="ri-live-line"></i><b>En direct</b><small>Tout le monde joue au même moment</small></button>
+              </div></div>
+            <div class="col-12"><label class="ep-lab">Description <span class="ep-muted">(facultatif)</span></label>
+              <textarea class="form-control" rows="2" [(ngModel)]="form.description" maxlength="2000"></textarea></div>
+            <div class="col-md-3"><label class="ep-lab">{{ form.mode === 'direct' ? 'Date et heure du direct' : 'Début' }}</label>
+              <input type="datetime-local" class="form-control" [(ngModel)]="form.debut"></div>
+            <div class="col-md-3"><label class="ep-lab">Fin</label>
+              @if (form.mode === 'libre') { <input type="datetime-local" class="form-control" [(ngModel)]="form.fin"> }
+              @else { <div class="form-control gj-calc">≈ {{ dureeDirect >= 60 ? (dureeDirect / 60 | number:'1.0-1') + ' min' : dureeDirect + ' s' }} après le début</div> }</div>
+            <div class="col-md-3"><label class="ep-lab">Questions par partie</label>
+              <input type="number" class="form-control" min="1" max="100" [(ngModel)]="form.nb_questions">
+              <small class="ep-muted">tirées au hasard dans la banque ({{ form.questions.length }})</small></div>
+            <div class="col-md-3"><label class="ep-lab">Repas minimum dans le mois</label>
+              <input type="number" class="form-control" min="0" max="100" [(ngModel)]="form.repas_minimum">
+              <label class="form-check small mt-1 mb-0"><input type="checkbox" class="form-check-input" [(ngModel)]="form.compter_repas_offerts"> compter les repas offerts</label></div>
+          </div>
+          @if (form.mode === 'direct') {
+            <div class="ep-alerte a-bl mt-3 mb-0"><i class="ri-live-line"></i><div>
+              <b>En direct</b> : les employés rejoignent la salle d'attente 15 min avant ; à l'heure dite, chaque question s'ouvre pour tous en même temps.
+              Ceux qui arrivent en retard perdent les questions déjà passées. Rappel envoyé 15 min avant.
+            </div></div>
+          }
+        </div>
+
+        <!-- Questions -->
+        <div class="ep-carte mb-3">
+          <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+            <b class="ep-titre-carte"><i class="ri-question-line"></i>Banque de questions <span class="lst-tag t-gr ms-1">{{ form.questions.length }}</span></b>
+            @if (!lectureSeule) {
+              <div class="ms-auto d-flex gap-2 flex-wrap">
+                <button type="button" class="btn-ubi sm" (click)="telechargerModele()"><i class="ri-download-2-line"></i>Modèle Excel</button>
+                <label class="btn-ubi sm mb-0"><i class="ri-file-excel-2-line"></i>Importer Excel
+                  <input type="file" accept=".xlsx,.xls,.csv" hidden (change)="importer($event)"></label>
+                <button type="button" class="btn-ubi sm vert" (click)="ajouterQuestion()"><i class="ri-add-line"></i>Ajouter une question</button>
+              </div>
+            }
+          </div>
+          @for (q of form.questions; track $index; let i = $index) {
+            <div class="gj-q">
+              <span class="gj-nq">{{ i + 1 }}</span>
+              <div class="gj-q-corps">
+                <input class="form-control fw-semibold" [(ngModel)]="q.texte" placeholder="Texte de la question" maxlength="500">
+                <div class="gj-reps">
+                  @for (r of q.reponses; track $index; let k = $index) {
+                    <div class="gj-rep" [class.bonne]="r.correcte">
+                      <button type="button" class="gj-lettre" (click)="choisirBonne(q, k)" [title]="r.correcte ? 'Bonne réponse' : 'Marquer comme bonne réponse'">
+                        @if (r.correcte) { <i class="ri-check-line"></i> } @else { {{ lettres[k] }} }</button>
+                      <input class="form-control form-control-sm" [(ngModel)]="r.texte" [placeholder]="'Réponse ' + lettres[k]" maxlength="255">
+                      @if (!lectureSeule && q.reponses.length > 2) { <button type="button" class="ep-x" (click)="supprimerReponse(q, k)" aria-label="Retirer"><i class="ri-close-line"></i></button> }
+                    </div>
+                  }
+                  @if (!lectureSeule && q.reponses.length < 4) { <button type="button" class="gj-ajout-rep" (click)="ajouterReponse(q)"><i class="ri-add-line"></i>Réponse</button> }
+                </div>
+              </div>
+              <div class="gj-q-meta">
+                <label><i class="ri-timer-line"></i><input type="number" class="form-control form-control-sm" min="5" max="600" [(ngModel)]="q.duree"> s</label>
+                <label><input type="number" class="form-control form-control-sm" min="1" max="10000" [(ngModel)]="q.points"> pts</label>
+                @if (!lectureSeule) { <button type="button" class="btn-ubi sm rouge" (click)="supprimerQuestion(i)" aria-label="Supprimer la question"><i class="ri-delete-bin-line"></i></button> }
+              </div>
+            </div>
+          } @empty {
+            <div class="lst-vide py-4"><i class="ri-question-line"></i><b>Aucune question.</b><span>Ajoutez-en ou importez un fichier Excel (modèle fourni).</span></div>
+          }
+          <div class="gj-aide"><i class="ri-information-line"></i>Cliquez sur la lettre pour choisir la bonne réponse. Prévoyez plus de questions que le nombre posé par partie :
+            chaque employé reçoit un tirage différent, réponses mélangées (plus difficile de se souffler les réponses).</div>
+        </div>
+
+        <!-- Lots et règles -->
+        <div class="row g-3 mb-3">
+          <div class="col-lg-7">
+            <div class="ep-carte h-100">
+              <div class="d-flex align-items-center mb-3">
+                <b class="ep-titre-carte"><i class="ri-gift-line"></i>Lots</b>
+                <span class="ms-auto lst-tag t-ve">{{ nbGagnants }} gagnant(s) au maximum</span>
+              </div>
+              <table class="lst-table gj-lots">
+                <thead><tr><th>Rangs</th><th>Type</th><th>Lot</th><th></th></tr></thead>
+                <tbody>
+                  @for (l of form.lots; track $index; let i = $index) {
+                    <tr>
+                      <td class="lst-nowrap"><input type="number" class="form-control form-control-sm d-inline-block" style="width:64px" min="1" [(ngModel)]="l.rang_debut">
+                        à <input type="number" class="form-control form-control-sm d-inline-block" style="width:64px" min="1" [(ngModel)]="l.rang_fin"></td>
+                      <td><select class="form-select form-select-sm" [(ngModel)]="l.type"><option value="objet">Objet</option><option value="argent">Argent</option></select></td>
+                      <td>@if (l.type === 'argent') {
+                            <div class="input-group input-group-sm"><input type="number" class="form-control" min="1" [(ngModel)]="l.montant" placeholder="Montant"><span class="input-group-text">F</span></div>
+                            <small class="ep-muted">crédité sur le compte repas</small>
+                          } @else {
+                            <input class="form-control form-control-sm" [(ngModel)]="l.libelle" placeholder="Smartphone, T-shirt…" maxlength="150">
+                            <small class="ep-muted">à retirer (remise enregistrée)</small>
+                          }</td>
+                      <td class="text-end">@if (!lectureSeule) { <button type="button" class="ep-x" (click)="supprimerLot(i)" aria-label="Retirer"><i class="ri-close-line"></i></button> }</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+              @if (!lectureSeule) { <button type="button" class="btn-ubi sm mt-2" (click)="ajouterLot()"><i class="ri-add-line"></i>Ajouter un lot</button> }
+              <div class="gj-aide"><i class="ri-scales-3-line"></i>Le nombre de gagnants est la somme des lots, jamais plus, même à égalité de points.</div>
+            </div>
+          </div>
+          <div class="col-lg-5">
+            <div class="ep-carte h-100">
+              <b class="ep-titre-carte d-flex mb-3"><i class="ri-scales-3-line"></i>Règles</b>
+              <div class="gj-regle"><b>Départage des ex aequo</b><span>1) points (bonus de rapidité compris) · 2) temps total de réponse · 3) heure de fin de partie · 4) tirage au sort enregistré</span></div>
+              <div class="gj-regle"><label class="ep-lab mb-1">Bonus de rapidité (jusqu'à % des points)</label>
+                <input type="number" class="form-control form-control-sm" min="0" max="100" [(ngModel)]="form.bonus_rapidite_pct"></div>
+              <div class="gj-regle"><label class="ep-lab mb-1">Score minimum pour gagner un lot (% de bonnes réponses, 0 = aucun)</label>
+                <input type="number" class="form-control form-control-sm" min="0" max="100" [(ngModel)]="form.score_minimum_pct"></div>
+              <div class="gj-regle"><label class="ep-lab mb-1">Pas de lot si déjà gagné dans les N derniers jours (0 = pas de limite)</label>
+                <input type="number" class="form-control form-control-sm" min="0" max="3650" [(ngModel)]="form.exclure_gagnants_jours"></div>
+              <div class="gj-regle"><label class="ep-lab mb-1">Agences concernées <span class="ep-muted">(aucune cochée : toutes)</span></label>
+                <div class="gj-agences">
+                  @for (a of agences; track a.id) {
+                    <label class="form-check mb-0"><input type="checkbox" class="form-check-input" [checked]="form.agences.includes(a.id)" (change)="basculerAgence(a.id)"> {{ a.nom_agence }}</label>
+                  }
+                </div></div>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+    }
+
+    <!-- ═══════════ CLASSEMENT ═══════════ -->
+    @case ('classement') {
+      <app-page-entete [titre]="'Classement · ' + (jeuCourant?.titre || '')" icone="ri-bar-chart-horizontal-line"
+                       [fil]="[{label: 'Cantine'}, {label: 'Jeux'}]"
+                       [sousTitre]="classement?.definitif ? 'Résultats publiés le ' + dateHeure(jeuCourant?.resultats_publies_le) : 'Classement provisoire, mis à jour en direct'">
+        <button type="button" class="btn-ubi" (click)="retour()"><i class="ri-arrow-left-line"></i>Retour</button>
+        <button type="button" class="btn-ubi" (click)="chargerClassement()"><i class="ri-refresh-line"></i>Actualiser</button>
+        @if (admin && !classement?.definitif) {
+          <button type="button" class="btn-ubi vert" [disabled]="envoi || !jeuCourant?.peut_publier_resultats" (click)="publierResultats()"
+                  [title]="jeuCourant?.peut_publier_resultats ? '' : 'Possible à partir du ' + dateHeure(jeuCourant?.fin_parties)">
+            <i class="ri-megaphone-line"></i>Publier les résultats</button>
+        }
+      </app-page-entete>
+
+      @if (classement; as c) {
+        @if (!c.definitif && !jeuCourant?.peut_publier_resultats) {
+          <div class="ep-alerte a-bl mb-3"><i class="ri-time-line"></i><div>Publication des résultats possible à partir du <b>{{ dateHeure(jeuCourant?.fin_parties) }}</b>
+            (toutes les parties terminées). La condition de participation sera vérifiée à nouveau à ce moment-là.</div></div>
+        }
+        <div class="ep-kpis-ligne ep-kpis-4 mb-3">
+          <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-gamepad-line"></i></span><div><small>Participants</small><b>{{ c.kpi.participants }}</b></div></div>
+          <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-team-line"></i></span><div><small>Employés éligibles</small><b>{{ c.kpi.eligibles }}</b><span>sur {{ c.kpi.concernes }} concernés</span></div></div>
+          <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-checkbox-circle-line"></i></span><div><small>Bonnes réponses</small><b>{{ c.kpi.taux_bonnes ?? '—' }}@if (c.kpi.taux_bonnes !== null) { % }</b></div></div>
+          <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ro"><i class="ri-trophy-line"></i></span><div><small>Gagnants</small><b>{{ c.kpi.gagnants }}</b></div></div>
+        </div>
+        <div class="lst-carte">
+          <div class="lst-table-wrap">
+            <table class="lst-table">
+              <thead><tr><th>Rang</th><th>Employé</th><th>Agence</th><th class="text-end">Points</th><th class="text-center">Bonnes</th><th>Temps</th><th>Lot</th><th>Remise</th></tr></thead>
+              <tbody>
+                @for (l of c.lignes; track l.participation_id) {
+                  <tr [class.gj-perdu]="!l.lot">
+                    <td><b>{{ l.rang ?? '—' }}</b></td>
+                    <td><b>{{ l.employe }}</b><small class="d-block ep-muted">{{ l.matricule }}</small></td>
+                    <td>{{ l.agence || '—' }}</td>
+                    <td class="text-end"><b>{{ l.points | number:'1.0-0' }}</b></td>
+                    <td class="text-center">{{ l.nb_bonnes }}/{{ l.nb_questions }}</td>
+                    <td class="lst-nowrap">@if (l.en_cours) { <span class="lst-tag t-bl"><i class="ri-loader-4-line"></i>en cours</span> } @else { {{ temps(l.temps_total_ms) }} }</td>
+                    <td>@if (l.lot) { <span class="gj-lot"><i class="ri-trophy-line"></i>{{ l.lot }}</span> }
+                        @else if (l.motif) { <small class="ep-muted">{{ l.motif }}</small> }
+                        @else { <span class="ep-muted">—</span> }</td>
+                    <td class="lst-nowrap">
+                      @switch (l.statut_lot) {
+                        @case ('credite') { <span class="lst-tag t-ve"><i class="ri-wallet-3-line"></i>crédité</span> }
+                        @case ('remis') { <span class="lst-tag t-ve"><i class="ri-check-double-line"></i>retiré le {{ dateHeure(l.lot_remis_le) }}</span>
+                          @if (l.lot_remis_par) { <small class="d-block ep-muted">par {{ l.lot_remis_par }}</small> } }
+                        @case ('a_remettre') {
+                          @if (l.peut_remettre) { <button type="button" class="btn-ubi sm vert" (click)="remettre(l)"><i class="ri-hand-heart-line"></i>Lot retiré</button> }
+                          @else { <span class="lst-tag t-or">à remettre</span> } }
+                        @default { @if (c.definitif) { <span class="ep-muted">{{ l.rang ? 'Perdu' : 'Non classé' }}</span> } }
+                      }
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="8" class="lst-vide"><i class="ri-user-line"></i><b>Personne n'a encore joué.</b></td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      } @else {
+        <div class="p-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div>
+      }
+    }
+  }
+</div>

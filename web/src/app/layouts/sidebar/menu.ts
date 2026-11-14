@@ -129,6 +129,24 @@ export const MENU: MenuItem[] = [
                 parentId: 210
             },
             {
+                // Quiz à lots : jouer, résultats, classement, lot gagné / perdu
+                id: 2118,
+                label: 'Jeux',
+                link: '/cantines/jeux',
+                sansRoles: PRESTATAIRES,
+                isNew: true,
+                parentId: 210
+            },
+            {
+                // Création des jeux, classement, publication des résultats, remise des lots
+                id: 2119,
+                label: 'Gestion des jeux',
+                link: '/cantines/gestion-jeux',
+                roles: GESTIONNAIRES,
+                isNew: true,
+                parentId: 210
+            },
+            {
                 // Soldes des comptes repas des employés de ses agences (lecture seule) ;
                 // la comptabilité et les administrateurs l'ont dans la section « Comptabilité »
                 id: 2114,

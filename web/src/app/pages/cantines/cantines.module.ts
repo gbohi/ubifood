@@ -48,6 +48,8 @@ import { ControleRetraitsComponent } from './controle-retraits/controle-retraits
 import { MonCompteRepasComponent } from './mon-compte-repas/mon-compte-repas.component';
 import { PlanningEquipesComponent } from './planning-equipes/planning-equipes.component';
 import { SuiviLivraisonsComponent } from './suivi-livraisons/suivi-livraisons.component';
+import { GestionJeuxComponent } from './gestion-jeux/gestion-jeux.component';
+import { JeuxComponent } from './jeux/jeux.component';
 
 // Graphiques (page Statistiques)
 import { NgApexchartsModule } from 'ng-apexcharts';
@@ -78,6 +80,8 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     ControleRetraitsComponent,
     MonCompteRepasComponent,
     PlanningEquipesComponent,
+    GestionJeuxComponent,
+    JeuxComponent,
     SuiviLivraisonsComponent
   ],
   imports: [

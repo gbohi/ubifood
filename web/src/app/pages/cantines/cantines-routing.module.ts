@@ -20,6 +20,8 @@ import { ControleRetraitsComponent } from './controle-retraits/controle-retraits
 import { MonCompteRepasComponent } from './mon-compte-repas/mon-compte-repas.component';
 import { PlanningEquipesComponent } from './planning-equipes/planning-equipes.component';
 import { SuiviLivraisonsComponent } from './suivi-livraisons/suivi-livraisons.component';
+import { GestionJeuxComponent } from './gestion-jeux/gestion-jeux.component';
+import { JeuxComponent } from './jeux/jeux.component';
 
 
 const routes: Routes = [
@@ -35,6 +37,9 @@ const routes: Routes = [
   { path: 'planning-equipes', component: PlanningEquipesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES }, title: 'Planning des équipes | UbiFood' },
   // Suivi des livraisons des prestataires et ponctualité
   { path: 'suivi-livraisons', component: SuiviLivraisonsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES }, title: 'Suivi des livraisons | UbiFood' },
+  // Jeux (quiz à lots) : employés (jouer) ; administration (créer, classement, lots)
+  { path: 'jeux', component: JeuxComponent, title: 'Jeux | UbiFood' },
+  { path: 'gestion-jeux', component: GestionJeuxComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES }, title: 'Gestion des jeux | UbiFood' },
   { path: 'mes-commandes', component: MesCommandesComponent },
   // Compte repas prépayé de l'employé connecté (solde, repas payés, reçus de caisse)
   { path: 'mon-compte-repas', component: MonCompteRepasComponent, title: 'Mon compte repas | UbiFood' },

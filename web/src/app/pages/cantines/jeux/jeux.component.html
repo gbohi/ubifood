@@ -1,0 +1,215 @@
+<div class="lst jx">
+  @switch (vue) {
+    <!-- ═══════════ LISTE ═══════════ -->
+    @case ('liste') {
+      <app-page-entete titre="Jeux" icone="ri-gamepad-line" sousTitre="Jouez, grimpez au classement, gagnez des lots"></app-page-entete>
+      @if (liste; as l) {
+        @for (j of l.en_cours; track j.id; let premier = $first) {
+          <button type="button" class="jx-hero" (click)="ouvrir(j.id)">
+            <i class="ri-trophy-fill jx-hero-fond"></i>
+            <span class="jx-tag">@if (j.mode === 'direct') { <i class="ri-live-line"></i>EN DIRECT } @else { EN COURS }</span>
+            <h3>{{ j.titre }}</h3>
+            <div class="jx-hero-s">{{ j.nb_questions }} questions · {{ j.nb_gagnants }} lot{{ j.nb_gagnants > 1 ? 's' : '' }} à gagner</div>
+            @if (premier) {
+              <div class="jx-cd">@if (compteARebours(restantMs); as c) {
+                @if (c.j) { <div><b>{{ c.j }}</b>jours</div> }<div><b>{{ c.h | number:'2.0' }}</b>h</div><div><b>{{ c.m | number:'2.0' }}</b>min</div>@if (!c.j) { <div><b>{{ c.s | number:'2.0' }}</b>s</div> }
+              }</div>
+            }
+            <span class="jx-go">@if (j.participation?.statut === 'terminee') { Voir } @else if (j.participation) { Reprendre } @else { Jouer }</span>
+          </button>
+        }
+        @if (l.a_venir.length) {
+          <h6 class="jx-sec">À venir</h6>
+          @for (j of l.a_venir; track j.id) {
+            <button type="button" class="jx-ligne" (click)="ouvrir(j.id)">
+              <span class="jx-ic or"><i [class]="j.mode === 'direct' ? 'ri-live-line' : 'ri-calendar-event-line'"></i></span>
+              <span class="jx-l-txt"><b>{{ j.titre }}</b><small>{{ j.mode === 'direct' ? 'En direct le ' : 'Ouvre le ' }}{{ dateHeure(j.debut) }} · {{ j.nb_gagnants }} lot(s)</small></span>
+              <i class="ri-arrow-right-s-line jx-fl"></i>
+            </button>
+          }
+        }
+        @if (l.passes.length) {
+          <h6 class="jx-sec">Mes participations</h6>
+          @for (j of l.passes; track j.id) {
+            @if (resume(j); as r) {
+              <button type="button" class="jx-ligne" (click)="ouvrir(j.id)">
+                <span class="jx-ic" [ngClass]="r.classe"><i [class]="r.icone"></i></span>
+                <span class="jx-l-txt"><b>{{ j.titre }}</b>
+                  <small>@if (j.participation?.rang) { {{ j.participation.rang }}e sur {{ j.nb_participants }} · }@if (j.participation?.points !== null && j.participation?.points !== undefined) { {{ j.participation.points }} pts } @else { terminé le {{ dateHeure(j.fin) }} }</small></span>
+                <span class="jx-res" [ngClass]="r.classe">{{ r.texte }}</span>
+              </button>
+            }
+          }
+        }
+        @if (!l.en_cours.length && !l.a_venir.length && !l.passes.length) {
+          <div class="lst-carte"><div class="lst-vide py-5"><i class="ri-gamepad-line"></i><b>Aucun jeu pour le moment.</b><span>Vous serez notifié dès qu'un jeu sera programmé.</span></div></div>
+        }
+      } @else { <div class="p-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div> }
+    }
+
+    <!-- ═══════════ PRÉSENTATION D'UN JEU ═══════════ -->
+    @case ('jeu') {
+      @if (jeu; as j) {
+        <app-page-entete [titre]="j.titre" icone="ri-gamepad-line" [fil]="[{label: 'Jeux'}]"
+                         [sousTitre]="j.mode === 'direct' ? 'En direct le ' + dateHeure(j.debut) : 'Du ' + dateHeure(j.debut) + ' au ' + dateHeure(j.fin)">
+          <button type="button" class="btn-ubi" (click)="chargerListe()"><i class="ri-arrow-left-line"></i>Jeux</button>
+        </app-page-entete>
+        <div class="row g-3">
+          <div class="col-lg-7">
+            @if (j.participation?.resultat; as res) {
+              <div class="jx-res-carte" [class.perdu]="res !== 'gagne'">
+                <div class="jx-big">{{ res === 'gagne' ? '🏆' : res === 'perdu' ? '🙂' : '⛔' }}</div>
+                <h3>{{ res === 'gagne' ? 'Bravo, vous avez gagné !' : res === 'perdu' ? 'Perdu cette fois' : 'Non classé' }}</h3>
+                <div class="jx-s">@if (j.participation.rang) { {{ j.participation.rang }}e sur {{ j.nb_participants }} participants · {{ j.participation.points }} pts } @else { {{ j.participation.motif }} }</div>
+                @if (j.participation.lot; as lot) {
+                  <div class="jx-lotg"><i class="ri-gift-line"></i>{{ lot.libelle_affiche }}</div>
+                  <div class="jx-retrait">
+                    @switch (j.participation.statut_lot) {
+                      @case ('remis') { <i class="ri-check-double-line"></i><b>Lot retiré</b> le {{ dateHeure(j.participation.lot_remis_le) }} }
+                      @case ('credite') { <i class="ri-wallet-3-line"></i>Crédité sur votre compte repas le {{ dateHeure(j.participation.lot_remis_le) }} }
+                      @default { <i class="ri-hand-heart-line"></i>À retirer auprès de votre gestionnaire }
+                    }
+                  </div>
+                }
+              </div>
+            }
+            @if (j.etat === 'en_cours' || (j.etat === 'a_venir' && j.mode === 'direct')) {
+              @if (!j.participation) {
+                <div class="ep-alerte mb-3" [ngClass]="j.eligibilite.ok ? 'a-ve' : 'a-or'">
+                  <i [class]="j.eligibilite.ok ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'"></i>
+                  <div><b>{{ j.eligibilite.ok ? 'Vous pouvez jouer' : 'Pas encore' }}</b> : {{ j.eligibilite.message }}
+                    @if (!j.eligibilite.ok) { <a routerLink="/cantines/liste-commandes" class="ms-1">Voir les menus</a> }</div>
+                </div>
+                <div class="jx-regles">
+                  <div><i class="ri-timer-flash-line"></i>Une seule partie, {{ j.nb_questions }} questions de {{ j.duree_min === j.duree_max ? j.duree_min + ' s' : j.duree_min + ' à ' + j.duree_max + ' s' }}.</div>
+                  <div><i class="ri-pause-circle-line"></i><b>Le chrono ne s'arrête jamais</b> : si vous quittez la page, le temps continue et les questions passent.</div>
+                  @if (j.mode === 'direct') { <div><i class="ri-live-line"></i>En direct : chaque question s'ouvre pour tout le monde en même temps. Salle d'attente dès le {{ dateHeure(j.ouverture) }}.</div> }
+                  <div><i class="ri-flashlight-line"></i>Plus vous répondez vite, plus vous gagnez de points (bonus jusqu'à {{ j.regles.bonus_rapidite_pct }} %).</div>
+                  <div><i class="ri-eye-off-line"></i>Corrections et classement à la fin du jeu.</div>
+                </div>
+                <button type="button" class="jx-cta" [disabled]="!j.eligibilite.ok || envoi || (j.etat === 'a_venir' && restantMs > 15 * 60000)" (click)="commencer()">
+                  @if (j.etat === 'a_venir' && restantMs > 15 * 60000) { Salle d'attente le {{ dateHeure(j.ouverture) }} }
+                  @else if (j.mode === 'direct' && j.etat === 'a_venir') { Rejoindre la salle d'attente }
+                  @else { Commencer la partie }
+                </button>
+              } @else if (j.participation.statut === 'en_cours') {
+                <button type="button" class="jx-cta" (click)="vue = 'partie'; rafraichirPartie()"><i class="ri-play-line"></i>Reprendre ma partie (le temps a continué)</button>
+              }
+            } @else if (j.etat === 'a_venir') {
+              <div class="ep-alerte a-bl mb-3"><i class="ri-calendar-event-line"></i><div>Le jeu ouvre le <b>{{ dateHeure(j.debut) }}</b>.
+                <span class="d-block">{{ j.eligibilite.message }}</span></div></div>
+            }
+            @if (j.participation?.statut === 'terminee') {
+              <div class="d-flex gap-2 flex-wrap mt-2">
+                <button type="button" class="btn-ubi navy" (click)="voirResultats()"><i class="ri-file-list-3-line"></i>Mes réponses</button>
+                @if (j.etat === 'resultats') { <button type="button" class="btn-ubi" (click)="voirClassement()"><i class="ri-bar-chart-horizontal-line"></i>Classement</button> }
+              </div>
+            } @else if (j.etat === 'resultats') {
+              <button type="button" class="btn-ubi mt-2" (click)="voirClassement()"><i class="ri-bar-chart-horizontal-line"></i>Classement</button>
+            }
+          </div>
+          <div class="col-lg-5">
+            <div class="ep-carte">
+              <div class="d-flex align-items-center mb-2"><b class="ep-titre-carte"><i class="ri-gift-line"></i>Lots à gagner</b>
+                <span class="ms-auto ep-muted small">{{ j.nb_gagnants }} gagnant{{ j.nb_gagnants > 1 ? 's' : '' }}</span></div>
+              @for (lot of j.lots; track lot.id; let i = $index) {
+                <div class="jx-lot"><span class="jx-rg" [ngClass]="'r' + (i < 3 ? i + 1 : 4)">{{ lot.rangs }}{{ lot.rang_debut === 1 && lot.rang_fin === 1 ? 'er' : '' }}</span>
+                  <div><b>{{ lot.libelle_affiche }}</b><small>{{ lot.quantite }} gagnant{{ lot.quantite > 1 ? 's' : '' }}</small></div></div>
+              }
+              @if (j.description) { <p class="small ep-muted mt-3 mb-0">{{ j.description }}</p> }
+            </div>
+          </div>
+        </div>
+      }
+    }
+
+    <!-- ═══════════ PARTIE ═══════════ -->
+    @case ('partie') {
+      <div class="jx-partie">
+        @if (etat; as e) {
+          <div class="jx-p-tete"><b>{{ jeu?.titre }}</b>
+            @if (e.statut === 'question' || e.statut === 'attente_suivante') { <span>Question {{ (e.index ?? 0) + 1 }} / {{ e.total }}</span> }</div>
+          <div class="jx-bar"><i [style.width.%]="100 * (e.repondues ?? 0) / e.total"></i></div>
+          @switch (e.statut) {
+            @case ('attente_debut') {
+              <div class="jx-attente"><i class="ri-live-line"></i><h4>Salle d'attente</h4>
+                <p>Le quiz commence dans</p><div class="jx-gros">{{ compteARebours(restantMs).m | number:'2.0' }}:{{ compteARebours(restantMs).s | number:'2.0' }}</div>
+                <p class="ep-muted">Restez sur cette page : la première question s'affichera toute seule.</p></div>
+            }
+            @case ('attente_suivante') {
+              <div class="jx-attente"><i class="ri-check-double-line"></i><h4>Réponse enregistrée</h4>
+                <p>Question suivante pour tout le monde dans</p><div class="jx-gros">{{ secondes }} s</div></div>
+            }
+            @case ('question') {
+              <div class="jx-timer" [style.--p]="pourcentage" [class.urgent]="secondes <= 5"><b>{{ secondes }}</b><small>secondes</small></div>
+              <div class="jx-qtxt">{{ e.question.texte }}</div>
+              <div class="jx-reps">
+                @for (r of e.question.reponses; track r.id; let k = $index) {
+                  <button type="button" class="jx-rep" [class.sel]="choix === r.id" [disabled]="envoi || restantMs === 0" (click)="repondre(r.id)">
+                    <span>{{ lettres[k] }}</span>{{ r.texte }}</button>
+                }
+              </div>
+              <p class="jx-note"><i class="ri-information-line"></i>Le chrono continue même si vous quittez la page. Une seule réponse par question.</p>
+            }
+            @case ('terminee') {
+              <div class="jx-attente"><i class="ri-flag-2-line"></i><h4>Partie terminée !</h4>
+                <div class="jx-stats"><div><b>{{ e.nb_bonnes }}/{{ e.total }}</b>bonnes réponses</div><div><b>{{ e.points }}</b>points</div><div><b>{{ temps(e.temps_total_ms) }}</b>temps total</div></div>
+                <p class="ep-muted">Corrections le {{ dateHeure(e.corrections_le) }} · classement et lots à la publication des résultats.</p>
+                <button type="button" class="btn-ubi navy" (click)="ouvrir(jeu.id)">Terminer</button></div>
+            }
+          }
+        } @else { <div class="p-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div> }
+      </div>
+    }
+
+    <!-- ═══════════ RÉSULTATS ═══════════ -->
+    @case ('resultats') {
+      @if (resultats; as r) {
+        <app-page-entete titre="Mes réponses" icone="ri-file-list-3-line" [fil]="[{label: 'Jeux'}, {label: jeu.titre}]">
+          <button type="button" class="btn-ubi" (click)="ouvrir(jeu.id)"><i class="ri-arrow-left-line"></i>Retour</button>
+        </app-page-entete>
+        <div class="jx-stats mb-3"><div><b>{{ r.jeu.participation.nb_bonnes }}/{{ r.jeu.participation.nb_questions }}</b>bonnes réponses</div>
+          <div><b>{{ r.jeu.participation.points }}</b>points</div><div><b>{{ temps(r.jeu.participation.temps_total_ms) }}</b>temps total</div></div>
+        @if (!r.corrections) { <div class="ep-alerte a-bl mb-3"><i class="ri-eye-off-line"></i><div>Les bonnes réponses seront visibles le <b>{{ dateHeure(r.corrections_le) }}</b>, à la fin du jeu.</div></div> }
+        @for (q of r.reponses; track q.index) {
+          <div class="jx-qa">
+            <b>{{ q.index + 1 }}. {{ q.question }}</b>
+            @if (!q.repondu) { <span class="ko"><i class="ri-timer-line"></i> Temps écoulé</span> }
+            @else if (r.corrections) { <span [class]="q.correcte ? 'ok' : 'ko'"><i [class]="q.correcte ? 'ri-check-line' : 'ri-close-line'"></i> {{ q.reponse }}</span> }
+            @else { <span>{{ q.reponse }}</span> }
+            @if (r.corrections) {
+              @if (!q.correcte) { · bonne réponse : <b class="d-inline">{{ q.bonne_reponse }}</b> }
+              · {{ q.points ? '+' + q.points + ' pts' : '0 pt' }}
+            }
+            <small class="ep-muted"> · {{ temps(q.temps_ms) }}</small>
+          </div>
+        }
+      }
+    }
+
+    <!-- ═══════════ CLASSEMENT ═══════════ -->
+    @case ('classement') {
+      @if (classement; as c) {
+        <app-page-entete titre="Classement" icone="ri-bar-chart-horizontal-line" [fil]="[{label: 'Jeux'}, {label: jeu.titre}]"
+                         [sousTitre]="c.nb_participants + ' participants'">
+          <button type="button" class="btn-ubi" (click)="ouvrir(jeu.id)"><i class="ri-arrow-left-line"></i>Retour</button>
+        </app-page-entete>
+        @if (c.lignes.length >= 3) {
+          <div class="jx-podium">
+            <div class="p2"><span>2</span><b>{{ c.lignes[1].nom }}</b>{{ c.lignes[1].points }} pts</div>
+            <div class="p1"><span>1</span><b>{{ c.lignes[0].nom }}</b>{{ c.lignes[0].points }} pts</div>
+            <div class="p3"><span>3</span><b>{{ c.lignes[2].nom }}</b>{{ c.lignes[2].points }} pts</div>
+          </div>
+        }
+        @for (l of c.lignes; track l.rang) {
+          <div class="jx-cl" [class.moi]="l.moi" [class.perdu]="!l.lot">
+            <span class="jx-rk">{{ l.rang }}</span><span class="jx-av">{{ l.initiales }}</span>
+            <div><b>{{ l.nom }}</b><small [class.gagne]="l.lot">@if (l.lot) { 🏆 {{ l.lot }} } @else { Perdu }</small></div>
+            <span class="jx-pt">{{ l.points }}<small>{{ l.nb_bonnes }}/{{ l.nb_questions }} · {{ temps(l.temps_total_ms) }}</small></span>
+          </div>
+        }
+        <p class="jx-note">Égalité de points : départage par le temps total de réponse, puis l'heure de fin de partie, puis tirage au sort.</p>
+      }
+    }
+  }
+</div>
