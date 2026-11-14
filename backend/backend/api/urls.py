@@ -7,6 +7,7 @@ from .views import *
 from .accueil import AccueilView
 from .planning import PlanningView
 from .tarifs_grille import GrilleTarifsView
+from . import jeux
 from .suivi_repas import (
     PonctualiteView, PreferencesSuiviView, PrestataireIncidentView, PrestataireSuiviEtapeView, PrestataireSuiviView,
     SuiviLivraisonsView,
@@ -242,5 +243,22 @@ urlpatterns = [
     path('api/notifications/<int:pk>/supprimer/', NotificationDetailView.as_view(), name='notification-supprimer'),
     path('api/notifications/tout-marquer-lu/', NotificationBulkView.as_view(), name='notifications-tout-marquer-lu'),
     path('api/notifications/tout-supprimer/', NotificationBulkView.as_view(), name='notifications-tout-supprimer'),
+    # Jeux (quiz à lots)
+    path('api/jeux/', jeux.JeuxView.as_view(), name='jeux'),
+    path('api/jeux/<int:pk>/', jeux.JeuDetailView.as_view(), name='jeu-detail'),
+    path('api/jeux/<int:pk>/commencer/', jeux.JeuCommencerView.as_view(), name='jeu-commencer'),
+    path('api/jeux/<int:pk>/partie/', jeux.JeuPartieView.as_view(), name='jeu-partie'),
+    path('api/jeux/<int:pk>/repondre/', jeux.JeuRepondreView.as_view(), name='jeu-repondre'),
+    path('api/jeux/<int:pk>/resultats/', jeux.JeuResultatsView.as_view(), name='jeu-resultats'),
+    path('api/jeux/<int:pk>/classement/', jeux.JeuClassementView.as_view(), name='jeu-classement'),
+    path('api/admin/jeux/', jeux.AdminJeuxView.as_view(), name='admin-jeux'),
+    path('api/admin/jeux/<int:pk>/', jeux.AdminJeuDetailView.as_view(), name='admin-jeu-detail'),
+    path('api/admin/jeux/<int:pk>/programmer/', jeux.AdminJeuProgrammerView.as_view(), name='admin-jeu-programmer'),
+    path('api/admin/jeux/<int:pk>/annuler/', jeux.AdminJeuAnnulerView.as_view(), name='admin-jeu-annuler'),
+    path('api/admin/jeux/<int:pk>/classement/', jeux.AdminJeuClassementView.as_view(), name='admin-jeu-classement'),
+    path('api/admin/jeux/<int:pk>/publier-resultats/', jeux.AdminJeuPublierResultatsView.as_view(),
+         name='admin-jeu-publier-resultats'),
+    path('api/admin/jeux/<int:pk>/remettre/<int:participation_id>/', jeux.AdminJeuRemettreView.as_view(),
+         name='admin-jeu-remettre'),
 ]
 

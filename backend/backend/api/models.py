@@ -583,6 +583,7 @@ class Notification(models.Model):
         ('facture_prestataire', 'Suivi des factures prestataires'),
         ('planning_equipe',  'Planning des équipes'),
         ('suivi_repas',      'Suivi du repas'),
+        ('jeu',              'Jeux'),
         ('info',             'Information'),
     ]
 
@@ -1255,6 +1256,7 @@ class MouvementCompte(models.Model):
         ('regularisation', 'Monnaie de régularisation créditée'),
         ('remboursement',  'Remboursement du solde'),
         ('annulation',     "Annulation d'un reçu"),
+        ('gain_jeu',       'Lot gagné à un jeu'),
     ]
     compte      = models.ForeignKey(CompteRepas, on_delete=models.PROTECT, related_name='mouvements')
     type        = models.CharField(max_length=20, choices=TYPE_CHOICES)
@@ -1308,3 +1310,154 @@ class ReglementRepas(models.Model):
 
     def __str__(self):
         return f"Règlement {self.commande_id} : {self.mode} {self.montant}"
+
+
+# ============================================================
+# JEUX (quiz à lots) — règles dans jeux.py
+# ============================================================
+
+class Jeu(models.Model):
+    """
+    Quiz à lots. Deux modes :
+      - libre  : chacun joue UNE partie quand il veut entre debut et fin ;
+                 questions tirées au hasard dans la banque (nb_questions) ;
+      - direct : tout le monde joue au même moment ; la question i est
+                 ouverte pour tous à la même heure (debut + durées des
+                 questions précédentes) ; fin = debut + somme des durées.
+    Une partie commencée ne s'arrête jamais : le temps est tenu par le serveur.
+    """
+    MODE_CHOICES = [('libre', 'Libre (chacun joue quand il veut)'), ('direct', 'En direct (tous au même moment)')]
+    titre        = models.CharField(max_length=150)
+    description  = models.TextField(blank=True)
+    mode         = models.CharField(max_length=10, choices=MODE_CHOICES, default='libre')
+    debut        = models.DateTimeField()
+    fin          = models.DateTimeField()
+    # Nombre de questions par partie (tirées dans la banque) ; direct : même tirage pour tous
+    nb_questions = models.PositiveSmallIntegerField(default=10)
+    # Participation : au moins N repas commandés (non annulés) dans le mois du début du jeu
+    repas_minimum = models.PositiveSmallIntegerField(default=1)
+    compter_repas_offerts = models.BooleanField(default=False)
+    # Bonus de rapidité : jusqu'à N % des points de la question selon le temps restant
+    bonus_rapidite_pct = models.PositiveSmallIntegerField(default=50, validators=[MaxValueValidator(100)])
+    # Pour gagner un lot : au moins N % de bonnes réponses (0 : pas de minimum)
+    score_minimum_pct = models.PositiveSmallIntegerField(default=0, validators=[MaxValueValidator(100)])
+    # Un employé qui a gagné un lot dans les N derniers jours n'en gagne pas (0 : pas de limite)
+    exclure_gagnants_jours = models.PositiveSmallIntegerField(default=0)
+    # Agences concernées (aucune : toutes)
+    agences      = models.ManyToManyField(Agence, blank=True, related_name='jeux')
+    # Direct : questions tirées à la programmation (liste d'ids, ordre de jeu)
+    tirage_direct = models.JSONField(default=list, blank=True)
+    publie_le    = models.DateTimeField(null=True, blank=True)       # programmé (visible, notifié)
+    resultats_publies_le = models.DateTimeField(null=True, blank=True)
+    annule_le    = models.DateTimeField(null=True, blank=True)
+    # Notifications automatiques déjà envoyées (taches_planifiees)
+    rappel_envoye_le    = models.DateTimeField(null=True, blank=True)   # direct : 15 min avant
+    ouverture_envoyee_le = models.DateTimeField(null=True, blank=True)
+    relance_envoyee_le  = models.DateTimeField(null=True, blank=True)   # libre : veille de la fin
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+    user_created = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+
+    class Meta:
+        db_table = 'jeu'
+        ordering = ['-debut', '-id']
+
+    def __str__(self):
+        return self.titre
+
+
+class QuestionJeu(models.Model):
+    jeu      = models.ForeignKey(Jeu, on_delete=models.CASCADE, related_name='questions')
+    texte    = models.CharField(max_length=500)
+    duree    = models.PositiveSmallIntegerField(default=20,
+                                                validators=[MinValueValidator(5), MaxValueValidator(600)])
+    points   = models.PositiveSmallIntegerField(default=100)
+    ordre    = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = 'jeu_question'
+        ordering = ['ordre', 'id']
+
+
+class ReponseJeu(models.Model):
+    question = models.ForeignKey(QuestionJeu, on_delete=models.CASCADE, related_name='reponses')
+    texte    = models.CharField(max_length=255)
+    correcte = models.BooleanField(default=False)
+    ordre    = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = 'jeu_reponse'
+        ordering = ['ordre', 'id']
+
+
+class LotJeu(models.Model):
+    """Lot attribué aux rangs rang_debut à rang_fin (un exemplaire par rang)."""
+    TYPE_CHOICES = [('objet', 'Objet (remis en main propre)'),
+                    ('argent', 'Argent (crédité sur le compte repas)')]
+    jeu        = models.ForeignKey(Jeu, on_delete=models.CASCADE, related_name='lots')
+    rang_debut = models.PositiveSmallIntegerField()
+    rang_fin   = models.PositiveSmallIntegerField()
+    libelle    = models.CharField(max_length=150)
+    type       = models.CharField(max_length=10, choices=TYPE_CHOICES, default='objet')
+    montant    = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = 'jeu_lot'
+        ordering = ['rang_debut']
+
+
+class ParticipationJeu(models.Model):
+    STATUT_LOT_CHOICES = [
+        ('',           'Aucun lot'),
+        ('a_remettre', 'À remettre'),
+        ('remis',      'Retiré'),
+        ('credite',    'Crédité sur le compte repas'),
+    ]
+    jeu         = models.ForeignKey(Jeu, on_delete=models.CASCADE, related_name='participations')
+    user        = models.ForeignKey(User, on_delete=models.CASCADE, related_name='participations_jeux')
+    debut_le    = models.DateTimeField()
+    termine_le  = models.DateTimeField(null=True, blank=True)
+    # Questions de la partie, dans l'ordre (ids)
+    questions   = models.JSONField(default=list)
+    points      = models.PositiveIntegerField(default=0)
+    nb_bonnes   = models.PositiveSmallIntegerField(default=0)
+    temps_total_ms = models.PositiveIntegerField(default=0)
+    # Départage final (tirage au sort enregistré à la création)
+    tirage      = models.FloatField(default=0)
+    nb_repas    = models.PositiveSmallIntegerField(default=0)    # au démarrage, puis à la publication
+    exclu_motif = models.CharField(max_length=255, blank=True)   # non classé (condition non remplie…)
+    rang        = models.PositiveIntegerField(null=True, blank=True)
+    lot         = models.ForeignKey(LotJeu, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='gagnants')
+    lot_motif   = models.CharField(max_length=255, blank=True)   # pourquoi pas de lot malgré le rang
+    statut_lot  = models.CharField(max_length=12, choices=STATUT_LOT_CHOICES, blank=True, default='')
+    lot_remis_le  = models.DateTimeField(null=True, blank=True)
+    lot_remis_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    mouvement   = models.OneToOneField(MouvementCompte, on_delete=models.SET_NULL, null=True, blank=True,
+                                       related_name='gain_jeu')
+
+    class Meta:
+        db_table = 'jeu_participation'
+        constraints = [models.UniqueConstraint(fields=['jeu', 'user'], name='jeu_une_partie_par_employe')]
+
+
+class ReponseJoueur(models.Model):
+    """Question posée à un joueur : ouverte de debut_le à limite (heure serveur)."""
+    participation = models.ForeignKey(ParticipationJeu, on_delete=models.CASCADE, related_name='reponses')
+    question   = models.ForeignKey(QuestionJeu, on_delete=models.CASCADE, related_name='+')
+    index      = models.PositiveSmallIntegerField()
+    debut_le   = models.DateTimeField()
+    limite     = models.DateTimeField()
+    # Ordre des réponses présenté au joueur (ids, mélangés)
+    ordre_reponses = models.JSONField(default=list)
+    reponse    = models.ForeignKey(ReponseJeu, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    repondu_le = models.DateTimeField(null=True, blank=True)
+    correcte   = models.BooleanField(default=False)
+    points     = models.PositiveSmallIntegerField(default=0)
+    temps_ms   = models.PositiveIntegerField(default=0)
+    cloturee   = models.BooleanField(default=False)   # répondue ou temps écoulé
+
+    class Meta:
+        db_table = 'jeu_reponse_joueur'
+        ordering = ['index']
+        constraints = [models.UniqueConstraint(fields=['participation', 'index'], name='jeu_question_unique')]
