@@ -1721,3 +1721,20 @@ class Ticket(models.Model):
         db_table = 'ticket'
         ordering = ['-cree_le', '-id']
         constraints = [models.UniqueConstraint(fields=['campagne', 'user', 'jour'], name='ticket_quotidien_unique')]
+
+
+class AnomalieVerifiee(models.Model):
+    """
+    Anomalie du contrôle des retraits classée « Vérifié » par un gestionnaire.
+    Les anomalies sont recalculées à la volée : `cle` les identifie de façon
+    stable (type + jour ou mois + agent / retrait / employé). Voir controle.py.
+    """
+    cle         = models.CharField(max_length=120, unique=True)
+    type        = models.CharField(max_length=30)
+    date        = models.DateField()
+    commentaire = models.CharField(max_length=500, blank=True)
+    verifie_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+    verifie_le  = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'anomalie_verifiee'

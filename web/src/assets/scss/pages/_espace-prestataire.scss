@@ -443,3 +443,6 @@ app-planning-menus .ce-cal-statut { display: flex; gap: 4px; flex-wrap: wrap; .c
 @media (max-width: 400px) {
   .ep-plats { grid-template-columns: minmax(0, 1fr); }
 }
+// Anomalie classée « Vérifié »
+.ep-anomalies li.ep-anom-ok { opacity: .8; }
+.ep-anom-ic.verifiee { background: #EAFBF1; color: #1C7F45; }

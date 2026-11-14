@@ -2695,6 +2695,23 @@ class ControleRetraitsTests(_EspacePrestataireBase):
                          ('AGENTA Test', 6, '12:00', '12:01'))
         self.assertEqual(agent['prestataire'], 'Traiteur A')
         self.assertEqual(agent['rythme'], [{'debut': '12:00', 'nb': 6}])
+        # « Vérifié » : l'anomalie reste listée mais ne compte plus parmi celles à vérifier
+        self.assertEqual(r.data['chiffres']['anomalies'], 3)
+        rafale = next(a for a in r.data['anomalies'] if a['type'] == 'rafale')
+        self.assertIsNone(rafale['verification'])
+        url = f'{API}/controle-retraits/anomalies/verifier/'
+        v = self.client_pour(self.gestionnaire).post(url, {'cle': rafale['cle'], 'type': 'rafale', 'date': str(d),
+                                                            'commentaire': 'Groupe de visiteurs'}, format='json')
+        self.assertEqual(v.status_code, 200, v.data)
+        r2 = self.client_pour(self.gestionnaire).get(f'{API}/controle-retraits/?date={d}')
+        rafale2 = next(a for a in r2.data['anomalies'] if a['type'] == 'rafale')
+        self.assertEqual(rafale2['verification']['commentaire'], 'Groupe de visiteurs')
+        self.assertEqual((r2.data['chiffres']['anomalies'], r2.data['chiffres']['anomalies_verifiees']), (2, 1))
+        self.client_pour(self.gestionnaire).post(url, {'cle': rafale['cle'], 'annuler': True}, format='json')
+        r3 = self.client_pour(self.gestionnaire).get(f'{API}/controle-retraits/?date={d}')
+        self.assertEqual(r3.data['chiffres']['anomalies'], 3)
+        self.assertEqual(self.client_pour(self.employe).post(url, {'cle': rafale['cle'], 'type': 'rafale'},
+                                                             format='json').status_code, 403)
         # Horaires propres à l'agence : 16:00 devient normal
         self.agence.heure_fin_service = dtime(17, 0)
         self.agence.save()

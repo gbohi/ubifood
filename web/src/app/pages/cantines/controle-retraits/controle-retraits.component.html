@@ -6,6 +6,7 @@
       <option value="">Toutes les agences</option>
       @for (a of agences; track a.id) { <option [ngValue]="a.id">{{ a.nom_agence }}</option> }
     </select>
+    <button type="button" class="btn-ubi" [disabled]="!donnees" (click)="exporter()"><i class="ri-file-excel-2-line"></i><span class="pe-lib">Exporter</span></button>
     <a class="btn-ubi" routerLink="/cantines/retrait-commande"><i class="ri-qr-scan-2-line"></i><span class="pe-lib">Retrait de secours</span></a>
   </app-page-entete>
 
@@ -19,7 +20,7 @@
       <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ro"><i class="ri-feedback-line"></i></span>
         <div><small>Contestations à traiter</small><b>{{ d.chiffres.contestations_a_traiter }}</b><span>dont {{ d.chiffres.contestations_du_jour }} sur ce jour</span></div></div>
       <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-alarm-warning-line"></i></span>
-        <div><small>Anomalies détectées</small><b>{{ d.chiffres.anomalies }}</b><span>rythme anormal · hors horaires · saisies · erreurs au comptoir</span></div></div>
+        <div><small>Anomalies à vérifier</small><b>{{ d.chiffres.anomalies }}</b><span>@if (d.chiffres.anomalies_verifiees) { {{ d.chiffres.anomalies_verifiees }} déjà vérifiée(s) · }rythme anormal · hors horaires · saisies · erreurs au comptoir</span></div></div>
       <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-arrow-go-back-line"></i></span>
         <div><small>Retraits annulés (erreur comptoir) en {{ moisCourant }}</small><b>{{ d.chiffres.retraits_annules_mois }}</b><span>{{ d.chiffres.annulable_jusqu_a_cloture ? 'annulables jusqu\'à la clôture du mois' : 'mois clôturé' }}</span></div></div>
     </div>
@@ -160,12 +161,20 @@
         </div>
         <ul class="ep-anomalies">
           @for (an of d.anomalies; track $index) {
-            <li>
-              <span class="ep-anom-ic" [ngClass]="an.type"><i [class]="iconeAnomalie(an.type)"></i></span>
-              <div>
+            <li [class.ep-anom-ok]="an.verification">
+              <span class="ep-anom-ic" [ngClass]="an.verification ? 'verifiee' : an.type"><i [class]="an.verification ? 'ri-check-double-line' : iconeAnomalie(an.type)"></i></span>
+              <div class="flex-grow-1">
                 <b>{{ an.libelle }} · {{ an.agent_nom }}@if (an.agence_nom) { ({{ an.agence_nom }}) }</b>
                 <small>{{ an.description }}</small>
+                @if (an.verification; as v) {
+                  <small class="ep-c-vert"><i class="ri-check-line"></i> Vérifié par {{ v.par }} le {{ jourHeure(v.le) }}@if (v.commentaire) { — « {{ v.commentaire }} » }</small>
+                }
               </div>
+              @if (an.verification) {
+                <button type="button" class="ep-lien-suppr align-self-center" (click)="verifier(an, true)" title="Remettre à vérifier"><i class="ri-arrow-go-back-line"></i>Annuler</button>
+              } @else {
+                <button type="button" class="btn-ubi sm vert-doux align-self-center" (click)="verifier(an)"><i class="ri-check-line"></i>Vérifié</button>
+              }
             </li>
           } @empty {
             <li class="ep-muted"><i class="ri-checkbox-circle-line me-1"></i>Aucune anomalie ce jour-là.</li>

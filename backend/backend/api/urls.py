@@ -17,7 +17,7 @@ from .planning_equipes import (
     ProgrammationDetailView, ProgrammerView, RetirerView,
 )
 from .statistiques import DetailServiceView, RepasCategoriesView, StatistiquesView
-from .controle import ContestationRetraitViewSet, ControleRetraitsView
+from .controle import AnomalieVerifierView, ContestationRetraitViewSet, ControleRetraitsView
 from . import espace_prestataire as presta
 from . import caisse
 from . import parcours_commande as parcours
@@ -149,6 +149,7 @@ urlpatterns = [
     path('api/allnopagin/plats/', AllPlatNopginListAPIView.as_view(), name='allnopagin-plat-list'),
     path('api/allnopagin/prestataires/', AllPrestataireNopginListAPIView.as_view(), name='allnopagin-prestataire-list'),
     path('api/controle-retraits/', ControleRetraitsView.as_view(), name='controle-retraits'),
+    path('api/controle-retraits/anomalies/verifier/', AnomalieVerifierView.as_view(), name='anomalie-verifier'),
     # Espace prestataire
     path('api/prestataire/contexte/', presta.ContexteView.as_view(), name='prestataire-contexte'),
     path('api/prestataire/accueil/', presta.AccueilPrestataireView.as_view(), name='prestataire-accueil'),

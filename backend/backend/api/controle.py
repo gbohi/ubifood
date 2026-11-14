@@ -27,7 +27,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from .models import (
-    Agence, ClotureMensuelle, Commande, ContestationRetrait, Menu, ParametresSociete, Retrait, User,
+    Agence, AnomalieVerifiee, ClotureMensuelle, Commande, ContestationRetrait, Menu, ParametresSociete, Retrait, User,
 )
 from .permissions import IsAuthenticated, IsGestionnaireRole, agences_gerees, is_gestionnaire
 from .prestataires import fenetre_retrait, horaires_retrait
@@ -435,6 +435,7 @@ class ControleRetraitsView(APIView):
                 continue
             for rafale in _rafales(rs):
                 a = {'type': 'rafale', 'libelle': 'Rythme anormal',
+                     'cle': f"rafale:{d.isoformat()}:{agent_id}:{rafale[0].id}",
                      'agent_id': agent_id, 'agent_nom': nom_complet(rs[0].valide_par),
                      'agence_nom': rafale[0].menu.agence.nom_agence, 'nb': len(rafale),
                      'debut': _heure(rafale[0].date_retrait), 'fin': _heure(rafale[-1].date_retrait),
@@ -456,6 +457,7 @@ class ControleRetraitsView(APIView):
             ouverture, fermeture = fenetre_retrait(r.menu.date_menu, ag, r.menu.typeequipe, parametres)
             if not (ouverture <= r.date_retrait <= fermeture):
                 a = {'type': 'hors_horaires', 'libelle': 'Retrait hors horaires de service',
+                     'cle': f"hors_horaires:{r.id}",
                      'agent_id': r.valide_par_id,
                      'agent_nom': nom_complet(r.valide_par) if r.valide_par_id else None,
                      'agence_nom': ag.nom_agence, 'retrait_id': r.id, 'heure': _heure(r.date_retrait),
@@ -479,6 +481,7 @@ class ControleRetraitsView(APIView):
                 if nb.get(r.user_id, 0) > SAISIES_MAX and r.user_id not in vus:
                     vus.add(r.user_id)
                     a = {'type': 'saisie_manuelle', 'libelle': 'Matricule saisi à la main trop souvent',
+                         'cle': f"saisie:{d:%Y-%m}:{r.user_id}",
                          'agent_id': r.valide_par_id,
                          'agent_nom': nom_complet(r.valide_par) if r.valide_par_id else None,
                          'agence_nom': r.menu.agence.nom_agence, 'user_id': r.user_id,
@@ -510,6 +513,7 @@ class ControleRetraitsView(APIView):
         for agent_id, u in sorted(agents_erreurs.items(), key=lambda x: -erreurs_agent[x[0]]):
             n = erreurs_agent[agent_id]
             a = {'type': 'erreurs_comptoir', 'libelle': 'Contestations acceptées pour erreur au comptoir',
+                 'cle': f"erreurs:{d:%Y-%m}:{agent_id}",
                  'agent_id': agent_id, 'agent_nom': nom_complet(u),
                  'prestataire': u.prestataire.libelle if u.prestataire_id else None, 'nb': n,
                  'description': (f"{nom_complet(u)} : {n} contestations acceptées pour erreur au comptoir "
@@ -554,6 +558,15 @@ class ControleRetraitsView(APIView):
                 'retraits': [_retrait_ligne(r, plats, origines) for r in rs],
             })
         agents.sort(key=lambda a: (a['secours'], a['agent_id'] is None, -a['nb_retraits']))
+        # Anomalies déjà vérifiées par un gestionnaire
+        verifiees = {v.cle: v for v in AnomalieVerifiee.objects.filter(cle__in=[a['cle'] for a in anomalies])
+                     .select_related('verifie_par')}
+        for a in anomalies:
+            v = verifiees.get(a['cle'])
+            a['verification'] = None if v is None else {
+                'par': nom_complet(v.verifie_par) if v.verifie_par_id else None,
+                'le': timezone.localtime(v.verifie_le).isoformat(), 'commentaire': v.commentaire}
+        a_verifier = sum(1 for a in anomalies if a['verification'] is None)
         en_secours = sum(a['nb_retraits'] for a in agents if a['secours'])
         nb = len(retraits)
         # Repas sortis du relevé du prestataire (erreur au comptoir) dans le mois
@@ -571,7 +584,8 @@ class ControleRetraitsView(APIView):
                 'a_servir': commandes - nb if d >= aujourdhui else 0,
                 'contestations_a_traiter': len(ouvertes),
                 'contestations_du_jour': sum(1 for c in ouvertes if timezone.localtime(c.created_at).date() == aujourdhui),
-                'anomalies': len(anomalies),
+                'anomalies': a_verifier,
+                'anomalies_verifiees': len(anomalies) - a_verifier,
                 'retraits_annules_mois': mois_d,
                 'annulable_jusqu_a_cloture': not mois_cloture(d),
             },
@@ -585,3 +599,34 @@ class ControleRetraitsView(APIView):
                        'horaires_defaut': {'debut': parametres.heure_debut_service.strftime('%H:%M'),
                                            'fin': parametres.heure_fin_service.strftime('%H:%M')}},
         })
+
+
+TYPES_ANOMALIE = ('rafale', 'hors_horaires', 'saisie_manuelle', 'erreurs_comptoir')
+
+
+class AnomalieVerifierView(APIView):
+    """
+    POST controle-retraits/anomalies/verifier/ {cle, type, date, commentaire}
+         → anomalie classée « Vérifié » ; {cle, annuler: true} → de nouveau à vérifier.
+    """
+    permission_classes = [IsGestionnaireRole]
+
+    def post(self, request):
+        from .espace_prestataire import _date
+        d = request.data
+        cle = str(d.get('cle') or '').strip()
+        if not cle or len(cle) > 120 or cle.split(':')[0] not in ('rafale', 'hors_horaires', 'saisie', 'erreurs'):
+            raise ValidationError({'cle': "Anomalie invalide."})
+        if d.get('annuler') in (True, 'true', 1, '1'):
+            AnomalieVerifiee.objects.filter(cle=cle).delete()
+            return Response({'cle': cle, 'verification': None})
+        type_a = d.get('type')
+        if type_a not in TYPES_ANOMALIE:
+            raise ValidationError({'type': "Type d'anomalie invalide."})
+        v, _ = AnomalieVerifiee.objects.update_or_create(cle=cle, defaults={
+            'type': type_a, 'date': _date(d.get('date'), timezone.localdate()),
+            'commentaire': str(d.get('commentaire') or '').strip()[:500], 'verifie_par': request.user,
+            'verifie_le': timezone.now()})
+        return Response({'cle': cle, 'verification': {'par': nom_complet(request.user),
+                                                      'le': timezone.localtime(v.verifie_le).isoformat(),
+                                                      'commentaire': v.commentaire}})

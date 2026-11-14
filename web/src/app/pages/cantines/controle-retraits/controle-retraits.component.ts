@@ -17,6 +17,7 @@ import { TokenStorageService } from 'src/app/core/services/token-storage.service
 import { selectAllAgenceWithoutPagination } from 'src/app/store/Agence/agence-selector';
 import { fetchagenceNoPaginateData } from 'src/app/store/Agence/agence.action';
 import { environment } from 'src/environments/environment';
+import * as XLSX from 'xlsx';
 
 export interface RetraitControle {
   id: number; heure: string; date_retrait: string; user_id: number; user_nom: string; matricule: string;
@@ -65,7 +66,7 @@ export interface Controle {
   chiffres: {
     retraits: number; par_prestataire: number; en_secours: number; commandes: number; a_servir: number;
     retraits_externes?: number;
-    contestations_a_traiter: number; contestations_du_jour: number; anomalies: number;
+    contestations_a_traiter: number; contestations_du_jour: number; anomalies: number; anomalies_verifiees?: number;
     retraits_annules_mois: number; annulable_jusqu_a_cloture: boolean;
   };
   agents: AgentControle[];
@@ -122,6 +123,52 @@ export class ControleRetraitsComponent implements OnInit {
     this.store.select(selectAllAgenceWithoutPagination).pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(a => this.agences = filtrerAgencesGerees(a ?? [], this.user));
     this.charger();
+  }
+
+  /** Classe l'anomalie « Vérifié » (commentaire facultatif) ou la remet à vérifier */
+  verifier(an: any, annuler = false): void {
+    let corps: any = { cle: an.cle, annuler: true };
+    if (!annuler) {
+      const commentaire = prompt(`Anomalie vérifiée : ${an.libelle}. Commentaire (facultatif) :`, '');
+      if (commentaire === null) return;
+      corps = { cle: an.cle, type: an.type, date: this.date, commentaire };
+    }
+    this.http.post<any>(`${this.api}/controle-retraits/anomalies/verifier/`, corps).subscribe({
+      next: r => {
+        an.verification = r.verification;
+        const c = this.donnees!.chiffres;
+        c.anomalies += annuler ? 1 : -1;
+        c.anomalies_verifiees = (c.anomalies_verifiees ?? 0) + (annuler ? -1 : 1);
+      },
+      error: () => this.toastr.error('Action impossible.'),
+    });
+  }
+
+  /** Export Excel du contrôle du jour : retraits, anomalies, contestations à traiter */
+  exporter(): void {
+    const d = this.donnees!;
+    const retraits = XLSX.utils.aoa_to_sheet([
+      ['Heure', 'Agence', 'Employé', 'Matricule', 'Agence de l\'employé', 'Plats', 'Identification', 'Validé par', 'Prestataire'],
+      ...d.agents.flatMap(a => a.retraits.map(r => [r.heure, r.agence_nom, r.user_nom, r.matricule,
+        r.externe ? (r.agence_origine || '') : r.agence_nom, r.plats.join(', '),
+        r.mode === 'scan' ? 'Badge scanné' : r.mode === 'saisie' ? 'Matricule saisi' : '', r.valide_par_nom || a.agent_nom, a.prestataire || ''])),
+    ]);
+    const anomalies = XLSX.utils.aoa_to_sheet([
+      ['Type', 'Agent', 'Agence', 'Description', 'Statut', 'Vérifié par', 'Le', 'Commentaire'],
+      ...d.anomalies.map((an: any) => [an.libelle, an.agent_nom || '', an.agence_nom || '', an.description,
+        an.verification ? 'Vérifié' : 'À vérifier', an.verification?.par || '', an.verification ? this.jourHeure(an.verification.le) : '',
+        an.verification?.commentaire || '']),
+    ]);
+    const contestations = XLSX.utils.aoa_to_sheet([
+      ['Déposée le', 'Employé', 'Matricule', 'Agence', 'Repas du', 'Plat', 'Motif', 'Commentaire', 'Retrait validé par'],
+      ...d.contestations.map(c => [this.jourHeure(c.created_at), c.user_nom, c.matricule, c.agence_nom, c.date_menu, c.plat,
+        c.motif_libelle, c.commentaire, c.retrait_valide_par_nom || '']),
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, retraits, 'Retraits');
+    XLSX.utils.book_append_sheet(wb, anomalies, 'Anomalies');
+    XLSX.utils.book_append_sheet(wb, contestations, 'Contestations');
+    XLSX.writeFile(wb, `controle_retraits_${d.date}.xlsx`);
   }
 
   charger(): void {
