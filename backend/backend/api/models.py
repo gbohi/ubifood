@@ -424,7 +424,7 @@ class Retrait(BaseModel):
     menu           = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name='retraits')
     date_retrait   = models.DateTimeField(default=timezone.now)
     badge_matricule = models.CharField(max_length=100)
-    MODE_CHOICES = [('scan', 'Badge scanné'), ('saisie', 'Matricule saisi')]
+    MODE_CHOICES = [('scan', 'QR code scanné'), ('saisie', 'Matricule saisi'), ('badge', "Badge d'accès")]
     # Qui a validé le retrait au comptoir (agent du prestataire ou gestionnaire
     # en secours) et comment l'employé a été identifié (vide : non précisé)
     valide_par     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
@@ -932,6 +932,10 @@ class ParametresSociete(models.Model):
     suivi_rappel_minutes      = models.PositiveIntegerField(
         "Rappel : minutes avant la fin du retrait", default=30, validators=[MaxValueValidator(240)])
     suivi_incidents_actif     = models.BooleanField("Incidents signalés par le prestataire", default=True)
+    # Retrait par badge d'accès (badges.py)
+    badge_validation_auto     = models.BooleanField("Validation automatique au badge", default=True)
+    badge_alerte_perdu        = models.BooleanField("Alerte badge perdu au gestionnaire", default=True)
+    badge_obligatoire         = models.BooleanField("Badge obligatoire au comptoir", default=False)
     suivi_preferences_employe = models.BooleanField(
         "Les employés peuvent couper les notifications du suivi", default=True)
     updated_at         = models.DateTimeField(auto_now=True)
@@ -1760,3 +1764,29 @@ class SuspensionJeu(models.Model):
         db_table = 'jeu_suspension'
         ordering = ['-debut']
         indexes = [models.Index(fields=['source', 'source_id'])]
+
+
+
+class BadgeAcces(models.Model):
+    """
+    Badge d'accès (portes) réutilisé au comptoir : seul son numéro est
+    enregistré. Un seul badge actif par employé ; un numéro actif = un
+    employé. Le numéro peut être lu en décimal ou en hexadécimal selon le
+    lecteur : val_dec / val_hex (valeurs entières en texte) servent à la
+    correspondance. Voir badges.py.
+    """
+    STATUT_CHOICES = [('actif', 'Actif'), ('perdu', 'Perdu'), ('remplace', 'Remplacé'), ('dissocie', 'Dissocié')]
+    user        = models.ForeignKey(User, on_delete=models.CASCADE, related_name='badges_acces')
+    numero      = models.CharField(max_length=40)
+    val_dec     = models.CharField(max_length=60, blank=True, db_index=True)
+    val_hex     = models.CharField(max_length=60, blank=True, db_index=True)
+    statut      = models.CharField(max_length=10, choices=STATUT_CHOICES, default='actif')
+    associe_le  = models.DateTimeField(default=timezone.now)
+    associe_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+    fin_le      = models.DateTimeField(null=True, blank=True)
+    fin_par     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    motif       = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = 'badge_acces'
+        ordering = ['-associe_le', '-id']

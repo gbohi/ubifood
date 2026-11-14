@@ -980,17 +980,43 @@ class ComptoirServiceView(APIView):
 
 class ComptoirRechercheView(APIView):
     """
-    GET /prestataire/comptoir/recherche/?badge=MATRICULE&agence=
-    Employé (badge scanné ou matricule saisi) et sa commande du jour dans l'agence.
+    GET /prestataire/comptoir/recherche/?badge=MATRICULE&agence=   (QR code scanné ou matricule saisi)
+    GET /prestataire/comptoir/recherche/?carte=NUMERO&agence=      (badge d'accès posé sur le lecteur)
+    Employé et sa commande du jour dans l'agence. Badge : « validation_auto »
+    vrai si le réglage est actif et qu'il n'y a qu'un repas à retirer.
     """
     permission_classes = [IsAgentComptoir]
 
     def get(self, request):
+        from . import badges as bdg
         badge = (request.query_params.get('badge') or '').strip()
-        if not badge:
+        carte = (request.query_params.get('carte') or '').strip()
+        if not badge and not carte:
             raise ValidationError({'badge': "Badge ou matricule requis."})
         agence = _agence_comptoir(request)
-        employe = User.objects.filter(username__iexact=badge, prestataire__isnull=True).first()
+        parametres = ParametresSociete.charger()
+        if carte:
+            b = bdg.trouver(carte, statuts=('actif', 'perdu'))
+            if b is not None and b.statut == 'perdu':
+                if parametres.badge_alerte_perdu:
+                    bdg.notifier_badge_perdu(b, agence, request.user)
+                return Response({'code': 'badge_perdu',
+                                 'detail': (f"Badge déclaré perdu par {nom_complet(b.user)} le "
+                                            f"{timezone.localtime(b.fin_le):%d/%m}. Retrait refusé"
+                                            + ("; le gestionnaire est prévenu." if parametres.badge_alerte_perdu else "."))},
+                                status=status.HTTP_409_CONFLICT)
+            if b is None:
+                return Response({'code': 'badge_inconnu',
+                                 'detail': "Badge non enregistré : utilisez le QR code ou le matricule. "
+                                           "Le gestionnaire pourra associer ce badge."},
+                                status=status.HTTP_404_NOT_FOUND)
+            employe = b.user
+        else:
+            if parametres.badge_obligatoire:
+                return Response({'code': 'badge_obligatoire',
+                                 'detail': "Le badge d'accès est obligatoire au comptoir : demandez à l'employé de poser son badge."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            employe = User.objects.filter(username__iexact=badge, prestataire__isnull=True).first()
         if employe is None:
             return Response({'detail': f"Aucun employé trouvé avec le matricule « {badge} »."},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1030,13 +1056,17 @@ class ComptoirRechercheView(APIView):
                                       if c.statut == 'retiree']) if retrait else None,
             'a_retirer': bool(a_retirer) and retrait is None,
             'menu_id': a_retirer[0].menu_id if a_retirer and retrait is None else None,
+            # Badge posé, un seul repas à retirer, réglage actif : le comptoir valide sans clic
+            'validation_auto': bool(carte and parametres.badge_validation_auto and retrait is None
+                                    and len({c.menu_id for c in a_retirer}) == 1),
+            'mode': 'badge' if carte else None,
             'message': message,
         })
 
 
 class ComptoirValiderView(APIView):
     """
-    POST /prestataire/comptoir/valider/ { menu_id, user_id, mode: "scan"|"saisie" }
+    POST /prestataire/comptoir/valider/ { menu_id, user_id, mode: "scan"|"saisie"|"badge" }
     Enregistre le retrait au nom de l'agent connecté (valide_par) ; l'employé
     reçoit la notification « Retrait validé » (avec action de contestation).
     """
@@ -1045,8 +1075,10 @@ class ComptoirValiderView(APIView):
     def post(self, request):
         from .serializers import RetraitSerializer
         mode = request.data.get('mode')
-        if mode not in ('scan', 'saisie'):
-            raise ValidationError({'mode': "Indiquez le mode d'identification : « scan » ou « saisie »."})
+        if mode not in ('scan', 'saisie', 'badge'):
+            raise ValidationError({'mode': "Indiquez le mode d'identification : « scan », « saisie » ou « badge »."})
+        if mode != 'badge' and ParametresSociete.charger().badge_obligatoire:
+            raise ValidationError({'mode': "Le badge d'accès est obligatoire au comptoir."})
         menu_id = _entier(request.data.get('menu_id'), 'menu_id')
         user_id = _entier(request.data.get('user_id'), 'user_id')
         if menu_id is None or user_id is None:

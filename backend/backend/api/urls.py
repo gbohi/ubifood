@@ -7,7 +7,7 @@ from .views import *
 from .accueil import AccueilView
 from .planning import PlanningView
 from .tarifs_grille import GrilleTarifsView
-from . import jeux, gains, defis, pronostics, tickets, suspensions, dupliquer
+from . import jeux, gains, defis, pronostics, tickets, suspensions, dupliquer, badges
 from .suivi_repas import (
     PonctualiteView, PreferencesSuiviView, PrestataireIncidentView, PrestataireSuiviEtapeView, PrestataireSuiviView,
     SuiviLivraisonsView,
@@ -294,5 +294,13 @@ urlpatterns = [
     *[path(f'api/admin/tickets/<int:pk>/{a}/', tickets.AdminTicketsActionView.as_view(action=a),
            name=f'admin-tickets-{a}') for a in ('programmer', 'annuler')],
     path('api/admin/tickets/<int:pk>/suivi/', tickets.AdminTicketsSuiviView.as_view(), name='admin-tickets-suivi'),
+    # Badges d'accès (retrait au comptoir)
+    path('api/badge/', badges.MonBadgeView.as_view(), name='mon-badge'),
+    path('api/badge/perdu/', badges.MonBadgePerduView.as_view(), name='mon-badge-perdu'),
+    path('api/admin/badges/', badges.AdminBadgesView.as_view(), name='admin-badges'),
+    path('api/admin/badges/sans-badge/', badges.SansBadgeView.as_view(), name='admin-badges-sans-badge'),
+    path('api/admin/badges/import/', badges.ImportBadgesView.as_view(), name='admin-badges-import'),
+    *[path(f'api/admin/badges/<int:pk>/{a}/', badges.AdminBadgeActionView.as_view(action=a), name=f'admin-badge-{a}')
+      for a in ('perdu', 'dissocier', 'reactiver')],
 ]
 

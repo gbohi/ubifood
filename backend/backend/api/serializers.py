@@ -1554,6 +1554,7 @@ class ParametresSocieteSerializer(serializers.ModelSerializer):
                   'planning_commande_tardive_heures',
                   # Suivi des repas (suivi_repas.py)
                   'suivi_etapes', 'suivi_rappel_actif', 'suivi_rappel_minutes', 'suivi_incidents_actif',
+                  'badge_validation_auto', 'badge_alerte_perdu', 'badge_obligatoire',
                   'suivi_preferences_employe', 'updated_at']
         read_only_fields = ['updated_at']
         extra_kwargs = {'logo': {'write_only': True, 'required': False}}
