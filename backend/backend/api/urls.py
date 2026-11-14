@@ -7,7 +7,7 @@ from .views import *
 from .accueil import AccueilView
 from .planning import PlanningView
 from .tarifs_grille import GrilleTarifsView
-from . import jeux, gains, defis, pronostics, tickets
+from . import jeux, gains, defis, pronostics, tickets, suspensions, dupliquer
 from .suivi_repas import (
     PonctualiteView, PreferencesSuiviView, PrestataireIncidentView, PrestataireSuiviEtapeView, PrestataireSuiviView,
     SuiviLivraisonsView,
@@ -263,6 +263,8 @@ urlpatterns = [
          name='admin-jeu-remettre'),
     # Défis et badges, pronostics, tickets à gratter, gains
     path('api/mes-gains/', gains.MesGainsView.as_view(), name='mes-gains'),
+    path('api/admin/jeux/dupliquer/', dupliquer.AdminDupliquerView.as_view(), name='jeu-dupliquer'),
+    path('api/admin/jeux/suspension/', suspensions.AdminSuspensionView.as_view(), name='jeu-suspension'),
     path('api/comptabilite/couts-jeux/', gains.CoutsJeuxView.as_view(), name='couts-jeux'),
     path('api/admin/jeux/lots-a-remettre/', gains.LotsARemettreView.as_view(), name='lots-a-remettre'),
     path('api/admin/jeux/gains/<int:pk>/remettre/', gains.RemettreGainView.as_view(), name='gain-remettre'),

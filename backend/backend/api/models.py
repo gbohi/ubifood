@@ -1504,10 +1504,11 @@ class GainJeu(models.Model):
 # ============================================================
 
 class CampagneDefis(models.Model):
-    """Défis d'un mois : chaque défi est actif si son objectif et ses points sont > 0."""
+    """Défis d'une période : chaque défi est actif si son objectif et ses points sont > 0."""
     titre       = models.CharField(max_length=150)
-    annee       = models.PositiveSmallIntegerField()
-    mois        = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(12)])
+    # Période du jeu (date et heure) : repas comptés du jour de début au jour de fin
+    debut       = models.DateTimeField()
+    fin         = models.DateTimeField()
     agences     = models.ManyToManyField(Agence, blank=True, related_name='campagnes_defis')
     # Commander N jours de service de suite
     serie_jours   = models.PositiveSmallIntegerField(default=5)
@@ -1531,7 +1532,7 @@ class CampagneDefis(models.Model):
 
     class Meta:
         db_table = 'defis_campagne'
-        ordering = ['-annee', '-mois', '-id']
+        ordering = ['-debut', '-id']
 
 
 class PalierDefis(models.Model):
@@ -1738,3 +1739,24 @@ class AnomalieVerifiee(models.Model):
 
     class Meta:
         db_table = 'anomalie_verifiee'
+
+
+
+class SuspensionJeu(models.Model):
+    """
+    Suspension d'un jeu (quiz, défis, pronostics, tickets) : de `debut` à `fin`
+    (vide : toujours suspendu). Effets dans suspensions.py.
+    """
+    SOURCE_CHOICES = [('quiz', 'Quiz'), ('defis', 'Défis'), ('pronostics', 'Pronostics'), ('ticket', 'Tickets à gratter')]
+    source      = models.CharField(max_length=12, choices=SOURCE_CHOICES)
+    source_id   = models.PositiveIntegerField()
+    debut       = models.DateTimeField(default=timezone.now)
+    fin         = models.DateTimeField(null=True, blank=True)
+    motif       = models.CharField(max_length=255, blank=True)
+    suspendu_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+    repris_par  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    class Meta:
+        db_table = 'jeu_suspension'
+        ordering = ['-debut']
+        indexes = [models.Index(fields=['source', 'source_id'])]

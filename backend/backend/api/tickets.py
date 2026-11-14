@@ -28,6 +28,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import gains
+from . import suspensions as _susp
 from .models import Agence, CampagneTickets, GainJeu, LotTicket, Ticket
 from .permissions import IsAuthenticated, ReadGestionnaireWriteAdmin
 
@@ -58,7 +59,9 @@ LIBELLES_ETAT = {'annule': 'Annulée', 'brouillon': 'Brouillon', 'a_venir': 'Pro
 
 
 def limite_grattage(c):
-    return c.fin + timedelta(days=c.validite_jours)
+    """Fin + délai pour gratter, prolongés de la durée des suspensions."""
+    from .suspensions import duree_totale
+    return c.fin + timedelta(days=c.validite_jours) + duree_totale('ticket', c.id)
 
 
 def concerne(user, c, maintenant=None):
@@ -71,8 +74,11 @@ def concerne(user, c, maintenant=None):
 
 
 def campagnes_actives(maintenant):
+    """Campagnes en cours et non suspendues (distribution de tickets)."""
+    from .models import SuspensionJeu
+    suspendues = SuspensionJeu.objects.filter(source='ticket', fin__isnull=True).values_list('source_id', flat=True)
     return CampagneTickets.objects.filter(publie_le__isnull=False, annule_le__isnull=True, debut__lte=maintenant,
-                                          fin__gt=maintenant)
+                                          fin__gt=maintenant).exclude(id__in=suspendues)
 
 
 def creer_ticket_retrait(retrait_id):
@@ -127,6 +133,8 @@ def gratter(ticket_id, user, maintenant=None):
         c = CampagneTickets.objects.select_for_update().get(pk=t.campagne_id)
         if c.annule_le:
             raise ValidationError("Cette campagne a été annulée.")
+        from .suspensions import exiger_actif
+        exiger_actif('ticket', c.id)
         if maintenant > limite_grattage(c):
             raise ValidationError(f"Ticket expiré le {_quand(limite_grattage(c))}.")
         consomme = budget_consomme(c)
@@ -154,6 +162,7 @@ def ticket_json(t):
             'source_libelle': 'Repas retiré' if t.source == 'retrait' else 'Ticket du jour',
             'cree_le': _iso(t.cree_le), 'gratte_le': _iso(t.gratte_le), 'expire_le': _iso(limite_grattage(t.campagne)),
             'gagne': bool(t.lot_id) if t.gratte_le else None,
+            'suspendu': _susp.suspendu('ticket', t.campagne_id),
             'gain': gains.gain_json(t.gain) if t.gain_id else None}
 
 
@@ -171,9 +180,11 @@ def lots_json(c, admin=False):
 
 
 def campagne_json(c, maintenant, admin=False):
+    from .suspensions import suspension_json
     return {'id': c.id, 'titre': c.titre, 'debut': _iso(c.debut), 'fin': _iso(c.fin), 'etat': etat(c, maintenant),
             'ticket_par_retrait': c.ticket_par_retrait, 'ticket_quotidien': c.ticket_quotidien,
-            'limite_grattage': _iso(limite_grattage(c)), 'lots': lots_json(c, admin)}
+            'limite_grattage': _iso(limite_grattage(c)), 'lots': lots_json(c, admin),
+            'suspension': suspension_json('ticket', c.id)}
 
 
 class MesTicketsView(APIView):
@@ -315,7 +326,8 @@ def admin_json(c, complet=False):
          'budget_max': float(c.budget_max) if c.budget_max is not None else None,
          'budget_consomme': float(budget_consomme(c)), 'validite_jours': c.validite_jours,
          'agences': [{'id': a.id, 'nom': a.nom_agence} for a in c.agences.all()], 'stats': st,
-         'proba_perdu': float(100 - sum(l.probabilite for l in c.lots.all()))}
+         'proba_perdu': float(100 - sum(l.probabilite for l in c.lots.all())),
+         'historique_suspensions': _susp.historique('ticket', c.id)}
     return d
 
 

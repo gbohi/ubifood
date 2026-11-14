@@ -372,8 +372,11 @@ def _partie_verrouillee(jeu, user):
 
 def commencer(jeu, user, maintenant=None):
     from .permissions import exiger_employe
+    from .suspensions import exiger_actif
     exiger_employe(user)
     maintenant = maintenant or timezone.now()
+    if not ParticipationJeu.objects.filter(jeu=jeu, user=user).exists():
+        exiger_actif('quiz', jeu.id)
     etat = etat_jeu(jeu, maintenant)
     existante = ParticipationJeu.objects.filter(jeu=jeu, user=user).first()
     if existante:
@@ -632,7 +635,10 @@ def taches_jeux(maintenant=None):
     compte = {'rappels': 0, 'ouvertures': 0, 'relances': 0}
     actifs = Jeu.objects.filter(publie_le__isnull=False, annule_le__isnull=True, resultats_publies_le__isnull=True,
                                 fin__gt=maintenant)
+    from .suspensions import suspendu
     for jeu in actifs:
+        if suspendu('quiz', jeu.id):
+            continue
         if (jeu.mode == 'direct' and not jeu.rappel_envoye_le and jeu.debut - RAPPEL_DIRECT <= maintenant < jeu.debut
                 and _marquer(jeu, 'rappel_envoye_le', maintenant)):
             ids = list(destinataires(jeu, maintenant).values_list('id', flat=True))
@@ -699,6 +705,7 @@ def participation_json(p, jeu, maintenant):
 
 
 def jeu_json(jeu, user=None, maintenant=None, participation=None, detail=False):
+    from .suspensions import suspension_json
     maintenant = maintenant or timezone.now()
     lots = lots_json(jeu)
     questions = list(jeu.questions.all())
@@ -714,6 +721,7 @@ def jeu_json(jeu, user=None, maintenant=None, participation=None, detail=False):
         'ouverture': _iso(jeu.debut - (SALLE_ATTENTE if jeu.mode == 'direct' else timedelta(0))),
         'resultats_publies_le': _iso(jeu.resultats_publies_le),
         'nb_participants': jeu.participations.count() if detail or jeu.resultats_publies_le else None,
+        'suspension': suspension_json('quiz', jeu.id),
     }
     if user is not None:
         d['participation'] = participation_json(participation, jeu, maintenant)
@@ -1081,6 +1089,7 @@ def programmer(jeu, par, maintenant=None):
 
 
 def admin_json(jeu, maintenant=None, complet=False):
+    from .suspensions import historique
     maintenant = maintenant or timezone.now()
     d = jeu_json(jeu, None, maintenant, detail=True)
     d.update({
@@ -1090,6 +1099,7 @@ def admin_json(jeu, maintenant=None, complet=False):
         'agences': [{'id': a.id, 'nom': a.nom_agence} for a in jeu.agences.all()],
         'fin_parties': _iso(fin_parties(jeu)),
         'peut_publier_resultats': d['etat'] == 'termine' and maintenant >= fin_parties(jeu),
+        'historique_suspensions': historique('quiz', jeu.id),
         'nb_participants': jeu.participations.count(),
     })
     if complet:

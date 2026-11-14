@@ -1,5 +1,7 @@
 """
-Défis et badges : un programme par mois (le mois où le jeu est lancé).
+Défis et badges : un programme a une date et heure de début et de fin
+(un autre programme : le dupliquer ou en créer un nouveau ; deux programmes
+programmés ne peuvent pas se chevaucher).
 
 Défis (objectif et points réglables ; un défi à 0 est désactivé) :
   serie     « Fidèle »            commander N jours de service DE SUITE. Jours de
@@ -7,15 +9,17 @@ Défis (objectif et points réglables ; un défi à 0 est désactivé) :
                                   agences de l'employé (week-ends et jours fériés
                                   sans menu ne cassent pas la série) ;
   plats     « Gourmet curieux »   goûter N plats différents (jamais commandés
-                                  avant le mois si plats_nouveaux) ;
-  avis      « Critique culinaire » donner son avis sur N repas du mois ;
-  retraits  « Zéro oubli »        retirer TOUS ses repas du mois (au moins
+                                  avant le début si plats_nouveaux) ;
+  avis      « Critique culinaire » donner son avis sur N repas de la période ;
+  retraits  « Zéro oubli »        retirer TOUS ses repas de la période (au moins
                                   retraits_minimum commandés) — constaté à la clôture.
-Seules les commandes non annulées dont la date de menu tombe dans le mois
-comptent. Chaque défi rapporte ses points une fois ; badge à la clé.
-Défi réussi en cours de mois : notification tout de suite (tâche planifiée ou
-ouverture de l'écran). À la clôture (à partir du CLOTURE_JOUR du mois
-suivant), tout est recalculé (une commande annulée entre-temps peut faire
+Comptent les commandes non annulées dont la date de repas tombe dans la
+période (du jour de début au jour de fin) ; les heures fixent l'ouverture et
+la fermeture du jeu. Commandes passées et avis donnés pendant une suspension
+du jeu : ne comptent pas. Chaque défi rapporte ses points une fois ; badge à la clé.
+Défi réussi pendant le jeu : notification tout de suite (tâche planifiée ou
+ouverture de l'écran). À la clôture (à partir de CLOTURE_DELAI_JOURS jours
+après le jour de fin : retraits de la nuit), tout est recalculé (une commande annulée entre-temps peut faire
 perdre un défi), puis chaque employé reçoit la récompense du plus haut
 palier atteint (stock éventuel attribué par classement : points, puis
 défis réussis le plus tôt).
@@ -25,7 +29,6 @@ API administration (lecture : gestionnaires ; écriture : administrateurs)
   GET/POST admin/defis/ · GET/PUT/DELETE admin/defis/<id>/ · POST admin/defis/<id>/programmer|annuler|cloturer/
   GET admin/defis/<id>/suivi/   progression de chaque employé (ou bilan après clôture)
 """
-import calendar
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -38,12 +41,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import gains
+from . import suspensions as _susp
 from .models import (
     Agence, AvisPlat, CampagneDefis, Commande, DefiReussi, Menu, PalierDefis, ResultatDefis, User,
 )
 from .permissions import IsAuthenticated, ReadGestionnaireWriteAdmin
 
-CLOTURE_JOUR = 2        # clôture possible à partir du 2 du mois suivant (retraits de la nuit)
+CLOTURE_DELAI_JOURS = 2   # clôture possible à partir du surlendemain du jour de fin (retraits de la nuit)
 MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre',
         'novembre', 'décembre']
 DEFIS = {
@@ -59,30 +63,33 @@ def _iso(dt):
 
 
 def bornes(c):
-    return date(c.annee, c.mois, 1), date(c.annee, c.mois, calendar.monthrange(c.annee, c.mois)[1])
+    """Jours de repas comptés : du jour de début au jour de fin."""
+    return timezone.localdate(c.debut), timezone.localdate(c.fin)
 
 
-def libelle_mois(c):
-    return f"{MOIS[c.mois - 1]} {c.annee}"
+def _q(dt):
+    return timezone.localtime(dt).strftime('%d/%m/%Y à %H:%M')
+
+
+def libelle_periode(c):
+    return f"du {_q(c.debut)} au {_q(c.fin)}"
 
 
 def cloture_possible_le(c):
-    _, fin = bornes(c)
-    return fin + timedelta(days=CLOTURE_JOUR)
+    return bornes(c)[1] + timedelta(days=CLOTURE_DELAI_JOURS)
 
 
-def etat(c, aujourdhui=None):
-    aujourdhui = aujourdhui or timezone.localdate()
-    debut, fin = bornes(c)
+def etat(c, maintenant=None):
+    maintenant = maintenant or timezone.now()
     if c.annule_le:
         return 'annule'
     if not c.publie_le:
         return 'brouillon'
     if c.cloture_le:
         return 'cloture'
-    if aujourdhui < debut:
+    if maintenant < c.debut:
         return 'a_venir'
-    if aujourdhui <= fin:
+    if maintenant < c.fin:
         return 'en_cours'
     return 'a_cloturer'
 
@@ -100,10 +107,10 @@ def defis_actifs(c):
         res.append(('plats', c.plats_nombre, c.plats_points,
                     f"Goûter {c.plats_nombre} plats différents" + (" jamais commandés avant" if c.plats_nouveaux else "")))
     if c.avis_nombre and c.avis_points:
-        res.append(('avis', c.avis_nombre, c.avis_points, f"Donner votre avis sur {c.avis_nombre} repas du mois"))
+        res.append(('avis', c.avis_nombre, c.avis_points, f"Donner votre avis sur {c.avis_nombre} repas"))
     if c.retraits_points:
         res.append(('retraits', c.retraits_minimum, c.retraits_points,
-                    f"Retirer tous vos repas du mois (au moins {c.retraits_minimum} commandés, aucun oublié)"))
+                    f"Retirer tous vos repas de la période (au moins {c.retraits_minimum} commandés, aucun oublié)"))
     return res
 
 
@@ -117,14 +124,17 @@ def destinataires(c, maintenant=None):
 # ══════════════════════════════════════════════════════════════
 
 def progression(c, user_ids, aujourdhui=None):
-    """{user_id: {serie, plats, avis, retraits}} calculé sur les commandes du mois."""
+    """{user_id: {serie, plats, avis, retraits}} calculé sur les commandes de la période."""
     from .jeux import agences_actuelles
+    from .suspensions import exclure_suspensions
     aujourdhui = aujourdhui or timezone.localdate()
     debut, fin = bornes(c)
     ids = list(user_ids)
     jours_cmd, plats, statuts = defaultdict(set), defaultdict(set), defaultdict(list)
-    for uid, d, plat, statut in (Commande.objects.filter(user_id__in=ids, menu__date_menu__range=(debut, fin))
-                                 .exclude(statut='annulee').values_list('user_id', 'menu__date_menu', 'plat_id', 'statut')):
+    commandes = exclure_suspensions(
+        Commande.objects.filter(user_id__in=ids, menu__date_menu__range=(debut, fin)).exclude(statut='annulee'),
+        'date_commande', 'defis', c.id)
+    for uid, d, plat, statut in commandes.values_list('user_id', 'menu__date_menu', 'plat_id', 'statut'):
         jours_cmd[uid].add(d)
         plats[uid].add(plat)
         statuts[uid].append((d, statut))
@@ -135,8 +145,8 @@ def progression(c, user_ids, aujourdhui=None):
             deja[uid].add(plat)
         plats = {u: p - deja.get(u, set()) for u, p in plats.items()}
     avis = defaultdict(int)
-    for uid in (AvisPlat.objects.filter(user_id__in=ids, commande__menu__date_menu__range=(debut, fin))
-                .values_list('user_id', flat=True)):
+    for uid in (exclure_suspensions(AvisPlat.objects.filter(user_id__in=ids, commande__menu__date_menu__range=(debut, fin)),
+                                    'created_at', 'defis', c.id).values_list('user_id', flat=True)):
         avis[uid] += 1
     # Jours de service par agence
     service_agence, tous = defaultdict(set), set()
@@ -189,7 +199,8 @@ def points_du(c, code):
 def verifier(c, user_ids, maintenant=None):
     """Enregistre et notifie les défis nouvellement réussis (mois en cours ou à clôturer)."""
     maintenant = maintenant or timezone.now()
-    if etat(c, timezone.localdate(maintenant)) not in ('en_cours', 'a_cloturer'):
+    from .suspensions import suspendu
+    if etat(c, maintenant) not in ('en_cours', 'a_cloturer') or suspendu('defis', c.id):
         return 0
     prog = progression(c, user_ids, timezone.localdate(maintenant))
     deja = defaultdict(set)
@@ -213,11 +224,11 @@ def cloturer(c, par, maintenant=None):
     aujourdhui = timezone.localdate(maintenant)
     with transaction.atomic():
         c = CampagneDefis.objects.select_for_update().get(pk=c.pk)
-        e = etat(c, aujourdhui)
+        e = etat(c, maintenant)
         if e == 'cloture':
-            raise ValidationError("Ce mois est déjà clôturé.")
+            raise ValidationError("Ce programme est déjà clôturé.")
         if e != 'a_cloturer':
-            raise ValidationError("Le mois n'est pas terminé.")
+            raise ValidationError("Le programme n'est pas terminé.")
         if aujourdhui < cloture_possible_le(c):
             raise ValidationError(f"Clôture possible à partir du {cloture_possible_le(c):%d/%m/%Y} "
                                   "(retraits du dernier jour).")
@@ -263,7 +274,7 @@ def cloturer(c, par, maintenant=None):
                                  f"{gains.libelle_gain(gain.type, gain.libelle, gain.montant)}, {suite}.",
                                  {'ecran': 'defis', 'campagne_id': c.id}))
             else:
-                messages.append((uid, f"Bilan : {c.titre}", f"Vous avez obtenu {totaux[uid]} points ce mois-ci. "
+                messages.append((uid, f"Bilan : {c.titre}", f"Vous avez obtenu {totaux[uid]} points. "
                                  "Bravo, rendez-vous au prochain défi !", {'ecran': 'defis', 'campagne_id': c.id}))
         c.cloture_le = maintenant
         c.save(update_fields=['cloture_le', 'updated_at'])
@@ -276,7 +287,7 @@ def taches_defis(maintenant=None):
     maintenant = maintenant or timezone.now()
     n = 0
     for c in CampagneDefis.objects.filter(publie_le__isnull=False, annule_le__isnull=True, cloture_le__isnull=True):
-        if etat(c, timezone.localdate(maintenant)) in ('en_cours', 'a_cloturer'):
+        if etat(c, maintenant) in ('en_cours', 'a_cloturer'):
             n += verifier(c, list(destinataires(c, maintenant).values_list('id', flat=True)), maintenant)
     return {'defis_reussis': n}
 
@@ -294,17 +305,18 @@ def paliers_json(c, points=None):
             for pa in c.paliers.order_by('points_min')]
 
 
-def campagne_json(c, aujourdhui=None):
-    aujourdhui = aujourdhui or timezone.localdate()
-    debut, fin = bornes(c)
-    return {'id': c.id, 'titre': c.titre, 'annee': c.annee, 'mois': c.mois, 'mois_libelle': libelle_mois(c),
-            'debut': debut.isoformat(), 'fin': fin.isoformat(), 'etat': etat(c, aujourdhui),
+def campagne_json(c, maintenant=None):
+    from .suspensions import suspension_json
+    maintenant = maintenant or timezone.now()
+    return {'id': c.id, 'titre': c.titre, 'periode_libelle': libelle_periode(c),
+            # compatibilité des écrans : « mois_libelle » porte désormais la période
+            'mois_libelle': libelle_periode(c), 'suspension': suspension_json('defis', c.id),
+            'debut': _iso(c.debut), 'fin': _iso(c.fin), 'etat': etat(c, maintenant),
             'cloture_le': _iso(c.cloture_le), 'points_max': sum(d[2] for d in defis_actifs(c))}
 
 
 def ma_campagne_json(c, user, maintenant):
-    aujourdhui = timezone.localdate(maintenant)
-    p = progression(c, [user.id], aujourdhui)[user.id]
+    p = progression(c, [user.id], timezone.localdate(maintenant))[user.id]
     faits = {d.defi: d for d in c.reussites.filter(user=user)}
     defis = []
     for code, objectif, pts, description in defis_actifs(c):
@@ -321,7 +333,7 @@ def ma_campagne_json(c, user, maintenant):
                       'constate_a_la_cloture': not c.cloture_le})
         defis.append(d)
     points = sum(d.points for d in faits.values())
-    res = {**campagne_json(c, aujourdhui), 'defis': defis, 'points': points, 'paliers': paliers_json(c, points)}
+    res = {**campagne_json(c, maintenant), 'defis': defis, 'points': points, 'paliers': paliers_json(c, points)}
     r = c.resultats.filter(user=user).select_related('palier', 'gain').first() if c.cloture_le else None
     res['resultat'] = None if r is None else {
         'points': r.points, 'rang': r.rang, 'palier': r.palier.nom if r.palier_id else None,
@@ -358,26 +370,25 @@ class MesDefisView(APIView):
 
     def get(self, request):
         maintenant = timezone.now()
-        aujourdhui = timezone.localdate(maintenant)
         campagnes = list(_visibles(request.user).prefetch_related('paliers'))
-        courante = next((c for c in sorted(campagnes, key=lambda c: (c.annee, c.mois))
-                         if etat(c, aujourdhui) in ('en_cours', 'a_cloturer')), None)
+        courante = next((c for c in sorted(campagnes, key=lambda c: c.debut)
+                         if etat(c, maintenant) in ('en_cours', 'a_cloturer')), None)
         from .permissions import is_employe
         if courante and is_employe(request.user):
             verifier(courante, [request.user.id], maintenant)
-        prochaine = next((c for c in sorted(campagnes, key=lambda c: (c.annee, c.mois))
-                          if etat(c, aujourdhui) == 'a_venir'), None)
+        prochaine = next((c for c in sorted(campagnes, key=lambda c: c.debut)
+                          if etat(c, maintenant) == 'a_venir'), None)
         historique = []
-        for c in sorted(campagnes, key=lambda c: (c.annee, c.mois), reverse=True):
-            if c is courante or etat(c, aujourdhui) != 'cloture':
+        for c in sorted(campagnes, key=lambda c: c.debut, reverse=True):
+            if c is courante or etat(c, maintenant) != 'cloture':
                 continue
             r = c.resultats.filter(user=request.user).select_related('palier', 'gain').first()
-            historique.append({**campagne_json(c, aujourdhui), 'points': r.points if r else 0,
+            historique.append({**campagne_json(c, maintenant), 'points': r.points if r else 0,
                                'palier': r.palier.nom if r and r.palier_id else None,
                                'gain': gains.gain_json(r.gain) if r and r.gain_id else None})
         return Response({
             'courante': ma_campagne_json(courante, request.user, maintenant) if courante else None,
-            'prochaine': {**campagne_json(prochaine, aujourdhui), 'defis': [
+            'prochaine': {**campagne_json(prochaine, maintenant), 'defis': [
                 {'code': d[0], 'nom': DEFIS[d[0]]['nom'], 'icone': DEFIS[d[0]]['icone'], 'description': d[3],
                  'points': d[2]} for d in defis_actifs(prochaine)], 'paliers': paliers_json(prochaine)}
             if prochaine else None,
@@ -440,22 +451,38 @@ def _lire_paliers(donnees):
     return res
 
 
+def _date_heure(v, champ):
+    from django.utils.dateparse import parse_datetime
+    dt = parse_datetime(str(v or ''))
+    if dt is None:
+        raise ValidationError({champ: "Date et heure invalides."})
+    return timezone.make_aware(dt, timezone.get_current_timezone()) if timezone.is_naive(dt) else dt
+
+
+def chevauchement(c, debut, fin):
+    """Autre programme programmé (non annulé) qui chevauche la période, sinon None."""
+    return (CampagneDefis.objects.filter(publie_le__isnull=False, annule_le__isnull=True, debut__lt=fin, fin__gt=debut)
+            .exclude(pk=c.pk).first())
+
+
 def enregistrer(c, d, par):
-    aujourdhui = timezone.localdate()
+    maintenant = timezone.now()
     if c.pk and (c.cloture_le or c.annule_le):
         raise ValidationError("Ce programme n'est plus modifiable.")
     titre = str(d.get('titre') or '').strip()
-    annee = _entier(d.get('annee'), 'annee', 2020, 2100, aujourdhui.year)
-    mois = _entier(d.get('mois'), 'mois', 1, 12, aujourdhui.month)
-    commence = c.pk and c.publie_le and date(c.annee, c.mois, 1) <= aujourdhui
-    if commence and (annee, mois) != (c.annee, c.mois):
-        raise ValidationError({'mois': "Le mois a commencé : il ne peut plus changer."})
-    if not commence and date(annee, mois, calendar.monthrange(annee, mois)[1]) < aujourdhui:
-        raise ValidationError({'mois': "Ce mois est passé."})
-    autre = (CampagneDefis.objects.filter(annee=annee, mois=mois, publie_le__isnull=False, annule_le__isnull=True)
-             .exclude(pk=c.pk))
-    if autre.exists():
-        raise ValidationError({'mois': "Un programme de défis est déjà programmé pour ce mois."})
+    debut = _date_heure(d.get('debut'), 'debut')
+    fin = _date_heure(d.get('fin'), 'fin')
+    if fin <= debut:
+        raise ValidationError({'fin': "La fin doit être après le début."})
+    commence = bool(c.pk and c.publie_le and c.debut <= maintenant)
+    if commence and debut != c.debut:
+        raise ValidationError({'debut': "Le programme a commencé : son début ne peut plus changer."})
+    if fin <= maintenant:
+        raise ValidationError({'fin': "La fin est passée."})
+    if c.pk and c.publie_le:
+        autre = chevauchement(c, debut, fin)
+        if autre:
+            raise ValidationError({'debut': f"Chevauche « {autre.titre} » ({libelle_periode(autre)})."})
     paliers = _lire_paliers(d.get('paliers') or [])
     valeurs = {
         'serie_jours': _entier(d.get('serie_jours'), 'serie_jours', 0, 31, 5),
@@ -470,8 +497,8 @@ def enregistrer(c, d, par):
     c.plats_nouveaux = d.get('plats_nouveaux', True) not in (False, 'false', 0, '0')
     agences = [a for a in (d.get('agences') or []) if str(a).isdigit()]
     with transaction.atomic():
-        c.titre = (titre or f"Défis de {MOIS[mois - 1]}")[:150]
-        c.annee, c.mois = annee, mois
+        c.titre = (titre or f"Défis du {timezone.localtime(debut):%d/%m}")[:150]
+        c.debut, c.fin = debut, fin
         for k, v in valeurs.items():
             setattr(c, k, v)
         if not c.pk:
@@ -487,14 +514,16 @@ def enregistrer(c, d, par):
 
 def admin_json(c, complet=False):
     aujourdhui = timezone.localdate()
-    d = {**campagne_json(c, aujourdhui), 'etat_libelle': LIBELLES_ETAT[etat(c, aujourdhui)],
+    maintenant = timezone.now()
+    d = {**campagne_json(c, maintenant), 'etat_libelle': LIBELLES_ETAT[etat(c, maintenant)],
          'publie_le': _iso(c.publie_le), 'annule_le': _iso(c.annule_le),
          'agences': [{'id': a.id, 'nom': a.nom_agence} for a in c.agences.all()],
          'defis': [{'code': x[0], 'nom': DEFIS[x[0]]['nom'], 'objectif': x[1], 'points': x[2], 'description': x[3]}
                    for x in defis_actifs(c)],
          'paliers': paliers_json(c), 'nb_reussites': c.reussites.count(),
          'cloture_possible_le': cloture_possible_le(c).isoformat(),
-         'peut_cloturer': etat(c, aujourdhui) == 'a_cloturer' and aujourdhui >= cloture_possible_le(c)}
+         'peut_cloturer': etat(c, maintenant) == 'a_cloturer' and aujourdhui >= cloture_possible_le(c),
+         'historique_suspensions': _susp.historique('defis', c.id)}
     if complet:
         d.update({k: getattr(c, k) for k in ('serie_jours', 'serie_points', 'plats_nombre', 'plats_points',
                                              'plats_nouveaux', 'avis_nombre', 'avis_points', 'retraits_minimum',
@@ -550,20 +579,20 @@ class AdminDefiActionView(APIView):
                 raise ValidationError("Déjà programmé.")
             if c.annule_le:
                 raise ValidationError("Ce programme est annulé.")
-            if bornes(c)[1] < timezone.localdate(maintenant):
-                raise ValidationError("Ce mois est passé.")
-            if CampagneDefis.objects.filter(annee=c.annee, mois=c.mois, publie_le__isnull=False,
-                                            annule_le__isnull=True).exclude(pk=c.pk).exists():
-                raise ValidationError("Un programme de défis est déjà programmé pour ce mois.")
+            if c.fin <= maintenant:
+                raise ValidationError("La fin du programme est passée.")
+            autre = chevauchement(c, c.debut, c.fin)
+            if autre:
+                raise ValidationError(f"Chevauche « {autre.titre} » ({libelle_periode(autre)}) : changez les dates.")
             c.publie_le = maintenant
             c.save(update_fields=['publie_le', 'updated_at'])
             ids = list(destinataires(c, maintenant).values_list('id', flat=True))
             resume = ' ; '.join(f"{x[3].lower()} (+{x[2]} pts)" for x in defis_actifs(c))
-            gains.notifier(ids, f"🏅 {c.titre}", f"En {libelle_mois(c)} : {resume}. Des récompenses à chaque palier !",
+            gains.notifier(ids, f"🏅 {c.titre}", f"{libelle_periode(c).capitalize()} : {resume}. Des récompenses à chaque palier !",
                            {'ecran': 'defis', 'campagne_id': c.id})
         elif self.action == 'annuler':
             if c.cloture_le:
-                raise ValidationError("Ce mois est clôturé.")
+                raise ValidationError("Ce programme est clôturé.")
             c.annule_le = maintenant
             c.save(update_fields=['annule_le', 'updated_at'])
         elif self.action == 'cloturer':

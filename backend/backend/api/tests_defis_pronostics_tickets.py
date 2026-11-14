@@ -64,7 +64,9 @@ class DefisTests(_Base):
         super().setUp()
         for d in J:
             self.menu(d)
-        self.c = CampagneDefis.objects.create(titre='Défis de mars', annee=2025, mois=3, serie_jours=5, serie_points=20,
+        self.c = CampagneDefis.objects.create(titre='Défis de mars', debut=_a(date(2025, 3, 1), 0),
+                                              fin=timezone.make_aware(datetime(2025, 3, 31, 23, 59)),
+                                              serie_jours=5, serie_points=20,
                                               plats_nombre=2, plats_points=15, avis_nombre=2, avis_points=10,
                                               retraits_minimum=3, retraits_points=25, publie_le=_a(date(2025, 2, 25)))
 
@@ -149,8 +151,8 @@ class DefisTests(_Base):
             DF.cloturer(self.c, self.admin, APRES)
 
     def test_admin_parametrage_et_droits(self):
-        auj = timezone.localdate()
-        donnees = {'annee': auj.year, 'mois': auj.month, 'serie_jours': 7, 'serie_points': 30, 'plats_nombre': 0,
+        t = timezone.now().replace(microsecond=0)
+        donnees = {'debut': (t + timedelta(days=1)).isoformat(), 'fin': (t + timedelta(days=8)).isoformat(), 'serie_jours': 7, 'serie_points': 30, 'plats_nombre': 0,
                    'avis_nombre': 4, 'avis_points': 12, 'retraits_minimum': 10, 'retraits_points': 40,
                    'paliers': [{'nom': 'Or', 'points_min': 50, 'type': 'argent', 'montant': 5000}]}
         self.assertEqual(self.client_pour(self.gestionnaire).post(f'{API}/admin/defis/', donnees, format='json').status_code, 403)
@@ -166,7 +168,10 @@ class DefisTests(_Base):
         self.assertEqual(ok.status_code, 200, ok.data)
         self.assertTrue(Notification.objects.filter(user=self.employe, donnees__ecran='defis').exists())
         r3 = self.client_pour(self.admin).post(f'{API}/admin/defis/', donnees, format='json')
-        self.assertEqual(r3.status_code, 400)                              # un seul programme par mois
+        self.assertEqual(r3.status_code, 201)                              # brouillon : permis
+        r4 = self.client_pour(self.admin).post(f'{API}/admin/defis/{r3.data["id"]}/programmer/')
+        self.assertEqual(r4.status_code, 400)                              # chevauche le premier programme
+        self.assertIn('Chevauche', str(r4.data))
 
 
 # ══════════════════════════════════════════════════════════════
@@ -384,3 +389,118 @@ class CoutsJeuxTests(_Base):
         hier = (timezone.localdate() - timedelta(days=2)).isoformat()
         r = self.client_pour(self.admin).get(f'{API}/comptabilite/couts-jeux/', {'debut': hier, 'fin': hier})
         self.assertEqual(r.data['totaux']['nb_gains'], 0)
+
+
+
+# ══════════════════════════════════════════════════════════════
+# SUSPENSION ET DUPLICATION
+# ══════════════════════════════════════════════════════════════
+
+class SuspensionDuplicationTests(_Base):
+
+    def suspendre(self, source, ident, action='suspendre', **extra):
+        with patch('api.signals._en_arriere_plan', _synchrone):
+            return self.client_pour(self.admin).post(f'{API}/admin/jeux/suspension/',
+                                                     {'source': source, 'id': ident, 'action': action, **extra},
+                                                     format='json')
+
+    def test_tickets_suspendus_puis_repris_delai_prolonge(self):
+        maintenant = timezone.now()
+        c = TK.enregistrer(TK.CampagneTickets(), {
+            'titre': 'T', 'debut': (maintenant - timedelta(days=1)).isoformat(), 'fin': (maintenant + timedelta(days=5)).isoformat(),
+            'lots': [{'libelle': 'Dessert', 'stock': 5, 'probabilite': 100}]}, self.admin)
+        c.publie_le = maintenant
+        c.save()
+        m = self.menu(timezone.localdate())
+        Commande.objects.create(user=self.employe, menu=m, plat=self.plat1)
+        with self.captureOnCommitCallbacks(execute=True):
+            Retrait.objects.create(user=self.employe, menu=m, badge_matricule='x')
+        t = Ticket.objects.get(user=self.employe)
+        limite = TK.limite_grattage(c)
+        r = self.suspendre('ticket', c.id, motif='Inventaire des lots')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['suspension']['motif'], 'Inventaire des lots')
+        g = self.client_pour(self.employe).post(f'{API}/tickets/{t.id}/gratter/')
+        self.assertEqual(g.status_code, 400)
+        self.assertIn('suspendu', str(g.data))
+        # pas de nouveau ticket pendant la suspension
+        Commande.objects.create(user=self.employe2, menu=m, plat=self.plat1)
+        with self.captureOnCommitCallbacks(execute=True):
+            Retrait.objects.create(user=self.employe2, menu=m, badge_matricule='y')
+        self.assertFalse(Ticket.objects.filter(user=self.employe2).exists())
+        self.assertEqual(self.suspendre('ticket', c.id).status_code, 400)            # déjà suspendu
+        r = self.suspendre('ticket', c.id, action='reprendre', notifier=True)
+        self.assertIsNone(r.data['suspension'])
+        self.assertGreater(TK.limite_grattage(c), limite)
+        self.assertEqual(self.client_pour(self.employe).post(f'{API}/tickets/{t.id}/gratter/').status_code, 200)
+        self.assertTrue(Notification.objects.filter(user=self.employe, titre__contains='reprend').exists())
+        self.assertEqual(self.client_pour(self.gestionnaire).post(f'{API}/admin/jeux/suspension/',
+                         {'source': 'ticket', 'id': c.id, 'action': 'suspendre'}, format='json').status_code, 403)
+
+    def test_quiz_et_pronostics_suspendus(self):
+        from . import jeux as J
+        from .models import Jeu
+        t = timezone.now().replace(microsecond=0)
+        jeu = J.enregistrer(Jeu(), {'titre': 'Q', 'debut': (t - timedelta(hours=1)).isoformat(),
+                                    'fin': (t + timedelta(days=1)).isoformat(), 'nb_questions': 1,
+                                    'questions': [{'texte': 'Q1', 'reponses': [{'texte': 'a', 'correcte': True}, {'texte': 'b'}]}],
+                                    'lots': [{'rang_debut': 1, 'rang_fin': 1, 'libelle': 'X'}]},
+                            self.admin, maintenant=t - timedelta(days=1))
+        jeu.publie_le = t - timedelta(days=1)
+        jeu.save()
+        self.commander(self.employe, timezone.localdate(jeu.debut))
+        self.suspendre('quiz', jeu.id)
+        r = self.client_pour(self.employe).post(f'{API}/jeux/{jeu.id}/commencer/')
+        self.assertEqual(r.status_code, 400)
+        self.assertIsNotNone(self.client_pour(self.employe).get(f'{API}/jeux/{jeu.id}/').data['suspension'])
+        self.suspendre('quiz', jeu.id, action='reprendre')
+        self.assertEqual(self.client_pour(self.employe).post(f'{API}/jeux/{jeu.id}/commencer/').status_code, 200)
+
+    def test_defis_commandes_pendant_la_suspension_ne_comptent_pas(self):
+        t = timezone.now()
+        c = CampagneDefis.objects.create(titre='D', debut=t - timedelta(days=2), fin=t + timedelta(days=5),
+                                         serie_jours=5, serie_points=20, publie_le=t - timedelta(days=3))
+        d = timezone.localdate()
+        self.commander(self.employe, d)
+        self.assertEqual(DF.progression(c, [self.employe.id])[self.employe.id]['plats'], 1)
+        from .models import SuspensionJeu
+        SuspensionJeu.objects.create(source='defis', source_id=c.id, debut=timezone.now(), suspendu_par=self.admin)
+        self.commander(self.employe, d, plat=self.plat2)
+        self.assertEqual(DF.progression(c, [self.employe.id])[self.employe.id]['plats'], 1)   # commande suspendue ignorée
+        self.assertEqual(DF.verifier(c, [self.employe.id], t), 0)
+
+    def test_dupliquer_les_quatre_jeux(self):
+        from . import jeux as J
+        from .models import Jeu
+        t = timezone.now().replace(microsecond=0)
+        jeu = J.enregistrer(Jeu(), {'titre': 'Quiz A', 'debut': (t + timedelta(days=1)).isoformat(),
+                                    'fin': (t + timedelta(days=2)).isoformat(), 'nb_questions': 1,
+                                    'questions': [{'texte': 'Q1', 'reponses': [{'texte': 'a', 'correcte': True}, {'texte': 'b'}]}],
+                                    'lots': [{'rang_debut': 1, 'rang_fin': 1, 'libelle': 'T-shirt', 'valeur': 3000}]}, self.admin)
+        jeu.publie_le = t
+        jeu.save()
+        url = f'{API}/admin/jeux/dupliquer/'
+        d1, f1 = (t + timedelta(days=5)).isoformat(), (t + timedelta(days=5, hours=8)).isoformat()
+        r = self.client_pour(self.admin).post(url, {'source': 'quiz', 'id': jeu.id, 'debut': d1, 'fin': f1}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        copie = Jeu.objects.get(pk=r.data['id'])
+        self.assertEqual((copie.titre, copie.publie_le, copie.questions.count(), copie.lots.get().valeur),
+                         ('Quiz A (copie)', None, 1, 3000))
+        defi = CampagneDefis.objects.create(titre='Défis', debut=t, fin=t + timedelta(days=7), publie_le=t)
+        PalierDefis.objects.create(campagne=defi, nom='Or', points_min=50, type='objet', libelle='Sac')
+        r = self.client_pour(self.admin).post(url, {'source': 'defis', 'id': defi.id, 'titre': 'Défis 2', 'debut': d1,
+                                                    'fin': (t + timedelta(days=12)).isoformat()}, format='json')
+        c2 = CampagneDefis.objects.get(pk=r.data['id'])
+        self.assertEqual((c2.titre, c2.publie_le, c2.paliers.get().nom), ('Défis 2', None, 'Or'))
+        comp = PR.enregistrer(CompetitionPronostics(), {'titre': 'CAN', 'lots': [{'rang_debut': 1, 'rang_fin': 1, 'libelle': 'M'}],
+                                                         'matchs': [{'equipe_a': 'A', 'equipe_b': 'B', 'coup_envoi': d1}]}, self.admin)
+        r = self.client_pour(self.admin).post(url, {'source': 'pronostics', 'id': comp.id}, format='json')
+        c3 = CompetitionPronostics.objects.get(pk=r.data['id'])
+        self.assertEqual((c3.matchs.count(), c3.lots.count()), (0, 1))                 # sans les matchs
+        camp = TK.enregistrer(TK.CampagneTickets(), {'titre': 'T', 'debut': t.isoformat(), 'fin': (t + timedelta(days=3)).isoformat(),
+                                                     'lots': [{'libelle': 'Dessert', 'stock': 5, 'probabilite': 10}]}, self.admin)
+        LotTicket.objects.filter(campagne=camp).update(distribues=3)
+        r = self.client_pour(self.admin).post(url, {'source': 'ticket', 'id': camp.id, 'debut': d1, 'fin': f1}, format='json')
+        self.assertEqual(LotTicket.objects.get(campagne_id=r.data['id']).distribues, 0)
+        self.assertEqual(self.client_pour(self.gestionnaire).post(url, {'source': 'ticket', 'id': camp.id, 'debut': d1, 'fin': f1},
+                                                                  format='json').status_code, 403)

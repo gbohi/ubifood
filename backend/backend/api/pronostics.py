@@ -36,6 +36,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import gains
+from . import suspensions as _susp
 from .models import (
     Agence, Commande, CompetitionPronostics, LotPronostics, MatchPronostics, Pronostic, ResultatPronostics,
 )
@@ -106,9 +107,11 @@ def eligibilite(user, c, m):
 def pronostiquer(m, user, score_a, score_b, maintenant=None):
     from .jeux import concerne
     from .permissions import exiger_employe
+    from .suspensions import exiger_actif
     exiger_employe(user)
     maintenant = maintenant or timezone.now()
     c = m.competition
+    exiger_actif('pronostics', c.id)
     if etat(c, maintenant) not in ('a_venir', 'en_cours') or m.annule:
         raise ValidationError("Les pronostics sont fermés pour ce match.")
     if maintenant >= m.coup_envoi:
@@ -228,7 +231,8 @@ def taches_pronostics(maintenant=None):
     n = 0
     for c in CompetitionPronostics.objects.filter(publie_le__isnull=False, annule_le__isnull=True,
                                                   resultats_publies_le__isnull=True):
-        if c.rappel_du == aujourdhui:
+        from .suspensions import suspendu
+        if c.rappel_du == aujourdhui or suspendu('pronostics', c.id):
             continue
         matchs = [m for m in c.matchs.filter(annule=False) if timezone.localdate(m.coup_envoi) == aujourdhui
                   and m.coup_envoi > maintenant]
@@ -268,6 +272,7 @@ def match_json(m, maintenant):
 
 
 def competition_json(c, maintenant):
+    from .suspensions import suspension_json
     matchs = list(c.matchs.all())
     return {'id': c.id, 'titre': c.titre, 'description': c.description, 'etat': etat(c, maintenant),
             'serveur': _iso(maintenant), 'points_exact': c.points_exact, 'points_resultat': c.points_resultat,
@@ -275,7 +280,7 @@ def competition_json(c, maintenant):
             'debut': _iso(matchs[0].coup_envoi) if matchs else None,
             'fin': _iso(matchs[-1].coup_envoi) if matchs else None,
             'lots': lots_json(c), 'nb_gagnants': sum(l.rang_fin - l.rang_debut + 1 for l in c.lots.all()),
-            'resultats_publies_le': _iso(c.resultats_publies_le)}
+            'resultats_publies_le': _iso(c.resultats_publies_le), 'suspension': suspension_json('pronostics', c.id)}
 
 
 def _ma_place(c, user):
@@ -456,7 +461,8 @@ def admin_json(c, complet=False):
     d = {**competition_json(c, maintenant), 'etat_libelle': LIBELLES_ETAT[etat(c, maintenant)],
          'publie_le': _iso(c.publie_le), 'annule_le': _iso(c.annule_le),
          'agences': [{'id': a.id, 'nom': a.nom_agence} for a in c.agences.all()],
-         'nb_joueurs': Pronostic.objects.filter(match__competition=c).values('user').distinct().count()}
+         'nb_joueurs': Pronostic.objects.filter(match__competition=c).values('user').distinct().count(),
+         'historique_suspensions': _susp.historique('pronostics', c.id)}
     if complet:
         nb = defaultdict(int)
         for mid in Pronostic.objects.filter(match__competition=c).values_list('match_id', flat=True):
