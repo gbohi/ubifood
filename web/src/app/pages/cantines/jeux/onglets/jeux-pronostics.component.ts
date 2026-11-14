@@ -29,7 +29,7 @@ import { API_JEUX, dateHeure, etatLot, messageErreur, rangFr } from '../jeux-out
         Vous êtes <b>{{ rangFr(p.rang) }}</b>{{ p.provisoire ? ' (provisoire)' : '' }} avec <b>{{ p.points }} points</b> ({{ p.nb_exacts }} score(s) exact(s)).
         @if (p.gain) { Lot : <b>{{ p.gain.libelle_affiche }}</b> — {{ etatLot(p.gain) }}. } @else if (p.resultat === 'perdu') { Perdu cette fois. }</span></div></div>
     }
-@if (c.suspension; as s) { <div class="ep-alerte a-or mb-3"><i class="ri-pause-circle-line"></i><div><span><b>Jeu suspendu momentanément</b>@if (s.motif) { : {{ s.motif }} }. Revenez un peu plus tard.</span></div></div> }
+@if (c.suspension; as s) { <div class="ep-alerte a-or mb-3"><i class="ri-pause-circle-line"></i><div><span><b>Jeu suspendu momentanément{{ s.motif ? ' : ' + s.motif : '' }}.</b> Revenez un peu plus tard.</span></div></div> }
     @if (c.eligibilite && !c.eligibilite.ok) { <div class="ep-alerte a-or mb-3"><i class="ri-error-warning-line"></i><div>{{ c.eligibilite.message }}</div></div> }
     @if (classement) {
       @for (l of classement.lignes; track l.rang) {

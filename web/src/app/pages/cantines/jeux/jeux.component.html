@@ -69,7 +69,7 @@
         </app-page-entete>
         <div class="row g-3">
           <div class="col-lg-7">
-            @if (j.suspension; as s) { <div class="ep-alerte a-or mb-3"><i class="ri-pause-circle-line"></i><div><span><b>Jeu suspendu momentanément</b>@if (s.motif) { : {{ s.motif }} }. Revenez un peu plus tard.</span></div></div> }
+            @if (j.suspension; as s) { <div class="ep-alerte a-or mb-3"><i class="ri-pause-circle-line"></i><div><span><b>Jeu suspendu momentanément{{ s.motif ? ' : ' + s.motif : '' }}.</b> Revenez un peu plus tard.</span></div></div> }
             @if (j.participation?.resultat; as res) {
               <div class="jx-res-carte" [class.perdu]="res !== 'gagne'">
                 <div class="jx-big">{{ res === 'gagne' ? '🏆' : res === 'perdu' ? '🙂' : '⛔' }}</div>

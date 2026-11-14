@@ -1,5 +1,5 @@
-// Gérer les jeux → Défis : programme du mois (objectifs et points réglables),
-// paliers de récompense, suivi de la progression, clôture du mois.
+// Gérer les jeux → Défis : programme de défis sur une période (objectifs et points réglables),
+// paliers de récompense, suivi de la progression, clôture du programme.
 import { Component, OnInit, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { ToastrService } from 'ngx-toastr';
@@ -51,19 +51,19 @@ const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 
             Pour un autre programme : « Dupliquer » ou « Nouveau programme ».</small></div>
         </div></div>
         <div class="ep-carte mb-3">
-          <b class="ep-titre-carte d-flex mb-2"><i class="ri-flag-line"></i>Défis du mois <small class="ep-muted fw-normal ms-1">(mettez 0 point pour désactiver un défi)</small></b>
+          <b class="ep-titre-carte d-flex mb-2"><i class="ri-flag-line"></i>Défis de la période <small class="ep-muted fw-normal ms-1">(mettez 0 point pour désactiver un défi)</small></b>
           <table class="lst-table gj-defis"><thead><tr><th>Défi</th><th>Objectif</th><th style="width:130px">Points</th></tr></thead><tbody>
             <tr><td><b><i class="ri-fire-line"></i> Fidèle</b><small class="d-block ep-muted">Jours de service de suite avec une commande (les jours sans menu ne cassent pas la série)</small></td>
               <td><div class="input-group input-group-sm"><input type="number" min="1" max="31" class="form-control" [(ngModel)]="f.serie_jours"><span class="input-group-text">jours de suite</span></div></td>
               <td><input type="number" min="0" class="form-control form-control-sm" [(ngModel)]="f.serie_points"></td></tr>
-            <tr><td><b><i class="ri-restaurant-2-line"></i> Gourmet curieux</b><small class="d-block ep-muted">Plats différents goûtés dans le mois</small>
+            <tr><td><b><i class="ri-restaurant-2-line"></i> Gourmet curieux</b><small class="d-block ep-muted">Plats différents goûtés pendant la période</small>
                 <label class="form-check small mb-0"><input type="checkbox" class="form-check-input" [(ngModel)]="f.plats_nouveaux"> seulement des plats jamais commandés avant</label></td>
               <td><div class="input-group input-group-sm"><input type="number" min="1" max="100" class="form-control" [(ngModel)]="f.plats_nombre"><span class="input-group-text">plats</span></div></td>
               <td><input type="number" min="0" class="form-control form-control-sm" [(ngModel)]="f.plats_points"></td></tr>
-            <tr><td><b><i class="ri-star-smile-line"></i> Critique culinaire</b><small class="d-block ep-muted">Avis donnés sur les repas du mois</small></td>
+            <tr><td><b><i class="ri-star-smile-line"></i> Critique culinaire</b><small class="d-block ep-muted">Avis donnés sur les repas de la période</small></td>
               <td><div class="input-group input-group-sm"><input type="number" min="1" max="100" class="form-control" [(ngModel)]="f.avis_nombre"><span class="input-group-text">avis</span></div></td>
               <td><input type="number" min="0" class="form-control form-control-sm" [(ngModel)]="f.avis_points"></td></tr>
-            <tr><td><b><i class="ri-checkbox-circle-line"></i> Zéro oubli</b><small class="d-block ep-muted">Tous les repas du mois retirés (constaté à la clôture)</small></td>
+            <tr><td><b><i class="ri-checkbox-circle-line"></i> Zéro oubli</b><small class="d-block ep-muted">Tous les repas de la période retirés (constaté à la clôture)</small></td>
               <td><div class="input-group input-group-sm"><span class="input-group-text">au moins</span><input type="number" min="1" max="31" class="form-control" [(ngModel)]="f.retraits_minimum"><span class="input-group-text">repas</span></div></td>
               <td><input type="number" min="0" class="form-control form-control-sm" [(ngModel)]="f.retraits_points"></td></tr>
           </tbody></table>

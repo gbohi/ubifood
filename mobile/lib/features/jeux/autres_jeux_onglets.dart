@@ -1,6 +1,6 @@
 // lib/features/jeux/autres_jeux_onglets.dart
 //
-// Onglets de la rubrique Jeux : Défis (progression du mois, paliers,
+// Onglets de la rubrique Jeux : Défis (progression de la période, paliers,
 // badges), Pronostics (matchs jusqu'au coup d'envoi), Tickets à gratter
 // (tirage sur le serveur au premier geste) et Mes gains (lot retiré ou non).
 
@@ -207,7 +207,7 @@ class OngletDefis extends StatelessWidget {
                   icone: Icons.event_rounded,
                   ton: TonPastille.bleu,
                   texte:
-                      '${d.prochaine!.titre} commence en ${d.prochaine!.mois}.')
+                      '${d.prochaine!.titre} : ${d.prochaine!.mois}.')
             else
               const EmptyState(
                   icon: Icons.military_tech_outlined,
@@ -268,7 +268,7 @@ class _CarteDefi extends StatelessWidget {
     final detail = d.reussi
         ? 'Réussi le ${d.reussiLe == null ? '' : quandJeu(d.reussiLe!)}'
         : d.code == 'retraits'
-            ? '${d.retires}/${d.commandes} repas retirés${perdu ? ' · ${d.oublies} oublié(s) : défi perdu' : ' · validé à la fin du mois'}'
+            ? '${d.retires}/${d.commandes} repas retirés${perdu ? ' · ${d.oublies} oublié(s) : défi perdu' : ' · validé à la fin du jeu'}'
             : '${d.valeur} / ${d.objectif}${d.code == 'serie' ? ' · série en cours : ${d.serieCourante}' : ''}';
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),

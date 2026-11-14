@@ -1,4 +1,4 @@
-// Jeux → Défis : défis du mois en cours (progression), paliers, badges, historique
+// Jeux → Défis : défis en cours (progression), paliers, badges, historique
 import { Component, OnInit, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { API_JEUX, dateHeure, etatLot, messageErreur } from '../jeux-outils';
@@ -17,7 +17,7 @@ import { API_JEUX, dateHeure, etatLot, messageErreur } from '../jeux-outils';
         <div class="jx-jauge"><i [style.width.%]="c.points_max ? 100 * c.points / c.points_max : 0"></i>
           @for (p of c.paliers; track p.id) { <span [style.left.%]="c.points_max ? 100 * p.points_min / c.points_max : 0" [class.ok]="p.atteint" [title]="p.nom + ' : ' + p.recompense"></span> }</div>
       </div>
-@if (c.suspension; as s) { <div class="ep-alerte a-or mb-3"><i class="ri-pause-circle-line"></i><div><span><b>Jeu suspendu momentanément</b>@if (s.motif) { : {{ s.motif }} }. Revenez un peu plus tard.</span></div></div> }
+@if (c.suspension; as s) { <div class="ep-alerte a-or mb-3"><i class="ri-pause-circle-line"></i><div><span><b>Jeu suspendu momentanément{{ s.motif ? ' : ' + s.motif : '' }}.</b> Revenez un peu plus tard.</span></div></div> }
       @if (c.resultat; as r) {
         <div class="ep-alerte a-ve mb-3"><i class="ri-trophy-line"></i><div><span><b>Bilan : {{ r.points }} points</b>
           @if (r.palier) { · palier {{ r.palier }} : {{ r.gain?.libelle_affiche }} ({{ etatLot(r.gain) }}) }</span></div></div>
@@ -31,7 +31,7 @@ import { API_JEUX, dateHeure, etatLot, messageErreur } from '../jeux-outils';
               <span>{{ x.description }}</span>
               @if (x.code === 'retraits') {
                 <div class="jx-defi-prog"><i [style.width.%]="x.commandes ? 100 * x.retires / x.commandes : 0"></i></div>
-                <small>{{ x.retires }}/{{ x.commandes }} repas retirés@if (x.oublies) { · <b class="text-danger">{{ x.oublies }} oublié(s) : défi perdu</b> } @else if (x.constate_a_la_cloture) { · validé à la fin du mois } </small>
+                <small>{{ x.retires }}/{{ x.commandes }} repas retirés@if (x.oublies) { · <b class="text-danger">{{ x.oublies }} oublié(s) : défi perdu</b> } @else if (x.constate_a_la_cloture) { · validé à la fin du jeu } </small>
               } @else {
                 <div class="jx-defi-prog"><i [style.width.%]="100 * min(x.valeur, x.objectif) / x.objectif"></i></div>
                 <small>@if (x.reussi) { Réussi le {{ dateHeure(x.reussi_le) }} } @else { {{ x.valeur }} / {{ x.objectif }}@if (x.code === 'serie') { · série en cours : {{ x.serie_courante }} } }</small>
@@ -45,7 +45,7 @@ import { API_JEUX, dateHeure, etatLot, messageErreur } from '../jeux-outils';
         @for (p of c.paliers; track p.id) {
           <div class="jx-palier" [class.ok]="p.atteint"><i [class]="p.atteint ? 'ri-medal-fill' : 'ri-medal-line'"></i><b>{{ p.nom }}</b>
             <small>dès {{ p.points_min }} pts</small><span>{{ p.recompense }}</span></div>
-        } @empty { <p class="ep-muted small">Pas de récompense ce mois-ci : seulement des badges.</p> }
+        } @empty { <p class="ep-muted small">Pas de récompense pour ce programme : seulement des badges.</p> }
       </div>
     } @else if (d.prochaine) {
       <div class="ep-alerte a-bl"><i class="ri-calendar-event-line"></i><div><span><b>{{ d.prochaine.titre }}</b> : {{ d.prochaine.periode_libelle }}.

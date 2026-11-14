@@ -10,7 +10,7 @@ import { API_JEUX, dateHeure, etatLot, messageErreur } from '../jeux-outils';
   @if (erreur) { <div class="ep-alerte a-ro"><i class="ri-error-warning-line"></i><div>{{ erreur }}</div></div> }
   @if (d; as d) {
     @for (c of d.campagnes; track c.id) {
-      @if (c.suspension; as s) { <div class="ep-alerte a-or mb-3"><i class="ri-pause-circle-line"></i><div><span><b>Jeu suspendu momentanément</b>@if (s.motif) { : {{ s.motif }} }. Revenez un peu plus tard.</span></div></div> }
+      @if (c.suspension; as s) { <div class="ep-alerte a-or mb-3"><i class="ri-pause-circle-line"></i><div><span><b>Jeu suspendu momentanément{{ s.motif ? ' : ' + s.motif : '' }}.</b> Revenez un peu plus tard.</span></div></div> }
       <div class="ep-alerte a-bl mb-3"><i class="ri-coupon-3-line"></i><div><span><b>{{ c.titre }}</b> jusqu'au {{ dateHeure(c.fin) }} :
         {{ c.ticket_par_retrait ? 'un ticket à chaque repas retiré' : '' }}{{ c.ticket_par_retrait && c.ticket_quotidien ? ' et ' : '' }}{{ c.ticket_quotidien ? 'un ticket gratuit chaque jour ouvré' : '' }}.
         <span class="d-block small">À gagner : @for (l of c.lots; track l.id) { {{ l.libelle_affiche }} ({{ l.restants }} restant{{ l.restants > 1 ? 's' : '' }})@if (!$last) { · } }</span></span></div></div>
