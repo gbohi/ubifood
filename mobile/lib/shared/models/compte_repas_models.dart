@@ -559,3 +559,65 @@ class PageCompte<T> {
         resultats: r);
   }
 }
+
+// ══════════════════════════════════════════════════════════════
+// MES TARIFS (GET compte-repas/mes-tarifs/)
+// ══════════════════════════════════════════════════════════════
+
+class TarifType {
+  /// null : « tous types » (tarif appliqué aux types sans tarif propre)
+  final String? typePlat;
+  final double montant;
+
+  /// false : tarif « tous types » appliqué à ce type
+  final bool propre;
+  const TarifType({this.typePlat, required this.montant, this.propre = true});
+}
+
+class TarifAVenir {
+  final String? typePlat;
+  final double montant;
+  final DateTime? dateDebut;
+  const TarifAVenir({this.typePlat, required this.montant, this.dateDebut});
+}
+
+class MesTarifs {
+  final String? categorie;
+  final List<TarifType> tarifs;
+  final List<TarifAVenir> aVenir;
+  final List<String> equipesOffertes;
+  const MesTarifs(
+      {this.categorie,
+      this.tarifs = const [],
+      this.aVenir = const [],
+      this.equipesOffertes = const []});
+
+  /// Tarifs par type (sans la ligne « tous types »)
+  List<TarifType> get parType =>
+      tarifs.where((t) => t.typePlat != null).toList();
+
+  factory MesTarifs.fromJson(Map<String, dynamic> j) {
+    List<Map<String, dynamic>> maps(dynamic v) => (v as List? ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    return MesTarifs(
+      categorie: j['categorie'] as String?,
+      tarifs: maps(j['tarifs'])
+          .map((t) => TarifType(
+              typePlat: t['type_plat'] as String?,
+              montant: _montant(t['montant']),
+              propre: t['propre'] != false))
+          .toList(),
+      aVenir: maps(j['a_venir'])
+          .map((t) => TarifAVenir(
+              typePlat: t['type_plat'] as String?,
+              montant: _montant(t['montant']),
+              dateDebut: DateTime.tryParse(_texte(t['date_debut']))))
+          .toList(),
+      equipesOffertes: (j['equipes_offertes'] as List? ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+    );
+  }
+}

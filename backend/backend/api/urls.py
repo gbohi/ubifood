@@ -234,6 +234,7 @@ urlpatterns = [
     path('api/compte-repas/recus/', caisse.MesRecusView.as_view(), name='compte-repas-recus'),
     path('api/compte-repas/recus/<int:pk>/pdf/', caisse.MonRecuPdfView.as_view(), name='compte-repas-recu-pdf'),
     path('api/compte-repas/paiement/', caisse.InfoPaiementView.as_view(), name='compte-repas-paiement'),
+    path('api/compte-repas/mes-tarifs/', caisse.MesTarifsView.as_view(), name='compte-repas-mes-tarifs'),
     path('api/device-tokens/', DeviceTokenView.as_view(), name='device-token'),
     path('api/device-tokens/supprimer/', DeviceTokenView.as_view(), name='device-token-delete'),
     path('api/notifications/mes-notifications/', NotificationListView.as_view(), name='mes-notifications'),

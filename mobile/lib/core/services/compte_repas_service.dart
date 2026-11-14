@@ -26,6 +26,14 @@ class CompteRepasService {
   }
 
   /// Solde, prix du repas et mode proposé pour un menu (écran de commande)
+  /// Tarifs de l'employé connecté par type de plat (profil « Mes tarifs »)
+  Future<MesTarifs> mesTarifs() async {
+    final res = await apiClient.get('/compte-repas/mes-tarifs/');
+    final data = res.data;
+    return MesTarifs.fromJson(
+        data is Map ? Map<String, dynamic>.from(data) : const {});
+  }
+
   /// `platId` : prix selon le type du plat (Standard, Complet…)
   Future<InfoPaiement> infoPaiement(int menuId, {int? platId}) async {
     final res = await apiClient.get('/compte-repas/paiement/',

@@ -205,3 +205,20 @@ class GrilleTarifsTests(_TarifsBase):
             'cible': 'prestataires', 'date': (timezone.localdate() + timedelta(days=3)).isoformat()})
         a = next(l for l in r.data['lignes'] if l['id'] == self.presta_a.id)
         self.assertEqual((a['cases']['tous']['montant'], a['cases'][str(self.complet.id)]['montant']), (950.0, 1300.0))
+
+
+class MesTarifsTests(_TarifsBase):
+
+    def test_mes_tarifs(self):
+        self.nuit.repas_offert = True
+        self.nuit.save()
+        r = self.client_pour(self.employe).get(f'{API}/compte-repas/mes-tarifs/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['categorie'], 'Agent')
+        t = {x['type_plat']: (x['montant'], x['propre']) for x in r.data['tarifs']}
+        self.assertEqual(t, {'Complet': (1500.0, True), 'Standard': (1000.0, False), 'Plat principal': (1000.0, False),
+                             None: (1000.0, True)})
+        self.assertEqual(r.data['equipes_offertes'], ['Nuit'])
+        # Sans catégorie : aucun tarif
+        r = self.client_pour(self.emp_yop).get(f'{API}/compte-repas/mes-tarifs/')
+        self.assertEqual((r.data['categorie'], r.data['tarifs']), (None, []))

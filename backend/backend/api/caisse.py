@@ -640,6 +640,46 @@ class CaissiersView(APIView):
 # Employé : son compte repas
 # ══════════════════════════════════════════════════════════════
 
+class MesTarifsView(APIView):
+    """
+    GET /compte-repas/mes-tarifs/ : tarifs de l'employé connecté aujourd'hui
+    (sa catégorie de salarié), par type de plat ; tarifs à venir ; équipes où
+    le repas est offert.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from . import facturation as fact
+        from .models import PlatCategoriesalarie, TypeEquipe, TypePlat, UserCategoriesalarie
+        user = request.user
+        auj = timezone.localdate()
+        uc = fact.ligne_active(list(UserCategoriesalarie.objects.filter(user=user)
+                                    .select_related('categoriesalarie')), auj)
+        tarifs, a_venir = [], []
+        if uc is not None:
+            lignes = list(PlatCategoriesalarie.objects.filter(categoriesalarie_id=uc.categoriesalarie_id)
+                          .select_related('type_plat'))
+            tous = fact.ligne_active([l for l in lignes if l.type_plat_id is None], auj)
+            for t in TypePlat.objects.order_by('libelle'):
+                propre = fact.ligne_active([l for l in lignes if l.type_plat_id == t.id], auj)
+                ligne = propre or tous
+                if ligne is not None:
+                    tarifs.append({'type_plat': t.libelle, 'montant': _f(ligne.montant), 'propre': propre is not None})
+            if tous is not None:
+                tarifs.append({'type_plat': None, 'montant': _f(tous.montant), 'propre': True})
+            for l in sorted((l for l in lignes if fact._jour(l.date_debut) > auj), key=lambda l: l.date_debut):
+                a_venir.append({'type_plat': l.type_plat.libelle if l.type_plat_id else None,
+                                'montant': _f(l.montant), 'date_debut': fact._jour(l.date_debut).isoformat()})
+        return Response({
+            'categorie': uc.categoriesalarie.libelle if uc else None,
+            'date': auj.isoformat(),
+            'tarifs': tarifs,
+            'a_venir': a_venir,
+            'equipes_offertes': list(TypeEquipe.objects.filter(repas_offert=True).order_by('libelle')
+                                     .values_list('libelle', flat=True)),
+        })
+
+
 class InfoPaiementView(APIView):
     """
     GET /compte-repas/paiement/?menu=ID[&plat=ID]  (ou ?date=AAAA-MM-JJ)

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../suivi/suivi_widgets.dart' show NotificationsSuiviScreen;
+import '../tarifs/mes_tarifs_screen.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../core/widgets/common_widgets.dart';
@@ -228,6 +229,16 @@ class _ProfilScreenState extends State<ProfilScreen> {
                             MaterialPageRoute(
                                 builder: (_) =>
                                     const NotificationsSuiviScreen())),
+                      ),
+                      _Ligne(
+                        key: const Key('ligne-mes-tarifs'),
+                        icone: Icons.sell_outlined,
+                        titre: 'Mes tarifs',
+                        sousTitre: 'Prix de mes repas par type de plat',
+                        onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const MesTarifsScreen())),
                       ),
                       _Ligne(
                         key: const Key('ligne-paiement-prefere'),
