@@ -266,6 +266,32 @@ def _mois_entre(debut, fin):
 # VUES
 # ══════════════════════════════════════════════════════════════
 
+def repas_offerts(qs):
+    """
+    Repas offerts (équipe « repas offert ») de la période : nombre, valeur au
+    tarif employé (non perçue) et au tarif prestataire (payée), par équipe et type.
+    """
+    from decimal import Decimal
+    commandes = list(qs.filter(mode_paiement='offert', statut__in=('en_attente', 'retiree'))
+                     .select_related('plat__type_plat', 'menu__typeequipe', 'menu__prestataire'))
+    tarif_emp = fact.Tarificateur({c.user_id for c in commandes}) if commandes else None
+    tarif_pre = fact.TarificateurPrestataire() if commandes else None
+    groupes = {}
+    total = {'nb': 0, 'valeur_employe': Decimal('0'), 'cout_prestataire': Decimal('0')}
+    for c in commandes:
+        emp = tarif_emp.prix(c.user_id, c.menu.date_menu, c.plat.type_plat_id)[1]
+        pre = tarif_pre.prix(c.menu.agence_id, c.menu.date_menu, c.menu.prestataire, c.plat.type_plat_id)[1]
+        cle = (c.menu.typeequipe.libelle if c.menu.typeequipe_id else '',
+               c.plat.type_plat.libelle if c.plat.type_plat_id else '')
+        g = groupes.setdefault(cle, {'equipe': cle[0], 'type_plat': cle[1], 'nb': 0,
+                                     'valeur_employe': Decimal('0'), 'cout_prestataire': Decimal('0')})
+        for d in (g, total):
+            d['nb'] += 1
+            d['valeur_employe'] += emp or 0
+            d['cout_prestataire'] += pre or 0
+    return {**total, 'par_equipe': sorted(groupes.values(), key=lambda g: (g['equipe'], g['type_plat']))}
+
+
 class StatistiquesView(APIView):
     """Toutes les données de la page Statistiques (resume=1 : chiffres clés seulement)."""
     permission_classes = [IsGestionnaireRole]
@@ -283,6 +309,8 @@ class StatistiquesView(APIView):
             },
             'agences': per.agences_libelles(),
             'kpis': kpis(qs, auj),
+            # Équipes « repas offert » : non facturés aux employés, payés aux prestataires
+            'repas_offerts': repas_offerts(qs),
             'precedent': kpis(per.commandes_periode(prec_debut, prec_fin), auj),
         }
         if request.query_params.get('resume') in ('1', 'true'):

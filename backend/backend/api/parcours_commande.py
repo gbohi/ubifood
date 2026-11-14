@@ -511,6 +511,7 @@ class CommanderEquipesView(APIView):
         for m in menus:
             e = equipes.setdefault(m.typeequipe_id, {
                 'id': m.typeequipe_id, 'libelle': m.typeequipe.libelle,
+                'repas_offert': m.typeequipe.repas_offert,
                 # Équipe de l'utilisateur (User.typeequipe) ; null s'il n'en a pas
                 'mon_equipe': mon_equipe(user, m.typeequipe_id),
                 # sur_planning, programmation {du, au, jours, libelle} (« Programmé(e) du … au … »)
@@ -629,7 +630,6 @@ class CommanderJoursView(APIView):
                 etat = 'a_reserver'
             else:
                 etat = 'ferme'
-            prix = tarif.prix(user.id, d)[1]
             plats = []
             for m in menus_jour:
                 for mp in sorted(m.menu_plats.all(), key=lambda mp: mp.plat.nom.upper()):
@@ -643,6 +643,9 @@ class CommanderJoursView(APIView):
                     else:
                         statut = 'disponible'
                     photos = images.get(pl.id, [])
+                    # Prix selon le type du plat ; équipe « repas offert » : rien à payer
+                    offert = bool(m.typeequipe.repas_offert)
+                    prix = None if offert else tarif.prix(user.id, d, pl.type_plat_id)[1]
                     plats.append({
                         'id': pl.id, 'nom': pl.nom, 'description': pl.description,
                         'type_plat_id': pl.type_plat_id,
@@ -651,6 +654,7 @@ class CommanderJoursView(APIView):
                         'photo_url': photos[0] if photos else None, 'photos': photos,
                         **note_json(*notes.get(pl.id, (None, 0)), seuil),
                         'prix': float(prix) if prix is not None else None,
+                        'offert': offert,
                         'menu_id': m.id, 'typeequipe_id': m.typeequipe_id,
                         'typeequipe': m.typeequipe.libelle,
                         'mon_equipe': mon_equipe(user, m.typeequipe_id),
@@ -667,6 +671,7 @@ class CommanderJoursView(APIView):
                 'annulable': maintenant < limite_annul,
                 'motif_indisponible': motif_indispo,
                 'menus': [{'id': m.id, 'typeequipe_id': m.typeequipe_id, 'typeequipe': m.typeequipe.libelle,
+                           'repas_offert': m.typeequipe.repas_offert,
                            'mon_equipe': mon_equipe(user, m.typeequipe_id)}
                           for m in menus_jour],
                 'commande': _commande_json(commande, ici=commande.menu_id in ids_menus) if commande else None,
@@ -683,6 +688,7 @@ class CommanderJoursView(APIView):
             'agence': {'id': agence.id, 'nom': agence.nom_agence},
             'prestataire': prestataire_json(cle, prestataire, notes_prestataires(), seuil),
             'equipe': ({'id': equipe.id, 'libelle': equipe.libelle, 'mon_equipe': mon_equipe(user, equipe.id),
+                        'repas_offert': equipe.repas_offert,
                         **acces_eq.equipe_json(equipe.id, agence.id)}
                        if equipe else None),
             'equipe_utilisateur': equipe_utilisateur_json(user),

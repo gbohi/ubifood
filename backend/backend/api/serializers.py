@@ -183,8 +183,14 @@ class _TarifMixin(_PeriodeMixin):
 
 class PlatPrestataireSerializer(_TarifMixin, serializers.ModelSerializer):
     cle_periode = 'prestataire'
-    proprietaire = 'du prestataire'
+    # Un tarif en vigueur à la fois par type de plat (vide : « tous types »)
+    cles_periode_supplementaires = ('type_plat',)
+    proprietaire = 'du prestataire pour ce type de plat'
     statut_libelle = serializers.ReadOnlyField(source='statut.libelle_statut')
+    type_plat_libelle = serializers.SerializerMethodField()
+
+    def get_type_plat_libelle(self, obj):
+        return obj.type_plat.libelle if obj.type_plat_id else 'Tous types'
 
     class Meta:
         model = PlatPrestataire
@@ -370,8 +376,14 @@ class PrestataireSerializer(_ProfilPrestataireMixin, serializers.ModelSerializer
 
 class PlatCategoriesalarieSerializer(_TarifMixin, serializers.ModelSerializer):
     cle_periode = 'categoriesalarie'
-    proprietaire = 'de la catégorie'
+    # Un tarif en vigueur à la fois par type de plat (vide : « tous types »)
+    cles_periode_supplementaires = ('type_plat',)
+    proprietaire = 'de la catégorie pour ce type de plat'
     statut_libelle = serializers.ReadOnlyField(source='statut.libelle_statut')
+    type_plat_libelle = serializers.SerializerMethodField()
+
+    def get_type_plat_libelle(self, obj):
+        return obj.type_plat.libelle if obj.type_plat_id else 'Tous types'
 
     class Meta:
         model = PlatCategoriesalarie

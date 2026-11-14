@@ -541,7 +541,10 @@ def generer_releve_prestations(synth, prestataire, societe, numero=None, cloture
                         'Repas commandés et non annulés · tarif contractuel en vigueur', st))
     donnees = [['N°', 'Désignation', 'Quantité', 'P.U. (FCFA)', 'Montant (FCFA)']]
     for i, l in enumerate(synth['par_plat'], start=1):
-        donnees.append([str(i), Paragraph(escape(l['plat']), st['cellule']), str(l['nb_repas']),
+        libelle = l['plat'] + (f" ({l['type_plat']})" if l.get('type_plat') else '')
+        if l.get('offerts'):
+            libelle += f" — dont {l['offerts']} offert{'s' if l['offerts'] > 1 else ''}"
+        donnees.append([str(i), Paragraph(escape(libelle), st['cellule']), str(l['nb_repas']),
                         fcfa(l['pu']) if l['pu'] is not None else 'sans tarif',
                         fcfa(l['montant']) if l['pu'] is not None else '—'])
     nb = synth['nb_repas']

@@ -642,20 +642,28 @@ class CaissiersView(APIView):
 
 class InfoPaiementView(APIView):
     """
-    GET /compte-repas/paiement/?menu=ID  (ou ?date=AAAA-MM-JJ)
-    Pour l'écran de commande : solde, prix du repas pour moi à cette date,
-    compte repas possible (sinon pourquoi), préférence et mode par défaut.
+    GET /compte-repas/paiement/?menu=ID[&plat=ID]  (ou ?date=AAAA-MM-JJ)
+    Pour l'écran de commande : solde, prix du repas pour moi à cette date (selon
+    le type du plat), compte repas possible (sinon pourquoi), préférence et mode
+    par défaut ; « offert » pour une équipe « repas offert ».
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from .models import Menu
+        from .models import Menu, Plat
         menu_id = _entier(request.query_params.get('menu'), 'menu')
+        plat_id = _entier(request.query_params.get('plat'), 'plat')
+        type_plat_id, offert = None, False
+        if plat_id is not None:
+            type_plat_id = Plat.objects.filter(pk=plat_id).values_list('type_plat_id', flat=True).first()
         if menu_id is not None:
-            jour = get_object_or_404(Menu, pk=menu_id).date_menu
+            menu = get_object_or_404(Menu.objects.select_related('typeequipe'), pk=menu_id)
+            jour = menu.date_menu
+            offert = bool(menu.typeequipe_id and menu.typeequipe.repas_offert)
         else:
             jour = _date(request.query_params.get('date'), timezone.localdate())
-        return Response({'date_menu': jour.isoformat(), **cr.info_paiement(request.user, jour)})
+        return Response({'date_menu': jour.isoformat(),
+                         **cr.info_paiement(request.user, jour, type_plat_id, offert)})
 
 
 class MonCompteView(APIView):

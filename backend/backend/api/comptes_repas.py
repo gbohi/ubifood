@@ -70,7 +70,8 @@ STATUTS_REPAS = {
 STATUT_PAR_MODE = {'compte': 'debite_compte', 'caisse': 'paye_caisse', 'retenue': 'retenue'}
 
 # Mode de paiement choisi à la commande
-MODES_COMMANDE = dict(Commande.MODE_PAIEMENT_CHOICES)
+# Modes que l'employé choisit (« offert » est fixé par le serveur selon l'équipe)
+MODES_COMMANDE = {k: v for k, v in Commande.MODE_PAIEMENT_CHOICES if k != 'offert'}
 MESSAGE_SANS_TARIF = ("Paiement par le compte repas impossible : aucun tarif n'est défini pour votre "
                       "catégorie à cette date (catégorie salarié ou tarif manquant). Choisissez la retenue "
                       "sur salaire ou contactez votre gestionnaire.")
@@ -165,8 +166,10 @@ def _mouvement(compte, type_mvt, montant, par, commande=None, recu=None, libelle
 
 def prix_repas(commande, tarif=None):
     """Prix employé du repas (tarif de la catégorie à la date du menu), None sans tarif."""
+    if commande.mode_paiement == 'offert':
+        return ZERO
     tarif = tarif or fact.Tarificateur({commande.user_id})
-    return tarif.prix(commande.user_id, commande.menu.date_menu)[1]
+    return tarif.prix(commande.user_id, commande.menu.date_menu, commande.plat.type_plat_id)[1]
 
 
 def _libelle_repas(commande):
@@ -178,14 +181,20 @@ def message_solde_insuffisant(disponible, necessaire):
             "rechargez à la caisse")
 
 
-def info_paiement(user, date_menu):
+def info_paiement(user, date_menu, type_plat_id=None, offert=False):
     """
     Ce que l'écran de commande doit proposer pour un repas du date_menu :
-    solde, prix du repas pour l'employé, compte possible ou non (et pourquoi),
-    préférence et mode proposé par défaut.
+    solde, prix du repas pour l'employé (selon le type de plat), compte possible
+    ou non (et pourquoi), préférence et mode proposé par défaut. `offert` :
+    équipe « repas offert », rien à payer.
     """
-    prix = fact.Tarificateur({user.id}).prix(user.id, date_menu)[1]
     disponible = solde(user)
+    if offert:
+        return {'solde': _f(disponible), 'prix': _f(ZERO), 'sans_tarif': False, 'offert': True,
+                'compte_possible': False, 'raison_compte_impossible': None,
+                'mode_paiement_prefere': user.mode_paiement_prefere, 'mode_par_defaut': 'offert',
+                'modes': [{'code': 'offert', 'libelle': 'Repas offert'}]}
+    prix = fact.Tarificateur({user.id}).prix(user.id, date_menu, type_plat_id)[1]
     if prix is None:
         possible, raison = False, MESSAGE_SANS_TARIF
     elif disponible < prix:
@@ -202,6 +211,7 @@ def info_paiement(user, date_menu):
         'mode_paiement_prefere': prefere,
         'mode_par_defaut': 'compte' if prefere == 'compte' and possible else 'retenue',
         'modes': [{'code': c, 'libelle': l} for c, l in MODES_COMMANDE.items()],
+        'offert': False,
     }
 
 
@@ -247,7 +257,10 @@ def payer_a_la_commande(commande, mode_demande, par):
     commande n'est pas créée). Renvoie le mode retenu.
     """
     user = commande.user
-    if mode_demande is None:
+    if commande.menu.typeequipe_id and commande.menu.typeequipe.repas_offert:
+        # Équipe « repas offert » : rien à payer, quel que soit le mode demandé
+        mode = 'offert'
+    elif mode_demande is None:
         mode = 'retenue'
         if user.mode_paiement_prefere == 'compte':
             prix = prix_repas(commande)
@@ -268,6 +281,8 @@ def mode_modifiable(commande, maintenant=None, limite=None):
     from .serializers import date_limite_commande, libelle_date_limite
     if commande.statut != 'en_attente':
         return False, "Seule une commande en attente peut changer de mode de paiement."
+    if commande.mode_paiement == 'offert':
+        return False, "Repas offert : rien à payer."
     if not mois_ouvert(commande.menu.date_menu):
         d = commande.menu.date_menu
         return False, f"Le mois {d.month:02d}/{d.year} est clôturé : sa facturation est figée."

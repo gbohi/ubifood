@@ -177,6 +177,9 @@ class TypeEquipe(BaseModel):
     sur_planning = models.BooleanField('Réservée aux employés programmés', default=False)
     # Pendant ses jours programmés, l'employé ne voit et ne commande que cette équipe
     exclusive_planning = models.BooleanField('Exclusive pendant la période programmée', default=True)
+    # Repas offert : l'employé ne paie pas (ni compte repas, ni retenue) ; le
+    # prestataire est payé normalement. S'applique aux nouvelles commandes.
+    repas_offert = models.BooleanField('Repas offert (non facturé aux employés)', default=False)
 
 
 class ProgrammationEquipe(BaseModel):
@@ -344,9 +347,12 @@ class Commande(BaseModel):
     #   - retenue : retenu sur salaire à la clôture du mois.
     # Modifiable jusqu'à la date limite de commande. Commandes antérieures à
     # ce choix : renseigné par la migration 0039 (compte si déjà débitées).
+    #   - offert  : équipe « repas offert » (TypeEquipe.repas_offert) : rien à payer
+    #               par l'employé ; le prestataire est payé normalement.
     MODE_PAIEMENT_CHOICES = [
         ('compte',  'Compte repas'),
         ('retenue', 'Retenue sur salaire'),
+        ('offert',  'Repas offert'),
     ]
     mode_paiement = models.CharField(max_length=10, choices=MODE_PAIEMENT_CHOICES, default='retenue')
 
@@ -496,6 +502,9 @@ class UserAllergie(BaseModel):
 
 class PlatCategoriesalarie(BaseModel):
     categoriesalarie = models.ForeignKey(Categoriesalarie, on_delete=models.CASCADE)
+    # Type de plat (Standard, Complet…) ; vide : tarif « tous types » (s'applique
+    # aux types sans tarif propre)
+    type_plat = models.ForeignKey(TypePlat, on_delete=models.PROTECT, null=True, blank=True, related_name='+')
     montant = models.DecimalField(max_digits=10, decimal_places=2)
     date_debut = models.DateTimeField()
     date_fin = models.DateTimeField(null=True, blank=True)
@@ -503,6 +512,8 @@ class PlatCategoriesalarie(BaseModel):
 
 class PlatPrestataire(BaseModel):
     prestataire = models.ForeignKey(Prestataire, on_delete=models.CASCADE)
+    # Type de plat ; vide : tarif « tous types »
+    type_plat = models.ForeignKey(TypePlat, on_delete=models.PROTECT, null=True, blank=True, related_name='+')
     montant = models.DecimalField(max_digits=10, decimal_places=2)
     date_debut = models.DateTimeField()
     date_fin = models.DateTimeField(null=True, blank=True)

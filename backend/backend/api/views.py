@@ -2338,6 +2338,13 @@ class RetraitViewSet(BaseViewSet):
         })
 
 
+def _offerts_json(qs):
+    from .statistiques import repas_offerts
+    r = repas_offerts(qs)
+    return {'nb': r['nb'], 'valeur_employe': float(r['valeur_employe']),
+            'cout_prestataire': float(r['cout_prestataire'])}
+
+
 def annuler_retrait(retrait, par, commande=None, par_libelle='le gestionnaire', notifier=True):
     """
     Annule un retrait (erreur de scan…) : les commandes de l'agent repassent
@@ -2697,6 +2704,8 @@ class FacturationView(APIView):
             'total_compte':     float(sum((e['montant_compte'] for e in employes), Decimal('0'))),
             'total_caisse':     float(sum((e['montant_caisse'] for e in employes), Decimal('0'))),
             'total_retenue':    float(sum((e['montant_retenue'] for e in employes), Decimal('0'))),
+            # Repas offerts (équipe « repas offert ») : hors facturation employé
+            'repas_offerts':    _offerts_json(qs),
             'employes':         resultat,
             # Synthèses calculées sur les mêmes lignes : leurs totaux égalent total_montant
             'par_categorie': [

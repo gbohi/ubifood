@@ -3,7 +3,10 @@ Facturation des repas — SEULE source de vérité, côté employés et côté
 prestataires.
 
 Règle commune : chaque repas commandé et NON annulé (en attente ou retiré)
-est facturé ; les tarifs appliqués sont ceux en vigueur à la DATE DU MENU.
+est facturé ; les tarifs appliqués sont ceux en vigueur à la DATE DU MENU,
+pour le TYPE DU PLAT (Standard, Complet…) — à défaut, le tarif « tous types ».
+Repas offerts (équipe « repas offert », Commande.mode_paiement = offert) :
+non facturés à l'employé (exclus des lignes employés), payés au prestataire.
   - Employé     : tarif de la catégorie salarié de l'agent (PlatCategoriesalarie).
   - Prestataire : le prestataire du menu (Menu.prestataire ; menus
                   historiques sans prestataire : celui rattaché à l'agence du
@@ -62,6 +65,15 @@ def _jour(dt):
     return timezone.localtime(dt).date() if timezone.is_aware(dt) else dt.date()
 
 
+def ligne_tarif(lignes, d, type_plat_id=None):
+    """Tarif du type de plat à la date d, sinon le tarif « tous types » (type vide)."""
+    if type_plat_id is not None:
+        propre = ligne_active([l for l in lignes if l.type_plat_id == type_plat_id], d)
+        if propre is not None:
+            return propre
+    return ligne_active([l for l in lignes if l.type_plat_id is None], d)
+
+
 def ligne_active(lignes, d):
     """Ligne (date_debut / date_fin) couvrant la date d ; la plus récente si plusieurs."""
     meilleure = None
@@ -87,25 +99,28 @@ class Tarificateur:
         for pc in PlatCategoriesalarie.objects.all():
             self.tarifs[pc.categoriesalarie_id].append(pc)
 
-    def prix(self, user_id, date_menu):
-        """(catégorie libellé ou None, montant Decimal ou None si pas de tarif)."""
+    def prix(self, user_id, date_menu, type_plat_id=None):
+        """(catégorie libellé ou None, montant Decimal ou None si pas de tarif) pour le type de plat."""
         uc = ligne_active(self.categories.get(user_id, []), date_menu)
         if not uc:
             return None, None
-        pc = ligne_active(self.tarifs.get(uc.categoriesalarie_id, []), date_menu)
+        pc = ligne_tarif(self.tarifs.get(uc.categoriesalarie_id, []), date_menu, type_plat_id)
         return uc.categoriesalarie.libelle, (pc.montant if pc else None)
 
 
-def lignes_facturation(commandes_qs):
+def lignes_facturation(commandes_qs, inclure_offerts=False):
     """
-    Une ligne par commande facturable du queryset (annulées exclues).
+    Une ligne par commande facturable du queryset (annulées exclues ; repas
+    offerts exclus, sauf `inclure_offerts`, montant 0 et offert=True).
     Montant figé si le mois est clôturé pour l'agent, calculé sinon (ou
     montant payé si le repas est déjà réglé par le compte ou la caisse).
     reglement : 'compte', 'caisse', 'retenue' ou None (pas encore réglé).
     """
+    qs = commandes_qs.filter(statut__in=STATUTS_FACTURES)
+    if not inclure_offerts:
+        qs = qs.exclude(mode_paiement='offert')
     commandes = list(
-        commandes_qs.filter(statut__in=STATUTS_FACTURES)
-        .select_related('user', 'plat', 'menu__agence', 'menu__typeequipe')
+        qs.select_related('user', 'plat', 'menu__agence', 'menu__typeequipe')
         .order_by('menu__date_menu', 'id')
     )
     if not commandes:
@@ -128,8 +143,10 @@ def lignes_facturation(commandes_qs):
             categorie, montant, source = figee.categorie_libelle, figee.montant, 'facture'
             reglement = figee.reglement
         else:
-            categorie, montant = tarif.prix(c.user_id, c.menu.date_menu)
+            categorie, montant = tarif.prix(c.user_id, c.menu.date_menu, c.plat.type_plat_id)
             source = 'calcul'
+            if c.mode_paiement == 'offert':
+                montant = Decimal('0')
             r = reglements.get(c.id)
             reglement = r.mode if r else None
             if r is not None:
@@ -148,8 +165,10 @@ def lignes_facturation(commandes_qs):
             'sans_tarif': montant is None,
             'source': source,
             'reglement': reglement,
-            # Mode choisi à la commande : 'compte' ou 'retenue'
+            # Mode choisi à la commande : 'compte', 'retenue' ou 'offert'
             'mode_paiement': c.mode_paiement,
+            'offert': c.mode_paiement == 'offert',
+            'type_plat_id': c.plat.type_plat_id,
         })
     return lignes
 
@@ -268,7 +287,7 @@ class TarificateurPrestataire:
         for pp in PlatPrestataire.objects.all():
             self.tarifs[pp.prestataire_id].append(pp)
 
-    def prix(self, agence_id, date_menu, prestataire=None):
+    def prix(self, agence_id, date_menu, prestataire=None, type_plat_id=None):
         """
         (prestataire ou None, montant Decimal ou None). `prestataire` : celui du
         menu (Menu.prestataire) s'il est renseigné ; sinon (menu historique
@@ -277,12 +296,12 @@ class TarificateurPrestataire:
         servi le repas est payé, sans refacturation entre agences.
         """
         if prestataire is not None:
-            pp = ligne_active(self.tarifs.get(prestataire.id, []), date_menu)
+            pp = ligne_tarif(self.tarifs.get(prestataire.id, []), date_menu, type_plat_id)
             return prestataire, (pp.montant if pp else None)
         ap = ligne_active(self.rattachements.get(agence_id, []), date_menu)
         if not ap:
             return None, None
-        pp = ligne_active(self.tarifs.get(ap.prestataire_id, []), date_menu)
+        pp = ligne_tarif(self.tarifs.get(ap.prestataire_id, []), date_menu, type_plat_id)
         return ap.prestataire, (pp.montant if pp else None)
 
 
@@ -298,7 +317,7 @@ def lignes_prestataires(commandes_qs):
     commandes = list(
         commandes_qs.filter(statut__in=STATUTS_FACTURES)
         .exclude(Q(contestation__statut='acceptee') & ~Q(contestation__cause='badge_tiers'))
-        .select_related('user', 'plat', 'menu__agence', 'menu__typeequipe', 'menu__prestataire')
+        .select_related('user', 'plat__type_plat', 'menu__agence', 'menu__typeequipe', 'menu__prestataire')
         .order_by('menu__date_menu', 'id')
     )
     if not commandes:
@@ -320,7 +339,8 @@ def lignes_prestataires(commandes_qs):
             prestataire, montant, source = figee.facture.prestataire, figee.montant, 'facture'
             plat, agence = figee.plat_nom or plat, figee.agence_nom or agence
         else:
-            prestataire, montant = tarif.prix(c.menu.agence_id, c.menu.date_menu, c.menu.prestataire)
+            prestataire, montant = tarif.prix(c.menu.agence_id, c.menu.date_menu, c.menu.prestataire,
+                                              c.plat.type_plat_id)
             source = 'calcul'
         lignes.append({
             'commande': c,
@@ -336,6 +356,9 @@ def lignes_prestataires(commandes_qs):
             'sans_prestataire': prestataire is None,
             'sans_tarif': prestataire is not None and montant is None,
             'source': source,
+            # Type de plat (tarif) et repas offert à l'employé (payé au prestataire)
+            'type_plat': c.plat.type_plat.libelle if c.plat.type_plat_id else '',
+            'offert': c.mode_paiement == 'offert',
         })
     return lignes
 

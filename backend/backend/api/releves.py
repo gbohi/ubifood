@@ -60,16 +60,16 @@ def _nom(u):
 # Lignes normalisées
 # ══════════════════════════════════════════════════════════════
 
-def _ligne(date_menu, plat, agence, montant, statut, user, source):
+def _ligne(date_menu, plat, agence, montant, statut, user, source, type_plat='', offert=False):
     return {'date_menu': date_menu, 'plat': plat, 'agence': agence or '—', 'montant': montant,
-            'statut': statut, 'user': user, 'source': source}
+            'statut': statut, 'user': user, 'source': source, 'type_plat': type_plat or '', 'offert': offert}
 
 
 def lignes_du_prestataire(lignes_prest, prestataire_id):
     """Lignes de facturation.lignes_prestataires attribuées à ce prestataire."""
     return [
         _ligne(l['date_menu'], l['plat'], l['agence_menu'], l['montant'], l['statut'],
-               l['commande'].user, l['source'])
+               l['commande'].user, l['source'], l.get('type_plat', ''), l.get('offert', False))
         for l in lignes_prest
         if l['prestataire'] is not None and l['prestataire'].id == prestataire_id
     ]
@@ -79,8 +79,10 @@ def lignes_de_facture(facture):
     """Lignes figées d'un relevé officiel (FacturePrestataire)."""
     return [
         _ligne(l.date_menu, l.plat_nom, l.agence_nom, l.montant,
-               l.commande.statut if l.commande_id and l.commande else None, l.user, 'facture')
-        for l in facture.lignes.select_related('commande', 'user').order_by('date_menu', 'id')
+               l.commande.statut if l.commande_id and l.commande else None, l.user, 'facture',
+               l.commande.plat.type_plat.libelle if l.commande_id and l.commande and l.commande.plat.type_plat_id else '',
+               bool(l.commande_id and l.commande and l.commande.mode_paiement == 'offert'))
+        for l in facture.lignes.select_related('commande__plat__type_plat', 'user').order_by('date_menu', 'id')
     ]
 
 
@@ -100,10 +102,12 @@ def par_plat(lignes):
     """
     groupes = OrderedDict()
     for l in lignes:
-        g = groupes.setdefault((l['plat'], l['montant']), {
-            'plat': l['plat'], 'pu': l['montant'], 'nb_repas': 0, 'retires': 0, 'montant': Decimal('0')})
+        g = groupes.setdefault((l['plat'], l.get('type_plat', ''), l['montant']), {
+            'plat': l['plat'], 'type_plat': l.get('type_plat', ''), 'pu': l['montant'], 'nb_repas': 0,
+            'retires': 0, 'offerts': 0, 'montant': Decimal('0')})
         g['nb_repas'] += 1
         g['retires'] += l['statut'] == 'retiree'
+        g['offerts'] += bool(l.get('offert'))
         if l['montant'] is not None:
             g['montant'] += l['montant']
     total_plat = defaultdict(int)
@@ -111,6 +115,20 @@ def par_plat(lignes):
         total_plat[g['plat']] += g['nb_repas']
     return sorted(groupes.values(),
                   key=lambda g: (-total_plat[g['plat']], g['plat'], g['pu'] is None, g['pu'] or 0))
+
+
+def par_type(lignes):
+    """Une ligne par type de plat et prix unitaire : repas payants, offerts, montant."""
+    groupes = OrderedDict()
+    for l in lignes:
+        g = groupes.setdefault((l.get('type_plat', ''), l['montant']), {
+            'type_plat': l.get('type_plat') or 'Tous types', 'pu': l['montant'], 'nb_repas': 0,
+            'payants': 0, 'offerts': 0, 'montant': Decimal('0')})
+        g['nb_repas'] += 1
+        g['offerts' if l.get('offert') else 'payants'] += 1
+        if l['montant'] is not None:
+            g['montant'] += l['montant']
+    return sorted(groupes.values(), key=lambda g: (g['type_plat'], g['pu'] or 0))
 
 
 def par_jour(lignes, plats_ordre):
@@ -194,6 +212,8 @@ def synthese(lignes, debut, fin):
         'tarifs': sorted({l['montant'] for l in lignes if l['montant'] is not None}),
         'plats_ordre': ordre,
         'par_plat': plats,
+        'par_type': par_type(lignes),
+        'nb_offerts': sum(bool(l.get('offert')) for l in lignes),
         'semaines': jours,
         'par_agence': par_agence(lignes),
         'agences': sorted({l['agence'] for l in lignes}),
