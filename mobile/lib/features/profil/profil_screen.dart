@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../suivi/suivi_widgets.dart' show NotificationsSuiviScreen;
 import '../tarifs/mes_tarifs_screen.dart';
 import '../jeux/jeux_screen.dart' show JeuxScreen;
+import '../jeux/lots_a_remettre_screen.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/providers/app_provider.dart';
 import '../../core/widgets/common_widgets.dart';
@@ -231,6 +232,17 @@ class _ProfilScreenState extends State<ProfilScreen> {
                                 builder: (_) =>
                                     const NotificationsSuiviScreen())),
                       ),
+                      if (auth.isGestionnaire)
+                        _Ligne(
+                          key: const Key('ligne-lots-a-remettre'),
+                          icone: Icons.volunteer_activism_outlined,
+                          titre: 'Lots à remettre',
+                          sousTitre: 'Lots gagnés aux jeux par vos employés',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const LotsARemettreScreen())),
+                        ),
                       _Ligne(
                         key: const Key('ligne-jeux'),
                         icone: Icons.sports_esports_outlined,

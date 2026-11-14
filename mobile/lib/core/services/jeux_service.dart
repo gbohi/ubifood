@@ -84,6 +84,20 @@ class JeuxService {
     return ((d['lignes'] as List?) ?? const []).map((e) => _objet(e)).toList();
   }
 
+  // ── Gestionnaires : lots à remettre ──
+  Future<List<LotARemettre>> lotsARemettre(String statut) async {
+    final d = (await apiClient
+            .get('/admin/jeux/lots-a-remettre/', params: {'statut': statut}))
+        .data;
+    return (d is List ? d : const [])
+        .map((e) => LotARemettre.fromJson(_objet(e)))
+        .toList();
+  }
+
+  Future<void> remettreLot(LotARemettre l) => apiClient.post(l.genre == 'quiz'
+      ? '/admin/jeux/${l.jeuId}/remettre/${l.id}/'
+      : '/admin/jeux/gains/${l.id}/remettre/');
+
   Future<MesTickets> tickets() async =>
       MesTickets.fromJson(_objet((await apiClient.get('/tickets/')).data));
 

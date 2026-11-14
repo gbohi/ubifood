@@ -369,3 +369,46 @@ class MesTickets {
             _l(j['grattes']).map((e) => TicketJeu.fromJson(_m(e))).toList(),
       );
 }
+
+/// Lot objet à remettre (gestionnaires) : quiz (participation) ou autre jeu (gain)
+class LotARemettre {
+  final String genre; // quiz | gain
+  final int id;
+  final int? jeuId;
+  final String source;
+  final String jeu;
+  final String lot;
+  final String employe;
+  final String matricule;
+  final String agence;
+  final DateTime? remisLe;
+  final String? remisPar;
+
+  const LotARemettre({
+    required this.genre,
+    required this.id,
+    this.jeuId,
+    required this.source,
+    required this.jeu,
+    required this.lot,
+    required this.employe,
+    required this.matricule,
+    this.agence = '',
+    this.remisLe,
+    this.remisPar,
+  });
+
+  factory LotARemettre.fromJson(Map<String, dynamic> j) => LotARemettre(
+        genre: _s(j['genre']),
+        id: _i(j['id']),
+        jeuId: _in(j['jeu_id']),
+        source: _s(j['source']),
+        jeu: _s(j['jeu']),
+        lot: _s(j['lot']),
+        employe: _s(j['employe']),
+        matricule: _s(j['matricule']),
+        agence: _s(j['agence']),
+        remisLe: _d(j['lot_remis_le']),
+        remisPar: j['lot_remis_par']?.toString(),
+      );
+}

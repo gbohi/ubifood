@@ -3,6 +3,7 @@
 import 'package:cantine_app/core/services/jeux_service.dart';
 import 'package:cantine_app/features/jeux/autres_jeux_onglets.dart';
 import 'package:cantine_app/features/jeux/jeux_screen.dart';
+import 'package:cantine_app/features/jeux/lots_a_remettre_screen.dart';
 import 'package:cantine_app/shared/models/autres_jeux_models.dart';
 import 'package:cantine_app/shared/models/jeux_models.dart';
 import 'package:cantine_app/shared/theme/app_theme.dart';
@@ -166,4 +167,33 @@ void main() {
     expect(find.text('Mes gains'), findsOneWidget);
     expect(find.textContaining('Lot retiré le'), findsOneWidget);
   });
+
+  testWidgets('gestionnaire : lots à remettre, « Lot retiré » confirmé', (tester) async {
+    final s = _FauxLots();
+    await tester.pumpWidget(MaterialApp(theme: AppTheme.light(), home: LotsARemettreScreen(service: s)));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Smartphone'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('remettre-quiz-5')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Confirmer'));
+    await tester.pumpAndSettle();
+    expect(s.remis.single.jeuId, 9);
+    await tester.tap(find.text('Déjà retirés'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('par BROU Clarisse'), findsOneWidget);
+  });
+}
+
+class _FauxLots extends JeuxService {
+  final List<LotARemettre> remis = [];
+  @override
+  Future<List<LotARemettre>> lotsARemettre(String statut) async => statut == 'remis'
+      ? [LotARemettre.fromJson({'genre': 'gain', 'id': 2, 'source': 'Défis', 'jeu': 'Défis de mars', 'lot': 'T-shirt',
+                                'employe': 'YAO Marie', 'matricule': '01404', 'lot_remis_le': '2026-12-02T09:00:00+00:00',
+                                'lot_remis_par': 'BROU Clarisse'})]
+      : [LotARemettre.fromJson({'genre': 'quiz', 'id': 5, 'jeu_id': 9, 'source': 'Quiz', 'jeu': "Quiz d'octobre",
+                                'lot': 'Smartphone', 'employe': 'KONÉ Ibrahim', 'matricule': '01401', 'agence': 'Yopougon'})];
+  @override
+  Future<void> remettreLot(LotARemettre l) async => remis.add(l);
 }
