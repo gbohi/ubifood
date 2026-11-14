@@ -1,7 +1,7 @@
 import { NgModule, inject } from '@angular/core';
 import { Router, RouterModule, Routes } from '@angular/router';
 import { RoleGuard } from 'src/app/core/guards/role.guard';
-import { GESTIONNAIRES } from 'src/app/core/helpers/roles';
+import { EMPLOYES, GESTIONNAIRES } from 'src/app/core/helpers/roles';
 
 // Component
 // Component
@@ -30,7 +30,7 @@ const routes: Routes = [
   { path: 'liste-plats', component: ListePlatsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   { path: 'liste-menus', component: ListeMenusComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   // Ouvert à tous : chacun commande ses repas (comme sur l'application mobile)
-  { path: 'liste-commandes', component: ListeCommandesComponent },
+  { path: 'liste-commandes', component: ListeCommandesComponent, canActivate: [RoleGuard], data: { roles: EMPLOYES } },
   { path: 'planning-menus', component: PlanningMenuComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   // Planning des équipes « sur planning » (ex. Nuit) : administrateurs et gestionnaires
   // (le serveur refuse les gestionnaires si Paramètres → Société ne les autorise pas)
@@ -38,7 +38,7 @@ const routes: Routes = [
   // Suivi des livraisons des prestataires et ponctualité
   { path: 'suivi-livraisons', component: SuiviLivraisonsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES }, title: 'Suivi des livraisons | UbiFood' },
   // Jeux (quiz à lots) : employés (jouer) ; administration (créer, classement, lots)
-  { path: 'jeux', component: JeuxComponent, title: 'Jeux | UbiFood' },
+  { path: 'jeux', component: JeuxComponent, canActivate: [RoleGuard], data: { roles: EMPLOYES }, title: 'Jeux | UbiFood' },
   { path: 'gestion-jeux', component: GestionJeuxComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES }, title: 'Gestion des jeux | UbiFood' },
   { path: 'mes-commandes', component: MesCommandesComponent },
   // Compte repas prépayé de l'employé connecté (solde, repas payés, reçus de caisse)

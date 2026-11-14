@@ -1,5 +1,5 @@
 import { MenuItem } from "./menu.model";
-import { ADMINS, CAISSIERS, COMPTABLES, GESTIONNAIRES, PRESTATAIRES, RESPONSABLES_PRESTATAIRE } from "../../core/helpers/roles";
+import { ADMINS, CAISSIERS, COMPTABLES, EMPLOYES, GESTIONNAIRES, PRESTATAIRES, RESPONSABLES_PRESTATAIRE } from "../../core/helpers/roles";
 
 
 export const MENU: MenuItem[] = [
@@ -41,7 +41,8 @@ export const MENU: MenuItem[] = [
         icon: 'ri-home-4-line',
         link: '/cantines/accueil',
         sansRoles: [...GESTIONNAIRES, ...PRESTATAIRES],
-        parentId: 8
+        roles: EMPLOYES,
+                parentId: 8
     },
     {
         // Besoins : réservé aux administrateurs
@@ -85,6 +86,7 @@ export const MENU: MenuItem[] = [
                 label: 'MENUITEMS.CANTINES.LIST.COMMANDE',
                 link: '/cantines/liste-commandes',
                 sansRoles: PRESTATAIRES,
+                roles: EMPLOYES,
                 parentId: 210
             },
             {
@@ -117,6 +119,7 @@ export const MENU: MenuItem[] = [
                 label: 'MENUITEMS.CANTINES.LIST.MESCOMMANDES',
                 link: '/cantines/mes-commandes',
                 sansRoles: PRESTATAIRES,
+                roles: EMPLOYES,
                 parentId: 210
             },
             {
@@ -126,6 +129,7 @@ export const MENU: MenuItem[] = [
                 link: '/cantines/mon-compte-repas',
                 sansRoles: PRESTATAIRES,
                 isNew: true,
+                roles: EMPLOYES,
                 parentId: 210
             },
             {
@@ -135,6 +139,7 @@ export const MENU: MenuItem[] = [
                 link: '/cantines/jeux',
                 sansRoles: PRESTATAIRES,
                 isNew: true,
+                roles: EMPLOYES,
                 parentId: 210
             },
             {

@@ -243,6 +243,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                               MaterialPageRoute(
                                   builder: (_) => const LotsARemettreScreen())),
                         ),
+                      if (auth.user?.peutCommander ?? true)
                       _Ligne(
                         key: const Key('ligne-jeux'),
                         icone: Icons.sports_esports_outlined,
@@ -253,6 +254,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                             MaterialPageRoute(
                                 builder: (_) => const JeuxScreen())),
                       ),
+                      if (auth.user?.peutCommander ?? true)
                       _Ligne(
                         key: const Key('ligne-mes-tarifs'),
                         icone: Icons.sell_outlined,
@@ -263,6 +265,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                             MaterialPageRoute(
                                 builder: (_) => const MesTarifsScreen())),
                       ),
+                      if (auth.user?.peutCommander ?? true)
                       _Ligne(
                         key: const Key('ligne-paiement-prefere'),
                         icone: Icons.account_balance_wallet_outlined,

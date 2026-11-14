@@ -63,6 +63,9 @@ def limite_grattage(c):
 
 def concerne(user, c, maintenant=None):
     from .jeux import agences_actuelles
+    from .permissions import is_employe
+    if not is_employe(user):
+        return False
     ags = set(c.agences.values_list('id', flat=True))
     return not ags or bool(agences_actuelles([user.id], maintenant).get(user.id, set()) & ags)
 
@@ -112,6 +115,8 @@ def budget_consomme(c):
 
 
 def gratter(ticket_id, user, maintenant=None):
+    from .permissions import exiger_employe
+    exiger_employe(user)
     maintenant = maintenant or timezone.now()
     with transaction.atomic():
         t = Ticket.objects.select_for_update(of=('self',)).select_related('campagne').filter(pk=ticket_id, user=user).first()

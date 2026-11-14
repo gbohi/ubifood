@@ -247,7 +247,8 @@ def destinataires(jeu, maintenant=None):
 
 def destinataires_agences(agences, maintenant=None):
     """Comptes actifs (hors prestataires) des agences données (aucune : tous)."""
-    qs = User.objects.filter(is_active=True).exclude(groups__name__in=PRESTATAIRE_ROLES)
+    from .permissions import ROLE_EMPLOYE
+    qs = User.objects.filter(is_active=True, groups__name=ROLE_EMPLOYE).exclude(groups__name__in=PRESTATAIRE_ROLES)
     if agences:
         maintenant = maintenant or timezone.now()
         ids = (UserAgence.objects.filter(agence_id__in=agences, date_debut__lte=maintenant)
@@ -370,6 +371,8 @@ def _partie_verrouillee(jeu, user):
 
 
 def commencer(jeu, user, maintenant=None):
+    from .permissions import exiger_employe
+    exiger_employe(user)
     maintenant = maintenant or timezone.now()
     etat = etat_jeu(jeu, maintenant)
     existante = ParticipationJeu.objects.filter(jeu=jeu, user=user).first()

@@ -207,7 +207,9 @@ class ContestationRetraitViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixi
         return Response(self.get_serializer(list(self.get_queryset()[:300]), many=True).data)
 
     def perform_create(self, serializer):
+        from .permissions import exiger_employe
         from .signals import notifier_contestation_nouvelle
+        exiger_employe(self.request.user)
         commande = serializer.validated_data['commande']
         retrait = (Retrait.objects.filter(user=commande.user, menu=commande.menu)
                    .select_related('valide_par').first())

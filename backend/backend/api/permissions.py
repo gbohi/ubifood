@@ -81,6 +81,26 @@ def is_gestionnaire(user):
                 (user.is_superuser or get_roles(user) & GESTIONNAIRE_ROLES))
 
 
+MESSAGE_SANS_ROLE_EMPLOYE = ("Votre compte n'a pas le rôle « Employé » : il ne peut pas commander de repas "
+                             "ni participer aux jeux. Demandez à un administrateur de vous l'ajouter.")
+
+
+def is_employe(user):
+    """
+    Rôle « Employé » : seul ce rôle commande, paie ses repas, donne son avis,
+    conteste un retrait, joue et peut être programmé au planning des équipes.
+    Cumulable avec les rôles de gestion (employé + administrateur…). Un compte
+    sans ce rôle garde la consultation de son historique (commandes, compte repas).
+    """
+    return bool(user and user.is_authenticated and ROLE_EMPLOYE in get_roles(user))
+
+
+def exiger_employe(user):
+    from rest_framework.exceptions import PermissionDenied
+    if not is_employe(user):
+        raise PermissionDenied(MESSAGE_SANS_ROLE_EMPLOYE)
+
+
 def is_compte_prestataire(user):
     """
     Compte de l'espace prestataire (responsable ou agent de comptoir).

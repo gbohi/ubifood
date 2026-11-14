@@ -362,7 +362,8 @@ class MesDefisView(APIView):
         campagnes = list(_visibles(request.user).prefetch_related('paliers'))
         courante = next((c for c in sorted(campagnes, key=lambda c: (c.annee, c.mois))
                          if etat(c, aujourdhui) in ('en_cours', 'a_cloturer')), None)
-        if courante:
+        from .permissions import is_employe
+        if courante and is_employe(request.user):
             verifier(courante, [request.user.id], maintenant)
         prochaine = next((c for c in sorted(campagnes, key=lambda c: (c.annee, c.mois))
                           if etat(c, aujourdhui) == 'a_venir'), None)

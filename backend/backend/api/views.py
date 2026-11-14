@@ -1732,6 +1732,8 @@ class CommandeViewSet(BaseViewSet):
         Mode « compte » : le repas est débité du compte repas à la commande.
         """
         from . import comptes_repas as cr
+        from .permissions import exiger_employe
+        exiger_employe(request.user)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -1786,6 +1788,8 @@ class CommandeViewSet(BaseViewSet):
         compte (débité ; solde suffisant exigé). Après la date limite : figé.
         """
         from . import comptes_repas as cr
+        from .permissions import exiger_employe
+        exiger_employe(request.user)
         commande = self.get_object()
         if commande.user_id != request.user.id:
             raise PermissionDenied("Seul l'employé peut changer le mode de paiement de sa commande.")
@@ -3312,6 +3316,11 @@ class AvisPlatViewSet(viewsets.ModelViewSet):
         if fin:
             qs = qs.filter(commande__menu__date_menu__lte=fin)
         return qs
+
+    def create(self, request, *args, **kwargs):
+        from .permissions import exiger_employe
+        exiger_employe(request.user)
+        return super().create(request, *args, **kwargs)
 
     def perform_update(self, serializer):
         if serializer.instance.user_id != self.request.user.id:

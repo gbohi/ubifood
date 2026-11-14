@@ -649,6 +649,8 @@ class MesTarifsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from .permissions import exiger_employe
+        exiger_employe(request.user)
         from . import facturation as fact
         from .models import PlatCategoriesalarie, TypeEquipe, TypePlat, UserCategoriesalarie
         user = request.user
@@ -690,6 +692,8 @@ class InfoPaiementView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from .permissions import exiger_employe
+        exiger_employe(request.user)
         from .models import Menu, Plat
         menu_id = _entier(request.query_params.get('menu'), 'menu')
         plat_id = _entier(request.query_params.get('plat'), 'plat')

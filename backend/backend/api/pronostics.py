@@ -105,6 +105,8 @@ def eligibilite(user, c, m):
 
 def pronostiquer(m, user, score_a, score_b, maintenant=None):
     from .jeux import concerne
+    from .permissions import exiger_employe
+    exiger_employe(user)
     maintenant = maintenant or timezone.now()
     c = m.competition
     if etat(c, maintenant) not in ('a_venir', 'en_cours') or m.annule:

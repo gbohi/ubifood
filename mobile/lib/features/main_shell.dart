@@ -73,6 +73,8 @@ class _MainShellState extends State<MainShell> {
       return;
     }
     final isGestionnaire = context.read<AuthProvider>().isGestionnaire;
+    // Sans rôle « Employé » : ni menus ni commandes à ouvrir
+    if (!(context.read<AuthProvider>().user?.peutCommander ?? true)) return;
     switch (cible) {
       case CibleNotification.menus:
         setState(() => _index = 1);
@@ -107,13 +109,13 @@ class _MainShellState extends State<MainShell> {
             Icons.person_rounded, Icons.person_outline_rounded, 'Profil'),
       ];
 
-  List<Widget> _screens(bool isGestionnaire) => [
+  List<Widget> _screens(bool isGestionnaire, bool peutCommander) => [
         DashboardScreen(
             onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer()),
-        const MenuScreen(),
+        peutCommander ? const MenuScreen() : const SansRoleEmploye(),
         if (!isGestionnaire) ...[
-          const CommandesScreen(),
-          const FacturationScreen(),
+          peutCommander ? const CommandesScreen() : const SansRoleEmploye(),
+          peutCommander ? const FacturationScreen() : const SansRoleEmploye(),
         ],
         if (isGestionnaire) ...[
           GestionCommandesScreen(key: _gestionKey),
@@ -208,7 +210,7 @@ class _MainShellState extends State<MainShell> {
     final isGestionnaire = auth.isGestionnaire;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final items = _navItems(isGestionnaire);
-    final screens = _screens(isGestionnaire);
+    final screens = _screens(isGestionnaire, user?.peutCommander ?? true);
 
     if (_index >= items.length) _index = 0;
 
@@ -720,4 +722,34 @@ class _NavBarItem extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Compte sans rôle « Employé » (administrateur, gestionnaire, caissier…) :
+/// pas de commande de repas ni de jeux (le serveur refuserait).
+class SansRoleEmploye extends StatelessWidget {
+  const SansRoleEmploye({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.no_meals_outlined, size: 56, color: Theme.of(context).hintColor),
+              const SizedBox(height: 14),
+              const Text('Commande de repas réservée aux employés',
+                  key: Key('sans-role-employe'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(
+                  "Votre compte n'a pas le rôle « Employé » : il ne peut ni commander de repas ni participer "
+                  "aux jeux. Demandez à un administrateur de vous l'ajouter si vous mangez à la cantine.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).hintColor)),
+            ]),
+          ),
+        ),
+      );
 }

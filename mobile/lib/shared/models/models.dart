@@ -91,6 +91,10 @@ class AuthUser {
 
   bool get isAdmin => roles.contains('super_admin') || roles.contains('admin');
 
+  /// Rôle « Employé » : seul ce rôle commande, paie ses repas et joue
+  /// (cumulable avec les rôles de gestion)
+  bool get peutCommander => roles.contains('employe');
+
   /// Gestionnaire de cantine (les administrateurs ont aussi ces droits)
   bool get isGestionnaire => isAdmin || roles.contains('gestionnaire');
 

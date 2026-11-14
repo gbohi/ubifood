@@ -195,7 +195,7 @@ def notifier_retrait(sender, instance, created, **kwargs):
 
 
 # ══════════════════════════════════════════════════════════════
-# MENUS — tous les agents actifs de l'agence
+# MENUS — tous les employés actifs de l'agence
 # ══════════════════════════════════════════════════════════════
 
 JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
@@ -218,7 +218,8 @@ def _notifier_menu(menu_id):
         Q(date_fin__isnull=True) | Q(date_fin__gte=maintenant)
     ).values_list('user_id', flat=True)
 
-    users = User.objects.filter(id__in=user_ids, is_active=True)
+    # Seuls les employés commandent (rôle « Employé »)
+    users = User.objects.filter(id__in=user_ids, is_active=True, groups__name='employe').distinct()
     # strftime('%A') dépend de la locale du serveur (souvent anglaise)
     date_str = f"{JOURS[menu.date_menu.weekday()]} {menu.date_menu:%d/%m/%Y}"
 

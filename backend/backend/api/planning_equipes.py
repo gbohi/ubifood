@@ -775,6 +775,9 @@ def programmer(employe, equipe, debut, fin, jours, rapport, par, motif='', aperc
                action='programmation', importee=False, agence=None):
     if fin is not None and fin < debut:
         raise ValidationError({'date_fin': "La date de fin doit être après la date de début."})
+    from .permissions import is_employe
+    if not is_employe(employe):
+        raise ValidationError(f"{nom(employe)} n'a pas le rôle « Employé » : il ne peut pas être programmé.")
     agence = agence_programmation(employe, agence)
     nouvelles = [_copie(p) for p in _progs(employe, equipe)]
     n = ProgrammationEquipe(user=employe, typeequipe=equipe, date_debut=debut, date_fin=fin,

@@ -88,6 +88,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final isGestionnaire = auth.isGestionnaire;
+    // Sans rôle « Employé » : ni repas, ni commandes, ni jeux
+    final peutCommander = auth.user?.peutCommander ?? true;
     final now = DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(DateTime.now());
 
     Widget marges(Widget child) => Padding(
@@ -148,9 +150,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onGestion: () => MainShellNavigator.of(context)?.navigateTo(2),
             )),
             const SizedBox(height: 8),
-            marges(repasDuJour),
-            const SizedBox(height: 12),
-            marges(BandeauJeuAccueil(key: _jeuKey)),
+            if (peutCommander) ...[
+              marges(repasDuJour),
+              const SizedBox(height: 12),
+              marges(BandeauJeuAccueil(key: _jeuKey)),
+            ],
             marges(_ChiffresMois(
               gestionnaire: true,
               onCommandes: () => _goCommandes(context),
@@ -160,7 +164,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _BannerSlider(key: _bannerKey),
             // Ses propres commandes : seulement s'il en a (la maquette
             // s'arrête aux chiffres)
-            Consumer<CommandeProvider>(
+            if (peutCommander) Consumer<CommandeProvider>(
               builder: (_, cmdProv, __) => cmdProv.mesCommandes.isEmpty
                   ? const SizedBox.shrink()
                   : Padding(
@@ -168,6 +172,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: marges(recentes)),
             ),
           ]
+        : !peutCommander
+            ? [
+                _BannerSlider(key: _bannerKey),
+                const SizedBox(height: 12),
+                marges(const BandeauInfo(
+                    key: Key('accueil-sans-role-employe'),
+                    icone: Icons.info_outline_rounded,
+                    ton: TonPastille.bleu,
+                    texte: "Votre compte n'a pas le rôle « Employé » : la commande de repas et les jeux "
+                        "ne vous sont pas ouverts. Demandez-le à un administrateur si vous mangez à la cantine.")),
+              ]
         : [
             _BannerSlider(key: _bannerKey),
             const SizedBox(height: 8),

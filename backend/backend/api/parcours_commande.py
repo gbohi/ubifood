@@ -359,6 +359,8 @@ class CommanderAgencesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from .permissions import exiger_employe
+        exiger_employe(request.user)
         user = request.user
         mon, acces = acces_agences(user)
         normal = acces_agences(user, missions=False)[1]
@@ -409,6 +411,8 @@ class CommanderPrestatairesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from .permissions import exiger_employe
+        exiger_employe(request.user)
         user = request.user
         agence = _agence_demandee(request)
         aujourdhui = timezone.localdate()
@@ -495,6 +499,8 @@ class CommanderEquipesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
+        from .permissions import exiger_employe
+        exiger_employe(request.user)
         user = request.user
         agence = _agence_demandee(request)
         prestataire = _prestataire_demande(pk, agence)
@@ -544,6 +550,8 @@ class CommanderJoursView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from .permissions import exiger_employe
+        exiger_employe(request.user)
         from .serializers import date_limite_annulation, date_limite_commande, libelle_date_limite
         user = request.user
         p = request.query_params

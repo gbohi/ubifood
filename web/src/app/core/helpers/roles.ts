@@ -21,6 +21,8 @@ export const LIBELLES_ROLES: Record<string, string> = {
   comptabilite:   'Comptabilité',
 };
 export const GESTIONNAIRES: Role[] = ['super_admin', 'admin', 'gestionnaire'];
+/** Seul le rôle « Employé » commande, paie ses repas et joue (cumulable avec les rôles de gestion) */
+export const EMPLOYES: Role[] = ['employe'];
 
 /** Page d'accueil d'un utilisateur sans droit de gestion */
 export const ACCUEIL_EMPLOYE = '/cantines/accueil';
