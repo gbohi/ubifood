@@ -148,6 +148,7 @@
     @if (checkedValGet.length > 0) {
       <div class="lst-selection">
         <span><b>{{ checkedValGet.length }}</b> sélectionné(s)</span>
+        <button type="button" class="btn-ubi navy sm" (click)="ouvrirRattachement()"><i class="ri-building-line"></i>Rattacher à une agence</button>
         <button type="button" class="btn-ubi vert-doux sm" (click)="activerSelection()"><i class="ri-checkbox-circle-line"></i>Activer</button>
         <button type="button" class="btn-ubi orange sm" (click)="desactiverSelection()"><i class="ri-forbid-line"></i>Désactiver</button>
         <button type="button" class="btn-ubi rouge sm" (click)="deleteRecordModal?.show()"><i class="ri-delete-bin-6-line"></i>Supprimer</button>
@@ -162,26 +163,27 @@
             <th class="lst-c-sel">
               <div class="form-check"><input class="form-check-input" type="checkbox" aria-label="Tout sélectionner" [(ngModel)]="masterSelected" (change)="checkUncheckAll($event)"></div>
             </th>
+            <th class="lst-c-num">N°</th>
             <th>
               <span class="tri" [class.actif]="tri.estActif('nom')" (click)="onSort('nom')" role="button">Agent<i class="ms-1" [ngClass]="tri.icone('nom')"></i></span>
               <span class="text-lowercase fw-normal"> · </span>
               <span class="tri text-lowercase fw-normal" [class.actif]="tri.estActif('username')" (click)="onSort('username')" role="button">identifiant<i class="ms-1" [ngClass]="tri.icone('username')"></i></span>
             </th>
-            <th>Contact</th>
             <th>Agence</th>
+            <th>Catégorie</th>
             <th>Équipe</th>
-            <th>Poste · Service</th>
             <th>Rôle</th>
             <th>Compte</th>
             <th class="lst-c-act"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          @for (data of users; track data.id) {
+          @for (data of users; track data.id; let i = $index) {
             <tr id="l_{{ data.id }}">
               <td class="lst-c-sel">
                 <div class="form-check"><input class="form-check-input" type="checkbox" [attr.aria-label]="'Sélectionner ' + data.nom + ' ' + data.prenom" [value]="data.id" [(ngModel)]="data.state" (change)="onCheckboxChange()"></div>
               </td>
+              <td class="lst-c-num" data-label="N°">{{ (currentPage - 1) * parPage + i + 1 }}</td>
               <td class="lst-c-principal">
                 <div class="lst-qui">
                   @if (photoUrl(data); as photo) {
@@ -195,12 +197,6 @@
                   </div>
                 </div>
               </td>
-              <td data-label="Contact">
-                <div>
-                  {{ data.contact || '—' }}
-                  @if (data.email) { <small class="d-block">{{ data.email }}</small> }
-                </div>
-              </td>
               <td data-label="Agence">
                 @if (getDerniereAgence(data); as agc) {
                   <span class="lst-tag t-bl">{{ getAgenceLibelle(agc.agence) }}</span>
@@ -208,21 +204,13 @@
                   <span class="lst-tag t-or"><i class="ri-error-warning-line"></i>Aucune agence</span>
                 }
               </td>
+              <td data-label="Catégorie">
+                @if (getDerniereCategorie(data); as cat) { <span>{{ getCategorieLibelle(cat.categoriesalarie) }}</span> }
+                @else { <span class="muted">—</span> }
+              </td>
               <td data-label="Équipe">
                 @if (data.typeequipe_libelle) { <span class="lst-tag t-ve"><i class="ri-team-line"></i>{{ data.typeequipe_libelle }}</span> }
                 @else { <span class="muted">—</span> }
-              </td>
-              <td data-label="Poste">
-                @if (getDernierPoste(data); as pst) {
-                  <div>
-                    {{ getPosteLibelle(pst.poste) }}
-                    @if (getDernierService(data); as svc) { <small class="d-block">{{ getServiceLibelle(svc.service) }}</small> }
-                  </div>
-                } @else if (getDernierService(data)) {
-                  <span>{{ getServiceLibelle(getDernierService(data).service) }}</span>
-                } @else {
-                  <span class="muted">—</span>
-                }
               </td>
               <td data-label="Rôle">
                 <div class="lst-tags">
@@ -299,7 +287,17 @@
       </div>
       <form (ngSubmit)="saveProperty()" [formGroup]="userForm" novalidate autocomplete="off">
         <div class="modal-body">
+          <!-- Étapes (cliquer pour revenir à une étape précédente ; en modification, toutes accessibles) -->
+          <ol class="uw-etapes">
+            @for (e of etapes; track e.cle; let i = $index) {
+              <li [class.on]="etape === e.cle" [class.fait]="i < indexEtape">
+                <button type="button" (click)="allerEtape(e.cle)" [disabled]="!f['id'].value && i > indexEtape">
+                  <span>@if (i < indexEtape) { <i class="ri-check-line"></i> } @else { {{ i + 1 }} }</span>{{ e.titre }}</button>
+              </li>
+            }
+          </ol>
 
+          @if (etape === 'identite') {
           <!-- Informations -->
           <h6 class="text-muted text-uppercase mb-3 small"><i class="ri-user-line me-1"></i>Informations personnelles</h6>
           <div class="row g-3 mb-4">
@@ -358,6 +356,9 @@
             }
           </div>
 
+          }
+
+          @if (etape === 'roles') {
           <!-- Rôles -->
           <h6 class="text-muted text-uppercase mb-3 small">
             <i class="ri-shield-check-line me-1"></i>Rôle(s)
@@ -411,8 +412,10 @@
             </div>
           }
 
+          }
+
           <!-- Mot de passe création -->
-          @if (!f['id'].value) {
+          @if (etape === 'mdp' && !f['id'].value) {
             <h6 class="text-muted text-uppercase mb-3 small">
               <i class="ri-lock-line me-1"></i>Mot de passe
               <span class="text-muted fw-normal" style="font-size:.75rem;">(obligatoire — 8 car. min, 1 maj., 1 chiffre, 1 spécial)</span>
@@ -437,13 +440,15 @@
             </div>
           }
 
+          @if (etape === 'affectations') {
+          <p class="text-muted small"><i class="ri-information-line me-1"></i>L'agence est indispensable pour commander ; la catégorie de salarié fixe le prix des repas.</p>
           <!-- TABLEAU Services -->
           <div class="d-flex align-items-center justify-content-between mb-2 mt-2">
             <h6 class="text-muted text-uppercase mb-0 small"><i class="ri-building-line me-1"></i>Services @if(isServicesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
             <button type="button" class="btn btn-subtle-primary btn-sm" [disabled]="isServicesLoading" (click)="ajouterService()"><i class="ri-add-line me-1"></i>Ajouter</button>
           </div>
           @if (isServicesLoading) { <div class="text-center py-3 border rounded mb-2"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div> }
-          @else if (serviceLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">@if(currentUserId){Aucun service.}@else{Enregistrez d'abord l'utilisateur.}</div> }
+          @else if (serviceLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">Aucun service. Cliquez sur « Ajouter ».</div> }
           @else {
             <div class="table-responsive border rounded mb-2"><table class="table table-sm align-middle mb-0">
               <thead class="table-light text-muted"><tr><th>Service <span class="text-danger">*</span></th><th>Début <span class="text-danger">*</span></th><th>Fin</th><th>Statut <span class="text-danger">*</span></th><th></th></tr></thead>
@@ -465,7 +470,7 @@
             <button type="button" class="btn btn-subtle-success btn-sm" [disabled]="isAgencesLoading" (click)="ajouterAgence()"><i class="ri-add-line me-1"></i>Ajouter</button>
           </div>
           @if (isAgencesLoading) { <div class="text-center py-3 border rounded mb-2"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div> }
-          @else if (agenceLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">@if(currentUserId){Aucune agence.}@else{Enregistrez d'abord l'utilisateur.}</div> }
+          @else if (agenceLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">Aucune agence. Cliquez sur « Ajouter ».</div> }
           @else {
             <div class="table-responsive border rounded mb-2"><table class="table table-sm align-middle mb-0">
               <thead class="table-light text-muted"><tr><th>Agence <span class="text-danger">*</span></th><th>Début <span class="text-danger">*</span></th><th>Fin</th><th>Statut <span class="text-danger">*</span></th><th></th></tr></thead>
@@ -487,7 +492,7 @@
             <button type="button" class="btn btn-subtle-warning btn-sm" [disabled]="isPostesLoading" (click)="ajouterPoste()"><i class="ri-add-line me-1"></i>Ajouter</button>
           </div>
           @if (isPostesLoading) { <div class="text-center py-3 border rounded mb-2"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div> }
-          @else if (posteLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">@if(currentUserId){Aucun poste.}@else{Enregistrez d'abord l'utilisateur.}</div> }
+          @else if (posteLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">Aucun poste. Cliquez sur « Ajouter ».</div> }
           @else {
             <div class="table-responsive border rounded mb-2"><table class="table table-sm align-middle mb-0">
               <thead class="table-light text-muted"><tr><th>Poste <span class="text-danger">*</span></th><th>Début <span class="text-danger">*</span></th><th>Fin</th><th>Statut <span class="text-danger">*</span></th><th></th></tr></thead>
@@ -509,7 +514,7 @@
             <button type="button" class="btn btn-subtle-info btn-sm" [disabled]="isCategoriesLoading" (click)="ajouterCategorie()"><i class="ri-add-line me-1"></i>Ajouter</button>
           </div>
           @if (isCategoriesLoading) { <div class="text-center py-3 border rounded mb-2"><div class="spinner-border text-primary spinner-border-sm" role="status"></div></div> }
-          @else if (categorieLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">@if(currentUserId){Aucune catégorie.}@else{Enregistrez d'abord l'utilisateur.}</div> }
+          @else if (categorieLignesVisibles.length===0) { <div class="text-center py-2 text-muted border rounded mb-2 small">Aucune catégorie. Cliquez sur « Ajouter ».</div> }
           @else {
             <div class="table-responsive border rounded mb-2"><table class="table table-sm align-middle mb-0">
               <thead class="table-light text-muted"><tr><th>Catégorie <span class="text-danger">*</span></th><th>Début <span class="text-danger">*</span></th><th>Fin</th><th>Statut <span class="text-danger">*</span></th><th></th></tr></thead>
@@ -525,6 +530,9 @@
             </table></div>
           }
 
+          }
+
+          @if (etape === 'allergies') {
           <!-- TABLEAU Allergies -->
           <div class="d-flex align-items-center justify-content-between mb-2 mt-3">
             <h6 class="text-muted text-uppercase mb-0 small"><i class="ri-error-warning-line me-1"></i>Allergies @if(isAllergiesLoading){<span class="spinner-border spinner-border-sm text-primary ms-2" role="status"></span>}</h6>
@@ -544,15 +552,66 @@
             </table></div>
           }
 
+          }
+
+          @if (etape === 'recap') {
+            <h6 class="text-muted text-uppercase mb-3 small"><i class="ri-file-list-3-line me-1"></i>Récapitulatif</h6>
+            <dl class="uw-recap">
+              <dt>Agent</dt><dd>{{ f['nom'].value }} {{ f['prenom'].value }} · <b>{{ f['username'].value }}</b>@if (f['email'].value) { · {{ f['email'].value }} }</dd>
+              <dt>Contact</dt><dd>{{ f['contact'].value || '—' }}@if (f['poste_telephone'].value) { · poste {{ f['poste_telephone'].value }} }</dd>
+              <dt>Compte</dt><dd>{{ f['is_active'].value ? 'Actif (peut se connecter)' : 'Désactivé' }} · statut : {{ getStatutLibelle(f['statut'].value) }}</dd>
+              <dt>Rôle(s)</dt><dd>{{ getGroupesLibelle(f['groups'].value || []) || 'Aucun' }}</dd>
+              @if (!estRolePrestataire) {
+                <dt>Agence</dt><dd [class.text-danger]="!agenceLignesVisibles.length">@for (l of agenceLignesVisibles; track $index) { {{ getAgenceLibelle(l.agence!) }}@if (!$last) { · } } @empty { Aucune : il ne pourra pas commander dans son agence }</dd>
+                <dt>Catégorie</dt><dd>@for (l of categorieLignesVisibles; track $index) { {{ getCategorieLibelle(l.categoriesalarie!) }}@if (!$last) { · } } @empty { — }</dd>
+                <dt>Poste · service</dt><dd>@for (l of posteLignesVisibles; track $index) { {{ getPosteLibelle(l.poste!) }} · } @for (l of serviceLignesVisibles; track $index) { {{ getServiceLibelle(l.service!) }} } @if (!posteLignesVisibles.length && !serviceLignesVisibles.length) { — }</dd>
+                <dt>Allergies</dt><dd>@for (l of allergieLignesVisibles; track $index) { {{ l.libelle }}@if (!$last) { · } } @empty { Aucune }</dd>
+              }
+            </dl>
+          }
         </div><!-- fin modal-body -->
         <div class="modal-footer">
-          <div class="hstack gap-2 justify-content-end">
+          <div class="hstack gap-2 w-100">
             <button type="button" class="btn btn-ghost-danger" (click)="closeAddModal()"><i class="ri-close-line me-1"></i>Fermer</button>
-            <button type="submit" class="btn btn-primary" id="add-btn"
-                    [disabled]="userForm.invalid || isSaving">Enregistrer</button>
+            <span class="ms-auto small text-muted">Étape {{ indexEtape + 1 }} / {{ etapes.length }}</span>
+            <button type="button" class="btn btn-light" [disabled]="indexEtape === 0" (click)="precedent()"><i class="ri-arrow-left-line me-1"></i>Précédent</button>
+            @if (indexEtape < etapes.length - 1) {
+              <button type="button" class="btn btn-primary" (click)="suivant()">Suivant<i class="ri-arrow-right-line ms-1"></i></button>
+            }
+            @if (indexEtape === etapes.length - 1 || f['id'].value) {
+              <button type="submit" class="btn btn-success" id="add-btn" [disabled]="userForm.invalid || isSaving"><i class="ri-save-line me-1"></i>Enregistrer</button>
+            }
           </div>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Modal Rattacher à une agence (sélection) ═════════════ -->
+<div bsModal #rattacherModal="bs-modal" class="modal fade" [config]="{backdrop:'static'}">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Rattacher {{ checkedValGet.length }} utilisateur(s) à une agence</h5>
+        <button type="button" class="btn-close" (click)="rattacherModal.hide()"></button></div>
+      <div class="modal-body">
+        <div class="mb-3"><label class="form-label">Agence <span class="text-danger">*</span></label>
+          <select class="form-select" [(ngModel)]="rattachement.agence"><option [ngValue]="null">Choisir</option>
+            @for (a of agences; track a.id) { <option [ngValue]="a.id">{{ a.nom_agence }}</option> }</select></div>
+        <div class="row g-2 mb-3">
+          <div class="col-6"><label class="form-label">À partir du <span class="text-danger">*</span></label><input type="date" class="form-control" [(ngModel)]="rattachement.date_debut"></div>
+          <div class="col-6"><label class="form-label">Statut <span class="text-danger">*</span></label>
+            <select class="form-select" [(ngModel)]="rattachement.statut">@for (s of statuts; track s.id) { <option [ngValue]="s.id">{{ s.libelle_statut }}</option> }</select></div>
+        </div>
+        <p class="text-muted small mb-0"><i class="ri-information-line me-1"></i>Pratique pour les employés sans agence (filtre « Aucune agence »).
+          Un employé déjà rattaché à une agence sur la période est refusé par le serveur : clôturez d'abord son agence actuelle dans sa fiche.</p>
+        @if (rattachementResultat) { <div class="alert mt-3 mb-0 py-2" [class.alert-success]="!rattachementResultat.refus.length" [class.alert-warning]="rattachementResultat.refus.length">
+          {{ rattachementResultat.ok }} rattaché(s).@for (r of rattachementResultat.refus; track $index) { <small class="d-block">{{ r }}</small> }</div> }
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" (click)="rattacherModal.hide()">Fermer</button>
+        <button type="button" class="btn btn-primary" [disabled]="!rattachement.agence || !rattachement.date_debut || !rattachement.statut || isSaving" (click)="rattacher()">Rattacher</button>
+      </div>
     </div>
   </div>
 </div>

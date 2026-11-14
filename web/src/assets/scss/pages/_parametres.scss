@@ -102,3 +102,17 @@
   .prm .pe-actions { width: 100%; }
   .prm-carte { min-height: 0; padding: 12px; }
 }
+
+// ── Utilisateurs : numérotation, assistant de création par étapes ──
+.lst-table .lst-c-num { width: 48px; color: var(--ubi-gris); font-variant-numeric: tabular-nums; }
+.uw-etapes { display: flex; gap: 6px; list-style: none; padding: 0; margin: 0 0 20px; flex-wrap: wrap;
+  li { flex: 1 1 0; min-width: 120px; }
+  button { width: 100%; display: flex; align-items: center; gap: 8px; border: 1px solid #E2EAF4; background: #fff; border-radius: 10px;
+    padding: 8px 10px; font-size: 13px; font-weight: 600; color: var(--ubi-gris); text-align: left;
+    span { width: 24px; height: 24px; border-radius: 50%; background: #EEF2F7; display: grid; place-items: center; font-size: 12px; flex: none; }
+    &:disabled { opacity: .55; } }
+  li.on button { border-color: var(--ubi-navy); color: var(--ubi-navy); span { background: var(--ubi-navy); color: #fff; } }
+  li.fait button { color: #1C7F45; span { background: #EAFBF1; color: #1C7F45; } } }
+.uw-recap { display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; margin: 0;
+  dt { color: var(--ubi-gris); font-weight: 500; } dd { margin: 0; } }
+@media (max-width: 575.98px) { .uw-recap { grid-template-columns: 1fr; } .uw-etapes li { min-width: 46%; } }

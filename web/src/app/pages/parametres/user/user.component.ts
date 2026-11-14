@@ -121,6 +121,27 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
 
   totalItems  = 0;
   currentPage = 1;
+  /** Taille de page du serveur (numérotation des lignes) */
+  readonly parPage = 10;
+
+  // ── Assistant de création / modification (étapes) ──
+  etape = 'identite';
+  get etapes(): { cle: string; titre: string }[] {
+    const creation = !this.userForm?.get('id')?.value;
+    return [
+      { cle: 'identite', titre: 'Identité' },
+      { cle: 'roles', titre: 'Rôle(s)' },
+      ...(creation ? [{ cle: 'mdp', titre: 'Mot de passe' }] : []),
+      ...(this.estRolePrestataire ? [] : [{ cle: 'affectations', titre: 'Affectations' }, { cle: 'allergies', titre: 'Allergies' }]),
+      { cle: 'recap', titre: 'Récapitulatif' },
+    ];
+  }
+  get indexEtape(): number { return Math.max(0, this.etapes.findIndex(e => e.cle === this.etape)); }
+
+  // ── Rattachement en masse à une agence ──
+  @ViewChild('rattacherModal', { static: false }) rattacherModal?: ModalDirective;
+  rattachement: { agence: number | null; date_debut: string; statut: number | null } = { agence: null, date_debut: '', statut: null };
+  rattachementResultat: { ok: number; refus: string[] } | null = null;
   isLoading   = true;
 
   userForm!:      UntypedFormGroup;
@@ -449,6 +470,8 @@ getDerniereCategorie(user: any): any | null {
         'Username':              u.username || '',
         'Email':                 u.email || '',
         'Contact':               u.contact || '',
+        'Poste tél.':            u.poste_telephone || '',
+        'Équipe':                u.typeequipe_libelle || '',
         'Rôle(s)':               this.getGroupesLibelle(u.groups || []),
         'Statut':                this.getStatutLibelle(u.statut),
         'État':                  u.is_active ? 'Actif' : 'Inactif',
@@ -468,7 +491,7 @@ getDerniereCategorie(user: any): any | null {
     const ws = XLSX.utils.json_to_sheet(data);
     ws['!cols'] = [
       { wch: 6  }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 28 },
-      { wch: 14 }, { wch: 22 }, { wch: 16 }, { wch: 10 },
+      { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 16 }, { wch: 10 },
       { wch: 22 }, { wch: 12 }, { wch: 22 }, { wch: 12 },
       { wch: 22 }, { wch: 12 }, { wch: 24 }, { wch: 12 }, { wch: 30 },
     ];
@@ -722,12 +745,77 @@ getDerniereCategorie(user: any): any | null {
   // MODALS AJOUTER / MODIFIER
   // ══════════════════════════════════════════════════════════
 
+  /** Contrôle l'étape courante ; renvoie un message d'erreur ou null */
+  private erreurEtape(cle: string): string | null {
+    const f = this.userForm.controls;
+    if (cle === 'identite') {
+      for (const c of ['nom', 'prenom', 'username', 'email', 'statut']) f[c].markAsTouched();
+      if (['nom', 'prenom', 'username', 'email', 'statut'].some(c => f[c].invalid)) return 'Complétez l\'identité (nom, prénom, identifiant, statut).';
+    }
+    if (cle === 'roles' && this.estRolePrestataire && !f['prestataire'].value) return 'Choisissez le prestataire de ce compte.';
+    if (cle === 'mdp') {
+      f['password'].markAsTouched(); f['password2'].markAsTouched();
+      if (f['password'].invalid || this.passwordMismatch) return 'Mot de passe invalide ou différent de la confirmation.';
+    }
+    if (cle === 'affectations' && (!this._validerLignesAvecDate(this.serviceLignes, 'service') || !this._validerLignesAvecDate(this.agenceLignes, 'agence')
+        || !this._validerLignesAvecDate(this.posteLignes, 'poste') || !this._validerLignesAvecDate(this.categorieLignes, 'categoriesalarie'))) {
+      return 'Complétez ou supprimez les lignes incomplètes (élément, date de début, statut).';
+    }
+    if (cle === 'allergies' && !this._validerAllergies()) return 'Complétez ou supprimez les allergies vides.';
+    return null;
+  }
+
+  suivant(): void {
+    const err = this.erreurEtape(this.etape);
+    if (err) { this.toastService.warning(err); return; }
+    const e = this.etapes; const i = this.indexEtape;
+    if (i < e.length - 1) this.etape = e[i + 1].cle;
+  }
+
+  precedent(): void { const i = this.indexEtape; if (i > 0) this.etape = this.etapes[i - 1].cle; }
+
+  allerEtape(cle: string): void {
+    const cible = this.etapes.findIndex(e => e.cle === cle);
+    if (cible > this.indexEtape && !this.userForm.get('id')?.value) {
+      // En création, on avance étape par étape (contrôles)
+      for (let i = this.indexEtape; i < cible; i++) { const err = this.erreurEtape(this.etapes[i].cle); if (err) { this.toastService.warning(err); this.etape = this.etapes[i].cle; return; } }
+    }
+    this.etape = cle;
+  }
+
+  ouvrirRattachement(): void {
+    const actif = this.statuts.find((s: any) => (s.libelle_statut || '').toLowerCase() === 'actif');
+    this.rattachement = { agence: null, date_debut: new Date().toISOString().slice(0, 10), statut: actif?.id ?? this.statuts[0]?.id ?? null };
+    this.rattachementResultat = null;
+    this.rattacherModal?.show();
+  }
+
+  rattacher(): void {
+    const ids = [...this.checkedValGet];
+    const r = this.rattachement;
+    const refus: string[] = [];
+    let ok = 0;
+    this.isSaving = true;
+    const appels = ids.map(id => this.userAgenceService.create({ user: id, agence: Number(r.agence), date_debut: r.date_debut, date_fin: null, statut: Number(r.statut) } as any)
+      .pipe(map(() => { ok++; return null; }), catchError(err => {
+        const u = this.users.find(x => x.id === id);
+        refus.push(`${u ? u.nom + ' ' + u.prenom : '#' + id} : ${typeof err === 'string' ? err : 'refusé'}`);
+        return of(null);
+      })));
+    concat(...appels).pipe(toArray(), takeUntil(this.destroy$)).subscribe(() => {
+      this.isSaving = false;
+      this.rattachementResultat = { ok, refus };
+      if (ok) { this.toastService.success(`${ok} utilisateur(s) rattaché(s).`); this.checkedValGet = []; this.masterSelected = false; this.loadData(this.currentPage); }
+    });
+  }
+
   openAddModal(): void {
     this.lastActiveElement = document.activeElement as HTMLElement;
     this.currentUserId = null; this._resetAllLignes();
     this.submitted = false; this.userForm.reset();
     this.userForm.patchValue({ is_active: true, groups: [], prestataire: null, typeequipe: null });
     this._motDePasseObligatoire(true);
+    this.etape = 'identite';
     this.setModalTitle('Ajouter un utilisateur'); this.setModalBtn('Enregistrer'); this.addUser?.show();
   }
 
@@ -743,6 +831,7 @@ getDerniereCategorie(user: any): any | null {
     this.currentUserId = id; this._resetAllLignes(); this.submitted = false;
     this.userForm.patchValue({ ...editData, password: '', password2: '', groups: (editData.groups || []).map(Number), prestataire: editData.prestataire ?? null, typeequipe: editData.typeequipe ?? null });
     this._motDePasseObligatoire(false);
+    this.etape = 'identite';
     this._chargerHistorique(editData);
     this.setModalTitle('Modifier l\'utilisateur'); this.setModalBtn('Enregistrer'); this.addUser?.show();
   }
