@@ -93,6 +93,8 @@ export class TypeequipeComponent implements OnInit, AfterViewInit {
       // Planning des équipes : équipe réservée aux employés programmés (ex. Nuit)
       sur_planning: [false],
       exclusive_planning: [true],
+      // Repas offert : non facturé aux employés (prestataire payé normalement)
+      repas_offert: [false],
     }, { validators: horairesRetraitValidator });
 
     this.store.select(selectLoading)
@@ -232,6 +234,7 @@ export class TypeequipeComponent implements OnInit, AfterViewInit {
       heure_fin_retrait: this.heureCourte(editData.heure_fin_retrait),
       sur_planning: !!editData.sur_planning,
       exclusive_planning: editData.exclusive_planning !== false,
+      repas_offert: !!editData.repas_offert,
     });
     this.addTypeequipe?.show();
   }

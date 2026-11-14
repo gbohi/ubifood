@@ -1,3 +1,4 @@
+import { HttpClient } from '@angular/common/http';
 // src/app/pages/prestataire/prestataire.component.ts
 
 import { Component, OnInit, AfterViewInit, ViewChild, ElementRef, DestroyRef, inject } from '@angular/core';
@@ -158,7 +159,15 @@ export class PrestataireComponent implements OnInit, AfterViewInit {
     return u ? (u.startsWith('http') ? u : `${environment.apiUrl}${u}`) : null;
   }
 
+
+  /** Types de plat (tarif par type ; vide = « tous types ») */
+  typesPlat: { id: number; libelle: string }[] = [];
+  private httpTypes = inject(HttpClient);
+
   ngOnInit(): void {
+    this.httpTypes.get<any[]>(`${environment.apiUrl}/api/api/allnopagin/typeplats/`)
+      .subscribe({ next: t => this.typesPlat = (t ?? []).map(x => ({ id: x.id, libelle: x.libelle })), error: () => this.typesPlat = [] });
+
     this.estAdmin = aUnRole(this.tokenStorage.getUser(), ADMINS);
     this.prestataireForm = this.fb.group(
       {
@@ -387,7 +396,7 @@ export class PrestataireComponent implements OnInit, AfterViewInit {
   // ── Gestion lignes PlatPrestataire ────────────────────────
   ajouterLigneTarif(): void {
     this.tarifLignes.push({
-      montant: undefined, date_debut: '', date_fin: null,
+      montant: undefined, type_plat: null, date_debut: '', date_fin: null,
       statut: undefined, _isNew: true, _isDeleted: false, _hasError: false,
     });
   }
@@ -539,7 +548,7 @@ export class PrestataireComponent implements OnInit, AfterViewInit {
       catchError(err => { erreurs.push(`${quoi} : ${typeof err === 'string' ? err : 'refusé'}`); return of(null); }));
 
     const tarif = (l: PlatPrestataireModel) => ({
-      prestataire: prestataireId, montant: Number(l.montant),
+      prestataire: prestataireId, montant: Number(l.montant), type_plat: l.type_plat || null,
       date_debut: l.date_debut, date_fin: l.date_fin || null, statut: Number(l.statut),
     });
     const lien = (l: AgencePrestataireModel) => ({
@@ -686,5 +695,9 @@ export class PrestataireComponent implements OnInit, AfterViewInit {
 
   pageChanged(event: PageChangedEvent): void {
     this.loadData(event.page);
+  }
+
+  libelleType(id: number | null | undefined): string {
+    return id ? (this.typesPlat.find(t => t.id === Number(id))?.libelle ?? '—') : 'Tous types';
   }
 }

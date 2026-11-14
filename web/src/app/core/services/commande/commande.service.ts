@@ -92,9 +92,10 @@ export class CommandeService {
 
   // ── Mode de paiement (compte repas / retenue sur salaire) ───
   /** Solde, prix du repas et mode proposé pour le menu (écran de commande) */
-  infoPaiement(menuId: number): Observable<InfoPaiement> {
-    return this.http.get<InfoPaiement>(`${this.apiUrl}/compte-repas/paiement/`,
-      { params: new HttpParams().set('menu', String(menuId)) });
+  infoPaiement(menuId: number, platId?: number): Observable<InfoPaiement> {
+    let params = new HttpParams().set('menu', String(menuId));
+    if (platId) params = params.set('plat', String(platId));   // prix selon le type du plat
+    return this.http.get<InfoPaiement>(`${this.apiUrl}/compte-repas/paiement/`, { params });
   }
 
   /** Changer le mode jusqu'à la date limite de commande (débit / recrédit du compte repas) */

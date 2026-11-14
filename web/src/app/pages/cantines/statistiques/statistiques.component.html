@@ -84,6 +84,30 @@
         }
       </div>
 
+      <!-- ── Repas offerts (équipes « repas offert ») ──────────── -->
+      @if ($any(d).repas_offerts; as ro) {
+        @if (ro.nb > 0) {
+          <div class="st-carte st-offerts">
+            <div class="st-offerts-hd"><i class="ri-gift-line"></i><b>Repas offerts</b>
+              <span class="st-muted">non facturés aux employés, payés aux prestataires</span></div>
+            <div class="st-offerts-chif">
+              <div><b>{{ ro.nb }}</b><small>repas offerts</small></div>
+              <div><b>{{ fcfaTxt(ro.valeur_employe) }}</b><small>non perçus (tarif employé)</small></div>
+              <div><b>{{ fcfaTxt(ro.cout_prestataire) }}</b><small>payés aux prestataires</small></div>
+            </div>
+            <table class="st-offerts-t">
+              <thead><tr><th>Équipe</th><th>Type de plat</th><th class="text-end">Repas</th><th class="text-end">Valeur tarif employé</th><th class="text-end">Coût prestataire</th></tr></thead>
+              <tbody>
+                @for (g of ro.par_equipe; track $index) {
+                  <tr><td>{{ g.equipe }}</td><td>{{ g.type_plat || 'Tous types' }}</td><td class="text-end">{{ g.nb }}</td>
+                    <td class="text-end">{{ fcfaTxt(g.valeur_employe) }}</td><td class="text-end">{{ fcfaTxt(g.cout_prestataire) }}</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      }
+
       <!-- ── Sections ─────────────────────────────────────────── -->
       <nav class="st-nav" aria-label="Sections">
         @for (s of sections; track s.id) {

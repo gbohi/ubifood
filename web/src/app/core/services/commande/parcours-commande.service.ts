@@ -59,6 +59,8 @@ export interface PlatCommande {
   photo_url: string | null; photos: string[];
   note: number | null; nb_avis: number; nouveau: boolean;
   prix: number | null;
+  /** Équipe « repas offert » : rien à payer */
+  offert?: boolean;
   menu_id: number; typeequipe_id: number; typeequipe: string;
   mon_equipe?: boolean | null;
   /** Annulation possible jusqu'à cette date (affichée avant de commander) */

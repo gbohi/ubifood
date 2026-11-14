@@ -104,7 +104,8 @@
                 <tbody>
                   @for (p of releve.par_plat; track $index) {
                     <tr>
-                      <td><b>{{ p.plat }}</b></td>
+                      <td><b>{{ p.plat }}</b>@if (p.type_plat) { <span class="lst-tag t-bl ms-1">{{ p.type_plat }}</span> }
+                        @if (p.offerts) { <small class="d-block ce-muted"><i class="ri-gift-line"></i> dont {{ p.offerts }} offert{{ p.offerts > 1 ? 's' : '' }}</small> }</td>
                       <td class="ce-n">{{ p.nb_repas }}</td>
                       <td class="ce-n ce-muted ce-hide-m">@if (p.pu !== null) { {{ f(p.pu) }} F } @else { <span class="ce-c-rouge">sans tarif</span> }</td>
                       <td class="ce-n"><b>@if (p.montant !== null) { {{ f(p.montant) }} F } @else { — }</b></td>

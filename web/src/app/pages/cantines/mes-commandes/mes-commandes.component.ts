@@ -132,6 +132,7 @@ export class MesCommandesComponent implements OnInit {
   // ── Date limite d'annulation (paramétrée par l'administrateur) ──
   /** Mode de paiement choisi à la commande (et montant débité du compte repas) */
   texteMode(c: CommandeModel): string {
+    if (c.mode_paiement === 'offert') return 'Repas offert';
     if (c.paiement?.mode === 'compte') {
       return `Compte repas · ${Math.round(c.paiement.montant).toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} F`;
     }

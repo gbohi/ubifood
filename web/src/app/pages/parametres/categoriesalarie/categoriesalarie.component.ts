@@ -1,3 +1,5 @@
+import { environment } from 'src/environments/environment';
+import { HttpClient } from '@angular/common/http';
 // src/app/pages/categoriesalarie/categoriesalarie.component.ts
 
 import { Component, OnInit, AfterViewInit, ViewChild, ElementRef, DestroyRef, inject } from '@angular/core';
@@ -104,7 +106,15 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit {
     private platCategoriesalarieService: PlatCategoriesalarieService,
   ) {}
 
+
+  /** Types de plat (tarif par type ; vide = « tous types ») */
+  typesPlat: { id: number; libelle: string }[] = [];
+  private httpTypes = inject(HttpClient);
+
   ngOnInit(): void {
+    this.httpTypes.get<any[]>(`${environment.apiUrl}/api/api/allnopagin/typeplats/`)
+      .subscribe({ next: t => this.typesPlat = (t ?? []).map(x => ({ id: x.id, libelle: x.libelle })), error: () => this.typesPlat = [] });
+
     this.categoriesalarieForm = this.fb.group({
       id:      [''],
       libelle: ['', [Validators.required]],
@@ -278,7 +288,7 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit {
   // ── Gestion lignes PlatCategoriesalarie ───────────────────
   ajouterLigneTarif(): void {
     this.tarifLignes.push({
-      montant: undefined, date_debut: '', date_fin: null,
+      montant: undefined, type_plat: null, date_debut: '', date_fin: null,
       statut: undefined, _isNew: true, _isDeleted: false, _hasError: false,
     });
   }
@@ -379,6 +389,7 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit {
     const donnees = (l: PlatCategoriesalarieModel) => ({
       categoriesalarie: categoriesalarieId,
       montant:          Number(l.montant),
+      type_plat:        l.type_plat || null,
       date_debut:       l.date_debut,
       date_fin:         l.date_fin || null,
       statut:           Number(l.statut),
@@ -502,5 +513,9 @@ export class CategoriesalarieComponent implements OnInit, AfterViewInit {
 
   pageChanged(event: PageChangedEvent): void {
     this.loadData(event.page);
+  }
+
+  libelleType(id: number | null | undefined): string {
+    return id ? (this.typesPlat.find(t => t.id === Number(id))?.libelle ?? '—') : 'Tous types';
   }
 }

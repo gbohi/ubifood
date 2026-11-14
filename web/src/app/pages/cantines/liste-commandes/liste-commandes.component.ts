@@ -478,7 +478,7 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
       mode: commande?.mode_paiement ?? this.semaine?.mode_paiement_prefere ?? 'retenue',
     };
     this.paiementModal?.show();
-    this.commandeService.infoPaiement(cible.menuId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.commandeService.infoPaiement(cible.menuId, cible.platId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: info => {
         if (!this.paiement) return;
         this.paiement.info = info;
@@ -506,6 +506,7 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
   get paiementValidable(): boolean {
     const p = this.paiement;
     if (!p || p.chargement || this.isSubmitting) return false;
+    if (p.info?.offert) return !p.commande;
     if (p.mode === 'compte' && !this.comptePossible) return false;
     return !p.commande || p.commande.mode_paiement !== p.mode;
   }
@@ -523,10 +524,13 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
     this.derniereCommande = null;
     this.store.dispatch(resetCommandeError());
     if (p.commande) {
+      if (p.mode === 'offert') return;
       this.store.dispatch(changerModePaiement({ id: p.commande.id, mode: p.mode }));
     } else {
       this.enCours = { date: p.cible.date, platNom: p.cible.platNom };
-      this.store.dispatch(createCommande({ payload: { menu_id: p.cible.menuId, plat_id: p.cible.platId, mode_paiement: p.mode } }));
+      // Repas offert : le serveur fixe le mode (rien à payer)
+      const mode = p.info?.offert ? undefined : p.mode;
+      this.store.dispatch(createCommande({ payload: { menu_id: p.cible.menuId, plat_id: p.cible.platId, mode_paiement: mode } }));
     }
   }
 
@@ -537,6 +541,7 @@ export class ListeCommandesComponent implements OnInit, OnDestroy {
 
   texteMode(c?: CommandeModel): string {
     if (!c?.mode_paiement) return '';
+    if (c.mode_paiement === 'offert') return 'Repas offert : rien à payer';
     if (c.paiement?.mode === 'compte') return `Payé par le compte repas · ${this.montant(c.paiement.montant)}`;
     if (c.paiement?.mode === 'caisse') return `Payé à la caisse · ${this.montant(c.paiement.montant)}`;
     return 'Retenue sur salaire (à la clôture du mois)';

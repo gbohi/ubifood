@@ -117,8 +117,8 @@
                   <td data-label="Paiement">
                     @if (c.statut !== 'annulee' && c.mode_paiement) {
                       <div>
-                        <span class="lst-tag" [ngClass]="c.mode_paiement === 'compte' ? 't-ve' : 't-or'">
-                          <i [class]="c.mode_paiement === 'compte' ? 'ri-wallet-3-line' : 'ri-file-list-3-line'"></i>{{ texteMode(c) }}
+                        <span class="lst-tag" [ngClass]="c.mode_paiement === 'offert' ? 't-ve' : (c.mode_paiement === 'compte' ? 't-ve' : 't-or')">
+                          <i [class]="c.mode_paiement === 'offert' ? 'ri-gift-line' : (c.mode_paiement === 'compte' ? 'ri-wallet-3-line' : 'ri-file-list-3-line')"></i>{{ texteMode(c) }}
                         </span>
                         @if (c.mode_paiement_modifiable) {
                           <small class="d-block mt-1"><a routerLink="/cantines/liste-commandes">Changer le mode</a> jusqu'au {{ commandeService.libelleLimite(c.mode_paiement_limite) }}</small>

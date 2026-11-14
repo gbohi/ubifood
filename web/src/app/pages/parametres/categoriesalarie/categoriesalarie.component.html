@@ -148,6 +148,7 @@
               <table class="table table-sm align-middle mb-0">
                 <thead class="table-light text-muted">
                   <tr>
+                    <th>Type de plat</th>
                     <th>Montant (FCFA) <span class="text-danger">*</span></th>
                     <th>Date début <span class="text-danger">*</span></th>
                     <th>Date fin</th>
@@ -158,6 +159,12 @@
                 <tbody>
                   @for (ligne of tarifLignesVisibles; track $index) {
                     <tr [class.table-danger]="ligne._hasError">
+                      <td style="min-width: 140px;">
+                        <select class="form-select form-select-sm" [(ngModel)]="ligne.type_plat" [ngModelOptions]="{standalone: true}" aria-label="Type de plat">
+                          <option [ngValue]="null">Tous types</option>
+                          @for (tp of typesPlat; track tp.id) { <option [ngValue]="tp.id">{{ tp.libelle }}</option> }
+                        </select>
+                      </td>
                       <td style="min-width: 130px;">
                         <input type="number" class="form-control form-control-sm"
                                [class.is-invalid]="ligne._hasError && montantInvalide(ligne)"
@@ -204,9 +211,9 @@
           @if (!isTarifsLoading && tarifLignesVisibles.length > 0) {
             <div class="alert alert-info py-2 small mb-0">
               <i class="ri-information-line me-1"></i>
-              Un seul tarif par période : les périodes d'une même catégorie ne peuvent pas se chevaucher
-              (clôturez l'ancien tarif avant d'en ouvrir un nouveau). Le repas est facturé au tarif
-              en vigueur à la date du menu.
+              Un seul tarif par période et par type de plat : les périodes d'un même type ne peuvent pas se chevaucher
+              (clôturez l'ancien tarif avant d'en ouvrir un nouveau). Le repas est facturé au tarif de son type
+              en vigueur à la date du menu ; sans tarif pour ce type, le tarif « Tous types » s'applique.
             </div>
           }
 
@@ -309,6 +316,7 @@
               <thead class="table-light text-muted">
                 <tr>
                   <th>#</th>
+                  <th>Type de plat</th>
                   <th>Montant (FCFA)</th>
                   <th>Date début</th>
                   <th>Date fin</th>
@@ -319,6 +327,7 @@
                 @for (t of tarifLignesVisibles; track t.id; let i = $index) {
                   <tr>
                     <td>{{ i + 1 }}</td>
+                    <td>{{ t.type_plat_libelle || libelleType(t.type_plat) }}</td>
                     <td class="fw-semibold">{{ t.montant | number:'1.0-2' }} FCFA</td>
                     <td>{{ formatDate(t.date_debut!) }}</td>
                     <td>{{ t.date_fin ? formatDate(t.date_fin) : '—' }}</td>

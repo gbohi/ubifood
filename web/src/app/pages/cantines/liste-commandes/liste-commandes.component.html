@@ -311,7 +311,8 @@
               <div class="pc-plat-bd">
                 <div class="pc-plat-l1">
                   <h4>{{ plat.nom }}</h4>
-                  @if (plat.prix != null) { <b class="pc-prix">{{ montant(plat.prix) }}</b> }
+                  @if (plat.offert) { <b class="pc-prix pc-offert"><i class="ri-gift-line"></i>Offert</b> }
+                  @else if (plat.prix != null) { <b class="pc-prix">{{ montant(plat.prix) }}</b> }
                 </div>
                 <div class="pc-plat-l2">
                   @if (plat.nouveau) { <span class="pc-nouveau">Nouveau</span> }
@@ -443,12 +444,16 @@
         @if (paiement; as p) {
           <div class="ce-paie-plat">
             <b>{{ p.cible.platNom }} · {{ p.cible.prestataire }}</b>
-            <span class="ce-muted">{{ jourLong(p.cible.date) }}@if (p.info?.prix != null) { · {{ montant(p.info?.prix) }} }@if (p.cible.equipe) { · équipe {{ p.cible.equipe }} }</span>
+            <span class="ce-muted">{{ jourLong(p.cible.date) }}@if (p.info?.offert) { · repas offert } @else if (p.info?.prix != null) { · {{ montant(p.info?.prix) }} }@if (p.cible.equipe) { · équipe {{ p.cible.equipe }} }</span>
           </div>
           @if (p.chargement) {
             <div class="ce-chargement"><span class="spinner-border spinner-border-sm" role="status"></span><span>Chargement de votre solde…</span></div>
           } @else if (p.erreur) {
             <div class="ce-alerte ce-alerte-ro"><i class="ri-error-warning-line"></i><div>{{ p.erreur }}</div></div>
+          } @else if (p.info?.offert) {
+            <div class="ce-alerte ce-alerte-ve" id="paiement-offert"><i class="ri-gift-line"></i>
+              <div><b>Repas offert</b> pour l'équipe {{ p.cible.equipe }} : aucun débit du compte repas ni retenue sur salaire.
+                Annulable jusqu'au {{ libelleLimite(p.cible.limite) }}.</div></div>
           } @else {
             <div class="ce-paie-options" role="radiogroup" aria-label="Mode de paiement">
               <label class="ce-paie-opt" [class.ce-on]="p.mode === 'compte'" [class.ce-off]="!comptePossible">
@@ -487,7 +492,7 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-light" (click)="fermerPaiement()">Annuler</button>
         <button type="button" class="btn btn-success" id="confirmer-paiement" [disabled]="!paiementValidable" (click)="confirmerPaiement()">
-          {{ paiement?.commande ? 'Changer' : (paiement?.mode === 'compte' ? 'Réserver et payer par le compte' : 'Réserver') }}
+          {{ paiement?.commande ? 'Changer' : (paiement?.info?.offert ? 'Réserver (offert)' : (paiement?.mode === 'compte' ? 'Réserver et payer par le compte' : 'Réserver')) }}
         </button>
       </div>
     </div>

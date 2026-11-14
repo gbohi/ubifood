@@ -704,4 +704,10 @@ export class StatistiquesComponent implements OnInit {
       this.exportRapport = null;
     }
   }
+
+  /** « 254 000 F » (montants des repas offerts) */
+  fcfaTxt(v: number | string | null | undefined): string {
+    const n = Math.round(Number(v ?? 0));
+    return `${n.toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} F`;
+  }
 }

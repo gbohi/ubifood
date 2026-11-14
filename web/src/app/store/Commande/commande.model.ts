@@ -6,11 +6,12 @@ import { MenulistModel } from '../Menu/menu.model';
 export type CommandeStatut = 'en_attente' | 'annulee' | 'retiree';
 
 /** Mode de paiement choisi à la commande */
-export type ModePaiement = 'compte' | 'retenue';
+export type ModePaiement = 'compte' | 'retenue' | 'offert';
 
 export const MODES_PAIEMENT_LIBELLES: Record<ModePaiement, string> = {
   compte: 'Compte repas',
   retenue: 'Retenue sur salaire',
+  offert: 'Repas offert',
 };
 
 /** GET /compte-repas/paiement/?menu=ID : ce que l'écran de commande propose */
@@ -23,6 +24,8 @@ export interface InfoPaiement {
   raison_compte_impossible: string | null;
   mode_paiement_prefere: ModePaiement;
   mode_par_defaut: ModePaiement;
+  /** Équipe « repas offert » : rien à payer */
+  offert?: boolean;
 }
 
 export interface CommandeModel {

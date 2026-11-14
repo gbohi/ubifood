@@ -132,6 +132,8 @@ export class FacturationCommandeComponent implements OnInit {
   filterForm!: UntypedFormGroup;
 
   regle = '';
+  /** Repas offerts (équipes « repas offert ») : hors facturation employé */
+  repasOfferts: { nb: number; valeur_employe: number; cout_prestataire: number } | null = null;
   lignesFacturation: LigneFacturation[] = [];
   totalNbCommandes = 0;
   totalMontant     = 0;
@@ -228,6 +230,7 @@ export class FacturationCommandeComponent implements OnInit {
       .subscribe({
         next: data => {
           this.regle            = data.regle;
+          this.repasOfferts     = (data as any).repas_offerts ?? null;
           this.totalNbCommandes = data.total_repas;
           this.totalMontant     = data.total_montant;
           this.totalCompte      = data.total_compte ?? 0;

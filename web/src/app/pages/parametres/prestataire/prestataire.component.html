@@ -249,6 +249,7 @@
               <table class="table table-sm align-middle mb-0">
                 <thead class="table-light text-muted">
                   <tr>
+                    <th>Type de plat</th>
                     <th>Montant (FCFA) <span class="text-danger">*</span></th>
                     <th>Date début <span class="text-danger">*</span></th>
                     <th>Date fin</th>
@@ -259,6 +260,12 @@
                 <tbody>
                   @for (ligne of tarifLignesVisibles; track $index) {
                     <tr [class.table-danger]="ligne._hasError">
+                      <td style="min-width: 140px;">
+                        <select class="form-select form-select-sm" [(ngModel)]="ligne.type_plat" [ngModelOptions]="{standalone: true}" aria-label="Type de plat">
+                          <option [ngValue]="null">Tous types</option>
+                          @for (tp of typesPlat; track tp.id) { <option [ngValue]="tp.id">{{ tp.libelle }}</option> }
+                        </select>
+                      </td>
                       <td style="min-width: 130px;">
                         <input type="number" class="form-control form-control-sm"
                                [class.is-invalid]="ligne._hasError && montantInvalide(ligne)"
@@ -516,6 +523,7 @@
               <thead class="table-light text-muted">
                 <tr>
                   <th>#</th>
+                  <th>Type de plat</th>
                   <th>Montant (FCFA)</th>
                   <th>Date début</th>
                   <th>Date fin</th>
@@ -526,6 +534,7 @@
                 @for (t of tarifLignesVisibles; track t.id; let i = $index) {
                   <tr>
                     <td>{{ i + 1 }}</td>
+                    <td>{{ t.type_plat_libelle || libelleType(t.type_plat) }}</td>
                     <td class="fw-semibold">{{ t.montant | number:'1.0-2' }} FCFA</td>
                     <td>{{ formatDate(t.date_debut!) }}</td>
                     <td>{{ t.date_fin ? formatDate(t.date_fin) : '—' }}</td>

@@ -29,7 +29,9 @@ export interface InfosReleve {
   aDesRepas: boolean;
 }
 
-interface PlatReleve { plat: string; nb_repas: number; retires: number; pu: number | null; montant: number | null; part: number; ecart: number | null; }
+interface PlatReleve { plat: string; nb_repas: number; retires: number; pu: number | null; montant: number | null; part: number; ecart: number | null;
+  /** Type de plat (tarif) et repas offerts aux employés (payés au prestataire) */
+  type_plat?: string; offerts?: number; }
 interface JourReleve { date: string; libelle: string; plats: { plat: string; nb: number }[]; nb_repas: number; montant: number; }
 interface SemaineReleve { numero: number; libelle: string; nb_jours: number; nb_repas: number; montant: number; plats: Record<string, number>; jours: JourReleve[]; }
 interface AgentReleve {
