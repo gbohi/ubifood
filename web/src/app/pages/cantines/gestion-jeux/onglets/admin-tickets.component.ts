@@ -18,10 +18,11 @@ import { API_JEUX, dateHeure, fcfa, messageErreur, versIso, versLocal } from '..
         <tbody>@for (c of liste; track c.id) {
           <tr><td><b>{{ c.titre }}</b><small class="d-block ep-muted">{{ c.ticket_par_retrait ? 'par repas retiré' : '' }}{{ c.ticket_par_retrait && c.ticket_quotidien ? ' + ' : '' }}{{ c.ticket_quotidien ? 'quotidien' : '' }}</small></td>
             <td class="lst-nowrap">{{ dateHeure(c.debut) }}<small class="d-block ep-muted">→ {{ dateHeure(c.fin) }}</small></td>
-            <td><span class="lst-tag" [ngClass]="classe(c.etat)">{{ c.etat_libelle }}</span></td>
+            <td><span class="lst-tag" [ngClass]="classe(c.etat)">{{ c.etat_libelle }}</span>@if (c.suspension) { <span class="lst-tag t-or ms-1" [title]="c.suspension.motif || ''"><i class="ri-pause-circle-line"></i>Suspendu</span> }</td>
             <td class="text-end">{{ c.stats.emis }} / {{ c.stats.grattes }}</td><td class="text-end">{{ c.stats.gagnants }}</td>
             <td class="text-end lst-nowrap"><button type="button" class="btn-ubi sm" (click)="ouvrir(c)"><i class="ri-edit-line"></i></button>
-              @if (c.publie_le) { <button type="button" class="btn-ubi sm navy ms-1" (click)="voirSuivi(c)"><i class="ri-trophy-line"></i>Gagnants</button> }</td></tr>
+              @if (c.publie_le) { <button type="button" class="btn-ubi sm navy ms-1" (click)="voirSuivi(c)"><i class="ri-trophy-line"></i>Gagnants</button> }
+              @if (admin) { <app-actions-jeu class="ms-1" [jeu]="c" source="ticket" [suspendable]="c.etat === 'a_venir' || c.etat === 'en_cours'" (change)="$event?.id ? ouvrir($event) : charger()"></app-actions-jeu> }</td></tr>
         } @empty { <tr><td colspan="6" class="lst-vide"><i class="ri-coupon-3-line"></i><b>Aucune campagne.</b></td></tr> }</tbody></table></div></div>
     }
     @case ('edition') {

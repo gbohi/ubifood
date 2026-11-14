@@ -11,12 +11,13 @@ import { API_JEUX, dateHeure, etatLot, messageErreur } from '../jeux-outils';
     @if (d.courante; as c) {
       <div class="jx-hero jx-hero-defis">
         <i class="ri-medal-fill jx-hero-fond"></i>
-        <span class="jx-tag">{{ c.mois_libelle | uppercase }}</span>
+        <span class="jx-tag">{{ c.periode_libelle }}</span>
         <h3>{{ c.titre }}</h3>
         <div class="jx-hero-s">{{ c.points }} / {{ c.points_max }} points · {{ nbReussis(c) }} défi(s) réussi(s) sur {{ c.defis.length }}</div>
         <div class="jx-jauge"><i [style.width.%]="c.points_max ? 100 * c.points / c.points_max : 0"></i>
           @for (p of c.paliers; track p.id) { <span [style.left.%]="c.points_max ? 100 * p.points_min / c.points_max : 0" [class.ok]="p.atteint" [title]="p.nom + ' : ' + p.recompense"></span> }</div>
       </div>
+@if (c.suspension; as s) { <div class="ep-alerte a-or mb-3"><i class="ri-pause-circle-line"></i><div><span><b>Jeu suspendu momentanément</b>@if (s.motif) { : {{ s.motif }} }. Revenez un peu plus tard.</span></div></div> }
       @if (c.resultat; as r) {
         <div class="ep-alerte a-ve mb-3"><i class="ri-trophy-line"></i><div><span><b>Bilan : {{ r.points }} points</b>
           @if (r.palier) { · palier {{ r.palier }} : {{ r.gain?.libelle_affiche }} ({{ etatLot(r.gain) }}) }</span></div></div>
@@ -47,7 +48,7 @@ import { API_JEUX, dateHeure, etatLot, messageErreur } from '../jeux-outils';
         } @empty { <p class="ep-muted small">Pas de récompense ce mois-ci : seulement des badges.</p> }
       </div>
     } @else if (d.prochaine) {
-      <div class="ep-alerte a-bl"><i class="ri-calendar-event-line"></i><div><span><b>{{ d.prochaine.titre }}</b> commence le 1er {{ d.prochaine.mois_libelle }}.
+      <div class="ep-alerte a-bl"><i class="ri-calendar-event-line"></i><div><span><b>{{ d.prochaine.titre }}</b> : {{ d.prochaine.periode_libelle }}.
         <span class="d-block">@for (x of d.prochaine.defis; track x.code) { {{ x.description }} (+{{ x.points }} pts)@if (!$last) { · } }</span></span></div></div>
     } @else {
       <div class="lst-carte"><div class="lst-vide py-4"><i class="ri-medal-line"></i><b>Pas de défis en ce moment.</b><span>Vous serez notifié au lancement des prochains.</span></div></div>

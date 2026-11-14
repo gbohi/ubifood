@@ -87,6 +87,9 @@ export class GestionJeuxComponent implements OnInit {
 
   retour(): void { this.vue = 'liste'; this.classement = null; this.charger(); }
 
+  /** Après Suspendre / Reprendre : liste à jour ; après Dupliquer : la copie s'ouvre */
+  apresAction(r: any): void { if (r?.id) this.ouvrir({ id: r.id }); else this.charger(); }
+
   // ── Édition ────────────────────────────────────────────────
   get lectureSeule(): boolean { return !this.admin || (!!this.jeuCourant && !this.jeuCourant.modifiable); }
 

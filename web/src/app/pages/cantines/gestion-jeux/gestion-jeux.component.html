@@ -28,13 +28,14 @@
                     @if (j.agences?.length) { · {{ j.agences.length }} agence(s) }</small></td>
                   <td>@if (j.mode === 'direct') { <span class="lst-tag t-or"><i class="ri-live-line"></i>En direct</span> } @else { <span class="lst-tag t-gr">Libre</span> }</td>
                   <td class="lst-nowrap">{{ dateHeure(j.debut) }}<small class="d-block ep-muted">→ {{ dateHeure(j.fin) }}</small></td>
-                  <td><span class="lst-tag" [ngClass]="classeEtat(j.etat)">{{ j.etat_libelle }}</span></td>
+                  <td><span class="lst-tag" [ngClass]="classeEtat(j.etat)">{{ j.etat_libelle }}</span>@if (j.suspension) { <span class="lst-tag t-or ms-1" [title]="j.suspension.motif || ''"><i class="ri-pause-circle-line"></i>Suspendu</span> }</td>
                   <td class="text-end">{{ j.nb_participants }}</td>
                   <td class="text-end lst-nowrap">
                     <button type="button" class="btn-ubi sm" (click)="ouvrir(j)"><i [class]="admin && j.modifiable ? 'ri-edit-line' : 'ri-eye-line'"></i>{{ admin && j.modifiable ? 'Modifier' : 'Voir' }}</button>
                     @if (j.etat !== 'brouillon' && j.etat !== 'a_venir') {
                       <button type="button" class="btn-ubi sm navy ms-1" (click)="voirClassement(j)"><i class="ri-bar-chart-horizontal-line"></i>Classement</button>
                     }
+                    @if (admin) { <app-actions-jeu class="ms-1" [jeu]="j" source="quiz" [suspendable]="j.etat === 'a_venir' || j.etat === 'en_cours'" (change)="apresAction($event)"></app-actions-jeu> }
                     @if (admin && j.etat !== 'annule' && j.etat !== 'resultats' && j.publie_le) {
                       <button type="button" class="btn-ubi sm rouge ms-1" (click)="annuler(j)" title="Annuler le jeu"><i class="ri-close-circle-line"></i></button>
                     }

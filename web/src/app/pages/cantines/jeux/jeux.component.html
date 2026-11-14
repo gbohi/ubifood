@@ -69,6 +69,7 @@
         </app-page-entete>
         <div class="row g-3">
           <div class="col-lg-7">
+            @if (j.suspension; as s) { <div class="ep-alerte a-or mb-3"><i class="ri-pause-circle-line"></i><div><span><b>Jeu suspendu momentanément</b>@if (s.motif) { : {{ s.motif }} }. Revenez un peu plus tard.</span></div></div> }
             @if (j.participation?.resultat; as res) {
               <div class="jx-res-carte" [class.perdu]="res !== 'gagne'">
                 <div class="jx-big">{{ res === 'gagne' ? '🏆' : res === 'perdu' ? '🙂' : '⛔' }}</div>
@@ -100,7 +101,7 @@
                   <div><i class="ri-flashlight-line"></i>Plus vous répondez vite, plus vous gagnez de points (bonus jusqu'à {{ j.regles.bonus_rapidite_pct }} %).</div>
                   <div><i class="ri-eye-off-line"></i>Corrections et classement à la fin du jeu.</div>
                 </div>
-                <button type="button" class="jx-cta" [disabled]="!j.eligibilite.ok || envoi || (j.etat === 'a_venir' && restantMs > 15 * 60000)" (click)="commencer()">
+                <button type="button" class="jx-cta" [disabled]="!j.eligibilite.ok || envoi || j.suspension || (j.etat === 'a_venir' && restantMs > 15 * 60000)" (click)="commencer()">
                   @if (j.etat === 'a_venir' && restantMs > 15 * 60000) { Salle d'attente le {{ dateHeure(j.ouverture) }} }
                   @else if (j.mode === 'direct' && j.etat === 'a_venir') { Rejoindre la salle d'attente }
                   @else { Commencer la partie }

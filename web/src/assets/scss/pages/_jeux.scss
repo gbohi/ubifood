@@ -177,3 +177,4 @@ $jx-degrade: linear-gradient(135deg, $jx-violet, $jx-rose);
 
 // ── Administration ─────────────────────────────────────────────
 .gj-defis td { vertical-align: middle; } .gj-defis td b i { color: $jx-violet; }
+.jx-suspendu { background: #E2E8F0; display: flex; gap: 6px; align-items: center; justify-content: center; color: var(--ubi-gris); font-weight: 600; cursor: not-allowed; }

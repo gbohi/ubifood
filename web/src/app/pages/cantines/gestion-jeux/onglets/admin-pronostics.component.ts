@@ -18,10 +18,11 @@ import { API_JEUX, dateHeure, messageErreur, versIso } from '../../jeux/jeux-out
         <tbody>@for (c of liste; track c.id) {
           <tr><td><b>{{ c.titre }}</b><small class="d-block ep-muted">{{ c.nb_gagnants }} lot(s) · exact {{ c.points_exact }} pts / résultat {{ c.points_resultat }} pt</small></td>
             <td>{{ c.nb_matchs }}@if (c.debut) { <small class="d-block ep-muted">{{ dateHeure(c.debut) }} → {{ dateHeure(c.fin) }}</small> }</td>
-            <td><span class="lst-tag" [ngClass]="classe(c.etat)">{{ c.etat_libelle }}</span></td>
+            <td><span class="lst-tag" [ngClass]="classe(c.etat)">{{ c.etat_libelle }}</span>@if (c.suspension) { <span class="lst-tag t-or ms-1" [title]="c.suspension.motif || ''"><i class="ri-pause-circle-line"></i>Suspendu</span> }</td>
             <td class="text-end">{{ c.nb_joueurs }}</td>
             <td class="text-end lst-nowrap"><button type="button" class="btn-ubi sm" (click)="ouvrir(c)"><i class="ri-football-line"></i>Matchs</button>
-              @if (c.publie_le) { <button type="button" class="btn-ubi sm navy ms-1" (click)="voirClassement(c)"><i class="ri-bar-chart-horizontal-line"></i>Classement</button> }</td></tr>
+              @if (c.publie_le) { <button type="button" class="btn-ubi sm navy ms-1" (click)="voirClassement(c)"><i class="ri-bar-chart-horizontal-line"></i>Classement</button> }
+              @if (admin) { <app-actions-jeu class="ms-1" [jeu]="c" source="pronostics" [suspendable]="c.etat === 'a_venir' || c.etat === 'en_cours'" (change)="$event?.id ? ouvrir($event) : charger()"></app-actions-jeu> }</td></tr>
         } @empty { <tr><td colspan="5" class="lst-vide"><i class="ri-football-line"></i><b>Aucune compétition.</b></td></tr> }</tbody></table></div></div>
     }
     @case ('edition') {

@@ -5,7 +5,7 @@ import { HttpClient } from '@angular/common/http';
 import { ToastrService } from 'ngx-toastr';
 import { ADMINS, aUnRole } from 'src/app/core/helpers/roles';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
-import { API_JEUX, dateHeure, messageErreur } from '../../jeux/jeux-outils';
+import { API_JEUX, dateHeure, messageErreur, versIso, versLocal } from '../../jeux/jeux-outils';
 
 const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
@@ -19,13 +19,14 @@ const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 
         <thead><tr><th>Programme</th><th>Défis</th><th>État</th><th class="text-end">Défis réussis</th><th></th></tr></thead>
         <tbody>
           @for (c of liste; track c.id) {
-            <tr><td><b>{{ c.titre }}</b><small class="d-block ep-muted">{{ c.mois_libelle }} · {{ c.paliers.length }} palier(s)</small></td>
+            <tr><td><b>{{ c.titre }}</b><small class="d-block ep-muted">{{ c.periode_libelle }} · {{ c.paliers.length }} palier(s)</small></td>
               <td><small>@for (d of c.defis; track d.code) { {{ d.nom }} (+{{ d.points }})@if (!$last) { · } }</small></td>
-              <td><span class="lst-tag" [ngClass]="classe(c.etat)">{{ c.etat_libelle }}</span></td>
+              <td><span class="lst-tag" [ngClass]="classe(c.etat)">{{ c.etat_libelle }}</span>@if (c.suspension) { <span class="lst-tag t-or ms-1" [title]="c.suspension.motif || ''"><i class="ri-pause-circle-line"></i>Suspendu</span> }</td>
               <td class="text-end">{{ c.nb_reussites }}</td>
               <td class="text-end lst-nowrap">
                 <button type="button" class="btn-ubi sm" (click)="ouvrir(c)"><i [class]="admin && !c.cloture_le && !c.annule_le ? 'ri-edit-line' : 'ri-eye-line'"></i></button>
                 @if (c.publie_le) { <button type="button" class="btn-ubi sm navy ms-1" (click)="suivre(c)"><i class="ri-line-chart-line"></i>Suivi</button> }
+                @if (admin) { <app-actions-jeu class="ms-1" [jeu]="c" source="defis" [suspendable]="c.etat === 'a_venir' || c.etat === 'en_cours'" (change)="$event?.id ? ouvrir($event) : charger()"></app-actions-jeu> }
                 @if (admin && c.publie_le && !c.cloture_le && !c.annule_le) { <button type="button" class="btn-ubi sm rouge ms-1" (click)="action(c, 'annuler')" title="Annuler"><i class="ri-close-circle-line"></i></button> }
                 @if (admin && (!c.publie_le || c.annule_le)) { <button type="button" class="btn-ubi sm rouge ms-1" (click)="supprimer(c)" title="Supprimer"><i class="ri-delete-bin-line"></i></button> }
               </td></tr>
@@ -42,11 +43,12 @@ const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 
       </div>
       <fieldset [disabled]="!modifiable">
         <div class="ep-carte mb-3"><div class="row g-3">
-          <div class="col-md-5"><label class="ep-lab">Titre</label><input class="form-control" [(ngModel)]="f.titre" placeholder="Défis de novembre"></div>
-          <div class="col-md-4"><label class="ep-lab">Mois du jeu</label>
-            <div class="d-flex gap-2"><select class="form-select" [(ngModel)]="f.mois">@for (m of moisNoms; track $index) { <option [ngValue]="$index + 1">{{ m }}</option> }</select>
-              <input type="number" class="form-control" style="width:100px" [(ngModel)]="f.annee"></div></div>
-          <div class="col-md-3"><label class="ep-lab">Points au total</label><div class="form-control gj-calc">{{ total() }} points possibles</div></div>
+          <div class="col-md-4"><label class="ep-lab">Titre</label><input class="form-control" [(ngModel)]="f.titre" placeholder="Défis de novembre"></div>
+          <div class="col-md-3"><label class="ep-lab">Début (date et heure)</label><input type="datetime-local" class="form-control" [(ngModel)]="f.debut"></div>
+          <div class="col-md-3"><label class="ep-lab">Fin (date et heure)</label><input type="datetime-local" class="form-control" [(ngModel)]="f.fin"></div>
+          <div class="col-md-2"><label class="ep-lab">Points au total</label><div class="form-control gj-calc">{{ total() }} pts</div></div>
+          <div class="col-12"><small class="ep-muted"><i class="ri-information-line"></i> Comptent les repas dont la date tombe entre le jour de début et le jour de fin ; les heures fixent l'ouverture et la fermeture du jeu.
+            Pour un autre programme : « Dupliquer » ou « Nouveau programme ».</small></div>
         </div></div>
         <div class="ep-carte mb-3">
           <b class="ep-titre-carte d-flex mb-2"><i class="ri-flag-line"></i>Défis du mois <small class="ep-muted fw-normal ms-1">(mettez 0 point pour désactiver un défi)</small></b>
@@ -175,7 +177,8 @@ export class AdminDefisComponent implements OnInit {
 
   enregistrer(programmer = false): void {
     this.envoi = true;
-    const req = this.courant ? this.http.put<any>(`${API_JEUX}/admin/defis/${this.courant.id}/`, this.f) : this.http.post<any>(`${API_JEUX}/admin/defis/`, this.f);
+    const corps = { ...this.f, debut: versIso(this.f.debut), fin: versIso(this.f.fin) };
+    const req = this.courant ? this.http.put<any>(`${API_JEUX}/admin/defis/${this.courant.id}/`, corps) : this.http.post<any>(`${API_JEUX}/admin/defis/`, corps);
     req.subscribe({
       next: d => { this.envoi = false; this.remplir(d); if (programmer) this.action(d, 'programmer'); else this.toastr.success('Programme enregistré.'); },
       error: e => { this.envoi = false; this.toastr.error(messageErreur(e)); },
@@ -184,11 +187,11 @@ export class AdminDefisComponent implements OnInit {
 
   action(c: any, a: 'programmer' | 'annuler' | 'cloturer'): void {
     const q = { programmer: `Programmer « ${c.titre} » ? Tous les employés concernés seront notifiés.`, annuler: `Annuler « ${c.titre} » ?`,
-                cloturer: 'Clôturer le mois ? Les défis sont recalculés, les récompenses attribuées (argent crédité) et chacun est notifié. Action définitive.' }[a];
+                cloturer: 'Clôturer le programme ? Les défis sont recalculés, les récompenses attribuées (argent crédité) et chacun est notifié. Action définitive.' }[a];
     if (!confirm(q)) return;
     this.envoi = true;
     this.http.post<any>(`${API_JEUX}/admin/defis/${c.id}/${a}/`, {}).subscribe({
-      next: d => { this.envoi = false; this.toastr.success({ programmer: 'Programmé : les employés ont été notifiés.', annuler: 'Programme annulé.', cloturer: 'Mois clôturé, récompenses attribuées.' }[a]);
+      next: d => { this.envoi = false; this.toastr.success({ programmer: 'Programmé : les employés ont été notifiés.', annuler: 'Programme annulé.', cloturer: 'Programme clôturé, récompenses attribuées.' }[a]);
                    if (this.vue === 'suivi') this.suivre(d); else if (this.vue === 'edition') this.remplir(d); else this.charger(); },
       error: e => { this.envoi = false; this.toastr.error(messageErreur(e)); },
     });
@@ -201,15 +204,16 @@ export class AdminDefisComponent implements OnInit {
 
   private remplir(d: any): void {
     this.courant = d;
-    this.f = { titre: d.titre, annee: d.annee, mois: d.mois, serie_jours: d.serie_jours, serie_points: d.serie_points, plats_nombre: d.plats_nombre,
+    this.f = { titre: d.titre, debut: versLocal(d.debut), fin: versLocal(d.fin), serie_jours: d.serie_jours, serie_points: d.serie_points, plats_nombre: d.plats_nombre,
                plats_points: d.plats_points, plats_nouveaux: d.plats_nouveaux, avis_nombre: d.avis_nombre, avis_points: d.avis_points,
                retraits_minimum: d.retraits_minimum, retraits_points: d.retraits_points, agences: d.agences.map((a: any) => a.id),
                paliers: d.paliers.map((p: any) => ({ nom: p.nom, points_min: p.points_min, type: p.type, montant: p.montant, libelle: p.libelle, quantite: p.quantite, valeur: p.valeur })) };
   }
 
   private vide(): any {
-    const d = new Date(); const prochain = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-    return { titre: `Défis de ${MOIS[prochain.getMonth()].toLowerCase()}`, annee: prochain.getFullYear(), mois: prochain.getMonth() + 1,
+    const d = new Date(); const debut = new Date(d.getFullYear(), d.getMonth() + 1, 1, 0, 0);
+    const fin = new Date(d.getFullYear(), d.getMonth() + 2, 0, 23, 59);
+    return { titre: `Défis de ${MOIS[debut.getMonth()].toLowerCase()}`, debut: versLocal(debut.toISOString()), fin: versLocal(fin.toISOString()),
              serie_jours: 5, serie_points: 20, plats_nombre: 3, plats_points: 15, plats_nouveaux: true, avis_nombre: 5, avis_points: 10,
              retraits_minimum: 5, retraits_points: 25, agences: [],
              paliers: [{ nom: 'Bronze', points_min: 20, type: 'argent', montant: 500, libelle: '', quantite: null },

@@ -58,6 +58,7 @@ import { AdminDefisComponent } from './gestion-jeux/onglets/admin-defis.componen
 import { AdminPronosticsComponent } from './gestion-jeux/onglets/admin-pronostics.component';
 import { AdminTicketsComponent } from './gestion-jeux/onglets/admin-tickets.component';
 import { LotsARemettreComponent } from './gestion-jeux/onglets/lots-a-remettre.component';
+import { ActionsJeuComponent } from './gestion-jeux/onglets/actions-jeu.component';
 
 // Graphiques (page Statistiques)
 import { NgApexchartsModule } from 'ng-apexcharts';
@@ -98,6 +99,7 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     AdminPronosticsComponent,
     AdminTicketsComponent,
     LotsARemettreComponent,
+    ActionsJeuComponent,
     SuiviLivraisonsComponent
   ],
   imports: [
