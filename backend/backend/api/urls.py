@@ -7,7 +7,7 @@ from .views import *
 from .accueil import AccueilView
 from .planning import PlanningView
 from .tarifs_grille import GrilleTarifsView
-from . import jeux
+from . import jeux, gains, defis, pronostics, tickets
 from .suivi_repas import (
     PonctualiteView, PreferencesSuiviView, PrestataireIncidentView, PrestataireSuiviEtapeView, PrestataireSuiviView,
     SuiviLivraisonsView,
@@ -260,5 +260,35 @@ urlpatterns = [
          name='admin-jeu-publier-resultats'),
     path('api/admin/jeux/<int:pk>/remettre/<int:participation_id>/', jeux.AdminJeuRemettreView.as_view(),
          name='admin-jeu-remettre'),
+    # Défis et badges, pronostics, tickets à gratter, gains
+    path('api/mes-gains/', gains.MesGainsView.as_view(), name='mes-gains'),
+    path('api/admin/jeux/lots-a-remettre/', gains.LotsARemettreView.as_view(), name='lots-a-remettre'),
+    path('api/admin/jeux/gains/<int:pk>/remettre/', gains.RemettreGainView.as_view(), name='gain-remettre'),
+    path('api/defis/', defis.MesDefisView.as_view(), name='mes-defis'),
+    path('api/admin/defis/', defis.AdminDefisView.as_view(), name='admin-defis'),
+    path('api/admin/defis/<int:pk>/', defis.AdminDefiDetailView.as_view(), name='admin-defi-detail'),
+    *[path(f'api/admin/defis/<int:pk>/{a}/', defis.AdminDefiActionView.as_view(action=a), name=f'admin-defi-{a}')
+      for a in ('programmer', 'annuler', 'cloturer')],
+    path('api/admin/defis/<int:pk>/suivi/', defis.AdminDefiSuiviView.as_view(), name='admin-defi-suivi'),
+    path('api/pronostics/', pronostics.PronosticsView.as_view(), name='pronostics'),
+    path('api/pronostics/<int:pk>/', pronostics.PronosticsDetailView.as_view(), name='pronostics-detail'),
+    path('api/pronostics/<int:pk>/classement/', pronostics.PronosticsClassementView.as_view(), name='pronostics-classement'),
+    path('api/pronostics/matchs/<int:pk>/', pronostics.PronostiquerView.as_view(), name='pronostiquer'),
+    path('api/admin/pronostics/', pronostics.AdminPronosticsView.as_view(), name='admin-pronostics'),
+    path('api/admin/pronostics/<int:pk>/', pronostics.AdminPronosticsDetailView.as_view(), name='admin-pronostics-detail'),
+    *[path(f'api/admin/pronostics/<int:pk>/{a}/', pronostics.AdminPronosticsActionView.as_view(action=a),
+           name=f'admin-pronostics-{a}') for a in ('programmer', 'annuler', 'publier-resultats')],
+    path('api/admin/pronostics/<int:pk>/classement/', pronostics.AdminPronosticsClassementView.as_view(),
+         name='admin-pronostics-classement'),
+    path('api/admin/pronostics/<int:pk>/matchs/', pronostics.AdminMatchsView.as_view(), name='admin-matchs'),
+    path('api/admin/pronostics/matchs/<int:pk>/', pronostics.AdminMatchDetailView.as_view(), name='admin-match-detail'),
+    path('api/admin/pronostics/matchs/<int:pk>/score/', pronostics.AdminMatchScoreView.as_view(), name='admin-match-score'),
+    path('api/tickets/', tickets.MesTicketsView.as_view(), name='mes-tickets'),
+    path('api/tickets/<int:pk>/gratter/', tickets.GratterView.as_view(), name='ticket-gratter'),
+    path('api/admin/tickets/', tickets.AdminTicketsView.as_view(), name='admin-tickets'),
+    path('api/admin/tickets/<int:pk>/', tickets.AdminTicketsDetailView.as_view(), name='admin-tickets-detail'),
+    *[path(f'api/admin/tickets/<int:pk>/{a}/', tickets.AdminTicketsActionView.as_view(action=a),
+           name=f'admin-tickets-{a}') for a in ('programmer', 'annuler')],
+    path('api/admin/tickets/<int:pk>/suivi/', tickets.AdminTicketsSuiviView.as_view(), name='admin-tickets-suivi'),
 ]
 

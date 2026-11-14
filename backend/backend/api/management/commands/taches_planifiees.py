@@ -16,3 +16,6 @@ class Command(BaseCommand):
         self.stdout.write(f"Rappels de réservation envoyés : {n}")
         self.stdout.write(f"Suivi des repas : {taches_suivi()}")
         self.stdout.write(f"Jeux : {taches_jeux()}")
+        from api.defis import taches_defis
+        from api.pronostics import taches_pronostics
+        self.stdout.write(f"Défis : {taches_defis()} ; pronostics : {taches_pronostics()}")

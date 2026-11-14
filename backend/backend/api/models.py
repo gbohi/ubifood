@@ -1461,3 +1461,253 @@ class ReponseJoueur(models.Model):
         db_table = 'jeu_reponse_joueur'
         ordering = ['index']
         constraints = [models.UniqueConstraint(fields=['participation', 'index'], name='jeu_question_unique')]
+
+
+# ============================================================
+# GAINS DES JEUX (défis, pronostics, tickets) — remise unique
+# ============================================================
+
+class GainJeu(models.Model):
+    """
+    Lot gagné à un jeu autre que le quiz (le quiz garde ParticipationJeu) :
+    argent crédité sur le compte repas (« credite ») ou objet « a_remettre »
+    puis « remis » une seule fois (gestionnaire de l'agence, administrateur).
+    """
+    SOURCE_CHOICES = [('defis', 'Défis'), ('pronostics', 'Pronostics'), ('ticket', 'Ticket à gratter')]
+    TYPE_CHOICES = [('objet', 'Objet'), ('argent', 'Argent')]
+    STATUT_CHOICES = [('a_remettre', 'À remettre'), ('remis', 'Retiré'), ('credite', 'Crédité')]
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='gains_jeux')
+    source     = models.CharField(max_length=12, choices=SOURCE_CHOICES)
+    source_id  = models.PositiveIntegerField()               # campagne / compétition
+    titre_jeu  = models.CharField(max_length=150)
+    libelle    = models.CharField(max_length=150)
+    type       = models.CharField(max_length=10, choices=TYPE_CHOICES, default='objet')
+    montant    = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    statut_lot = models.CharField(max_length=12, choices=STATUT_CHOICES, default='a_remettre')
+    lot_remis_le  = models.DateTimeField(null=True, blank=True)
+    lot_remis_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    mouvement  = models.OneToOneField(MouvementCompte, on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name='gain_autre_jeu')
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'jeu_gain'
+        ordering = ['-created_at', '-id']
+
+
+# ============================================================
+# DÉFIS ET BADGES (mois) — règles dans defis.py
+# ============================================================
+
+class CampagneDefis(models.Model):
+    """Défis d'un mois : chaque défi est actif si son objectif et ses points sont > 0."""
+    titre       = models.CharField(max_length=150)
+    annee       = models.PositiveSmallIntegerField()
+    mois        = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(12)])
+    agences     = models.ManyToManyField(Agence, blank=True, related_name='campagnes_defis')
+    # Commander N jours de service de suite
+    serie_jours   = models.PositiveSmallIntegerField(default=5)
+    serie_points  = models.PositiveSmallIntegerField(default=20)
+    # Goûter N plats différents (jamais commandés avant le mois si plats_nouveaux)
+    plats_nombre  = models.PositiveSmallIntegerField(default=3)
+    plats_points  = models.PositiveSmallIntegerField(default=15)
+    plats_nouveaux = models.BooleanField(default=True)
+    # Donner son avis sur N repas du mois
+    avis_nombre   = models.PositiveSmallIntegerField(default=5)
+    avis_points   = models.PositiveSmallIntegerField(default=10)
+    # Retirer tous ses repas du mois (au moins retraits_minimum commandés)
+    retraits_minimum = models.PositiveSmallIntegerField(default=5)
+    retraits_points  = models.PositiveSmallIntegerField(default=25)
+    publie_le   = models.DateTimeField(null=True, blank=True)
+    annule_le   = models.DateTimeField(null=True, blank=True)
+    cloture_le  = models.DateTimeField(null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+    user_created = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+
+    class Meta:
+        db_table = 'defis_campagne'
+        ordering = ['-annee', '-mois', '-id']
+
+
+class PalierDefis(models.Model):
+    """Récompense dès points_min points (l'employé reçoit celle du plus haut palier atteint)."""
+    campagne   = models.ForeignKey(CampagneDefis, on_delete=models.CASCADE, related_name='paliers')
+    nom        = models.CharField(max_length=50)                 # Bronze, Argent, Or
+    points_min = models.PositiveSmallIntegerField()
+    libelle    = models.CharField(max_length=150, blank=True)    # récompense (objet)
+    type       = models.CharField(max_length=10, choices=GainJeu.TYPE_CHOICES, default='argent')
+    montant    = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    quantite   = models.PositiveIntegerField(null=True, blank=True)   # vide : illimité
+
+    class Meta:
+        db_table = 'defis_palier'
+        ordering = ['points_min']
+
+
+class DefiReussi(models.Model):
+    DEFI_CHOICES = [('serie', 'Fidèle'), ('plats', 'Gourmet curieux'), ('avis', 'Critique culinaire'),
+                    ('retraits', 'Zéro oubli')]
+    campagne  = models.ForeignKey(CampagneDefis, on_delete=models.CASCADE, related_name='reussites')
+    user      = models.ForeignKey(User, on_delete=models.CASCADE, related_name='defis_reussis')
+    defi      = models.CharField(max_length=10, choices=DEFI_CHOICES)
+    points    = models.PositiveSmallIntegerField()
+    reussi_le = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'defis_reussi'
+        constraints = [models.UniqueConstraint(fields=['campagne', 'user', 'defi'], name='defi_unique')]
+
+
+class ResultatDefis(models.Model):
+    """Bilan à la clôture du mois."""
+    campagne = models.ForeignKey(CampagneDefis, on_delete=models.CASCADE, related_name='resultats')
+    user     = models.ForeignKey(User, on_delete=models.CASCADE, related_name='resultats_defis')
+    points   = models.PositiveIntegerField()
+    rang     = models.PositiveIntegerField()
+    palier   = models.ForeignKey(PalierDefis, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    gain     = models.OneToOneField(GainJeu, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    class Meta:
+        db_table = 'defis_resultat'
+        constraints = [models.UniqueConstraint(fields=['campagne', 'user'], name='defis_resultat_unique')]
+
+
+# ============================================================
+# PRONOSTICS — règles dans pronostics.py
+# ============================================================
+
+class CompetitionPronostics(models.Model):
+    titre        = models.CharField(max_length=150)
+    description  = models.TextField(blank=True)
+    agences      = models.ManyToManyField(Agence, blank=True, related_name='competitions')
+    points_exact = models.PositiveSmallIntegerField(default=3)     # score exact
+    points_resultat = models.PositiveSmallIntegerField(default=1)  # bon vainqueur / nul
+    # Pronostiquer un match : au moins N repas commandés dans le mois du match
+    repas_minimum = models.PositiveSmallIntegerField(default=1)
+    publie_le    = models.DateTimeField(null=True, blank=True)
+    annule_le    = models.DateTimeField(null=True, blank=True)
+    resultats_publies_le = models.DateTimeField(null=True, blank=True)
+    rappel_du    = models.DateField(null=True, blank=True)        # dernier rappel quotidien
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+    user_created = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+
+    class Meta:
+        db_table = 'prono_competition'
+        ordering = ['-created_at', '-id']
+
+
+class LotPronostics(models.Model):
+    competition = models.ForeignKey(CompetitionPronostics, on_delete=models.CASCADE, related_name='lots')
+    rang_debut  = models.PositiveSmallIntegerField()
+    rang_fin    = models.PositiveSmallIntegerField()
+    libelle     = models.CharField(max_length=150)
+    type        = models.CharField(max_length=10, choices=GainJeu.TYPE_CHOICES, default='objet')
+    montant     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = 'prono_lot'
+        ordering = ['rang_debut']
+
+
+class MatchPronostics(models.Model):
+    competition = models.ForeignKey(CompetitionPronostics, on_delete=models.CASCADE, related_name='matchs')
+    equipe_a    = models.CharField(max_length=80)
+    equipe_b    = models.CharField(max_length=80)
+    phase       = models.CharField(max_length=80, blank=True)     # Groupe A, Quart de finale…
+    coup_envoi  = models.DateTimeField()
+    score_a     = models.PositiveSmallIntegerField(null=True, blank=True)
+    score_b     = models.PositiveSmallIntegerField(null=True, blank=True)
+    annule      = models.BooleanField(default=False)               # match reporté / annulé : 0 point
+    score_saisi_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'prono_match'
+        ordering = ['coup_envoi', 'id']
+
+
+class Pronostic(models.Model):
+    match      = models.ForeignKey(MatchPronostics, on_delete=models.CASCADE, related_name='pronostics')
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pronostics')
+    score_a    = models.PositiveSmallIntegerField()
+    score_b    = models.PositiveSmallIntegerField()
+    points     = models.PositiveSmallIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'prono_pronostic'
+        constraints = [models.UniqueConstraint(fields=['match', 'user'], name='prono_unique')]
+
+
+class ResultatPronostics(models.Model):
+    competition = models.ForeignKey(CompetitionPronostics, on_delete=models.CASCADE, related_name='resultats')
+    user        = models.ForeignKey(User, on_delete=models.CASCADE, related_name='resultats_pronostics')
+    rang        = models.PositiveIntegerField()
+    points      = models.PositiveIntegerField()
+    nb_exacts   = models.PositiveSmallIntegerField(default=0)
+    nb_resultats = models.PositiveSmallIntegerField(default=0)
+    tirage      = models.FloatField(default=0)
+    lot         = models.ForeignKey(LotPronostics, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    gain        = models.OneToOneField(GainJeu, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    class Meta:
+        db_table = 'prono_resultat'
+        constraints = [models.UniqueConstraint(fields=['competition', 'user'], name='prono_resultat_unique')]
+
+
+# ============================================================
+# TICKETS À GRATTER — règles dans tickets.py
+# ============================================================
+
+class CampagneTickets(models.Model):
+    titre       = models.CharField(max_length=150)
+    debut       = models.DateTimeField()
+    fin         = models.DateTimeField()
+    agences     = models.ManyToManyField(Agence, blank=True, related_name='campagnes_tickets')
+    ticket_par_retrait = models.BooleanField(default=True)    # un ticket par repas retiré
+    ticket_quotidien   = models.BooleanField(default=False)   # un ticket gratuit par jour ouvré
+    budget_max  = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)  # lots en argent
+    validite_jours = models.PositiveSmallIntegerField(default=7)   # pour gratter après la fin
+    publie_le   = models.DateTimeField(null=True, blank=True)
+    annule_le   = models.DateTimeField(null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+    user_created = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
+
+    class Meta:
+        db_table = 'ticket_campagne'
+        ordering = ['-debut', '-id']
+
+
+class LotTicket(models.Model):
+    campagne    = models.ForeignKey(CampagneTickets, on_delete=models.CASCADE, related_name='lots')
+    libelle     = models.CharField(max_length=150)
+    type        = models.CharField(max_length=10, choices=GainJeu.TYPE_CHOICES, default='objet')
+    montant     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    stock       = models.PositiveIntegerField()
+    probabilite = models.DecimalField(max_digits=6, decimal_places=3)   # % par ticket gratté
+    distribues  = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'ticket_lot'
+        ordering = ['-montant', 'id']
+
+
+class Ticket(models.Model):
+    SOURCE_CHOICES = [('retrait', 'Repas retiré'), ('quotidien', 'Ticket du jour')]
+    campagne  = models.ForeignKey(CampagneTickets, on_delete=models.CASCADE, related_name='tickets')
+    user      = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tickets')
+    source    = models.CharField(max_length=10, choices=SOURCE_CHOICES)
+    retrait   = models.OneToOneField(Retrait, on_delete=models.SET_NULL, null=True, blank=True, related_name='ticket')
+    jour      = models.DateField(null=True, blank=True)
+    cree_le   = models.DateTimeField(default=timezone.now)
+    gratte_le = models.DateTimeField(null=True, blank=True)
+    lot       = models.ForeignKey(LotTicket, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    gain      = models.OneToOneField(GainJeu, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    class Meta:
+        db_table = 'ticket'
+        ordering = ['-cree_le', '-id']
+        constraints = [models.UniqueConstraint(fields=['campagne', 'user', 'jour'], name='ticket_quotidien_unique')]

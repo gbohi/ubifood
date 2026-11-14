@@ -242,8 +242,12 @@ def eligibilite(user, jeu, maintenant=None):
 
 def destinataires(jeu, maintenant=None):
     """Employés concernés par le jeu (comptes actifs, hors comptes prestataires)."""
+    return destinataires_agences(list(jeu.agences.values_list('id', flat=True)), maintenant)
+
+
+def destinataires_agences(agences, maintenant=None):
+    """Comptes actifs (hors prestataires) des agences données (aucune : tous)."""
     qs = User.objects.filter(is_active=True).exclude(groups__name__in=PRESTATAIRE_ROLES)
-    agences = list(jeu.agences.values_list('id', flat=True))
     if agences:
         maintenant = maintenant or timezone.now()
         ids = (UserAgence.objects.filter(agence_id__in=agences, date_debut__lte=maintenant)

@@ -425,3 +425,21 @@ def supprimer_fichier_document(sender, instance, **kwargs):
 def supprimer_fichier_banniere(sender, instance, **kwargs):
     if instance.image:
         instance.image.delete(save=False)
+
+
+# ══════════════════════════════════════════════════════════════
+# TICKETS À GRATTER : un ticket par repas retiré (tickets.py)
+# ══════════════════════════════════════════════════════════════
+
+@receiver(post_save, sender='api.Retrait')
+def ticket_apres_retrait(sender, instance, created, **kwargs):
+    if created:
+        from .tickets import creer_ticket_retrait
+        rid = instance.pk
+        transaction.on_commit(lambda: creer_ticket_retrait(rid))
+
+
+@receiver(pre_delete, sender='api.Retrait')
+def ticket_retrait_annule(sender, instance, **kwargs):
+    from .tickets import supprimer_ticket_retrait
+    supprimer_ticket_retrait(instance.pk)
