@@ -785,7 +785,8 @@ class _IconeAgence extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selectionnee,
-      label: 'Agence ${agence.nom}${mienne ? ' (mon agence)' : (agence.mission ? ' (mission)' : '')}',
+      label:
+          'Agence ${agence.nom}${mienne ? ' (mon agence)' : (agence.mission ? ' (mission)' : '')}',
       excludeSemantics: true,
       child: InkWell(
         key: Key('agence-${agence.id}'),
@@ -1847,7 +1848,8 @@ class _PageJoursState extends State<_PageJours> {
           plat: p,
           reservable: j.etat == EtatJour.aReserver,
           menu: () => _menuDe(d, j, p, cmdProv.mesCommandes),
-          chargerInfo: widget.service.infoPaiement,
+          chargerInfo: (menuId, platId) =>
+              widget.service.infoPaiement(menuId, platId: platId),
         ),
       ));
     }
@@ -2088,7 +2090,7 @@ class _CartePlatJour extends StatefulWidget {
   final Menu Function() menu;
 
   /// Solde et prix du menu (feuille de paiement)
-  final Future<InfoPaiement> Function(int menuId) chargerInfo;
+  final Future<InfoPaiement> Function(int menuId, int platId) chargerInfo;
   const _CartePlatJour(
       {required this.plat,
       required this.reservable,
@@ -2106,7 +2108,7 @@ class _CartePlatJourState extends State<_CartePlatJour> {
     setState(() => _envoi = true);
     final menu = widget.menu();
     await _reserverPlat(context, cmdProv, menu, widget.plat.versPlat(),
-        chargerInfo: () => widget.chargerInfo(menu.id));
+        chargerInfo: () => widget.chargerInfo(menu.id, widget.plat.id));
     if (mounted) setState(() => _envoi = false);
   }
 
@@ -2220,7 +2222,22 @@ class _CartePlatJourState extends State<_CartePlatJour> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  if (p.prix != null) ...[
+                  if (p.offert) ...[
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.card_giftcard_rounded,
+                          size: 15, color: AppColors.accentDark),
+                      const SizedBox(width: 3),
+                      Text('Offert',
+                          key: Key('offert-${p.id}'),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.accentDark)),
+                    ]),
+                    const SizedBox(height: 6),
+                  ] else if (p.prix != null) ...[
                     Text(formatFcfa(p.prix!),
                         style: Theme.of(context)
                             .textTheme

@@ -83,7 +83,10 @@ enum StatutPaiementRepas {
 /// sur salaire à la clôture du mois.
 enum ModePaiementCommande {
   compte('compte', 'Compte repas'),
-  retenue('retenue', 'Retenue sur salaire');
+  retenue('retenue', 'Retenue sur salaire'),
+
+  /// Équipe « repas offert » : rien à payer (fixé par le serveur)
+  offert('offert', 'Repas offert');
 
   final String code;
   final String libelle;
@@ -92,15 +95,18 @@ enum ModePaiementCommande {
   static ModePaiementCommande? depuis(String? code) => switch (code) {
         'compte' => ModePaiementCommande.compte,
         'retenue' => ModePaiementCommande.retenue,
+        'offert' => ModePaiementCommande.offert,
         _ => null,
       };
 
-  IconData get icone => this == ModePaiementCommande.compte
-      ? Icons.account_balance_wallet_outlined
-      : Icons.receipt_long_outlined;
+  IconData get icone => switch (this) {
+        ModePaiementCommande.compte => Icons.account_balance_wallet_outlined,
+        ModePaiementCommande.offert => Icons.card_giftcard_rounded,
+        _ => Icons.receipt_long_outlined,
+      };
 
   TonPastille get ton =>
-      this == ModePaiementCommande.compte ? TonPastille.vert : TonPastille.or;
+      this == ModePaiementCommande.retenue ? TonPastille.or : TonPastille.vert;
 }
 
 /// GET compte-repas/paiement/?menu=ID : ce que l'écran de commande propose
@@ -113,6 +119,9 @@ class InfoPaiement {
   final ModePaiementCommande modePrefere;
   final ModePaiementCommande modeParDefaut;
 
+  /// Équipe « repas offert » : rien à payer
+  final bool offert;
+
   const InfoPaiement({
     required this.solde,
     required this.prix,
@@ -121,6 +130,7 @@ class InfoPaiement {
     this.raisonCompteImpossible,
     this.modePrefere = ModePaiementCommande.compte,
     this.modeParDefaut = ModePaiementCommande.retenue,
+    this.offert = false,
   });
 
   factory InfoPaiement.fromJson(Map<String, dynamic> j) {
@@ -130,11 +140,15 @@ class InfoPaiement {
       prix: _montantOuNull(j['prix']),
       sansTarif: j['sans_tarif'] == true,
       comptePossible: j['compte_possible'] == true,
-      raisonCompteImpossible: raison.isEmpty || raison == 'null' ? null : raison,
-      modePrefere: ModePaiementCommande.depuis(_texte(j['mode_paiement_prefere'])) ??
-          ModePaiementCommande.compte,
-      modeParDefaut: ModePaiementCommande.depuis(_texte(j['mode_par_defaut'])) ??
-          ModePaiementCommande.retenue,
+      raisonCompteImpossible:
+          raison.isEmpty || raison == 'null' ? null : raison,
+      modePrefere:
+          ModePaiementCommande.depuis(_texte(j['mode_paiement_prefere'])) ??
+              ModePaiementCommande.compte,
+      modeParDefaut:
+          ModePaiementCommande.depuis(_texte(j['mode_par_defaut'])) ??
+              ModePaiementCommande.retenue,
+      offert: j['offert'] == true,
     );
   }
 }

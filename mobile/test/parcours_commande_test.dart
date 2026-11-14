@@ -361,7 +361,8 @@ class _FauxParcours extends ParcoursService {
   }
 
   @override
-  Future<InfoPaiement> infoPaiement(int menuId) async => InfoPaiement.fromJson({
+  Future<InfoPaiement> infoPaiement(int menuId, {int? platId}) async =>
+      InfoPaiement.fromJson({
         'date_menu': _iso(2),
         'solde': 5000.0,
         'prix': 1000.0,
@@ -794,11 +795,29 @@ void main() {
   });
 
   group('Planning des équipes (équipe de nuit)', () {
+    test('plat offert', () {
+      final p = PlatJour.fromJson({
+        'id': 3,
+        'nom': 'Garba',
+        'menu_id': 4,
+        'prix': null,
+        'offert': true
+      });
+      expect((p.offert, p.prix), (true, null));
+      expect(PlatJour.fromJson({'id': 3, 'nom': 'Garba', 'menu_id': 4}).offert,
+          isFalse);
+    });
+
     test('agence de mission', () {
-      final a = AgenceCommande.fromJson(
-          {'id': 3, 'nom': 'Vridi', 'mission': true, 'accepter_autres_agences': true});
+      final a = AgenceCommande.fromJson({
+        'id': 3,
+        'nom': 'Vridi',
+        'mission': true,
+        'accepter_autres_agences': true
+      });
       expect((a.mission, a.accepterAutresAgences), (true, true));
-      expect(AgenceCommande.fromJson({'id': 1, 'nom': 'Siège'}).mission, isFalse);
+      expect(
+          AgenceCommande.fromJson({'id': 1, 'nom': 'Siège'}).mission, isFalse);
     });
 
     test('modèles : programmation et jour non programmé', () async {

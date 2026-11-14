@@ -515,6 +515,9 @@ class PlatJour {
   final int nbAvis;
   final bool nouveau;
   final double? prix;
+
+  /// Équipe « repas offert » : rien à payer
+  final bool offert;
   final int menuId;
   final int? typeEquipeId;
   final String typeEquipe;
@@ -538,6 +541,7 @@ class PlatJour {
     this.nbAvis = 0,
     this.nouveau = true,
     this.prix,
+    this.offert = false,
     required this.menuId,
     this.typeEquipeId,
     this.typeEquipe = '',
@@ -567,6 +571,7 @@ class PlatJour {
       nbAvis: _int(j['nb_avis']),
       nouveau: j['nouveau'] is bool ? j['nouveau'] as bool : note == null,
       prix: _double(j['prix']),
+      offert: j['offert'] == true,
       menuId: _int(j['menu_id']),
       typeEquipeId: _intOuNull(j['typeequipe_id']),
       typeEquipe: _texte(j['typeequipe']),

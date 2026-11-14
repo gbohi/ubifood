@@ -130,6 +130,16 @@ void main() {
       expect(InfoPaiement.fromJson(const {}).comptePossible, isFalse);
       expect(ModePaiementCommande.depuis('compte')!.libelle, 'Compte repas');
       expect(ModePaiementCommande.depuis('caisse'), isNull);
+      // Équipe « repas offert »
+      final offert = InfoPaiement.fromJson(const {
+        'solde': 0,
+        'prix': 0,
+        'offert': true,
+        'mode_par_defaut': 'offert'
+      });
+      expect((offert.offert, offert.modeParDefaut),
+          (true, ModePaiementCommande.offert));
+      expect(ModePaiementCommande.depuis('offert')!.libelle, 'Repas offert');
       expect(
           AuthUser.fromJson({'id': 1, 'mode_paiement_prefere': 'retenue'})
               .modePaiementPrefere,
@@ -142,6 +152,36 @@ void main() {
     final suffixe = sombre ? '(sombre)' : '(clair)';
 
     group('Feuille « Comment payer ce repas ? » $suffixe', () {
+      testWidgets('repas offert : pas de choix de paiement', (tester) async {
+        tester.view.physicalSize = const Size(320, 760);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        Object? choix = 'aucun';
+        await _app(
+            tester,
+            _Ouvreur(
+                ouvrir: (ctx) => ChoixPaiementSheet.show(ctx,
+                    menuId: 12,
+                    platNom: 'Tchêp au poulet',
+                    jour: DateTime(2099, 11, 10),
+                    chargerInfo: () async => InfoPaiement.fromJson(const {
+                          'solde': 1500,
+                          'prix': 0,
+                          'offert': true,
+                          'mode_par_defaut': 'offert'
+                        })),
+                resultat: (r) => choix = r),
+            sombre: sombre);
+        await tester.tap(find.text('ouvrir'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(const Key('paiement-offert')), findsOneWidget);
+        expect(find.text('Retenue sur salaire'), findsNothing);
+        await tester.tap(find.byKey(const Key('confirmer-paiement')));
+        await tester.pumpAndSettle();
+        expect(choix, ModePaiementCommande.offert);
+      });
+
       testWidgets('solde suffisant : compte coché, réservation par le compte',
           (tester) async {
         tester.view.physicalSize = const Size(320, 760);

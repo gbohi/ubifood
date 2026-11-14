@@ -265,8 +265,11 @@ Future<void> _reserverPlat(
       limite: menu.dateLimiteCommande,
       chargerInfo: chargerInfo);
   if (mode == null || !context.mounted) return;
+  // Repas offert : le serveur fixe le mode (rien à payer)
   final ok = await cmdProv.commander(
-      menuId: menu.id, platId: plat.id, modePaiement: mode.code);
+      menuId: menu.id,
+      platId: plat.id,
+      modePaiement: mode == ModePaiementCommande.offert ? null : mode.code);
   // « Ma facturation » doit refléter la nouvelle commande
   if (ok) facturation.charger();
   if (ok && context.mounted) {
@@ -276,7 +279,11 @@ Future<void> _reserverPlat(
         const SizedBox(width: 8),
         Expanded(
             child: Text('${plat.nom} — commande confirmée !'
-                '${mode == ModePaiementCommande.compte ? ' Payée par votre compte repas.' : ' Retenue sur salaire.'}')),
+                '${switch (mode) {
+          ModePaiementCommande.compte => ' Payée par votre compte repas.',
+          ModePaiementCommande.offert => ' Repas offert.',
+          _ => ' Retenue sur salaire.',
+        }}')),
       ]),
       backgroundColor: AppColors.success,
       behavior: SnackBarBehavior.floating,

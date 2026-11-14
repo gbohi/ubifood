@@ -123,7 +123,10 @@ class _ChoixPaiementSheetState extends State<ChoixPaiementSheet> {
                   widget.platNom,
                   if (widget.jour != null)
                     DateFormat('EEEE d MMMM', 'fr_FR').format(widget.jour!),
-                  if (info?.prix != null) formatFcfa(info!.prix!),
+                  if (info?.offert ?? false)
+                    'repas offert'
+                  else if (info?.prix != null)
+                    formatFcfa(info!.prix!),
                 ].join(' · '),
                 style: TextStyle(color: gris, fontSize: 13),
               ),
@@ -141,7 +144,46 @@ class _ChoixPaiementSheetState extends State<ChoixPaiementSheet> {
                       "Votre solde n'a pas pu être chargé.",
                   onReessayer: () => setState(_charger),
                 )
-              else ...[
+              else if (info.offert) ...[
+                // Équipe « repas offert » : rien à payer
+                Container(
+                  key: const Key('paiement-offert'),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(isDark ? 0.15 : 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Row(children: [
+                    Icon(Icons.card_giftcard_rounded,
+                        color: AppColors.accentDark),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                          'Repas offert : aucun débit du compte repas ni retenue sur salaire.',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  height: 50,
+                  child: ElevatedButton(
+                    key: const Key('confirmer-paiement'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: changement
+                        ? null
+                        : () => Navigator.of(context)
+                            .pop(ModePaiementCommande.offert),
+                    child: const Text('Réserver (offert)',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ] else ...[
                 _OptionPaiement(
                   mode: ModePaiementCommande.compte,
                   titre: 'Compte repas',

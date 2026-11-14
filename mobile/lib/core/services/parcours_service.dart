@@ -61,8 +61,8 @@ class ParcoursService {
   }
 
   /// Solde et prix pour la feuille « Comment payer ce repas ? »
-  Future<InfoPaiement> infoPaiement(int menuId) =>
-      compteRepasService.infoPaiement(menuId);
+  Future<InfoPaiement> infoPaiement(int menuId, {int? platId}) =>
+      compteRepasService.infoPaiement(menuId, platId: platId);
 }
 
 final parcoursService = ParcoursService();
