@@ -38,6 +38,14 @@ int? jeuAOuvrir(Map<String, dynamic> data) {
   return id != null && id > 0 ? id : null;
 }
 
+/// Jeux sans écran propre (défis, pronostics, tickets, gains) : onglet de
+/// la rubrique Jeux à ouvrir (`ecran` dans les données). null sinon.
+String? ongletJeuAOuvrir(Map<String, dynamic> data) {
+  if (data['type']?.toString() != 'jeu') return null;
+  final e = data['ecran']?.toString() ?? '';
+  return const ['defis', 'pronostics', 'tickets', 'gains'].contains(e) ? e : null;
+}
+
 /// Compte repas (recharge, régularisation, remboursement, reçu annulé ;
 /// `recu_id` dans les données) : « Mes paiements » s'ouvre.
 bool ouvreMesPaiements(Map<String, dynamic> data) =>

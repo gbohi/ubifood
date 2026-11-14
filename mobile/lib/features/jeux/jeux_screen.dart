@@ -15,6 +15,7 @@ import '../../core/widgets/common_widgets.dart';
 import '../../shared/models/jeux_models.dart';
 import '../../shared/theme/app_theme.dart';
 import '../prestataire/prestataire_widgets.dart' show CartePresta;
+import 'autres_jeux_onglets.dart';
 import 'partie_screen.dart';
 import 'resultats_jeu_screen.dart';
 
@@ -119,9 +120,15 @@ class BoutonJeu extends StatelessWidget {
 // LISTE
 // ══════════════════════════════════════════════════════════════
 
+/// Onglets de la rubrique Jeux (« ecran » des notifications)
+const ongletsJeux = ['quiz', 'defis', 'pronostics', 'tickets', 'gains'];
+
 class JeuxScreen extends StatefulWidget {
   final JeuxService? service;
-  const JeuxScreen({super.key, this.service});
+
+  /// quiz | defis | pronostics | tickets | gains
+  final String ongletInitial;
+  const JeuxScreen({super.key, this.service, this.ongletInitial = 'quiz'});
 
   @override
   State<JeuxScreen> createState() => _JeuxScreenState();
@@ -174,59 +181,87 @@ class _JeuxScreenState extends State<JeuxScreen> {
   @override
   Widget build(BuildContext context) {
     final l = _liste;
-    return Scaffold(
-      body: Column(children: [
-        const EnTeteMarine(
-            titre: 'Jeux',
-            sousTitre: 'Jouez, grimpez au classement, gagnez des lots'),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: _charger,
-            child: ListView(padding: const EdgeInsets.all(14), children: [
-              if (_erreur != null)
-                BandeauInfo(
-                    icone: Icons.cloud_off_rounded,
-                    ton: TonPastille.rouge,
-                    texte: _erreur!)
-              else if (l == null)
-                const Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Center(child: CircularProgressIndicator()))
-              else if (l.vide)
-                const EmptyState(
-                    icon: Icons.sports_esports_outlined,
-                    title: 'Aucun jeu pour le moment',
-                    subtitle:
-                        'Vous serez notifié dès qu\'un jeu sera programmé.')
-              else ...[
-                for (final (i, j) in l.enCours.indexed)
-                  _CarteEnCours(
-                      jeu: j, compte: i == 0, onTap: () => _ouvrir(j)),
-                if (l.aVenir.isNotEmpty) ...[
-                  const _Section('À venir'),
-                  for (final j in l.aVenir)
-                    _LigneJeu(
-                      jeu: j,
-                      icone: j.direct
-                          ? Icons.live_tv_rounded
-                          : Icons.event_rounded,
-                      fond: const Color(0xFFFFF2DA),
-                      couleur: const Color(0xFFD8901A),
-                      sousTitre:
-                          '${j.direct ? 'En direct le' : 'Ouvre le'} ${quandJeu(j.debut)} · ${j.nbGagnants} lot${j.nbGagnants > 1 ? 's' : ''}',
-                      onTap: () => _ouvrir(j),
-                    ),
+    final service = _service;
+    final index = ongletsJeux.indexOf(widget.ongletInitial);
+    return DefaultTabController(
+      length: ongletsJeux.length,
+      initialIndex: index < 0 ? 0 : index,
+      child: Scaffold(
+        body: Column(children: [
+          const EnTeteMarine(
+              titre: 'Jeux',
+              sousTitre: 'Jouez, grimpez au classement, gagnez des lots',
+              margeBas: 0,
+              bas: TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white60,
+                indicatorColor: Color(0xFFF107A3),
+                dividerColor: Colors.transparent,
+                tabs: [
+                  Tab(text: 'Quiz'),
+                  Tab(text: 'Défis'),
+                  Tab(text: 'Pronostics'),
+                  Tab(text: 'Tickets'),
+                  Tab(text: 'Mes gains'),
                 ],
-                if (l.passes.isNotEmpty) ...[
-                  const _Section('Mes participations'),
-                  for (final j in l.passes)
-                    _LigneParticipation(jeu: j, onTap: () => _ouvrir(j)),
-                ],
-              ],
+              )),
+          Expanded(
+            child: TabBarView(children: [
+              RefreshIndicator(
+                onRefresh: _charger,
+                child: ListView(padding: const EdgeInsets.all(14), children: [
+                  if (_erreur != null)
+                    BandeauInfo(
+                        icone: Icons.cloud_off_rounded,
+                        ton: TonPastille.rouge,
+                        texte: _erreur!)
+                  else if (l == null)
+                    const Padding(
+                        padding: EdgeInsets.all(40),
+                        child: Center(child: CircularProgressIndicator()))
+                  else if (l.vide)
+                    const EmptyState(
+                        icon: Icons.sports_esports_outlined,
+                        title: 'Aucun jeu pour le moment',
+                        subtitle:
+                            'Vous serez notifié dès qu\'un jeu sera programmé.')
+                  else ...[
+                    for (final (i, j) in l.enCours.indexed)
+                      _CarteEnCours(
+                          jeu: j, compte: i == 0, onTap: () => _ouvrir(j)),
+                    if (l.aVenir.isNotEmpty) ...[
+                      const _Section('À venir'),
+                      for (final j in l.aVenir)
+                        _LigneJeu(
+                          jeu: j,
+                          icone: j.direct
+                              ? Icons.live_tv_rounded
+                              : Icons.event_rounded,
+                          fond: const Color(0xFFFFF2DA),
+                          couleur: const Color(0xFFD8901A),
+                          sousTitre:
+                              '${j.direct ? 'En direct le' : 'Ouvre le'} ${quandJeu(j.debut)} · ${j.nbGagnants} lot${j.nbGagnants > 1 ? 's' : ''}',
+                          onTap: () => _ouvrir(j),
+                        ),
+                    ],
+                    if (l.passes.isNotEmpty) ...[
+                      const _Section('Mes participations'),
+                      for (final j in l.passes)
+                        _LigneParticipation(jeu: j, onTap: () => _ouvrir(j)),
+                    ],
+                  ],
+                ]),
+              ),
+              OngletDefis(service: service),
+              OngletPronostics(service: service),
+              OngletTickets(service: service),
+              OngletGains(service: service),
             ]),
           ),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 }

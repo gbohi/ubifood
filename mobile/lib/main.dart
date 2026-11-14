@@ -19,7 +19,7 @@ import 'features/main_shell.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/notifications/notification_screen.dart';
-import 'features/jeux/jeux_screen.dart' show JeuDetailScreen;
+import 'features/jeux/jeux_screen.dart' show JeuDetailScreen, JeuxScreen;
 
 // ✅ NavigatorKey global — permet de naviguer sans contexte
 // et évite de recréer l'app quand on tape sur une notification
@@ -182,6 +182,12 @@ class _AuthGateState extends State<_AuthGate> {
     if (jeuId != null && !(user?.isComptePrestataire ?? false)) {
       context.read<NotificationProvider>().charger();
       nav.push(MaterialPageRoute(builder: (_) => JeuDetailScreen(jeuId: jeuId)));
+      return;
+    }
+    final onglet = ongletJeuAOuvrir(donnees);
+    if (onglet != null && !(user?.isComptePrestataire ?? false)) {
+      context.read<NotificationProvider>().charger();
+      nav.push(MaterialPageRoute(builder: (_) => JeuxScreen(ongletInitial: onglet)));
       return;
     }
     // Déjà affiché : pas de second écran par-dessus

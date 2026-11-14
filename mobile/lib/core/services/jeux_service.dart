@@ -6,6 +6,7 @@
 import 'package:dio/dio.dart';
 
 import '../api/api_client.dart';
+import '../../shared/models/autres_jeux_models.dart';
 import '../../shared/models/jeux_models.dart';
 
 Map<String, dynamic> _objet(dynamic data) =>
@@ -53,6 +54,41 @@ class JeuxService {
 
   Future<ClassementJeu> classement(int id) async => ClassementJeu.fromJson(
       _objet((await apiClient.get('/jeux/$id/classement/')).data));
+
+  // ── Défis, pronostics, tickets, gains ──
+  Future<MesDefis> defis() async =>
+      MesDefis.fromJson(_objet((await apiClient.get('/defis/')).data));
+
+  Future<List<Gain>> gains() async {
+    final d = (await apiClient.get('/mes-gains/')).data;
+    return (d is List ? d : const [])
+        .map((e) => Gain.fromJson(_objet(e)))
+        .toList();
+  }
+
+  Future<List<Competition>> competitions() async {
+    final d = _objet((await apiClient.get('/pronostics/')).data);
+    return ((d['competitions'] as List?) ?? const [])
+        .map((e) => Competition.fromJson(_objet(e)))
+        .toList();
+  }
+
+  Future<Competition> competition(int id) async => Competition.fromJson(
+      _objet((await apiClient.get('/pronostics/$id/')).data));
+
+  Future<void> pronostiquer(int matchId, int a, int b) => apiClient
+      .post('/pronostics/matchs/$matchId/', data: {'score_a': a, 'score_b': b});
+
+  Future<List<Map<String, dynamic>>> classementPronostics(int id) async {
+    final d = _objet((await apiClient.get('/pronostics/$id/classement/')).data);
+    return ((d['lignes'] as List?) ?? const []).map((e) => _objet(e)).toList();
+  }
+
+  Future<MesTickets> tickets() async =>
+      MesTickets.fromJson(_objet((await apiClient.get('/tickets/')).data));
+
+  Future<TicketJeu> gratter(int id) async => TicketJeu.fromJson(
+      _objet((await apiClient.post('/tickets/$id/gratter/')).data));
 }
 
 final jeuxService = JeuxService();

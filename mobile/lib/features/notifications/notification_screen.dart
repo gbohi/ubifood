@@ -11,7 +11,7 @@ import '../../core/widgets/common_widgets.dart';
 import '../../shared/providers/app_provider.dart';
 import '../contestation/retrait_detail_screen.dart';
 import '../paiements/mes_paiements_screen.dart';
-import '../jeux/jeux_screen.dart' show JeuDetailScreen;
+import '../jeux/jeux_screen.dart' show JeuDetailScreen, JeuxScreen;
 
 // ══════════════════════════════════════════════════════════════
 // NAVIGATION DEPUIS UNE NOTIFICATION
@@ -514,6 +514,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               !(user?.isComptePrestataire ?? false)) {
                             Navigator.of(context).push(MaterialPageRoute(
                                 builder: (_) => JeuDetailScreen(jeuId: jeuId)));
+                            return;
+                          }
+                          final onglet = ongletJeuAOuvrir(
+                              {'type': notif.type, ...notif.donnees});
+                          if (onglet != null &&
+                              !(user?.isComptePrestataire ?? false)) {
+                            Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) =>
+                                    JeuxScreen(ongletInitial: onglet)));
                             return;
                           }
                           // Retour à l'écran principal sur l'onglet utile :
