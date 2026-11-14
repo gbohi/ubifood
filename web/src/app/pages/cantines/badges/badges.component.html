@@ -1,0 +1,191 @@
+<div class="lst ep ep-badges">
+  <app-page-entete titre="Badges d'accès" icone="ri-bank-card-2-line" [fil]="[{label: 'Cantine'}]"
+                   sousTitre="Le badge des portes sert aussi au comptoir : seul son numéro est enregistré, jamais affiché en clair">
+    <select class="form-select ep-select" [(ngModel)]="agence" (change)="charger()" aria-label="Agence">
+      <option value="">Toutes mes agences</option>
+      @for (a of agences; track a.id) { <option [ngValue]="a.id">{{ a.nom_agence }}</option> }
+    </select>
+  </app-page-entete>
+
+  <div class="ep-kpis-ligne ep-kpis-4 mb-3" [class.ep-attente]="chargement">
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic bl"><i class="ri-team-line"></i></span>
+      <div><small>Employés</small><b>{{ total }}</b><span>rôle Employé, {{ agence ? 'cette agence' : 'vos agences' }}</span></div></div>
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ve"><i class="ri-bank-card-2-line"></i></span>
+      <div><small>Avec badge</small><b>{{ avecBadge }}</b><span>{{ pctAvecBadge }} % des employés</span></div></div>
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic or"><i class="ri-user-unfollow-line"></i></span>
+      <div><small>Sans badge</small><b>{{ sansBadge.length }}</b><span>QR code ou matricule au comptoir</span></div></div>
+    <div class="ep-carte ep-kpi"><span class="ep-kpi-ic ro"><i class="ri-usb-line"></i></span>
+      <div><small>Lecteur</small><b class="ep-kpi-texte">USB « clavier »</b><span>posez le badge : le numéro est lu tout seul</span></div></div>
+  </div>
+
+  <div class="ep-onglets mb-3">
+    <button type="button" class="ep-onglet" [class.on]="onglet === 'associer'" (click)="onglet = 'associer'"><i class="ri-links-line"></i>Association badge par badge</button>
+ <button type="button" class="ep-onglet" [class.on]="onglet === 'tous'" (click)="onglet = 'tous'"><i class="ri-team-line"></i>Tous les employés</button>
+    <button type="button" class="ep-onglet" [class.on]="onglet === 'importer'" (click)="onglet = 'importer'"><i class="ri-file-excel-2-line"></i>Importer la liste de la sécurité</button>
+  </div>
+
+  @if (onglet === 'associer') {
+    <div class="row g-3">
+      <div class="col-lg-5">
+        <div class="lst-carte">
+          <div class="lst-barre bord">
+            <div>
+              <b class="ep-titre-carte"><i class="ri-user-unfollow-line"></i>Employés sans badge</b>
+              <small class="ep-muted d-block">Choisissez l'employé, puis posez son badge sur le lecteur</small>
+            </div>
+          </div>
+          <div class="lst-barre">
+            <div class="lst-recherche">
+              <i class="ri-search-line"></i>
+              <input type="search" placeholder="Nom ou matricule…" aria-label="Rechercher un employé" [(ngModel)]="recherche">
+            </div>
+          </div>
+          <div class="bdg-liste">
+            @for (u of listeFiltree; track u.id) {
+              <button type="button" class="bdg-ligne" [class.on]="choisi?.id === u.id" (click)="choisir(u)">
+                <b>{{ u.nom }}</b><small>{{ u.matricule }}@if (u.perdu) { · <span class="text-danger">badge perdu</span> }</small>
+                <i class="ri-arrow-right-s-line"></i>
+              </button>
+            } @empty {
+              <div class="lst-vide"><i class="ri-checkbox-circle-line"></i><h5>{{ chargement ? 'Chargement…' : (recherche ? 'Aucun résultat' : 'Tous les employés ont un badge') }}</h5></div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-7">
+        <div class="lst-carte bdg-poser">
+          @if (choisi; as u) {
+            <div class="bdg-employe"><span class="bdg-ic"><i class="ri-user-3-line"></i></span>
+              <div><b>{{ u.nom }}</b><small>Matricule {{ u.matricule }}</small></div></div>
+            <div class="bdg-attente" (click)="champNumero.focus()">
+              <i class="ri-bank-card-2-line"></i>
+              <b>{{ envoi ? 'Association…' : 'Posez le badge sur le lecteur' }}</b>
+              <small>ou tapez le numéro puis <span class="ce-kbd">Entrée</span></small>
+              <!-- type password : le numéro lu n'apparaît jamais en clair -->
+              <input #champNumero type="password" class="form-control bdg-champ" [(ngModel)]="numero" (keydown.enter)="associer()"
+                     autocomplete="off" aria-label="Numéro du badge" [disabled]="envoi">
+            </div>
+            <p class="ep-muted ce-petit mb-0">Un badge ne peut appartenir qu'à un seul employé. Pour remplacer, déclarer perdu ou réactiver un badge
+              déjà associé : onglet « Tous les employés ».</p>
+          } @else {
+            <div class="lst-vide"><i class="ri-cursor-line"></i><h5>Choisissez un employé dans la liste</h5>
+              <p>Le badge posé ensuite sur le lecteur lui est associé, puis on passe au suivant.</p></div>
+          }
+          @if (associes.length) {
+            <div class="bdg-recents">
+              <small class="ep-muted">Associés à l'instant</small>
+              @for (a of associes; track $index) {
+                <div><i class="ri-checkbox-circle-fill"></i>{{ a.nom }} <span class="ep-muted">· {{ a.masque }}</span></div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (onglet === 'tous') {
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <div class="lst-carte">
+          <div class="lst-barre">
+            <div class="lst-recherche">
+              <i class="ri-search-line"></i>
+              <input type="search" placeholder="Nom ou matricule…" aria-label="Rechercher un employé" [(ngModel)]="rechercheTous">
+            </div>
+          </div>
+          <div class="bdg-liste">
+            @for (u of employesFiltres; track u.id) {
+              <button type="button" class="bdg-ligne" [class.on]="ficheId === u.id" (click)="ficheId = u.id">
+                <b>{{ u.nom }} <small>· {{ u.matricule }}</small></b>
+                @if (u.badge) { <span class="lst-tag t-ve">{{ u.badge }}</span> }
+                @else if (u.perdu) { <span class="lst-tag t-ro">perdu</span> }
+                @else { <span class="lst-tag t-gr">sans badge</span> }
+                <i class="ri-arrow-right-s-line"></i>
+              </button>
+            } @empty {
+              <div class="lst-vide"><h5>{{ chargement ? 'Chargement…' : 'Aucun employé' }}</h5></div>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="lst-carte bdg-poser">
+          @if (ficheEmploye; as u) {
+            <div class="bdg-employe"><span class="bdg-ic"><i class="ri-user-3-line"></i></span>
+              <div><b>{{ u.nom }}</b><small>Matricule {{ u.matricule }}</small></div></div>
+            <app-badge-employe [userId]="u.id" (change)="badgeChange()"></app-badge-employe>
+          } @else {
+            <div class="lst-vide"><i class="ri-cursor-line"></i><h5>Choisissez un employé</h5>
+              <p>Remplacer un badge, le déclarer perdu, le dissocier ou réactiver un badge retrouvé.</p></div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (onglet === 'importer') {
+    <div class="lst-carte">
+      <div class="lst-barre bord">
+        <div>
+          <b class="ep-titre-carte"><i class="ri-file-excel-2-line"></i>Liste matricule / numéro de badge</b>
+          <small class="ep-muted d-block">Fichier Excel ou CSV fourni par la sécurité : colonne « Matricule » et colonne « Numéro » (ou Badge, Identifiant).
+            Matricules sans zéros en tête et numéros décimaux ou hexadécimaux reconnus.</small>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button type="button" class="btn-ubi" (click)="modele()"><i class="ri-download-2-line"></i><span class="pe-lib">Modèle</span></button>
+          <label class="btn-ubi vert mb-0"><i class="ri-upload-2-line"></i>Choisir le fichier
+            <input type="file" accept=".xlsx,.xls,.csv" hidden (change)="lireFichier($event)"></label>
+        </div>
+      </div>
+
+      @if (importEnCours && !resultat) { <div class="lst-charge"><div class="spinner-border" role="status"></div></div> }
+
+      @if (resultat; as r) {
+        <div class="bdg-import-bilan" [class.ep-attente]="importEnCours">
+          <div>
+            <b>{{ r.apercu ? 'Aperçu' : 'Import terminé' }} · {{ fichier }}</b>
+            <small class="ep-muted d-block">{{ r.total }} ligne(s) :
+              <span class="lst-tag t-ve">{{ r.a_associer }} {{ r.apercu ? 'à associer' : 'associé(s)' }}</span>
+              <span class="lst-tag t-gr">{{ r.a_jour }} déjà à jour</span>
+              <span class="lst-tag t-ro">{{ r.erreurs }} erreur(s)</span></small>
+          </div>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select class="form-select ep-select" [(ngModel)]="filtreImport" aria-label="Filtrer les lignes">
+              <option value="tout">Toutes les lignes</option>
+              <option value="a_associer">À associer</option>
+              <option value="erreur">Erreurs</option>
+            </select>
+            @if (r.apercu) {
+              <button type="button" class="btn-ubi" (click)="annulerImport()">Annuler</button>
+              <button type="button" class="btn-ubi vert" [disabled]="!r.a_associer || importEnCours" (click)="envoyerImport(false)">
+                <i class="ri-check-line"></i>Associer {{ r.a_associer }} badge(s)</button>
+            }
+          </div>
+        </div>
+        <div class="lst-table-wrap">
+          <table class="lst-table">
+            <thead><tr><th>Ligne</th><th>Matricule</th><th>Employé</th><th>Badge</th><th>Résultat</th></tr></thead>
+            <tbody>
+              @for (l of lignesAffichees; track l.ligne) {
+                <tr>
+                  <td class="ep-muted">{{ l.ligne }}</td>
+                  <td>{{ l.matricule || '—' }}</td>
+                  <td>{{ l.employe || '—' }}</td>
+                  <td>{{ l.badge || '—' }}</td>
+                  <td><span class="lst-tag" [class.t-ve]="l.statut === 'a_associer'" [class.t-gr]="l.statut === 'a_jour'" [class.t-ro]="l.statut === 'erreur'">{{ l.resultat }}</span></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5"><div class="lst-vide"><h5>Aucune ligne</h5></div></td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else if (!importEnCours) {
+        <div class="lst-vide"><i class="ri-file-upload-line"></i><h5>Aucun fichier</h5>
+          <p>Rien n'est enregistré avant votre confirmation : un aperçu détaille chaque ligne (matricule inconnu, badge en double…).</p></div>
+      }
+    </div>
+  }
+</div>

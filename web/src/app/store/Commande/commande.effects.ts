@@ -170,9 +170,9 @@ export class CommandeEffects {
   createRetrait$ = createEffect(() =>
     this.actions$.pipe(
       ofType(CommandeActions.createRetrait),
-      mergeMap(({ userId, menuId, badge_matricule }) =>
+      mergeMap(({ userId, menuId, badge_matricule, mode }) =>
         this.commandeService.createRetrait({
-          user_id: userId, menu_id: menuId, badge_matricule
+          user_id: userId, menu_id: menuId, badge_matricule, ...(mode ? { mode } : {})
         }).pipe(
           map(() => CommandeActions.createRetraitSuccess({ menuId, userId })),
           catchError(err => {

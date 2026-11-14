@@ -3,7 +3,7 @@
 // Styles globaux limités aux composants concernés (budget des feuilles de
 // style de composant, voir angular.json), préfixe « ce- ».
 
-app-planning-menus, app-retrait-commande, app-facturation-commande, app-liste-commandes, app-comptoir-presta, app-controle-retraits {
+app-planning-menus, app-retrait-commande, app-facturation-commande, app-liste-commandes, app-comptoir-presta, app-controle-retraits, app-badges {
   & {
     --ce-navy: #092440;
     --ce-navy2: #0F3A6E;

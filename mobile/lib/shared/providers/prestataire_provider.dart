@@ -206,15 +206,25 @@ class ComptoirProvider extends ChangeNotifier {
     _validationErreur = null;
     notifyListeners();
     try {
-      final r = await service.recherche(b, agenceId: agenceId);
+      final r = await service.recherche(b,
+          agenceId: agenceId, lecture: mode == ModeIdentification.badge);
       if (gen != _generation || num != _requeteRecherche) return;
       _recherche = r;
+      // Lecteur : badge d'accès reconnu, sinon c'était un QR code
+      if (mode == ModeIdentification.badge && !r.parBadge) {
+        _mode = ModeIdentification.scan;
+      }
     } catch (e) {
       if (gen != _generation || num != _requeteRecherche) return;
       _rechercheErreur = messageErreurApi(e) ?? 'Recherche impossible';
     }
     _rechercheEnCours = false;
     notifyListeners();
+    // Badge posé, un seul repas à retirer, réglage actif : validé sans clic
+    final r = _recherche;
+    if (r != null && r.validationAuto && r.aRetirer) {
+      await valider(agenceId: agenceId);
+    }
   }
 
   /// Valide le retrait de l'employé trouvé. true si enregistré.

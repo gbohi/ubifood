@@ -208,8 +208,9 @@ class RetraitComptoir {
   }
 
   String get libelleMode => switch (mode) {
-        'scan' => 'Badge scanné',
+        'scan' => 'QR code scanné',
         'saisie' => 'Matricule saisi',
+        'badge' => "Badge d'accès",
         _ => '',
       };
 
@@ -342,6 +343,12 @@ class RechercheComptoir {
   final int? menuId;
   final String message;
 
+  /// Badge d'accès posé, un seul repas à retirer, réglage actif : validé sans clic
+  final bool validationAuto;
+
+  /// true : employé trouvé par son badge d'accès (lecteur)
+  final bool parBadge;
+
   const RechercheComptoir({
     required this.employe,
     this.commandes = const [],
@@ -350,6 +357,8 @@ class RechercheComptoir {
     this.aRetirer = false,
     this.menuId,
     this.message = '',
+    this.validationAuto = false,
+    this.parBadge = false,
   });
 
   /// Plats à remettre (commandes en attente)
@@ -365,6 +374,8 @@ class RechercheComptoir {
       aRetirer: j['a_retirer'] == true,
       menuId: _intOuNull(j['menu_id']),
       message: _str(j['message']),
+      validationAuto: j['validation_auto'] == true,
+      parBadge: j['mode'] == 'badge',
     );
   }
 }

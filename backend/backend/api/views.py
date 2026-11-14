@@ -1918,10 +1918,18 @@ class CommandeViewSet(BaseViewSet):
 
         menu = get_object_or_404(Menu, pk=menu_id)
         verifier_menu_gere(request.user, menu)
-        try:
-            user = User.objects.get(username=badge)
-        except User.DoesNotExist:
-            return Response({'detail': f'Aucun agent trouvé avec le badge "{badge}".'}, status=404)
+        # Matricule (QR code ou saisie), sinon badge d'accès posé sur le lecteur
+        user, mode = User.objects.filter(username=badge).first(), None
+        if user is None:
+            from . import badges as bdg
+            b = bdg.trouver(badge, statuts=('actif', 'perdu'))
+            if b is not None and b.statut == 'perdu':
+                return Response({'code': 'badge_perdu',
+                                 'detail': f"Badge déclaré perdu par {nom_complet(b.user)} le "
+                                           f"{timezone.localtime(b.fin_le):%d/%m}. Retrait refusé."}, status=409)
+            if b is None:
+                return Response({'detail': f'Aucun agent trouvé avec le badge "{badge}".'}, status=404)
+            user, mode = b.user, 'badge'
 
         retrait   = Retrait.objects.filter(user=user, menu_id=menu_id).first()
         commandes = self._base_queryset().filter(user=user, menu_id=menu_id)
@@ -1933,6 +1941,7 @@ class CommandeViewSet(BaseViewSet):
             'user_id':   user.id,
             'user_nom':  nom_complet(user),
             'badge':     user.username,
+            'mode':      mode,
             **origine,
             'a_retire':  retrait is not None,
             # Heure du retrait déjà enregistré (alerte « déjà retiré à 12:41 »)

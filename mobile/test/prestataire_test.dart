@@ -15,6 +15,7 @@ import 'package:cantine_app/shared/providers/prestataire_provider.dart';
 import 'package:cantine_app/shared/theme/app_theme.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
@@ -320,9 +321,15 @@ class _FausseApi extends PrestataireService {
   @override
   Future<ServiceComptoir> service({int? agenceId, int limite = 8}) async =>
       ServiceComptoir.fromJson(_service());
+  final List<(String, bool)> recherches = [];
   @override
-  Future<RechercheComptoir> recherche(String badge, {int? agenceId}) async =>
-      RechercheComptoir.fromJson(_recherche);
+  Future<RechercheComptoir> recherche(String badge,
+      {int? agenceId, bool lecture = false}) async {
+    recherches.add((badge, lecture));
+    return RechercheComptoir.fromJson(lecture
+        ? {..._recherche, 'mode': 'badge', 'validation_auto': true}
+        : _recherche);
+  }
   @override
   Future<RetraitComptoir> valider(
       {required int menuId,
@@ -448,7 +455,7 @@ void main() {
       expect(s.plats.single.aServir, 9);
       expect(s.derniers, hasLength(2));
       expect(s.derniers.first.plats, ['Tchep au poulet']);
-      expect(s.derniers.first.libelleMode, 'Badge scanné');
+      expect(s.derniers.first.libelleMode, 'QR code scanné');
 
       final r = RechercheComptoir.fromJson(_recherche);
       expect(r.aRetirer, isTrue);
@@ -620,6 +627,33 @@ void main() {
         expect(tester.takeException(), isNull);
 
         // Disposer les comptes à rebours
+        await tester.pumpWidget(const SizedBox());
+      });
+
+      testWidgets('comptoir : badge posé sur le lecteur, validé sans clic $t',
+          (tester) async {
+        _ecran320(tester);
+        final api = _FausseApi();
+        await tester
+            .pumpWidget(_app(const ComptoirScreen(), sombre: sombre, api: api));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('aide-lecteur-badge')), findsOneWidget);
+        // Le lecteur « tape » le numéro puis Entrée (champ matricule inactif)
+        for (final k in [
+          LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit0,
+          LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2,
+          LogicalKeyboardKey.digit3, LogicalKeyboardKey.digit4,
+        ]) {
+          await tester.sendKeyEvent(k);
+        }
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(api.recherches.single, ('001234', true));
+        expect(api.validations, 1);
+        expect(api.dernierMode, ModeIdentification.badge);
+        expect(find.text('Retrait validé à 12:31'), findsOneWidget);
+        expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
       });
 

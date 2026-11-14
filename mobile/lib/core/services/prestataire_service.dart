@@ -13,8 +13,12 @@ Map<String, dynamic> _objet(dynamic data) =>
 
 /// Mode d'identification de l'employé au comptoir
 enum ModeIdentification {
+  /// QR code lu par la caméra (ou par le lecteur)
   scan,
-  saisie;
+  saisie,
+
+  /// Badge d'accès posé sur le lecteur (USB / OTG)
+  badge;
 
   String get valeur => name;
 }
@@ -38,10 +42,13 @@ class PrestataireService {
     return ServiceComptoir.fromJson(_objet(res.data));
   }
 
-  Future<RechercheComptoir> recherche(String badge, {int? agenceId}) async {
+  /// [lecture] : code lu par le lecteur branché (badge d'accès, sinon QR code /
+  /// matricule) ; sinon matricule saisi ou QR code lu par la caméra.
+  Future<RechercheComptoir> recherche(String badge,
+      {int? agenceId, bool lecture = false}) async {
     final res =
         await apiClient.get('/prestataire/comptoir/recherche/', params: {
-      'badge': badge,
+      if (lecture) ...{'carte': badge, 'repli': 1} else 'badge': badge,
       if (agenceId != null) 'agence': agenceId,
     });
     return RechercheComptoir.fromJson(_objet(res.data));

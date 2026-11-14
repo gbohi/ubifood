@@ -192,8 +192,14 @@ export interface RechercheComptoir extends OrigineCommande {
   retrait: RetraitComptoir | null;
   a_retirer: boolean;
   menu_id: number | null;
+  /** Badge d'accès posé, un seul repas à retirer, réglage actif : valider sans clic */
+  validation_auto?: boolean;
+  /** 'badge' si l'employé a été trouvé par son badge d'accès */
+  mode?: 'badge' | null;
   message: string;
 }
+
+export type ModeRetrait = 'scan' | 'saisie' | 'badge';
 
 export interface ReleveMois {
   annee: number;
@@ -371,11 +377,16 @@ export class EspacePrestataireService {
     return this.http.get<ServiceComptoirPresta>(`${this.url}/comptoir/service/`, { params: params({ agence, limite }) });
   }
 
-  rechercher(badge: string, agence: number | null): Observable<RechercheComptoir> {
-    return this.http.get<RechercheComptoir>(`${this.url}/comptoir/recherche/`, { params: params({ badge, agence }) });
+  /**
+   * Recherche au comptoir. `lecture` : code lu par un lecteur (badge d'accès ou QR code) —
+   * cherché d'abord comme badge d'accès, sinon comme matricule. Sinon : matricule saisi.
+   */
+  rechercher(code: string, agence: number | null, lecture = false): Observable<RechercheComptoir> {
+    const p = lecture ? { carte: code, repli: 1, agence } : { badge: code, agence };
+    return this.http.get<RechercheComptoir>(`${this.url}/comptoir/recherche/`, { params: params(p) });
   }
 
-  valider(menuId: number, userId: number, mode: 'scan' | 'saisie'): Observable<RetraitComptoir> {
+  valider(menuId: number, userId: number, mode: ModeRetrait): Observable<RetraitComptoir> {
     return this.http.post<RetraitComptoir>(`${this.url}/comptoir/valider/`, { menu_id: menuId, user_id: userId, mode });
   }
 

@@ -56,9 +56,9 @@
         <i class="ri-qr-scan-2-line ce-scan-ic"></i>
         <div class="ce-scan-in">
           <input #champBadge type="text" [(ngModel)]="badge" (keydown)="onKeydown($event)" (paste)="onPaste()"
-                 placeholder="Scannez le badge ou saisissez le matricule…" aria-label="Badge ou matricule"
+                 placeholder="Posez le badge, scannez le QR code ou saisissez le matricule…" aria-label="Badge, QR code ou matricule"
                  autocomplete="off" autofocus [disabled]="enRecherche">
-          <small>Scannez le badge (QR) ou saisissez le matricule — validation avec <span class="ce-kbd">Entrée</span></small>
+          <small>Badge d'accès sur le lecteur, QR code ou matricule — validation avec <span class="ce-kbd">Entrée</span></small>
         </div>
         @if (enRecherche) {
           <span class="spinner-border spinner-border-sm ce-c-gris" role="status"></span>
@@ -68,7 +68,10 @@
       </div>
 
       @if (erreurRecherche) {
-        <div class="ce-alerte ce-alerte-or ce-alerte-grande" role="alert"><i class="ri-error-warning-line"></i><div><b>{{ erreurRecherche }}</b></div></div>
+        <div class="ce-alerte ce-alerte-grande" role="alert" [class.ce-alerte-or]="codeErreur !== 'badge_perdu'" [class.ce-alerte-ro]="codeErreur === 'badge_perdu'">
+          <i [class]="codeErreur === 'badge_perdu' ? 'ri-forbid-line' : codeErreur ? 'ri-bank-card-2-line' : 'ri-error-warning-line'"></i>
+          <div><b>{{ erreurRecherche }}</b></div>
+        </div>
       }
 
       @if (recherche; as r) {
@@ -138,7 +141,7 @@
               <div>
                 <b>Retrait validé à {{ v.heure }}</b>
                 <small>L'employé reçoit une notification « Retrait validé » avec un bouton pour le contester.</small>
-                <span class="lst-tag t-ve"><i class="ri-shield-check-line"></i>Validé par : {{ v.valide_par_nom }}@if (v.valide_par_prestataire) { ({{ v.valide_par_prestataire }}) } · {{ v.mode === 'scan' ? 'badge scanné' : 'matricule saisi' }}</span>
+                <span class="lst-tag t-ve"><i class="ri-shield-check-line"></i>Validé par : {{ v.valide_par_nom }}@if (v.valide_par_prestataire) { ({{ v.valide_par_prestataire }}) } · {{ libelleMode(v.mode) }}</span>
               </div>
               @if (secondesRestantes(v) > 0) {
                 <button type="button" class="ce-btn ms-auto" (click)="annuler(v)"><i class="ri-arrow-go-back-line"></i>Annuler ({{ compteRebours(v) }})</button>
@@ -178,7 +181,7 @@
               <span class="ce-av ce-av-s" [style.background]="couleur(r.user_id)">{{ initiales(r.user_nom) }}</span>
               <div class="ce-fil-txt">
                 <b>{{ r.user_nom }}@if (r.externe) { <span class="ubi-externe ubi-externe-court ms-1" [title]="'Employé d\'une autre agence · ' + r.agence_origine">{{ r.agence_origine }}</span> }</b>
-                <small>{{ platsTexte(r) }}</small>
+                <small>{{ platsTexte(r) }}@if (r.mode === 'badge') { <i class="ri-bank-card-2-line ms-1" title="Badge d'accès"></i> }</small>
               </div>
               <span class="ep-fil-droite">
                 <span class="ce-fil-h">{{ r.heure }}</span>

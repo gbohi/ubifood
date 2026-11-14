@@ -257,10 +257,18 @@ class SansBadgeView(APIView):
         ags = agences_actuelles([u.id for u in users])
         if agence and str(agence).isdigit():
             users = [u for u in users if int(agence) in ags.get(u.id, set())]
-        avec = set(BadgeAcces.objects.filter(statut='actif', user__in=users).values_list('user_id', flat=True))
-        sans = sorted((u for u in users if u.id not in avec), key=lambda u: (u.nom, u.prenom))
-        return Response({'total': len(users), 'avec_badge': len(avec),
-                         'sans_badge': [{'id': u.id, 'nom': nom_complet(u), 'matricule': u.username} for u in sans]})
+        actifs = {b.user_id: b for b in BadgeAcces.objects.filter(statut='actif', user__in=users)}
+        perdus = set(BadgeAcces.objects.filter(statut='perdu', user__in=users).values_list('user_id', flat=True))
+        tri = sorted(users, key=lambda u: (u.nom or '', u.prenom or ''))
+        rep = {'total': len(users), 'avec_badge': len(actifs),
+               'sans_badge': [{'id': u.id, 'nom': nom_complet(u), 'matricule': u.username,
+                               'perdu': u.id in perdus} for u in tri if u.id not in actifs]}
+        if request.query_params.get('tous') in ('1', 'true'):
+            # Tous les employés et leur badge actif (numéro masqué)
+            rep['employes'] = [{'id': u.id, 'nom': nom_complet(u), 'matricule': u.username,
+                                'badge': masque(actifs[u.id].numero) if u.id in actifs else None,
+                                'perdu': u.id not in actifs and u.id in perdus} for u in tri]
+        return Response(rep)
 
 
 class ImportBadgesView(APIView):

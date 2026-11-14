@@ -16,6 +16,7 @@ import '../allergies/allergies_screen.dart';
 import '../commandes/commandes_screen.dart' show EtatCommande, etatCommande;
 import 'change_password_screen.dart';
 import 'qr_code_screen.dart';
+import 'mon_badge_screen.dart';
 import '../paiements/choix_paiement_sheet.dart';
 import '../../shared/models/compte_repas_models.dart' show ModePaiementCommande;
 
@@ -221,6 +222,18 @@ class _ProfilScreenState extends State<ProfilScreen> {
                             MaterialPageRoute(
                                 builder: (_) => const QrCodeScreen())),
                       ),
+                      if (auth.user?.peutCommander ?? true)
+                        _Ligne(
+                          key: const Key('ligne-mon-badge'),
+                          icone: Icons.badge_outlined,
+                          titre: "Mon badge d'accès",
+                          sousTitre:
+                              'Badge des portes au comptoir · déclarer perdu',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const MonBadgeScreen())),
+                        ),
                       _Ligne(
                         key: const Key('ligne-notifications-suivi'),
                         icone: Icons.notifications_active_outlined,
@@ -244,36 +257,36 @@ class _ProfilScreenState extends State<ProfilScreen> {
                                   builder: (_) => const LotsARemettreScreen())),
                         ),
                       if (auth.user?.peutCommander ?? true)
-                      _Ligne(
-                        key: const Key('ligne-jeux'),
-                        icone: Icons.sports_esports_outlined,
-                        titre: 'Jeux',
-                        sousTitre: 'Quiz à lots, classement, mes gains',
-                        onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const JeuxScreen())),
-                      ),
+                        _Ligne(
+                          key: const Key('ligne-jeux'),
+                          icone: Icons.sports_esports_outlined,
+                          titre: 'Jeux',
+                          sousTitre: 'Quiz à lots, classement, mes gains',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const JeuxScreen())),
+                        ),
                       if (auth.user?.peutCommander ?? true)
-                      _Ligne(
-                        key: const Key('ligne-mes-tarifs'),
-                        icone: Icons.sell_outlined,
-                        titre: 'Mes tarifs',
-                        sousTitre: 'Prix de mes repas par type de plat',
-                        onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const MesTarifsScreen())),
-                      ),
+                        _Ligne(
+                          key: const Key('ligne-mes-tarifs'),
+                          icone: Icons.sell_outlined,
+                          titre: 'Mes tarifs',
+                          sousTitre: 'Prix de mes repas par type de plat',
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const MesTarifsScreen())),
+                        ),
                       if (auth.user?.peutCommander ?? true)
-                      _Ligne(
-                        key: const Key('ligne-paiement-prefere'),
-                        icone: Icons.account_balance_wallet_outlined,
-                        titre: 'Paiement de mes repas',
-                        sousTitre:
-                            'Par défaut : ${user?.modePaiementPrefere == 'retenue' ? 'retenue sur salaire' : 'compte repas (si le solde suffit)'}',
-                        onTap: () => _choisirPreferencePaiement(context),
-                      ),
+                        _Ligne(
+                          key: const Key('ligne-paiement-prefere'),
+                          icone: Icons.account_balance_wallet_outlined,
+                          titre: 'Paiement de mes repas',
+                          sousTitre:
+                              'Par défaut : ${user?.modePaiementPrefere == 'retenue' ? 'retenue sur salaire' : 'compte repas (si le solde suffit)'}',
+                          onTap: () => _choisirPreferencePaiement(context),
+                        ),
                       Consumer<AllergieProvider>(
                           builder: (_, allergieProv, __) {
                         final count = allergieProv.allergies.length;

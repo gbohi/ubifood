@@ -40,8 +40,9 @@ class BadgesTests(_EspacePrestataireBase):
         self.assertEqual(c.post(f'{API}/admin/badges/{bid}/reactiver/').data['statut'], 'actif')
         self.assertEqual(self.client_pour(self.employe2).post(f'{API}/admin/badges/',
                          {'user': self.employe.id, 'numero': '11112222'}, format='json').status_code, 403)
-        sans = c.get(f'{API}/admin/badges/sans-badge/').data
+        sans = c.get(f'{API}/admin/badges/sans-badge/', {'tous': 1}).data
         self.assertNotIn(self.employe.id, [u['id'] for u in sans['sans_badge']])
+        self.assertEqual(next(u for u in sans['employes'] if u['id'] == self.employe.id)['badge'], '•••• 5678')
 
     def test_import_apercu_puis_import(self):
         lignes = [{'ligne': 2, 'matricule': self.employe.username, 'numero': '0012345678'},
@@ -78,6 +79,18 @@ class BadgesTests(_EspacePrestataireBase):
             r = agent.get(f'{API}/prestataire/comptoir/recherche/', {'carte': '0012345678'})
         self.assertEqual((r.status_code, r.data['code']), (409, 'badge_perdu'))
         self.assertTrue(Notification.objects.filter(user=self.gestionnaire, titre__contains='Badge perdu').exists())
+
+    def test_lecture_rapide_badge_sinon_qr(self):
+        menu = self.menu_du_jour()
+        Commande.objects.create(user=self.employe, menu=menu, plat=self.plat_a)
+        B.associer(self.employe2, '0012345678', self.admin)
+        agent = self.client_pour(self.agent_a)
+        url = f'{API}/prestataire/comptoir/recherche/'
+        r = agent.get(url, {'carte': self.employe.username, 'repli': 1})        # QR code (matricule)
+        self.assertEqual((r.status_code, r.data['employe']['id'], r.data['mode']), (200, self.employe.id, None))
+        r = agent.get(url, {'carte': '00BC614E', 'repli': 1})                   # badge
+        self.assertEqual((r.data['employe']['id'], r.data['mode']), (self.employe2.id, 'badge'))
+        self.assertEqual(agent.get(url, {'carte': '424242', 'repli': 1}).data['code'], 'badge_inconnu')
 
     def test_badge_obligatoire_refuse_qr_et_saisie(self):
         menu = self.menu_du_jour()

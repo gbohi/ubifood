@@ -197,6 +197,15 @@ export const MENU: MenuItem[] = [
                 parentId: 210
             },
             {
+                // Badges d'accès des employés : association et import (retrait par badge)
+                id: 2119,
+                label: "Badges d'accès",
+                link: '/cantines/badges',
+                roles: GESTIONNAIRES,
+                isNew: true,
+                parentId: 210
+            },
+            {
                 // Une seule entrée : la page de facturation regroupe employés et
                 // prestataires en onglets (l'ancienne adresse prestataire reste valide)
                 id: 218,

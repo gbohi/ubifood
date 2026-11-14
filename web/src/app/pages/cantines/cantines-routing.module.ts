@@ -17,6 +17,7 @@ import { AvisPlatsComponent } from './avis-plats/avis-plats.component';
 import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.component';
 import { StatistiquesComponent } from './statistiques/statistiques.component';
 import { ControleRetraitsComponent } from './controle-retraits/controle-retraits.component';
+import { BadgesComponent } from './badges/badges.component';
 import { MonCompteRepasComponent } from './mon-compte-repas/mon-compte-repas.component';
 import { PlanningEquipesComponent } from './planning-equipes/planning-equipes.component';
 import { SuiviLivraisonsComponent } from './suivi-livraisons/suivi-livraisons.component';
@@ -47,6 +48,8 @@ const routes: Routes = [
   { path: 'retrait-commande', component: RetraitCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   // Retraits validés par les agents des prestataires, contestations, anomalies
   { path: 'controle-retraits', component: ControleRetraitsComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES }, title: 'Contrôle des retraits | UbiFood' },
+  // Badges d'accès des employés (retrait au comptoir par badge) : association, import
+  { path: 'badges', component: BadgesComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES }, title: "Badges d'accès | UbiFood" },
   { path: 'facturation-commande', component: FacturationCommandeComponent, canActivate: [RoleGuard], data: { roles: GESTIONNAIRES } },
   // Ancienne page : c'est désormais l'onglet « Prestataires » de la page Facturation
   { path: 'facturation-prestataire', redirectTo: () => inject(Router).createUrlTree(['/cantines/facturation-commande'], { queryParams: { onglet: 'prestataires' } }) },

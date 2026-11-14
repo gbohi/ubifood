@@ -45,6 +45,8 @@ import { AccueilEmployeComponent } from './accueil-employe/accueil-employe.compo
 import { StatistiquesComponent } from './statistiques/statistiques.component';
 import { StatBlocComponent } from './statistiques/stat-bloc.component';
 import { ControleRetraitsComponent } from './controle-retraits/controle-retraits.component';
+import { BadgesComponent } from './badges/badges.component';
+import { BadgeEmployeComponent } from './badges/badge-employe.component';
 import { MonCompteRepasComponent } from './mon-compte-repas/mon-compte-repas.component';
 import { PlanningEquipesComponent } from './planning-equipes/planning-equipes.component';
 import { SuiviLivraisonsComponent } from './suivi-livraisons/suivi-livraisons.component';
@@ -87,6 +89,7 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     AccueilEmployeComponent,
     StatistiquesComponent,
     ControleRetraitsComponent,
+    BadgesComponent,
     MonCompteRepasComponent,
     PlanningEquipesComponent,
     GestionJeuxComponent,
@@ -114,7 +117,8 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     DropzoneModule,
     NgSelectModule,
     NgApexchartsModule,
-    StatBlocComponent
+    StatBlocComponent,
+    BadgeEmployeComponent
   ],
   providers: [
     DatePipe,

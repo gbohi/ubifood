@@ -131,7 +131,7 @@ export const annulerCommandeFailure = createAction(
 // ── Enregistrer un retrait ───────────────────────────────────
 export const createRetrait = createAction(
   '[Commande] Create Retrait',
-  props<{ userId: number; menuId: number; badge_matricule: string }>()
+  props<{ userId: number; menuId: number; badge_matricule: string; mode?: string }>()
 );
 export const createRetraitSuccess = createAction(
   '[Commande] Create Retrait Success',

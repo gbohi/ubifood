@@ -1,7 +1,8 @@
 // Comptoir du prestataire (maquette « espace-presta-3-preparer-comptoir », partie droite) :
-// scan du badge (QR) ou saisie du matricule → carte de l'employé (sans catégorie)
-// → « Valider le retrait ». Le mode (scan / saisie) est déduit de la vitesse de frappe
-// (un lecteur de badge « tape » le code en quelques millisecondes).
+// badge d'accès posé sur le lecteur, QR code scanné ou matricule saisi → carte de
+// l'employé (sans catégorie) → « Valider le retrait ». Une lecture (badge ou QR) est
+// reconnue à la vitesse de frappe : un lecteur USB « tape » le code en quelques ms.
+// Badge d'accès : validation sans clic si le réglage est actif (validation_auto).
 // L'agent peut annuler SON retrait pendant 2 minutes ; au-delà, seul UbiPharm le peut.
 import { Component, DestroyRef, ElementRef, HostListener, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -9,7 +10,7 @@ import { ToastrService } from 'ngx-toastr';
 import { interval } from 'rxjs';
 import { TokenStorageService } from 'src/app/core/services/token-storage.service';
 import {
-  ContextePresta, EspacePrestataireService, RechercheComptoir, RetraitComptoir, ServiceComptoirPresta,
+  ContextePresta, EspacePrestataireService, ModeRetrait, RechercheComptoir, RetraitComptoir, ServiceComptoirPresta,
   JOURS_FR, couleur, initiales, messageErreur, urlMedia, versDate,
 } from 'src/app/core/services/espace-prestataire/espace-prestataire.service';
 
@@ -34,7 +35,9 @@ export class ComptoirComponent implements OnInit, OnDestroy {
   badge = '';
   private frappes: number[] = [];
   private colle = false;
-  mode: 'scan' | 'saisie' = 'saisie';
+  mode: ModeRetrait = 'saisie';
+  /** Code d'erreur de la dernière recherche (badge_perdu, badge_inconnu, badge_obligatoire) */
+  codeErreur: string | null = null;
   recherche: RechercheComptoir | null = null;
   enRecherche = false;
   erreurRecherche: string | null = null;
@@ -143,19 +146,26 @@ export class ComptoirComponent implements OnInit, OnDestroy {
     this.mode = this.modeDetecte();
     this.enRecherche = true;
     this.erreurRecherche = null;
+    this.codeErreur = null;
     this.alerteDejaRetire = null;
     this.valide = null;
     this.recherche = null;
-    this.api.rechercher(b, this.agenceId).subscribe({
+    this.api.rechercher(b, this.agenceId, this.mode === 'scan').subscribe({
       next: r => {
         this.enRecherche = false;
         this.recherche = r;
+        if (r.mode === 'badge') this.mode = 'badge';
         this.badge = '';
+        if (r.validation_auto && r.a_retirer) {
+          this.valider();
+          return;
+        }
         this.bip(!r.a_retirer);
         this.focus();
       },
       error: e => {
         this.enRecherche = false;
+        this.codeErreur = e?.error?.code ?? null;
         this.erreurRecherche = messageErreur(e, 'Recherche impossible.');
         this.bip(true);
         this.badge = '';
@@ -190,7 +200,12 @@ export class ComptoirComponent implements OnInit, OnDestroy {
     });
   }
 
+  libelleMode(mode: string): string {
+    return mode === 'badge' ? "badge d'accès" : mode === 'scan' ? 'QR code scanné' : 'matricule saisi';
+  }
+
   reinitialiser(): void {
+    this.codeErreur = null;
     this.badge = '';
     this.recherche = null;
     this.valide = null;

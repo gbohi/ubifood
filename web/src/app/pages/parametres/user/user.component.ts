@@ -133,6 +133,8 @@ export class UserComponent implements OnInit, AfterViewInit, OnDestroy {
       { cle: 'roles', titre: 'Rôle(s)' },
       ...(creation ? [{ cle: 'mdp', titre: 'Mot de passe' }] : []),
       ...(this.estRolePrestataire ? [] : [{ cle: 'affectations', titre: 'Affectations' }, { cle: 'allergies', titre: 'Allergies' }]),
+      // Badge d'accès (retrait au comptoir) : une fois le compte créé
+      ...(this.estRolePrestataire || creation ? [] : [{ cle: 'badge', titre: "Badge d'accès" }]),
       { cle: 'recap', titre: 'Récapitulatif' },
     ];
   }

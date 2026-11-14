@@ -37,6 +37,8 @@ import { ApplicationMobileComponent } from './application-mobile/application-mob
 
 import { GrilleTarifsComponent } from './grille-tarifs/grille-tarifs.component';
 
+import { BadgeEmployeComponent } from '../cantines/badges/badge-employe.component';
+
 @NgModule({
   declarations: [
     GrilleTarifsComponent,
@@ -69,6 +71,7 @@ import { GrilleTarifsComponent } from './grille-tarifs/grille-tarifs.component';
     ReactiveFormsModule,
     ParametresRoutingModule,
     ModalModule.forRoot(),
+    BadgeEmployeComponent,
   ],
   providers: [
     DatePipe

@@ -554,6 +554,13 @@
 
           }
 
+          @if (etape === 'badge' && f['id'].value) {
+            <h6 class="text-muted text-uppercase mb-2 small"><i class="ri-bank-card-2-line me-1"></i>Badge d'accès</h6>
+            <p class="small text-muted mb-3">Le badge des portes sert aussi au comptoir de la cantine. Posez-le sur le lecteur USB :
+              seul son numéro est enregistré, jamais affiché en clair. Indépendant du bouton « Enregistrer ».</p>
+            <app-badge-employe [userId]="f['id'].value"></app-badge-employe>
+          }
+
           @if (etape === 'recap') {
             <h6 class="text-muted text-uppercase mb-3 small"><i class="ri-file-list-3-line me-1"></i>Récapitulatif</h6>
             <dl class="uw-recap">

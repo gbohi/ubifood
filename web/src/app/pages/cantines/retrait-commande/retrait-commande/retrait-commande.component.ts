@@ -299,6 +299,7 @@ export class RetraitCommandeComponent implements OnInit, OnDestroy {
       userId:          this.resultatBadge.user_id,
       menuId:          this.selectedMenuId,
       badge_matricule: this.resultatBadge.badge,
+      mode:            this.resultatBadge.mode ?? undefined,
     }));
   }
 

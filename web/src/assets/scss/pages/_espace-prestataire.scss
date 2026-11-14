@@ -446,3 +446,33 @@ app-planning-menus .ce-cal-statut { display: flex; gap: 4px; flex-wrap: wrap; .c
 // Anomalie classée « Vérifié »
 .ep-anomalies li.ep-anom-ok { opacity: .8; }
 .ep-anom-ic.verifiee { background: #EAFBF1; color: #1C7F45; }
+
+// ── Badges d'accès (Cantine › Badges) ─────────────────────────
+.ep-badges {
+  .ep-kpi-texte { font-size: 16px; }
+  .bdg-liste { max-height: 460px; overflow: auto; padding: 4px 8px 10px; display: grid; gap: 4px; }
+  .bdg-ligne {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; gap: 10px; align-items: center; text-align: left;
+    border: 1px solid transparent; background: none; border-radius: 10px; padding: 9px 10px; color: inherit;
+    b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    small { color: var(--ubi-gris); }
+    i { color: #9AAAC0; }
+    &:hover { background: #F4F7FB; }
+    &.on { background: #EAF7EF; border-color: #BFEFD2; i { color: #1d7a43; } }
+  }
+  .bdg-poser { padding: 18px; display: grid; gap: 14px; align-content: start; min-height: 300px; }
+  .bdg-employe { display: flex; gap: 12px; align-items: center;
+    b { display: block; font-size: 15px; } small { color: var(--ubi-gris); } }
+  .bdg-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: #E8F0FD; color: #0F3A6E; font-size: 20px; }
+  .bdg-attente {
+    border: 2px dashed #BFEFD2; background: #F4FCF7; border-radius: 16px; padding: 26px 16px; display: grid; justify-items: center; gap: 6px; text-align: center; cursor: text;
+    > i { font-size: 46px; color: #3EC970; }
+    > b { font-size: 16px; }
+    > small { color: var(--ubi-gris); }
+  }
+  .bdg-champ { max-width: 260px; text-align: center; letter-spacing: 3px; margin-top: 6px; }
+  .bdg-recents { border-top: 1px solid #E2EAF4; padding-top: 10px; display: grid; gap: 4px;
+    i { color: #3EC970; margin-right: 6px; } }
+  .bdg-import-bilan { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; padding: 12px 16px; border-bottom: 1px solid #E2EAF4;
+    .lst-tag { margin-right: 4px; } }
+}

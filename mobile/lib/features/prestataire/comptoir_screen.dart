@@ -4,8 +4,12 @@
 // du service, « Scanner un badge » (mode scan) ou matricule saisi (mode
 // saisie), fiche de l'employé, « Valider le retrait », alerte « déjà
 // retiré » et derniers retraits (annulables 2 minutes par leur auteur).
+// Lecteur de badge d'accès branché (USB / OTG, il « tape » le numéro puis
+// Entrée comme un clavier) : poser le badge suffit, validation automatique
+// si le réglage est actif et qu'il n'y a qu'un repas à retirer.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/prestataire_service.dart';
 import '../../core/widgets/common_widgets.dart';
@@ -27,15 +31,74 @@ class ComptoirScreen extends StatefulWidget {
   State<ComptoirScreen> createState() => _ComptoirScreenState();
 }
 
+/// Écart maximal entre deux touches d'un lecteur de badge (un humain est plus lent)
+const _ecartLecteur = Duration(milliseconds: 60);
+
 class _ComptoirScreenState extends State<ComptoirScreen> {
   final _matriculeCtrl = TextEditingController();
+  final _focusMatricule = FocusNode();
   bool _scanMode = false;
   bool _visible = true;
+
+  // Lecteur de badge (clavier matériel)
+  final _lecture = StringBuffer();
+  DateTime? _derniereTouche;
+  int _touchesRapides = 0;
+  bool _saisieParLecteur = false;
 
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_onTouche);
     WidgetsBinding.instance.addPostFrameCallback((_) => _charger());
+  }
+
+  /// Touches du lecteur branché : hors du champ matricule, la lecture est
+  /// captée ici ; dans le champ, on retient seulement si la frappe était rapide.
+  bool _onTouche(KeyEvent e) {
+    if (!mounted || !_visible || e is! KeyDownEvent) return false;
+    final maintenant = DateTime.now();
+    final rapide = _derniereTouche != null &&
+        maintenant.difference(_derniereTouche!) <= _ecartLecteur;
+    final champActif = _focusMatricule.hasFocus;
+    if (e.logicalKey == LogicalKeyboardKey.enter ||
+        e.logicalKey == LogicalKeyboardKey.numpadEnter) {
+      final code = _lecture.toString().trim();
+      final parLecteur = _touchesRapides >= 3 && rapide;
+      _lecture.clear();
+      _derniereTouche = null;
+      _touchesRapides = 0;
+      if (champActif) {
+        _saisieParLecteur = parLecteur;
+        return false;
+      }
+      if (code.length >= 3 && parLecteur) {
+        _lireBadge(code);
+        return true;
+      }
+      return false;
+    }
+    final c = e.character;
+    if (c == null || c.length != 1 || c.codeUnitAt(0) < 32) return false;
+    if (!rapide) {
+      _lecture.clear();
+      _touchesRapides = 0;
+    } else {
+      _touchesRapides++;
+    }
+    _lecture.write(c);
+    _derniereTouche = maintenant;
+    return !champActif;
+  }
+
+  void _lireBadge(String code) {
+    final comptoir = context.read<ComptoirProvider>();
+    if (comptoir.occupe) return;
+    setState(() {
+      _scanMode = false;
+      _matriculeCtrl.clear();
+    });
+    comptoir.rechercher(code, ModeIdentification.badge, agenceId: _agenceId);
   }
 
   @override
@@ -49,6 +112,8 @@ class _ComptoirScreenState extends State<ComptoirScreen> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onTouche);
+    _focusMatricule.dispose();
     _matriculeCtrl.dispose();
     super.dispose();
   }
@@ -85,11 +150,15 @@ class _ComptoirScreenState extends State<ComptoirScreen> {
 
   void _rechercherSaisie() {
     final m = _matriculeCtrl.text.trim();
+    final parLecteur = _saisieParLecteur;
+    _saisieParLecteur = false;
     if (m.isEmpty) return;
     FocusScope.of(context).unfocus();
-    context
-        .read<ComptoirProvider>()
-        .rechercher(m, ModeIdentification.saisie, agenceId: _agenceId);
+    // Badge posé alors que le champ était actif : lu comme un badge
+    if (parLecteur) _matriculeCtrl.clear();
+    context.read<ComptoirProvider>().rechercher(
+        m, parLecteur ? ModeIdentification.badge : ModeIdentification.saisie,
+        agenceId: _agenceId);
   }
 
   Future<void> _valider() async {
@@ -318,11 +387,24 @@ class _ComptoirScreenState extends State<ComptoirScreen> {
             onPressed: () => setState(() => _scanMode = true),
           ),
         ],
+        const SizedBox(height: 8),
+        Row(key: const Key('aide-lecteur-badge'), children: [
+          Icon(Icons.contactless_rounded,
+              size: 18,
+              color: isDark ? AppColors.accent : AppColors.primaryLight),
+          const SizedBox(width: 6),
+          const Expanded(
+            child: Text(
+                "Lecteur de badge branché : posez simplement le badge d'accès",
+                style: TextStyle(fontSize: 11.5)),
+          ),
+        ]),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(
             child: TextField(
               controller: _matriculeCtrl,
+              focusNode: _focusMatricule,
               textInputAction: TextInputAction.search,
               textCapitalization: TextCapitalization.characters,
               decoration: InputDecoration(

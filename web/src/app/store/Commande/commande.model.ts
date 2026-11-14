@@ -81,6 +81,8 @@ export interface RechercheParBadgeResult {
   user_id:   number;
   user_nom:  string;
   badge:     string;
+  /** 'badge' : agent identifié par son badge d'accès (lecteur) */
+  mode?:     'badge' | null;
   a_retire:  boolean;
   /** Heure du retrait déjà enregistré (si a_retire) */
   date_retrait?: string | null;
@@ -105,6 +107,7 @@ export interface RetraitCreatePayload {
   user_id: number;
   menu_id: number;
   badge_matricule: string;
+  mode?: string;
 }
 
 export interface RetraitListModel {

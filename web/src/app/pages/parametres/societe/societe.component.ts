@@ -90,6 +90,10 @@ export class SocieteComponent implements OnInit {
       suivi_rappel_minutes:      [30, [Validators.required, Validators.min(0), Validators.max(240), Validators.pattern(/^\d+$/)]],
       suivi_incidents_actif:     [true],
       suivi_preferences_employe: [true],
+      // Retrait au comptoir par badge d'accès
+      badge_validation_auto:     [true],
+      badge_alerte_perdu:        [true],
+      badge_obligatoire:         [false],
     });
     this.http.get<any>(this.url)
       .pipe(takeUntilDestroyed(this.destroyRef))

@@ -982,6 +982,8 @@ class ComptoirRechercheView(APIView):
     """
     GET /prestataire/comptoir/recherche/?badge=MATRICULE&agence=   (QR code scanné ou matricule saisi)
     GET /prestataire/comptoir/recherche/?carte=NUMERO&agence=      (badge d'accès posé sur le lecteur)
+    &repli=1 : lecture rapide d'origine inconnue (badge ou QR) ; un numéro de badge
+    inconnu est alors cherché comme matricule (QR code).
     Employé et sa commande du jour dans l'agence. Badge : « validation_auto »
     vrai si le réglage est actif et qu'il n'y a qu'un repas à retirer.
     """
@@ -995,6 +997,10 @@ class ComptoirRechercheView(APIView):
             raise ValidationError({'badge': "Badge ou matricule requis."})
         agence = _agence_comptoir(request)
         parametres = ParametresSociete.charger()
+        if carte and (request.query_params.get('repli') or '') in ('1', 'true'):
+            b = bdg.trouver(carte, statuts=('actif', 'perdu'))
+            if b is None and User.objects.filter(username__iexact=carte, prestataire__isnull=True).exists():
+                badge, carte = carte, ''
         if carte:
             b = bdg.trouver(carte, statuts=('actif', 'perdu'))
             if b is not None and b.statut == 'perdu':
