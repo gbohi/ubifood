@@ -139,6 +139,17 @@ export const MENU: MenuItem[] = [
                 parentId: 210
             },
             {
+                // Suivi des factures des prestataires de ses agences (lecture seule) ;
+                // la comptabilité et les administrateurs l'ont dans « Comptabilité »
+                id: 2117,
+                label: 'Factures prestataires',
+                link: '/caisse/paiements-prestataires',
+                roles: ['gestionnaire'],
+                sansRoles: COMPTABLES,
+                isNew: true,
+                parentId: 210
+            },
+            {
                 id: 216,
                 label: 'MENUITEMS.CANTINES.LIST.GESTIONCOMMANDE',
                 link: '/cantines/gestion-commandes',
