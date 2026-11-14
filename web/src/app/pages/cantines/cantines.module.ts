@@ -50,6 +50,14 @@ import { PlanningEquipesComponent } from './planning-equipes/planning-equipes.co
 import { SuiviLivraisonsComponent } from './suivi-livraisons/suivi-livraisons.component';
 import { GestionJeuxComponent } from './gestion-jeux/gestion-jeux.component';
 import { JeuxComponent } from './jeux/jeux.component';
+import { JeuxDefisComponent } from './jeux/onglets/jeux-defis.component';
+import { JeuxPronosticsComponent } from './jeux/onglets/jeux-pronostics.component';
+import { JeuxTicketsComponent } from './jeux/onglets/jeux-tickets.component';
+import { MesGainsComponent } from './jeux/onglets/mes-gains.component';
+import { AdminDefisComponent } from './gestion-jeux/onglets/admin-defis.component';
+import { AdminPronosticsComponent } from './gestion-jeux/onglets/admin-pronostics.component';
+import { AdminTicketsComponent } from './gestion-jeux/onglets/admin-tickets.component';
+import { LotsARemettreComponent } from './gestion-jeux/onglets/lots-a-remettre.component';
 
 // Graphiques (page Statistiques)
 import { NgApexchartsModule } from 'ng-apexcharts';
@@ -82,6 +90,14 @@ const DEFAULT_DROPZONE_CONFIG: DropzoneConfigInterface = {
     PlanningEquipesComponent,
     GestionJeuxComponent,
     JeuxComponent,
+    JeuxDefisComponent,
+    JeuxPronosticsComponent,
+    JeuxTicketsComponent,
+    MesGainsComponent,
+    AdminDefisComponent,
+    AdminPronosticsComponent,
+    AdminTicketsComponent,
+    LotsARemettreComponent,
     SuiviLivraisonsComponent
   ],
   imports: [

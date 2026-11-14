@@ -3,6 +3,17 @@
     <!-- ═══════════ LISTE ═══════════ -->
     @case ('liste') {
       <app-page-entete titre="Jeux" icone="ri-gamepad-line" sousTitre="Jouez, grimpez au classement, gagnez des lots"></app-page-entete>
+      <div class="jx-onglets">
+        @for (o of onglets; track o.code) {
+          <button type="button" [class.on]="onglet === o.code" (click)="changerOnglet(o.code)"><i [class]="o.icone"></i>{{ o.libelle }}</button>
+        }
+      </div>
+      @switch (onglet) {
+        @case ('defis') { <app-jeux-defis></app-jeux-defis> }
+        @case ('pronostics') { <app-jeux-pronostics></app-jeux-pronostics> }
+        @case ('tickets') { <app-jeux-tickets></app-jeux-tickets> }
+        @case ('gains') { <app-mes-gains></app-mes-gains> }
+        @default {
       @if (liste; as l) {
         @for (j of l.en_cours; track j.id; let premier = $first) {
           <button type="button" class="jx-hero" (click)="ouvrir(j.id)">
@@ -45,6 +56,8 @@
           <div class="lst-carte"><div class="lst-vide py-5"><i class="ri-gamepad-line"></i><b>Aucun jeu pour le moment.</b><span>Vous serez notifié dès qu'un jeu sera programmé.</span></div></div>
         }
       } @else { <div class="p-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div> }
+        }
+      }
     }
 
     <!-- ═══════════ PRÉSENTATION D'UN JEU ═══════════ -->

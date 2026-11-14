@@ -33,6 +33,14 @@ export class GestionJeuxComponent implements OnInit {
   readonly lettres = ['A', 'B', 'C', 'D'];
 
   vue: 'liste' | 'edition' | 'classement' = 'liste';
+  readonly onglets = [
+    { code: 'quiz', libelle: 'Quiz', icone: 'ri-question-answer-line' },
+    { code: 'defis', libelle: 'Défis et badges', icone: 'ri-medal-line' },
+    { code: 'pronostics', libelle: 'Pronostics', icone: 'ri-football-line' },
+    { code: 'tickets', libelle: 'Tickets à gratter', icone: 'ri-coupon-3-line' },
+    { code: 'lots', libelle: 'Lots à remettre', icone: 'ri-hand-heart-line' },
+  ];
+  onglet = 'quiz';
   jeux: any[] = [];
   agences: { id: number; nom_agence: string }[] = [];
   chargement = true;

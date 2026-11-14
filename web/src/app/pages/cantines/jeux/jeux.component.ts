@@ -21,6 +21,14 @@ export class JeuxComponent implements OnInit, OnDestroy {
   readonly lettres = ['A', 'B', 'C', 'D'];
 
   vue: 'liste' | 'jeu' | 'partie' | 'resultats' | 'classement' = 'liste';
+  readonly onglets = [
+    { code: 'quiz', libelle: 'Quiz', icone: 'ri-question-answer-line' },
+    { code: 'defis', libelle: 'Défis', icone: 'ri-medal-line' },
+    { code: 'pronostics', libelle: 'Pronostics', icone: 'ri-football-line' },
+    { code: 'tickets', libelle: 'Tickets', icone: 'ri-coupon-3-line' },
+    { code: 'gains', libelle: 'Mes gains', icone: 'ri-gift-line' },
+  ];
+  onglet = 'quiz';
   liste: any = null;
   jeu: any = null;
   etat: any = null;
@@ -40,6 +48,8 @@ export class JeuxComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     document.addEventListener('visibilitychange', this.surVisibilite);
     this.tick = setInterval(() => this.battre(), 200);
+    const o = this.route.snapshot.queryParamMap.get('onglet');
+    if (o && this.onglets.some(x => x.code === o)) this.onglet = o;
     const id = Number(this.route.snapshot.queryParamMap.get('jeu'));
     if (id) this.ouvrir(id); else this.chargerListe();
   }
@@ -51,9 +61,14 @@ export class JeuxComponent implements OnInit, OnDestroy {
   }
 
   // ── Liste ──────────────────────────────────────────────────
+  changerOnglet(o: string): void {
+    this.onglet = o;
+    this.router.navigate([], { queryParams: o === 'quiz' ? {} : { onglet: o }, replaceUrl: true });
+  }
+
   chargerListe(): void {
     this.vue = 'liste'; this.chargement = true;
-    this.router.navigate([], { queryParams: {}, replaceUrl: true });
+    this.router.navigate([], { queryParams: this.onglet === 'quiz' ? {} : { onglet: this.onglet }, replaceUrl: true });
     this.http.get<any>(`${this.api}/`).subscribe({
       next: l => { this.liste = l; this.chargement = false; this.caler(l.en_cours[0] ? Date.parse(l.en_cours[0].fin) - Date.parse(l.serveur) : 0); },
       error: e => { this.chargement = false; this.toastr.error(this.msg(e)); },

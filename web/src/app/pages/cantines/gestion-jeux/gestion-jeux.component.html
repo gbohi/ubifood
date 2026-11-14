@@ -3,10 +3,20 @@
     <!-- ═══════════ LISTE ═══════════ -->
     @case ('liste') {
       <app-page-entete titre="Jeux" icone="ri-gamepad-line" [fil]="[{label: 'Cantine'}]"
-                       sousTitre="Quiz à lots pour inciter les employés à commander sur UbiFood">
-        @if (admin) { <button type="button" class="btn-ubi vert" (click)="nouveau()"><i class="ri-add-line"></i>Nouveau jeu</button> }
+                       sousTitre="Quiz, défis, pronostics et tickets à gratter pour inciter les employés à commander sur UbiFood">
+        @if (admin && onglet === 'quiz') { <button type="button" class="btn-ubi vert" (click)="nouveau()"><i class="ri-add-line"></i>Nouveau quiz</button> }
       </app-page-entete>
-
+      <div class="ep-onglets mb-3">
+        @for (o of onglets; track o.code) {
+          <button type="button" class="ep-onglet" [class.on]="onglet === o.code" (click)="onglet = o.code"><i [class]="o.icone"></i>{{ o.libelle }}</button>
+        }
+      </div>
+      @switch (onglet) {
+        @case ('defis') { <app-admin-defis></app-admin-defis> }
+        @case ('pronostics') { <app-admin-pronostics></app-admin-pronostics> }
+        @case ('tickets') { <app-admin-tickets></app-admin-tickets> }
+        @case ('lots') { <app-lots-a-remettre></app-lots-a-remettre> }
+        @default {
       <div class="lst-carte" [class.ep-attente]="chargement">
         <div class="lst-table-wrap">
           <table class="lst-table">
@@ -41,6 +51,8 @@
           </table>
         </div>
       </div>
+        }
+      }
     }
 
     <!-- ═══════════ ÉDITION ═══════════ -->
