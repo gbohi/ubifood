@@ -152,6 +152,9 @@ class Jeu {
   final EligibiliteJeu? eligibilite;
   final int bonusRapiditePct;
 
+  /// Motif de suspension (null : jeu non suspendu ; '' : suspendu sans motif)
+  final String? suspension;
+
   const Jeu({
     required this.id,
     required this.titre,
@@ -173,7 +176,10 @@ class Jeu {
     this.participation,
     this.eligibilite,
     this.bonusRapiditePct = 50,
+    this.suspension,
   });
+
+  bool get suspendu => suspension != null;
 
   bool get direct => mode == 'direct';
 
@@ -217,6 +223,9 @@ class Jeu {
           ? EligibiliteJeu.fromJson(_m(j['eligibilite']))
           : null,
       bonusRapiditePct: _i(regles['bonus_rapidite_pct'], 50),
+      suspension: j['suspension'] is Map
+          ? (_m(j['suspension'])['motif']?.toString() ?? '')
+          : null,
     );
   }
 }

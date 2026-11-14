@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import '../../core/api/api_client.dart' show messageErreurApi;
 import '../../core/services/jeux_service.dart';
 import '../../core/widgets/common_widgets.dart';
+import '../../shared/models/autres_jeux_models.dart' show texteSuspension;
 import '../../shared/models/jeux_models.dart';
 import '../../shared/theme/app_theme.dart';
 import '../prestataire/prestataire_widgets.dart' show CartePresta;
@@ -577,6 +578,14 @@ class _JeuDetailScreenState extends State<JeuDetailScreen> {
                       child: ListView(
                           padding: const EdgeInsets.all(14),
                           children: [
+                            if (j.suspendu) ...[
+                              BandeauInfo(
+                                  key: const Key('jeu-suspendu'),
+                                  icone: Icons.pause_circle_outline_rounded,
+                                  ton: TonPastille.or,
+                                  texte: texteSuspension(j.suspension!)),
+                              const SizedBox(height: 12),
+                            ],
                             if (j.participation?.resultat != null) ...[
                               CarteResultat(jeu: j),
                               const SizedBox(height: 12),
@@ -722,8 +731,9 @@ class _JeuDetailScreenState extends State<JeuDetailScreen> {
           : (j.direct && j.etat == 'a_venir'
               ? 'Rejoindre la salle d\'attente'
               : 'Commencer la partie'),
-      onPressed:
-          (ouvert && (e?.ok ?? false) && !_envoi) ? () => _jouer() : null,
+      onPressed: (ouvert && (e?.ok ?? false) && !_envoi && !j.suspendu)
+          ? () => _jouer()
+          : null,
     ));
     return res;
   }

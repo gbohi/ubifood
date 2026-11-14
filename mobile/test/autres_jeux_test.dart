@@ -154,6 +154,16 @@ void main() {
     expect(find.text('À retirer auprès de votre gestionnaire'), findsOneWidget);
   });
 
+  testWidgets('ticket d\'un jeu suspendu : pas de grattage', (tester) async {
+    final t = TicketJeu.fromJson({'id': 9, 'campagne': 'T', 'source_libelle': 'Repas retiré', 'expire_le': _demain, 'suspendu': true});
+    final s = _Faux();
+    await tester.pumpWidget(_app(TicketAGratter(ticket: t, service: s)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticket-suspendu')), findsOneWidget);
+    expect(find.byKey(const Key('grattoir')), findsNothing);
+    expect(s.grattages, 0);
+  });
+
   testWidgets('mes gains : lot retiré affiché', (tester) async {
     await tester.pumpWidget(_app(OngletGains(service: _Faux())));
     await tester.pumpAndSettle();

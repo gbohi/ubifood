@@ -310,6 +310,16 @@ void main() {
     expect(bouton.onPressed, isNull);
   });
 
+  testWidgets('jeu suspendu : bandeau et bouton désactivé', (tester) async {
+    final s = _FauxService()
+      ..jeuJson = {..._jeu(), 'suspension': {'depuis': _serveur, 'motif': 'Maintenance'}};
+    await tester.pumpWidget(_app(JeuDetailScreen(jeuId: 1, service: s)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('jeu-suspendu')), findsOneWidget);
+    expect(find.textContaining('Maintenance'), findsOneWidget);
+    expect(tester.widget<BoutonJeu>(find.byKey(const Key('btn-commencer'))).onPressed, isNull);
+  });
+
   testWidgets('gagné : lot retiré affiché pour éviter un second retrait',
       (tester) async {
     final s = _FauxService()

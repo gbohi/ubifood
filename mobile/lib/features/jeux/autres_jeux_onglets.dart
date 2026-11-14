@@ -124,7 +124,7 @@ class OngletDefis extends StatelessWidget {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(c.mois.toUpperCase(),
+                      Text(c.mois,
                           style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 11,
@@ -151,6 +151,14 @@ class OngletDefis extends StatelessWidget {
                       ),
                     ]),
               ),
+              if (c.suspension != null) ...[
+                const SizedBox(height: 10),
+                BandeauInfo(
+                    key: const Key('defis-suspendu'),
+                    icone: Icons.pause_circle_outline_rounded,
+                    ton: TonPastille.or,
+                    texte: texteSuspension(c.suspension!)),
+              ],
               if (c.palierObtenu != null || c.gain != null) ...[
                 const SizedBox(height: 10),
                 BandeauInfo(
@@ -552,6 +560,14 @@ class _CompetitionScreenState extends State<CompetitionScreen> {
                                   texte:
                                       'Vous êtes ${c.rang == 1 ? '1er' : '${c.rang}e'}${c.provisoire ? ' (provisoire)' : ''} avec ${c.points} points'
                                       '${c.gain != null ? '. Lot : ${c.gain!.libelle} — ${etatGain(c.gain!)}' : c.resultat == 'perdu' ? '. Perdu cette fois.' : '.'}'),
+                            if (c.suspension != null) ...[
+                              const SizedBox(height: 8),
+                              BandeauInfo(
+                                  key: const Key('prono-suspendu'),
+                                  icone: Icons.pause_circle_outline_rounded,
+                                  ton: TonPastille.or,
+                                  texte: texteSuspension(c.suspension!)),
+                            ],
                             if (c.messageEligibilite != null) ...[
                               const SizedBox(height: 8),
                               BandeauInfo(
@@ -581,7 +597,8 @@ class _CompetitionScreenState extends State<CompetitionScreen> {
                                                   style: const TextStyle(
                                                       fontWeight:
                                                           FontWeight.w700))),
-                                          if (m.ouvert) ...[
+                                          if (m.ouvert &&
+                                              c.suspension == null) ...[
                                             _ChampScore(
                                                 key: Key('score-a-${m.id}'),
                                                 ctrl: _saisies[m.id]!.$1,
@@ -899,7 +916,26 @@ class _TicketAGratterState extends State<TicketAGratter> {
                             ]),
                     ),
                   ),
-                  if (!_devoile)
+                  if (!_devoile && widget.ticket.suspendu)
+                    Positioned.fill(
+                      child: Container(
+                        key: const Key('ticket-suspendu'),
+                        color: const Color(0xFFE2E8F0),
+                        alignment: Alignment.center,
+                        child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.pause_circle_outline_rounded,
+                                  color: Color(0xFF5A7090)),
+                              SizedBox(width: 6),
+                              Text('Jeu suspendu',
+                                  style: TextStyle(
+                                      color: Color(0xFF5A7090),
+                                      fontWeight: FontWeight.w600)),
+                            ]),
+                      ),
+                    )
+                  else if (!_devoile)
                     Positioned.fill(
                       child: GestureDetector(
                         key: const Key('grattoir'),

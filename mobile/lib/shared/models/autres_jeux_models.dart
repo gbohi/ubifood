@@ -8,6 +8,13 @@ List<dynamic> _l(dynamic v) => v is List ? v : const [];
 int _i(dynamic v, [int d = 0]) => (v as num?)?.toInt() ?? d;
 int? _in(dynamic v) => (v as num?)?.toInt();
 String _s(dynamic v) => v?.toString() ?? '';
+
+/// Motif d'une suspension (null : pas suspendu ; '' : suspendu sans motif)
+String? _susp(dynamic v) => v is Map ? (v['motif']?.toString() ?? '') : null;
+
+/// « Jeu suspendu momentanément : motif. »
+String texteSuspension(String motif) =>
+    'Jeu suspendu momentanément${motif.isEmpty ? '' : ' : $motif'}. Revenez un peu plus tard.';
 DateTime? _d(dynamic v) =>
     v == null ? null : DateTime.tryParse(v.toString())?.toLocal();
 
@@ -143,6 +150,7 @@ class ProgrammeDefis {
   final List<PalierDefi> paliers;
   final String? palierObtenu;
   final Gain? gain;
+  final String? suspension;
 
   const ProgrammeDefis({
     required this.id,
@@ -154,6 +162,7 @@ class ProgrammeDefis {
     this.paliers = const [],
     this.palierObtenu,
     this.gain,
+    this.suspension,
   });
 
   factory ProgrammeDefis.fromJson(Map<String, dynamic> j) {
@@ -162,7 +171,8 @@ class ProgrammeDefis {
     return ProgrammeDefis(
       id: _i(j['id']),
       titre: _s(j['titre']),
-      mois: _s(j['mois_libelle']),
+      mois: _s(j['periode_libelle'] ?? j['mois_libelle']),
+      suspension: _susp(j['suspension']),
       points: _i(j['points'] ?? r['points']),
       pointsMax: _i(j['points_max']),
       defis: _l(j['defis']).map((e) => Defi.fromJson(_m(e))).toList(),
@@ -270,6 +280,7 @@ class Competition {
   final Gain? gain;
   final List<MatchProno> matchs;
   final String? messageEligibilite;
+  final String? suspension;
 
   const Competition({
     required this.id,
@@ -286,6 +297,7 @@ class Competition {
     this.gain,
     this.matchs = const [],
     this.messageEligibilite,
+    this.suspension,
   });
 
   factory Competition.fromJson(Map<String, dynamic> j) {
@@ -307,6 +319,7 @@ class Competition {
       matchs: _l(j['matchs']).map((x) => MatchProno.fromJson(_m(x))).toList(),
       messageEligibilite:
           e.isNotEmpty && e['ok'] != true ? _s(e['message']) : null,
+      suspension: _susp(j['suspension']),
     );
   }
 }
@@ -323,6 +336,7 @@ class TicketJeu {
   /// null : pas encore gratté
   final bool? gagne;
   final Gain? gain;
+  final bool suspendu;
 
   const TicketJeu({
     required this.id,
@@ -332,6 +346,7 @@ class TicketJeu {
     this.gratteLe,
     this.gagne,
     this.gain,
+    this.suspendu = false,
   });
 
   factory TicketJeu.fromJson(Map<String, dynamic> j) => TicketJeu(
@@ -342,6 +357,7 @@ class TicketJeu {
         gratteLe: _d(j['gratte_le']),
         gagne: j['gagne'] as bool?,
         gain: j['gain'] is Map ? Gain.fromJson(_m(j['gain'])) : null,
+        suspendu: j['suspendu'] == true,
       );
 }
 
@@ -361,7 +377,10 @@ class MesTickets {
               .map((l) => _s(_m(l)['libelle_affiche']))
               .take(3)
               .join(', ');
-          return '${_s(m['titre'])} : à gagner $lots…';
+          final susp = _susp(m['suspension']);
+          return susp != null
+              ? '${_s(m['titre'])} — ${texteSuspension(susp)}'
+              : '${_s(m['titre'])} : à gagner $lots…';
         }).toList(),
         aGratter:
             _l(j['a_gratter']).map((e) => TicketJeu.fromJson(_m(e))).toList(),
