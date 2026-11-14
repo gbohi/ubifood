@@ -1,0 +1,76 @@
+<div class="card gt">
+  <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+    <button type="button" class="gt-titre" (click)="ouverte = !ouverte" [attr.aria-expanded]="ouverte">
+      <i class="ri-grid-line"></i>{{ titre }}<i [class]="ouverte ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i>
+    </button>
+    @if (ouverte) {
+      <label class="ms-auto d-flex align-items-center gap-2 small text-muted mb-0">En vigueur au
+        <input type="date" class="form-control form-control-sm" style="width: 150px" [(ngModel)]="date" (change)="charger()"></label>
+    }
+  </div>
+  @if (ouverte) {
+    <div class="card-body p-0">
+      @if (chargement && !lignes.length) { <div class="p-3 text-muted small"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div> }
+      <div class="table-responsive" [class.opacity-50]="chargement">
+        <table class="table table-sm align-middle mb-0 gt-table">
+          <thead class="table-light"><tr>
+            <th>{{ premiereColonne }}</th>
+            @for (c of colonnes; track c.cle) { <th class="text-center" [class.gt-tous]="c.cle === 'tous'">{{ c.libelle }}@if (c.cle === 'tous') { <small class="d-block fw-normal text-muted">si aucun tarif du type</small> }</th> }
+          </tr></thead>
+          <tbody>
+            @for (l of lignes; track l.id) {
+              <tr>
+                <td class="fw-semibold">{{ l.libelle }}</td>
+                @for (c of colonnes; track c.cle) {
+                  <td class="text-center">
+                    <button type="button" class="gt-case" [class.vide]="!l.cases[c.cle]" [class.tous]="c.cle === 'tous'" [disabled]="!admin"
+                            (click)="ouvrir(l, c.cle)" [title]="l.cases[c.cle] ? 'Depuis le ' + fr(l.cases[c.cle]!.date_debut) : (c.cle === 'tous' ? 'Aucun tarif' : 'Tarif « Tous types »')">
+                      @if (l.cases[c.cle]; as t) { {{ fcfa(t.montant) }} }
+                      @else if (c.cle !== 'tous' && l.cases['tous']) { <span class="gt-herite">{{ fcfa(l.cases['tous']!.montant) }}</span> }
+                      @else { — }
+                    </button>
+                    @if (aVenir(l, c.cle); as a) { <small class="d-block gt-futur"><i class="ri-time-line"></i>{{ fcfa(a.montant) }} au {{ fr(a.date_debut) }}</small> }
+                  </td>
+                }
+              </tr>
+            } @empty { <tr><td [attr.colspan]="colonnes.length + 1" class="text-center text-muted py-3">Aucune ligne.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+      <div class="gt-aide"><i class="ri-information-line"></i>
+        Montant en gris : pas de tarif propre au type, le tarif « Tous types » s'applique.
+        @if (admin) { Cliquez sur une case pour fixer un nouveau tarif à partir d'une date : l'ancien est clôturé la veille. }
+        @else { Lecture seule : seuls les administrateurs modifient les tarifs. }
+      </div>
+    </div>
+  }
+</div>
+
+<div bsModal #caseModal="bs-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">{{ edition?.ligne?.libelle }} · {{ edition?.libelleType }}</h5>
+        <button type="button" class="btn-close" (click)="caseModal.hide()" aria-label="Fermer"></button></div>
+      <div class="modal-body">
+        @if (edition; as e) {
+          <p class="small text-muted mb-3">
+            @if (e.actuel) { Tarif actuel : <b>{{ fcfa(e.actuel.montant) }}</b> depuis le {{ fr(e.actuel.date_debut) }}. }
+            @else if (e.cle !== 'tous' && e.defaut) { Pas de tarif propre : le tarif « Tous types » (<b>{{ fcfa(e.defaut.montant) }}</b>) s'applique. }
+            @else { Aucun tarif pour l'instant. }
+          </p>
+          <div class="row g-3">
+            <div class="col-6"><label class="form-label" for="gt-m">Nouveau montant (FCFA)</label>
+              <input id="gt-m" type="number" min="0" class="form-control" [(ngModel)]="saisie.montant"></div>
+            <div class="col-6"><label class="form-label" for="gt-d">À partir du</label>
+              <input id="gt-d" type="date" class="form-control" [(ngModel)]="saisie.date_debut"></div>
+          </div>
+          @if (e.actuel && saisie.date_debut) { <p class="small text-muted mt-3 mb-0"><i class="ri-history-line"></i> L'ancien tarif sera clôturé le {{ veille }} (conservé dans l'historique).</p> }
+        }
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" (click)="caseModal.hide()">Annuler</button>
+        <button type="button" class="btn btn-primary" [disabled]="envoi || saisie.montant === '' || !saisie.date_debut" (click)="enregistrer()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -35,8 +35,11 @@ import { PopupConnexionComponent } from './popup-connexion/popup-connexion.compo
 import { AccueilParametresComponent } from './accueil-parametres/accueil-parametres.component';
 import { ApplicationMobileComponent } from './application-mobile/application-mobile.component';
 
+import { GrilleTarifsComponent } from './grille-tarifs/grille-tarifs.component';
+
 @NgModule({
   declarations: [
+    GrilleTarifsComponent,
     AccueilParametresComponent,
     SocieteComponent,
     BannieresComponent,

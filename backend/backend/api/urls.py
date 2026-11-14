@@ -6,6 +6,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import *
 from .accueil import AccueilView
 from .planning import PlanningView
+from .tarifs_grille import GrilleTarifsView
 from .suivi_repas import (
     PonctualiteView, PreferencesSuiviView, PrestataireIncidentView, PrestataireSuiviEtapeView, PrestataireSuiviView,
     SuiviLivraisonsView,
@@ -113,6 +114,7 @@ urlpatterns = [
     path('api/dashboard-cantine/', DashboardCantineView.as_view(), name='dashboard-cantine'),
     path('api/accueil/', AccueilView.as_view(), name='accueil'),
     path('api/planning/', PlanningView.as_view(), name='planning'),
+    path('api/tarifs/grille/', GrilleTarifsView.as_view(), name='tarifs-grille'),
     # Suivi des repas (préparation, livraison, arrivée au comptoir)
     path('api/prestataire/suivi/', PrestataireSuiviView.as_view(), name='prestataire-suivi'),
     path('api/prestataire/suivi/<int:pk>/', PrestataireSuiviEtapeView.as_view(), name='prestataire-suivi-etape'),

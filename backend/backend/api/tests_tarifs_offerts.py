@@ -168,3 +168,40 @@ class RepasOffertTests(_TarifsBase):
         self.assertEqual(Commande.objects.get(pk=r.data['id']).mode_paiement, 'retenue')
         r = self.commander(self.menu(6, self.nuit), self.plat_a)
         self.assertEqual(r.data['mode_paiement'], 'offert')
+
+
+class GrilleTarifsTests(_TarifsBase):
+
+    def test_grille_employes_et_nouveau_tarif(self):
+        r = self.client_pour(self.gestionnaire).get(f'{API}/tarifs/grille/', {'cible': 'employes'})
+        self.assertEqual(r.status_code, 200, r.data)
+        agent = next(l for l in r.data['lignes'] if l['libelle'] == 'Agent')
+        self.assertEqual((agent['cases']['tous']['montant'], agent['cases'][str(self.complet.id)]['montant']),
+                         (1000.0, 1500.0))
+        self.assertIsNone(agent['cases'][str(self.standard.id)])
+        # Gestionnaire : lecture seule
+        demain = (timezone.localdate() + timedelta(days=1)).isoformat()
+        donnees = {'cible': 'employes', 'proprietaire': self.cat.id, 'type_plat': self.complet.id,
+                   'montant': '1600', 'date_debut': demain}
+        self.assertEqual(self.client_pour(self.gestionnaire).post(f'{API}/tarifs/grille/', donnees,
+                                                                  format='json').status_code, 403)
+        r = self.client_pour(self.admin).post(f'{API}/tarifs/grille/', donnees, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['ancien_cloture_le'], timezone.localdate().isoformat())
+        t = fact.Tarificateur({self.employe.id})
+        self.assertEqual(t.prix(self.employe.id, timezone.localdate(), self.complet.id)[1], D('1500'))
+        self.assertEqual(t.prix(self.employe.id, timezone.localdate() + timedelta(days=1), self.complet.id)[1],
+                         D('1600'))
+        # Même date : refusé
+        self.assertEqual(self.client_pour(self.admin).post(f'{API}/tarifs/grille/', donnees,
+                                                           format='json').status_code, 400)
+
+    def test_grille_prestataires_case_tous_types(self):
+        r = self.client_pour(self.admin).post(f'{API}/tarifs/grille/', {
+            'cible': 'prestataires', 'proprietaire': self.presta_a.id, 'type_plat': None, 'montant': '950',
+            'date_debut': (timezone.localdate() + timedelta(days=2)).isoformat()}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = self.client_pour(self.admin).get(f'{API}/tarifs/grille/', {
+            'cible': 'prestataires', 'date': (timezone.localdate() + timedelta(days=3)).isoformat()})
+        a = next(l for l in r.data['lignes'] if l['id'] == self.presta_a.id)
+        self.assertEqual((a['cases']['tous']['montant'], a['cases'][str(self.complet.id)]['montant']), (950.0, 1300.0))
