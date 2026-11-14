@@ -173,7 +173,8 @@
                             <small class="ep-muted">crédité sur le compte repas</small>
                           } @else {
                             <input class="form-control form-control-sm" [(ngModel)]="l.libelle" placeholder="Smartphone, T-shirt…" maxlength="150">
-                            <small class="ep-muted">à retirer (remise enregistrée)</small>
+                            <div class="input-group input-group-sm mt-1"><span class="input-group-text">valeur</span><input type="number" min="0" class="form-control" [(ngModel)]="l.valeur" placeholder="estimée"><span class="input-group-text">F</span></div>
+                            <small class="ep-muted">à retirer (remise enregistrée) · valeur pour le coût des jeux</small>
                           }</td>
                       <td class="text-end">@if (!lectureSeule) { <button type="button" class="ep-x" (click)="supprimerLot(i)" aria-label="Retirer"><i class="ri-close-line"></i></button> }</td>
                     </tr>

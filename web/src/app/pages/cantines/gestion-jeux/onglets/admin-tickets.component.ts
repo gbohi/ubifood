@@ -54,7 +54,7 @@ import { API_JEUX, dateHeure, fcfa, messageErreur, versIso, versLocal } from '..
             @for (l of f.lots; track $index; let i = $index) {
               <tr><td><select class="form-select form-select-sm" [(ngModel)]="l.type"><option value="objet">Objet</option><option value="argent">Argent</option></select></td>
                 <td>@if (l.type === 'argent') { <div class="input-group input-group-sm"><input type="number" min="1" class="form-control" [(ngModel)]="l.montant"><span class="input-group-text">F</span></div> }
-                    @else { <input class="form-control form-control-sm" [(ngModel)]="l.libelle" placeholder="Dessert offert"> }</td>
+                    @else { <input class="form-control form-control-sm" [(ngModel)]="l.libelle" placeholder="Dessert offert"><div class="input-group input-group-sm mt-1"><span class="input-group-text">valeur</span><input type="number" min="0" class="form-control" [(ngModel)]="l.valeur" placeholder="estimée"><span class="input-group-text">F</span></div> }</td>
                 <td><input type="number" min="1" class="form-control form-control-sm" style="width:90px" [(ngModel)]="l.stock"></td>
                 <td><div class="input-group input-group-sm" style="width:130px"><input type="number" min="0.001" max="100" step="0.1" class="form-control" [(ngModel)]="l.probabilite"><span class="input-group-text">%</span></div></td>
                 @if (courant) { <td class="text-end">{{ l.distribues || 0 }}</td> }
@@ -144,7 +144,7 @@ export class AdminTicketsComponent implements OnInit {
     this.courant = d;
     this.f = { titre: d.titre, debut: versLocal(d.debut), fin: versLocal(d.fin), ticket_par_retrait: d.ticket_par_retrait, ticket_quotidien: d.ticket_quotidien,
                budget_max: d.budget_max, validite_jours: d.validite_jours, agences: d.agences.map((a: any) => a.id),
-               lots: d.lots.map((l: any) => ({ id: l.id, type: l.type, libelle: l.libelle, montant: l.montant, stock: l.stock, probabilite: l.probabilite, distribues: l.distribues })) };
+               lots: d.lots.map((l: any) => ({ id: l.id, type: l.type, libelle: l.libelle, montant: l.montant, stock: l.stock, probabilite: l.probabilite, distribues: l.distribues, valeur: l.valeur })) };
   }
 
   private vide(): any {

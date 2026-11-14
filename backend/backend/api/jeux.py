@@ -661,7 +661,8 @@ def taches_jeux(maintenant=None):
 def lots_json(jeu):
     return [{'id': l.id, 'rangs': libelle_rangs(l), 'rang_debut': l.rang_debut, 'rang_fin': l.rang_fin,
              'libelle': l.libelle, 'type': l.type, 'montant': float(l.montant) if l.montant is not None else None,
-             'quantite': l.rang_fin - l.rang_debut + 1, 'libelle_affiche': libelle_lot(l)}
+             'quantite': l.rang_fin - l.rang_debut + 1, 'libelle_affiche': libelle_lot(l),
+             'valeur': float(l.valeur) if l.valeur is not None else None}
             for l in jeu.lots.order_by('rang_debut')]
 
 
@@ -927,6 +928,19 @@ def _lire_questions(donnees):
     return res
 
 
+def lire_valeur(v, champ, n):
+    """Valeur estimée facultative d'un lot objet (coût des jeux)."""
+    if v in (None, ''):
+        return None
+    try:
+        x = Decimal(str(v).replace(' ', '').replace(',', '.'))
+    except (InvalidOperation, TypeError):
+        raise ValidationError({champ: f"Lot {n} : valeur invalide."})
+    if not Decimal('0') <= x <= MONTANT_MAX:
+        raise ValidationError({champ: f"Lot {n} : valeur entre 0 et 1 000 000 F."})
+    return x
+
+
 def _lire_lots(donnees):
     if not isinstance(donnees, list):
         raise ValidationError({'lots': "Liste attendue."})
@@ -957,7 +971,7 @@ def _lire_lots(donnees):
         if not libelle:
             raise ValidationError({'lots': f"Lot {n} : libellé obligatoire."})
         res.append({'rang_debut': debut, 'rang_fin': fin, 'libelle': libelle[:150], 'type': type_lot,
-                    'montant': montant})
+                    'montant': montant, 'valeur': lire_valeur(l.get('valeur'), 'lots', n) if type_lot == 'objet' else None})
     if pris and pris != set(range(1, max(pris) + 1)):
         raise ValidationError({'lots': "Les rangs des lots doivent se suivre à partir de 1 (sans trou)."})
     return res

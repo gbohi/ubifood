@@ -1400,6 +1400,8 @@ class LotJeu(models.Model):
     libelle    = models.CharField(max_length=150)
     type       = models.CharField(max_length=10, choices=TYPE_CHOICES, default='objet')
     montant    = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    # Valeur estimée d'un lot objet (coût des jeux en comptabilité)
+    valeur     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = 'jeu_lot'
@@ -1483,6 +1485,8 @@ class GainJeu(models.Model):
     libelle    = models.CharField(max_length=150)
     type       = models.CharField(max_length=10, choices=TYPE_CHOICES, default='objet')
     montant    = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    # Coût pour l'entreprise : montant (argent) ou valeur estimée (objet, vide si non renseignée)
+    valeur     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     statut_lot = models.CharField(max_length=12, choices=STATUT_CHOICES, default='a_remettre')
     lot_remis_le  = models.DateTimeField(null=True, blank=True)
     lot_remis_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
@@ -1539,6 +1543,8 @@ class PalierDefis(models.Model):
     type       = models.CharField(max_length=10, choices=GainJeu.TYPE_CHOICES, default='argent')
     montant    = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     quantite   = models.PositiveIntegerField(null=True, blank=True)   # vide : illimité
+    # Valeur estimée d'un lot objet (coût des jeux en comptabilité)
+    valeur     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = 'defis_palier'
@@ -1605,6 +1611,8 @@ class LotPronostics(models.Model):
     libelle     = models.CharField(max_length=150)
     type        = models.CharField(max_length=10, choices=GainJeu.TYPE_CHOICES, default='objet')
     montant     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    # Valeur estimée d'un lot objet (coût des jeux en comptabilité)
+    valeur     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = 'prono_lot'
@@ -1689,6 +1697,8 @@ class LotTicket(models.Model):
     stock       = models.PositiveIntegerField()
     probabilite = models.DecimalField(max_digits=6, decimal_places=3)   # % par ticket gratté
     distribues  = models.PositiveIntegerField(default=0)
+    # Valeur estimée d'un lot objet (coût des jeux en comptabilité)
+    valeur     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = 'ticket_lot'

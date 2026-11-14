@@ -13,7 +13,7 @@ import { environment } from 'src/environments/environment';
 
 interface ReponseForm { texte: string; correcte: boolean }
 interface QuestionForm { texte: string; duree: number; points: number; reponses: ReponseForm[] }
-interface LotForm { rang_debut: number | null; rang_fin: number | null; libelle: string; type: 'objet' | 'argent'; montant: number | null }
+interface LotForm { rang_debut: number | null; rang_fin: number | null; libelle: string; type: 'objet' | 'argent'; montant: number | null; valeur?: number | null }
 interface JeuForm {
   titre: string; description: string; mode: 'libre' | 'direct'; debut: string; fin: string;
   nb_questions: number; repas_minimum: number; compter_repas_offerts: boolean; bonus_rapidite_pct: number;
@@ -291,7 +291,7 @@ export class GestionJeuxComponent implements OnInit {
       agences: (d.agences || []).map((a: any) => a.id),
       questions: (d.questions || []).map((q: any) => ({ texte: q.texte, duree: q.duree, points: q.points,
         reponses: q.reponses.map((r: any) => ({ texte: r.texte, correcte: r.correcte })) })),
-      lots: (d.lots || []).map((l: any) => ({ rang_debut: l.rang_debut, rang_fin: l.rang_fin, libelle: l.libelle, type: l.type, montant: l.montant })),
+      lots: (d.lots || []).map((l: any) => ({ rang_debut: l.rang_debut, rang_fin: l.rang_fin, libelle: l.libelle, type: l.type, montant: l.montant, valeur: l.valeur })),
     };
   }
 

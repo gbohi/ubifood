@@ -70,13 +70,14 @@ def notifier_par_user(messages):
     _en_arriere_plan(envoyer)
 
 
-def attribuer(user_id, source, source_id, titre_jeu, libelle, type_lot, montant, par, maintenant=None):
+def attribuer(user_id, source, source_id, titre_jeu, libelle, type_lot, montant, par, maintenant=None, valeur=None):
     """Crée le gain (dans la transaction de l'appelant) ; argent : crédit immédiat du compte repas."""
     from . import comptes_repas as cr
     maintenant = maintenant or timezone.now()
     g = GainJeu(user_id=user_id, source=source, source_id=source_id, titre_jeu=titre_jeu[:150],
                 libelle=(libelle or libelle_gain(type_lot, libelle, montant))[:150], type=type_lot,
-                montant=montant if type_lot == 'argent' else None, created_at=maintenant)
+                montant=montant if type_lot == 'argent' else None, created_at=maintenant,
+                valeur=montant if type_lot == 'argent' else valeur)
     if type_lot == 'argent' and montant:
         compte = cr.compte_verrouille(user_id)
         g.mouvement = cr._mouvement(compte, 'gain_jeu', montant, par, libelle=f"Lot gagné : {titre_jeu}"[:255])
@@ -92,6 +93,7 @@ def gain_json(g):
             'source_id': g.source_id, 'jeu': g.titre_jeu, 'libelle': g.libelle,
             'libelle_affiche': libelle_gain(g.type, g.libelle, g.montant), 'type': g.type,
             'montant': float(g.montant) if g.montant is not None else None, 'statut_lot': g.statut_lot,
+            'valeur': float(g.valeur) if g.valeur is not None else None,
             'lot_remis_le': _iso(g.lot_remis_le), 'gagne_le': _iso(g.created_at)}
 
 
@@ -193,3 +195,99 @@ class RemettreGainView(APIView):
             raise PermissionDenied("Réservé aux gestionnaires et administrateurs.")
         g = remettre(pk, request.user)
         return Response(gain_json(g))
+
+
+# ══════════════════════════════════════════════════════════════
+# COÛT DES JEUX (comptabilité)
+# ══════════════════════════════════════════════════════════════
+
+def couts_jeux(debut, fin):
+    """
+    Lots attribués entre debut et fin (dates incluses), tous jeux : argent
+    crédité sur les comptes repas (dépense de l'entreprise, mouvement
+    « Lot gagné à un jeu ») et objets (valeur estimée saisie sur le lot).
+    """
+    from collections import OrderedDict
+    from datetime import datetime, time
+    from decimal import Decimal
+    from .jeux import agences_actuelles, nom_complet
+    from .models import Agence
+    tz = timezone.get_current_timezone()
+    d0 = timezone.make_aware(datetime.combine(debut, time.min), tz)
+    d1 = timezone.make_aware(datetime.combine(fin, time.max), tz)
+    lignes = []
+    for g in GainJeu.objects.filter(created_at__range=(d0, d1)).select_related('user'):
+        lignes.append({'date': g.created_at, 'user': g.user, 'source': SOURCES.get(g.source, g.source), 'jeu': g.titre_jeu,
+                       'lot': libelle_gain(g.type, g.libelle, g.montant), 'type': g.type,
+                       'cout': g.montant if g.type == 'argent' else g.valeur, 'statut_lot': g.statut_lot,
+                       'remis_le': g.lot_remis_le})
+    for p in (ParticipationJeu.objects.filter(lot__isnull=False, jeu__resultats_publies_le__range=(d0, d1))
+              .select_related('user', 'lot', 'jeu')):
+        lignes.append({'date': p.jeu.resultats_publies_le, 'user': p.user, 'source': 'Quiz', 'jeu': p.jeu.titre,
+                       'lot': libelle_gain(p.lot.type, p.lot.libelle, p.lot.montant), 'type': p.lot.type,
+                       'cout': p.lot.montant if p.lot.type == 'argent' else p.lot.valeur, 'statut_lot': p.statut_lot,
+                       'remis_le': p.lot_remis_le})
+    lignes.sort(key=lambda l: l['date'])
+    agences = agences_actuelles([l['user'].id for l in lignes])
+    noms = dict(Agence.objects.values_list('id', 'nom_agence'))
+    zero = Decimal('0')
+    tot = {'nb_gains': 0, 'argent': zero, 'objets_valeur': zero, 'objets_sans_valeur': 0, 'nb_objets': 0,
+           'objets_a_remettre': 0}
+    par_jeu = OrderedDict()
+    for l in lignes:
+        cle = (l['source'], l['jeu'])
+        j = par_jeu.setdefault(cle, {'source': l['source'], 'jeu': l['jeu'], 'nb_gains': 0, 'argent': zero,
+                                     'objets_valeur': zero, 'objets_sans_valeur': 0})
+        tot['nb_gains'] += 1
+        j['nb_gains'] += 1
+        if l['type'] == 'argent':
+            tot['argent'] += l['cout'] or zero
+            j['argent'] += l['cout'] or zero
+        else:
+            tot['nb_objets'] += 1
+            tot['objets_a_remettre'] += l['statut_lot'] == 'a_remettre'
+            if l['cout'] is None:
+                tot['objets_sans_valeur'] += 1
+                j['objets_sans_valeur'] += 1
+            else:
+                tot['objets_valeur'] += l['cout']
+                j['objets_valeur'] += l['cout']
+    f = lambda x: float(x)
+    return {
+        'debut': debut.isoformat(), 'fin': fin.isoformat(),
+        'totaux': {**tot, 'argent': f(tot['argent']), 'objets_valeur': f(tot['objets_valeur']),
+                   'total': f(tot['argent'] + tot['objets_valeur'])},
+        'par_jeu': [{**j, 'argent': f(j['argent']), 'objets_valeur': f(j['objets_valeur']),
+                     'total': f(j['argent'] + j['objets_valeur'])} for j in par_jeu.values()],
+        'lignes': [{'date': _iso(l['date']), 'employe': nom_complet(l['user']), 'matricule': l['user'].username,
+                    'agence': ', '.join(sorted(noms.get(a, '') for a in agences.get(l['user'].id, set()))),
+                    'source': l['source'], 'jeu': l['jeu'], 'lot': l['lot'], 'type': l['type'],
+                    'cout': f(l['cout']) if l['cout'] is not None else None, 'statut_lot': l['statut_lot'],
+                    'remis_le': _iso(l['remis_le'])} for l in lignes],
+    }
+
+
+class CoutsJeuxView(APIView):
+    """GET comptabilite/couts-jeux/?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ (défaut : mois en cours)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from datetime import date
+        from .permissions import is_comptabilite
+        if not is_comptabilite(request.user):
+            raise PermissionDenied("Réservé à la comptabilité et aux administrateurs.")
+        auj = timezone.localdate()
+
+        def lire(cle, defaut):
+            v = request.query_params.get(cle)
+            if not v:
+                return defaut
+            try:
+                return date.fromisoformat(v[:10])
+            except ValueError:
+                raise ValidationError({cle: "Date invalide (AAAA-MM-JJ)."})
+        debut = lire('debut', auj.replace(day=1))
+        fin = lire('fin', auj)
+        if fin < debut:
+            raise ValidationError({'fin': "La fin doit être après le début."})
+        return Response(couts_jeux(debut, fin))

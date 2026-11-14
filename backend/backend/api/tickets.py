@@ -139,7 +139,7 @@ def gratter(ticket_id, user, maintenant=None):
             gagne.save(update_fields=['distribues'])
             t.lot = gagne
             t.gain = gains.attribuer(user.id, 'ticket', c.id, c.titre, gagne.libelle, gagne.type, gagne.montant, user,
-                                     maintenant)
+                                     maintenant, gagne.valeur)
         t.save(update_fields=['gratte_le', 'lot', 'gain'])
     return t
 
@@ -159,7 +159,8 @@ def lots_json(c, admin=False):
              'libelle_affiche': gains.libelle_gain(l.type, l.libelle, l.montant),
              'restants': max(0, l.stock - l.distribues)}
         if admin:
-            d.update({'stock': l.stock, 'distribues': l.distribues, 'probabilite': float(l.probabilite)})
+            d.update({'stock': l.stock, 'distribues': l.distribues, 'probabilite': float(l.probabilite),
+                      'valeur': float(l.valeur) if l.valeur is not None else None})
         res.append(d)
     return res
 
@@ -240,8 +241,10 @@ def _lire_lots(donnees):
             raise ValidationError({'lots': f"Lot {n} : stock entre 1 et 1 000 000."})
         proba = _decimal(l.get('probabilite'), 'lots', Decimal('0.001'), Decimal('100'))
         total += proba
+        from .jeux import lire_valeur
         res.append({'id': l.get('id'), 'libelle': libelle[:150], 'type': type_lot, 'montant': montant,
-                    'stock': stock, 'probabilite': proba})
+                    'stock': stock, 'probabilite': proba,
+                    'valeur': lire_valeur(l.get('valeur'), 'lots', n) if type_lot == 'objet' else None})
     if total > 100:
         raise ValidationError({'lots': f"La somme des probabilités ({total} %) dépasse 100 %."})
     return res

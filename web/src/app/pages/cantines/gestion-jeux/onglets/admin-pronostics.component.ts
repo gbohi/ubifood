@@ -44,7 +44,8 @@ import { API_JEUX, dateHeure, messageErreur, versIso } from '../../jeux/jeux-out
               <div class="d-flex gap-2 mb-1 align-items-center"><input type="number" class="form-control form-control-sm" style="width:64px" [(ngModel)]="l.rang_debut">à
                 <input type="number" class="form-control form-control-sm" style="width:64px" [(ngModel)]="l.rang_fin">
                 <select class="form-select form-select-sm" style="width:100px" [(ngModel)]="l.type"><option value="objet">Objet</option><option value="argent">Argent</option></select>
-                @if (l.type === 'argent') { <input type="number" class="form-control form-control-sm" [(ngModel)]="l.montant" placeholder="Montant F"> } @else { <input class="form-control form-control-sm" [(ngModel)]="l.libelle" placeholder="Maillot des Éléphants"> }
+                @if (l.type === 'argent') { <input type="number" class="form-control form-control-sm" [(ngModel)]="l.montant" placeholder="Montant F"> } @else { <input class="form-control form-control-sm" [(ngModel)]="l.libelle" placeholder="Maillot des Éléphants">
+                  <input type="number" min="0" class="form-control form-control-sm" style="width:130px" [(ngModel)]="l.valeur" placeholder="valeur F"> }
                 <button type="button" class="ep-x" (click)="f.lots.splice(i, 1)"><i class="ri-close-line"></i></button></div>
             }
             <button type="button" class="btn-ubi sm" (click)="f.lots.push({rang_debut: f.lots.length + 1, rang_fin: f.lots.length + 1, type: 'objet', libelle: '', montant: null})"><i class="ri-add-line"></i>Lot</button></div>
@@ -190,7 +191,7 @@ export class AdminPronosticsComponent implements OnInit {
   private remplir(d: any): void {
     this.courant = d;
     this.f = { titre: d.titre, description: d.description, points_exact: d.points_exact, points_resultat: d.points_resultat, repas_minimum: d.repas_minimum,
-               agences: d.agences.map((a: any) => a.id), lots: d.lots.map((l: any) => ({ rang_debut: l.rang_debut, rang_fin: l.rang_fin, type: l.type, libelle: l.libelle, montant: l.montant })) };
+               agences: d.agences.map((a: any) => a.id), lots: d.lots.map((l: any) => ({ rang_debut: l.rang_debut, rang_fin: l.rang_fin, type: l.type, libelle: l.libelle, montant: l.montant, valeur: l.valeur })) };
     this.scores = {};
     for (const m of d.matchs || []) this.scores[m.id] = { a: m.score_a, b: m.score_b };
   }

@@ -13,6 +13,7 @@ import { ValidationCloturesComponent } from './validation-clotures/validation-cl
 import { RecusComponent } from './recus/recus.component';
 import { ComptesRepasComponent } from './comptes/comptes-repas.component';
 import { PaiementsPrestatairesComponent } from './paiements-prestataires/paiements-prestataires.component';
+import { CoutsJeuxComponent } from './couts-jeux/couts-jeux.component';
 
 /**
  * Compte repas et caisse (étape 2) : écran de caisse, journal et clôture de caisse
@@ -29,6 +30,7 @@ import { PaiementsPrestatairesComponent } from './paiements-prestataires/paiemen
     RecusComponent,
     ComptesRepasComponent,
     PaiementsPrestatairesComponent,
+    CoutsJeuxComponent,
   ],
   imports: [
     CommonModule,

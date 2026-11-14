@@ -10,6 +10,7 @@ import { ValidationCloturesComponent } from './validation-clotures/validation-cl
 import { RecusComponent } from './recus/recus.component';
 import { ComptesRepasComponent } from './comptes/comptes-repas.component';
 import { PaiementsPrestatairesComponent } from './paiements-prestataires/paiements-prestataires.component';
+import { CoutsJeuxComponent } from './couts-jeux/couts-jeux.component';
 
 // Caissier : Caisse, Journal (le sien), Clôture de caisse.
 // Comptabilité : Clôtures à valider, Reçus, Comptes repas, Journal (tous), Paiements prestataires.
@@ -22,6 +23,7 @@ const routes: Routes = [
   { path: 'recus', component: RecusComponent, canActivate: [RoleGuard], data: { roles: COMPTABLES }, title: 'Reçus de caisse | UbiFood' },
   // Gestionnaires : lecture seule, relevés des prestataires de leurs agences (actions réservées à la comptabilité)
   { path: 'paiements-prestataires', component: PaiementsPrestatairesComponent, canActivate: [RoleGuard], data: { roles: LECTURE_COMPTES }, title: 'Paiements prestataires | UbiFood' },
+  { path: 'couts-jeux', component: CoutsJeuxComponent, canActivate: [RoleGuard], data: { roles: COMPTABLES }, title: 'Coût des jeux | UbiFood' },
   { path: 'comptes', component: ComptesRepasComponent, canActivate: [RoleGuard], data: { roles: LECTURE_COMPTES }, title: 'Comptes repas | UbiFood' },
 ];
 

@@ -75,7 +75,7 @@ const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 
                   <td><div class="input-group input-group-sm" style="width:110px"><input type="number" min="1" class="form-control" [(ngModel)]="p.points_min"><span class="input-group-text">pts</span></div></td>
                   <td><select class="form-select form-select-sm" style="min-width:110px" [(ngModel)]="p.type"><option value="argent">Argent</option><option value="objet">Objet</option></select></td>
                   <td>@if (p.type === 'argent') { <div class="input-group input-group-sm"><input type="number" min="1" class="form-control" [(ngModel)]="p.montant"><span class="input-group-text">F</span></div> }
-                      @else { <input class="form-control form-control-sm" [(ngModel)]="p.libelle" placeholder="T-shirt UbiFood"> }</td>
+                      @else { <input class="form-control form-control-sm" [(ngModel)]="p.libelle" placeholder="T-shirt UbiFood"><div class="input-group input-group-sm mt-1"><span class="input-group-text">valeur</span><input type="number" min="0" class="form-control" [(ngModel)]="p.valeur" placeholder="estimée"><span class="input-group-text">F</span></div> }</td>
                   <td><input type="number" min="1" class="form-control form-control-sm" style="width:90px" [(ngModel)]="p.quantite" placeholder="illimité"></td>
                   <td>@if (modifiable) { <button type="button" class="ep-x" (click)="f.paliers.splice(i, 1)"><i class="ri-close-line"></i></button> }</td></tr>
               }
@@ -204,7 +204,7 @@ export class AdminDefisComponent implements OnInit {
     this.f = { titre: d.titre, annee: d.annee, mois: d.mois, serie_jours: d.serie_jours, serie_points: d.serie_points, plats_nombre: d.plats_nombre,
                plats_points: d.plats_points, plats_nouveaux: d.plats_nouveaux, avis_nombre: d.avis_nombre, avis_points: d.avis_points,
                retraits_minimum: d.retraits_minimum, retraits_points: d.retraits_points, agences: d.agences.map((a: any) => a.id),
-               paliers: d.paliers.map((p: any) => ({ nom: p.nom, points_min: p.points_min, type: p.type, montant: p.montant, libelle: p.libelle, quantite: p.quantite })) };
+               paliers: d.paliers.map((p: any) => ({ nom: p.nom, points_min: p.points_min, type: p.type, montant: p.montant, libelle: p.libelle, quantite: p.quantite, valeur: p.valeur })) };
   }
 
   private vide(): any {

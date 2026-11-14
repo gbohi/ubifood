@@ -199,7 +199,7 @@ def publier_resultats(c, par, maintenant=None):
         for rang, (uid, (pts, ex, br, _)) in enumerate(classer(c, tirages), start=1):
             lot = exemplaires.pop(0) if exemplaires and pts > 0 else None
             gain = gains.attribuer(uid, 'pronostics', c.id, c.titre, lot.libelle, lot.type, lot.montant, par,
-                                   maintenant) if lot else None
+                                   maintenant, lot.valeur) if lot else None
             ResultatPronostics.objects.create(competition=c, user_id=uid, rang=rang, points=pts, nb_exacts=ex,
                                               nb_resultats=br, tirage=tirages[uid], lot=lot, gain=gain)
             if gain:
@@ -255,7 +255,8 @@ def lots_json(c):
     return [{'id': l.id, 'rangs': str(l.rang_debut) if l.rang_debut == l.rang_fin else f"{l.rang_debut}-{l.rang_fin}",
              'rang_debut': l.rang_debut, 'rang_fin': l.rang_fin, 'libelle': l.libelle, 'type': l.type,
              'montant': float(l.montant) if l.montant is not None else None, 'quantite': l.rang_fin - l.rang_debut + 1,
-             'libelle_affiche': gains.libelle_gain(l.type, l.libelle, l.montant)} for l in c.lots.order_by('rang_debut')]
+             'libelle_affiche': gains.libelle_gain(l.type, l.libelle, l.montant),
+             'valeur': float(l.valeur) if l.valeur is not None else None} for l in c.lots.order_by('rang_debut')]
 
 
 def match_json(m, maintenant):

@@ -233,6 +233,7 @@ export const MENU: MenuItem[] = [
     { id: 414, label: 'Journal', icon: 'ri-file-list-3-line', link: '/caisse/journal', roles: COMPTABLES, espaceCaisse: true },
     // Suivi des relevés prestataires jusqu'au paiement (étape 3)
     { id: 415, label: 'Paiements prestataires', icon: 'ri-bank-card-line', link: '/caisse/paiements-prestataires', roles: COMPTABLES, espaceCaisse: true, isNew: true },
+    { id: 416, label: 'Coût des jeux', icon: 'ri-trophy-line', link: '/caisse/couts-jeux', roles: COMPTABLES, espaceCaisse: true, isNew: true },
     {
         // Une seule entrée vers l'accueil des paramètres (cartes par thème,
         // filtrées selon le rôle : le gestionnaire n'y voit que la cantine)

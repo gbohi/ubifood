@@ -350,3 +350,37 @@ class TicketsTests(_Base):
         lots = self.client_pour(self.gestionnaire).get(f'{API}/admin/jeux/lots-a-remettre/').data
         self.assertEqual([(l['source'], l['lot']) for l in lots], [('Ticket à gratter', 'Dessert')])
         self.assertEqual(self.client_pour(self.employe).get(f'{API}/admin/jeux/lots-a-remettre/').status_code, 403)
+
+
+# ══════════════════════════════════════════════════════════════
+# COÛT DES JEUX (comptabilité)
+# ══════════════════════════════════════════════════════════════
+
+class CoutsJeuxTests(_Base):
+
+    def test_argent_et_valeur_des_objets_par_jeu(self):
+        maintenant = timezone.now()
+        c = TK.enregistrer(TK.CampagneTickets(), {
+            'titre': 'Tickets', 'debut': (maintenant - timedelta(days=1)).isoformat(),
+            'fin': (maintenant + timedelta(days=5)).isoformat(),
+            'lots': [{'libelle': 'T-shirt', 'type': 'objet', 'valeur': 3500, 'stock': 1, 'probabilite': 100}]}, self.admin)
+        c.publie_le = maintenant
+        c.save()
+        m = self.menu(timezone.localdate())
+        Commande.objects.create(user=self.employe, menu=m, plat=self.plat1)
+        with self.captureOnCommitCallbacks(execute=True):
+            Retrait.objects.create(user=self.employe, menu=m, badge_matricule='x')
+        TK.gratter(Ticket.objects.get(user=self.employe).id, self.employe)
+        G.attribuer(self.employe2.id, 'defis', 1, 'Défis de mars', '', 'argent', D('1000'), self.admin)
+        G.attribuer(self.e3.id, 'pronostics', 1, 'CAN', 'Maillot', 'objet', None, self.admin)   # sans valeur
+        r = self.client_pour(self.admin).get(f'{API}/comptabilite/couts-jeux/')
+        self.assertEqual(r.status_code, 200, r.data)
+        t = r.data['totaux']
+        self.assertEqual((t['nb_gains'], t['argent'], t['objets_valeur'], t['total'], t['objets_sans_valeur']),
+                         (3, 1000.0, 3500.0, 4500.0, 1))
+        self.assertEqual({j['jeu']: j['total'] for j in r.data['par_jeu']}, {'Tickets': 3500.0, 'Défis de mars': 1000.0, 'CAN': 0.0})
+        self.assertEqual(len(r.data['lignes']), 3)
+        self.assertEqual(self.client_pour(self.gestionnaire).get(f'{API}/comptabilite/couts-jeux/').status_code, 403)
+        hier = (timezone.localdate() - timedelta(days=2)).isoformat()
+        r = self.client_pour(self.admin).get(f'{API}/comptabilite/couts-jeux/', {'debut': hier, 'fin': hier})
+        self.assertEqual(r.data['totaux']['nb_gains'], 0)

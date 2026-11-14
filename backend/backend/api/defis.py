@@ -253,7 +253,7 @@ def cloturer(c, par, maintenant=None):
                 if restant[palier.id] is not None:
                     restant[palier.id] -= 1
                 gain = gains.attribuer(uid, 'defis', c.id, c.titre, palier.libelle, palier.type, palier.montant,
-                                       par, maintenant)
+                                       par, maintenant, palier.valeur)
             ResultatDefis.objects.create(campagne=c, user_id=uid, points=totaux[uid], rang=rang, palier=palier, gain=gain)
             if gain:
                 suite = ("crédité sur votre compte repas" if gain.statut_lot == 'credite'
@@ -288,6 +288,7 @@ def taches_defis(maintenant=None):
 def paliers_json(c, points=None):
     return [{'id': pa.id, 'nom': pa.nom, 'points_min': pa.points_min, 'libelle': pa.libelle, 'type': pa.type,
              'montant': float(pa.montant) if pa.montant is not None else None, 'quantite': pa.quantite,
+             'valeur': float(pa.valeur) if pa.valeur is not None else None,
              'recompense': gains.libelle_gain(pa.type, pa.libelle, pa.montant),
              'atteint': points is not None and points >= pa.points_min}
             for pa in c.paliers.order_by('points_min')]
@@ -431,8 +432,10 @@ def _lire_paliers(donnees):
             raise ValidationError({'paliers': f"Palier {n} : récompense obligatoire."})
         quantite = p.get('quantite')
         quantite = None if quantite in (None, '') else _entier(quantite, 'paliers', 1, 100000, None)
+        from .jeux import lire_valeur
         res.append({'nom': nom[:50], 'points_min': seuil, 'libelle': libelle[:150], 'type': type_lot,
-                    'montant': montant, 'quantite': quantite})
+                    'montant': montant, 'quantite': quantite,
+                    'valeur': lire_valeur(p.get('valeur'), 'paliers', n) if type_lot == 'objet' else None})
     return res
 
 
