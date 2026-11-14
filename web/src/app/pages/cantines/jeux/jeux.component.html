@@ -35,7 +35,7 @@
               <button type="button" class="jx-ligne" (click)="ouvrir(j.id)">
                 <span class="jx-ic" [ngClass]="r.classe"><i [class]="r.icone"></i></span>
                 <span class="jx-l-txt"><b>{{ j.titre }}</b>
-                  <small>@if (j.participation?.rang) { {{ j.participation.rang }}e sur {{ j.nb_participants }} · }@if (j.participation?.points !== null && j.participation?.points !== undefined) { {{ j.participation.points }} pts } @else { terminé le {{ dateHeure(j.fin) }} }</small></span>
+                  <small>@if (j.participation?.rang) { {{ rangFr(j.participation.rang) }} sur {{ j.nb_participants }} · }@if (j.participation?.points !== null && j.participation?.points !== undefined) { {{ j.participation.points }} pts } @else { terminé le {{ dateHeure(j.fin) }} }</small></span>
                 <span class="jx-res" [ngClass]="r.classe">{{ r.texte }}</span>
               </button>
             }
@@ -60,7 +60,7 @@
               <div class="jx-res-carte" [class.perdu]="res !== 'gagne'">
                 <div class="jx-big">{{ res === 'gagne' ? '🏆' : res === 'perdu' ? '🙂' : '⛔' }}</div>
                 <h3>{{ res === 'gagne' ? 'Bravo, vous avez gagné !' : res === 'perdu' ? 'Perdu cette fois' : 'Non classé' }}</h3>
-                <div class="jx-s">@if (j.participation.rang) { {{ j.participation.rang }}e sur {{ j.nb_participants }} participants · {{ j.participation.points }} pts } @else { {{ j.participation.motif }} }</div>
+                <div class="jx-s">@if (j.participation.rang) { {{ rangFr(j.participation.rang) }} sur {{ j.nb_participants }} participants · {{ j.participation.points }} pts } @else { {{ j.participation.motif }} }</div>
                 @if (j.participation.lot; as lot) {
                   <div class="jx-lotg"><i class="ri-gift-line"></i>{{ lot.libelle_affiche }}</div>
                   <div class="jx-retrait">

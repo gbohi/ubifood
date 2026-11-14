@@ -159,6 +159,8 @@ export class JeuxComponent implements OnInit, OnDestroy {
     return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(' ', ' à ');
   }
 
+  rangFr(n: number): string { return n === 1 ? '1er' : `${n}e`; }
+
   fcfa(n: number): string { return `${Math.round(n).toLocaleString('fr-FR').replace(/ | /g, ' ')} F`; }
 
   resume(j: any): { texte: string; classe: string; icone: string } {

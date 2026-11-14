@@ -436,3 +436,6 @@ String formatDureeJeu(int? ms) {
   if (s < 60) return '$s s';
   return '${s ~/ 60} min ${(s % 60).toString().padLeft(2, '0')}';
 }
+
+/// « 1er », « 2e »…
+String rangFr(int n) => n == 1 ? '1er' : '${n}e';

@@ -140,7 +140,7 @@ export const MENU: MenuItem[] = [
             {
                 // Création des jeux, classement, publication des résultats, remise des lots
                 id: 2119,
-                label: 'Gestion des jeux',
+                label: 'Gérer les jeux',
                 link: '/cantines/gestion-jeux',
                 roles: GESTIONNAIRES,
                 isNew: true,

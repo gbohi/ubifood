@@ -424,7 +424,8 @@ class _LigneParticipation extends StatelessWidget {
     final r = resumeParticipation(jeu);
     final p = jeu.participation;
     final details = [
-      if (p?.rang != null) '${p!.rang}e sur ${jeu.nbParticipants ?? '?'}',
+      if (p?.rang != null)
+        '${rangFr(p!.rang!)} sur ${jeu.nbParticipants ?? '?'}',
       if (p?.points != null) '${p!.points} pts',
     ];
     return _LigneJeu(
@@ -773,7 +774,7 @@ class CarteResultat extends StatelessWidget {
       _ => 'Non classé',
     };
     final sous = p.rang != null
-        ? '${p.rang}e sur ${jeu.nbParticipants ?? '?'} participants · ${p.points ?? 0} pts'
+        ? '${rangFr(p.rang!)} sur ${jeu.nbParticipants ?? '?'} participants · ${p.points ?? 0} pts'
         : p.motif;
     String? retrait;
     IconData iconeRetrait = Icons.volunteer_activism_outlined;

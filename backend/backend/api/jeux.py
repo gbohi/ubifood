@@ -122,6 +122,10 @@ def nom_court(u):
     return f"{prenom} {initiale}.".strip() if prenom else (f"{initiale}." if initiale else u.username)
 
 
+def rang_fr(n):
+    return '1er' if n == 1 else f'{n}e'
+
+
 def libelle_rangs(lot):
     return str(lot.rang_debut) if lot.rang_debut == lot.rang_fin else f"{lot.rang_debut}-{lot.rang_fin}"
 
@@ -544,7 +548,7 @@ def publier_resultats(jeu, par, maintenant=None):
                 if lot.type == 'argent' and lot.montant:
                     compte = cr.compte_verrouille(p.user_id)
                     p.mouvement = cr._mouvement(compte, 'gain_jeu', lot.montant, par,
-                                                libelle=f"Lot gagné : {jeu.titre} ({rang}e)")
+                                                libelle=f"Lot gagné : {jeu.titre} ({rang_fr(rang)})")
                     p.statut_lot, p.lot_remis_le = 'credite', maintenant
                 else:
                     p.statut_lot = 'a_remettre'
@@ -554,11 +558,11 @@ def publier_resultats(jeu, par, maintenant=None):
                 suite = ("Le montant a été crédité sur votre compte repas." if p.statut_lot == 'credite'
                          else "Présentez-vous pour retirer votre lot.")
                 messages.append((p.user_id, '🏆 Vous avez gagné !',
-                                 f"{jeu.titre} : {rang}e sur {_nb_classes(jeu)}. Lot : {libelle_lot(lot)}. {suite}",
+                                 f"{jeu.titre} : {rang_fr(rang)} sur {_nb_classes(jeu)}. Lot : {libelle_lot(lot)}. {suite}",
                                  {'resultat': 'gagne'}))
             elif rang:
                 messages.append((p.user_id, f"Résultats : {jeu.titre}",
-                                 f"Vous êtes {rang}e avec {p.points} points. Perdu cette fois, merci d'avoir "
+                                 f"Vous êtes {rang_fr(rang)} avec {p.points} points. Perdu cette fois, merci d'avoir "
                                  "participé !", {'resultat': 'perdu'}))
             else:
                 messages.append((p.user_id, f"Résultats : {jeu.titre}", f"Non classé : {p.exclu_motif}",
